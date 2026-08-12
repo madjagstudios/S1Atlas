@@ -399,6 +399,8 @@ Controlled Cpp2IL invocation:
 --output-as=dll_il_recovery
 ```
 
+The `--exe-name=Schedule I` value intentionally omits the `.exe` extension. Cpp2IL uses this base executable name to derive the corresponding `Schedule I_Data` directory. The Phase 3 local capability smoke run must confirm this resolution before Phase 4 or later work depends on the produced output.
+
 The process is launched without a shell. Arguments are added through `ProcessStartInfo.ArgumentList` or equivalent typed construction. `NO_COLOR=true` is set in the child environment.
 
 Profile limits:
@@ -425,13 +427,17 @@ Policy version:  1
 Schema version:  1
 ```
 
-Initial comparative thresholds:
+Comparative checks use this formula for each major count with a nonzero baseline:
 
 ```text
-More than 80% decrease in a major count: hard failure
-More than 25% absolute difference:       warning
-Large increases:                         warning unless another hard invariant fails
+relative change = |new - baseline| / baseline
 ```
+
+Major counts are managed assembly count, aggregate type count, aggregate method count, total managed bytes, and per-assembly type/method counts.
+
+Hard-failure checks are evaluated first. If any major count decreases by more than 80% relative to the compared baseline, the outcome is `Invalid` regardless of other comparative results. Otherwise, a relative change greater than 25%—increase or decrease—in any major count is a warning. Large increases that violate no other hard invariant remain warnings.
+
+When a baseline value is zero, S1Atlas does not divide by zero; a nonzero candidate value is recorded as a warning unless another hard invariant applies.
 
 Initial absolute requirements:
 
@@ -631,10 +637,11 @@ recipe_id = SHA256 canonical identity of:
   game build ID
   tool instance ID
   extraction profile digest
-  validation policy digest
   Cpp2IL adapter version
   extraction schema version
 ```
+
+Validation policy is deliberately excluded from recipe identity because it does not affect the bytes Cpp2IL produces. Re-validating existing artifacts under a new policy records a new attempt-level validation result without creating a new recipe or extraction.
 
 Absolute paths, timestamps, and attempt-specific facts are excluded.
 
@@ -653,6 +660,8 @@ extraction_id = SHA256 canonical identity of:
   recipe ID
   artifact manifest digest
 ```
+
+Because validation policy is excluded from recipe identity, changing only the policy cannot change an extraction ID when the artifact manifest is unchanged.
 
 The same recipe producing different bytes creates a distinct extraction rather than overwriting history.
 
@@ -792,12 +801,14 @@ extraction ID
 recipe ID
 source attempt ID
 build ID
-tool/profile/policy provenance
+tool and profile provenance
 artifact-manifest digest
 statistics
 creation timestamp
 trust level
 ```
+
+Validation-policy provenance remains in the source attempt and `validation.json`; it is not part of production identity.
 
 Preferred status is mutable and is not stored in this immutable manifest.
 
@@ -886,7 +897,7 @@ s1atlas extract --build <build-id>
 
 selects an existing immutable build record.
 
-### 13.2 Live input resolution order
+### 13.2 Input resolution order
 
 ```text
 1. Explicit --game-path
@@ -1339,15 +1350,23 @@ required assembly identities
 per-assembly counts
 ```
 
-More than an 80% decrease in a major count is invalid.
+Comparative checks use this formula for each major count with a nonzero baseline:
 
-More than a 25% absolute difference is a warning.
+```text
+relative change = |new - baseline| / baseline
+```
 
-Large increases are warnings unless they violate another hard invariant.
+Major counts are managed assembly count, aggregate type count, aggregate method count, total managed bytes, and per-assembly type/method counts.
+
+Hard-failure checks are evaluated first. If any major count decreases by more than 80% relative to the compared baseline, the outcome is `Invalid` regardless of other comparative results. Otherwise, a relative change greater than 25%—increase or decrease—in any major count is a warning. Large increases that violate no other hard invariant remain warnings.
+
+When a baseline value is zero, S1Atlas does not divide by zero; a nonzero candidate value is recorded as a warning unless another hard invariant applies.
 
 ### 18.9 Reproducibility
 
-For an existing recipe:
+Validation policy is not part of the production recipe. When the current policy differs from the policy that last evaluated an existing artifact set, S1Atlas re-validates those artifacts and records the new result at the attempt/validation level without launching Cpp2IL or creating another extraction.
+
+For an actual process attempt that produces artifacts for an existing recipe:
 
 ```text
 same artifact-manifest digest
@@ -1516,6 +1535,8 @@ total_output_bytes
 total_managed_bytes
 ```
 
+`validation_outcome` records the source attempt’s initial acceptance outcome. Later policy-only revalidation results remain attached to their attempts and validation issues; they do not alter extraction identity or immutable manifests.
+
 ### 20.5 `extraction_artifacts`
 
 ```text
@@ -1670,7 +1691,7 @@ Progress messages in JSON mode go to stderr or are suppressed. Standard output r
 
 ### 21.4 Normal no-op behavior
 
-If the exact recipe already has a valid extraction and `--retry` is absent, `extract` returns success without launching Cpp2IL.
+If the exact production recipe already has a valid extraction and `--retry` is absent, `extract` does not launch Cpp2IL. If the current validation policy has already evaluated those artifacts, the command returns success as an intentional no-op. If the policy differs, S1Atlas re-validates the existing artifacts and records a new attempt-level validation result; it does not rerun Cpp2IL or create a new extraction.
 
 ### 21.5 Custom preference
 
@@ -1798,6 +1819,7 @@ Verify:
 - profile and policy digests;
 - recipe IDs;
 - extraction IDs;
+- validation-policy changes do not change recipe or extraction IDs for unchanged produced bytes;
 - timestamps and absolute paths excluded from reproducibility IDs;
 - trust and preference rules;
 - warning classification;
@@ -1898,6 +1920,7 @@ Fixtures include:
 - case-colliding paths;
 - catastrophic count reduction;
 - moderate deviation;
+- policy-only revalidation of an existing artifact set;
 - same recipe/same output;
 - same recipe/different output.
 
@@ -1942,6 +1965,7 @@ Verify:
 - missing tool gives install instructions;
 - changed live build recommends scan;
 - existing recipe is a successful no-op;
+- policy-only changes revalidate existing artifacts without launching Cpp2IL or creating a duplicate extraction;
 - cleanup previews by default;
 - cleanup never deletes validated output;
 - errors contain no raw stack trace;
@@ -2037,7 +2061,8 @@ Deliver:
 - extraction lock;
 - timeout/cancellation;
 - `extract`;
-- failed-attempt retention.
+- failed-attempt retention;
+- a local capability smoke run confirming `--exe-name=Schedule I` resolves `Schedule I_Data` before Phase 4 begins.
 
 Phase 3 output is not authoritative until Phase 4 validation is present.
 
@@ -2100,6 +2125,7 @@ The milestone is complete only when all are true:
 [ ] Reconstructed assemblies pass managed PE and metadata validation
 [ ] Required Assembly-CSharp is present
 [ ] Catastrophically incomplete output is rejected
+[ ] Validation-policy changes revalidate existing artifacts without rerunning Cpp2IL or changing production identity
 [ ] Same-recipe differing output cannot silently replace preferred output
 [ ] Validated extraction directories are immutable and integrity checked
 [ ] Filesystem/database promotion recovers safely after interruption
@@ -2130,6 +2156,8 @@ A preferred extraction must belong to the same game build.
 A database row is not trusted without its complete filesystem marker.
 Historical build hashes are never rewritten.
 Hashes alone do not claim that historical bytes are available.
+Validation policy cannot change recipe or extraction identity when produced bytes are unchanged.
+Revalidation under a new policy cannot create a duplicate extraction for an unchanged artifact manifest.
 A structural validation result does not claim behavioral decompilation accuracy.
 Failed or retained partial output never feeds ILSpy, indexing, docs, or MCP.
 Cleanup never deletes validated extractions in this milestone.
