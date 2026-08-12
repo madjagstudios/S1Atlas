@@ -360,7 +360,7 @@ A symbol page should provide several levels of understanding.
 
 ### Plain-English Overview
 
-Explains what the symbol appears to represent and its role in the game.
+Explains what the symbol appears to represent and its role in the game. V1 must be able to produce useful plain-English context without requiring an embedded general-purpose AI runtime. Deterministic summaries derived from indexed symbols and relationships satisfy this requirement. Richer AI-assisted explanations may be added later or used as optional enrichment, but they must be labeled as `INTERPRETATION` and must not become a dependency of the trusted indexing pipeline.
 
 ### Why a Modder Might Care
 
@@ -433,7 +433,7 @@ Cover S1Atlas-owned logic such as symbol identities, fingerprints, diff classifi
 
 ### Integration Tests
 
-Exercise representative fixture assemblies through extraction adapters, normalization, SQLite persistence, query APIs, and documentation generation.
+Exercise representative fixture assemblies through extraction adapters, normalization, SQLite persistence, query APIs, and documentation generation. Integration coverage must include an intentionally failed or interrupted staged scan and verify that it cannot replace or corrupt the previously promoted build or database state.
 
 ### Real-Game Smoke Tests
 
