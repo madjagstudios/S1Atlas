@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using S1Atlas.Core.Environment;
@@ -11,12 +12,26 @@ internal static class EnvironmentSnapshotId
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
+        if (snapshot.IdentityVersion != 2)
+        {
+            throw new InvalidOperationException(
+                "Only identity-version 2 snapshots can receive a new snapshot ID.");
+        }
+
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        Append(hash, "environment-snapshot");
+        Append(hash, snapshot.IdentityVersion.ToString(CultureInfo.InvariantCulture));
         Append(hash, snapshot.Build.BuildId);
         Append(hash, snapshot.AtlasVersion);
+        Append(hash, snapshot.Installation.ExecutableVersion ?? string.Empty);
+        Append(hash, snapshot.Installation.SteamAppId ?? string.Empty);
+        Append(hash, snapshot.Installation.SteamBuildId ?? string.Empty);
+        Append(hash, NormalizePath(snapshot.Installation.InstallationRoot));
+        Append(hash, NormalizePath(snapshot.Installation.GameAssemblyPath));
+        Append(hash, NormalizePath(snapshot.Installation.GlobalMetadataPath));
 
         var dependencies = OrderDependencies(snapshot.Dependencies);
-        Append(hash, dependencies.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Append(hash, dependencies.Length.ToString(CultureInfo.InvariantCulture));
 
         foreach (var dependency in dependencies)
         {

@@ -3,26 +3,39 @@ using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Storage;
+using S1Atlas.Storage.Migrations;
 
 namespace S1Atlas.Storage.Sqlite;
 
 public sealed class SqliteAtlasRepository : IAtlasRepository
 {
     private readonly string _databasePath;
+    private readonly SqliteMigrationRunner _migrationRunner;
 
     public SqliteAtlasRepository(string databasePath)
+        : this(
+            databasePath,
+            Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(databasePath))!,
+                "backups"))
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
-        _databasePath = Path.GetFullPath(databasePath);
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public SqliteAtlasRepository(
+        string databasePath,
+        string backupDirectory)
     {
-        await using var connection = await OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = SqliteSchema.Create;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(backupDirectory);
+
+        _databasePath = Path.GetFullPath(databasePath);
+        _migrationRunner = new SqliteMigrationRunner(
+            _databasePath,
+            Path.GetFullPath(backupDirectory));
     }
+
+    public Task InitializeAsync(CancellationToken cancellationToken) =>
+        _migrationRunner.MigrateAsync(cancellationToken);
 
     public async Task SaveSnapshotAsync(
         EnvironmentSnapshot snapshot,
@@ -34,6 +47,12 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         {
             throw new InvalidOperationException(
                 "Only validated build snapshots can become the current Atlas build.");
+        }
+
+        if (snapshot.IdentityVersion != 2)
+        {
+            throw new InvalidOperationException(
+                "Only identity-version 2 snapshots can be saved as new Atlas candidates.");
         }
 
         var orderedDependencies =
@@ -100,15 +119,20 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
             command.CommandText = """
                 SELECT
                     b.build_id,
-                    b.game_version,
-                    b.steam_build_id,
                     b.game_assembly_sha256,
                     b.metadata_sha256,
-                    b.scanned_at_utc,
+                    b.first_seen_at_utc,
                     b.is_valid,
                     snapshot.atlas_version,
                     snapshot.captured_at_utc,
-                    snapshot.snapshot_id
+                    snapshot.snapshot_id,
+                    snapshot.identity_version,
+                    snapshot.executable_version,
+                    snapshot.steam_app_id,
+                    snapshot.steam_build_id,
+                    snapshot.installation_root,
+                    snapshot.game_assembly_path,
+                    snapshot.global_metadata_path
                 FROM atlas_state AS state
                 INNER JOIN environment_snapshots AS snapshot
                     ON snapshot.snapshot_id = state.current_snapshot_id
@@ -134,7 +158,9 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
             cancellationToken);
 
         return new EnvironmentSnapshot(
+            header.IdentityVersion,
             header.Build,
+            header.Installation,
             dependencies,
             header.AtlasVersion,
             header.CapturedAtUtc);
@@ -148,14 +174,12 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         command.CommandText = """
             SELECT
                 build_id,
-                game_version,
-                steam_build_id,
                 game_assembly_sha256,
                 metadata_sha256,
-                scanned_at_utc,
+                first_seen_at_utc,
                 is_valid
             FROM builds
-            ORDER BY scanned_at_utc DESC, build_id DESC;
+            ORDER BY first_seen_at_utc DESC, build_id DESC;
             """;
 
         var builds = new List<GameBuild>();
@@ -212,35 +236,25 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         command.CommandText = """
             INSERT OR IGNORE INTO builds (
                 build_id,
-                game_version,
-                steam_build_id,
                 game_assembly_sha256,
                 metadata_sha256,
-                scanned_at_utc,
+                first_seen_at_utc,
                 is_valid)
             VALUES (
                 $buildId,
-                $gameVersion,
-                $steamBuildId,
                 $gameAssemblySha256,
                 $metadataSha256,
-                $scannedAtUtc,
+                $firstSeenAtUtc,
                 $isValid);
             """;
         command.Parameters.AddWithValue("$buildId", build.BuildId);
-        command.Parameters.AddWithValue(
-            "$gameVersion",
-            (object?)build.GameVersion ?? DBNull.Value);
-        command.Parameters.AddWithValue(
-            "$steamBuildId",
-            (object?)build.SteamBuildId ?? DBNull.Value);
         command.Parameters.AddWithValue(
             "$gameAssemblySha256",
             build.GameAssemblySha256);
         command.Parameters.AddWithValue("$metadataSha256", build.MetadataSha256);
         command.Parameters.AddWithValue(
-            "$scannedAtUtc",
-            FormatTimestamp(build.ScannedAtUtc));
+            "$firstSeenAtUtc",
+            FormatTimestamp(build.FirstSeenAtUtc));
         command.Parameters.AddWithValue("$isValid", build.IsValid ? 1 : 0);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -259,12 +273,26 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                 snapshot_id,
                 build_id,
                 atlas_version,
-                captured_at_utc)
+                captured_at_utc,
+                identity_version,
+                executable_version,
+                steam_app_id,
+                steam_build_id,
+                installation_root,
+                game_assembly_path,
+                global_metadata_path)
             VALUES (
                 $snapshotId,
                 $buildId,
                 $atlasVersion,
-                $capturedAtUtc);
+                $capturedAtUtc,
+                $identityVersion,
+                $executableVersion,
+                $steamAppId,
+                $steamBuildId,
+                $installationRoot,
+                $gameAssemblyPath,
+                $globalMetadataPath);
             """;
         command.Parameters.AddWithValue("$snapshotId", snapshotId);
         command.Parameters.AddWithValue("$buildId", snapshot.Build.BuildId);
@@ -272,6 +300,25 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         command.Parameters.AddWithValue(
             "$capturedAtUtc",
             FormatTimestamp(snapshot.CapturedAtUtc));
+        command.Parameters.AddWithValue("$identityVersion", snapshot.IdentityVersion);
+        command.Parameters.AddWithValue(
+            "$executableVersion",
+            (object?)snapshot.Installation.ExecutableVersion ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$steamAppId",
+            (object?)snapshot.Installation.SteamAppId ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$steamBuildId",
+            (object?)snapshot.Installation.SteamBuildId ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$installationRoot",
+            (object?)snapshot.Installation.InstallationRoot ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$gameAssemblyPath",
+            (object?)snapshot.Installation.GameAssemblyPath ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$globalMetadataPath",
+            (object?)snapshot.Installation.GlobalMetadataPath ?? DBNull.Value);
 
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
@@ -361,23 +408,31 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
     private static SnapshotHeader ReadSnapshotHeader(SqliteDataReader reader)
     {
         var build = ReadBuild(reader);
+        var installation = new InstallationObservation(
+            reader.IsDBNull(9) ? null : reader.GetString(9),
+            reader.IsDBNull(10) ? null : reader.GetString(10),
+            reader.IsDBNull(11) ? null : reader.GetString(11),
+            reader.IsDBNull(12) ? null : reader.GetString(12),
+            reader.IsDBNull(13) ? null : reader.GetString(13),
+            reader.IsDBNull(14) ? null : reader.GetString(14));
+
         return new SnapshotHeader(
             build,
+            reader.GetString(5),
+            ParseTimestamp(reader.GetString(6)),
             reader.GetString(7),
-            ParseTimestamp(reader.GetString(8)),
-            reader.GetString(9));
+            reader.GetInt32(8),
+            installation);
     }
 
     private static GameBuild ReadBuild(SqliteDataReader reader)
     {
         return new GameBuild(
             reader.GetString(0),
-            reader.IsDBNull(1) ? null : reader.GetString(1),
-            reader.IsDBNull(2) ? null : reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            ParseTimestamp(reader.GetString(5)),
-            reader.GetInt64(6) == 1);
+            reader.GetString(1),
+            reader.GetString(2),
+            ParseTimestamp(reader.GetString(3)),
+            reader.GetInt64(4) == 1);
     }
 
     private static string FormatTimestamp(DateTimeOffset timestamp) =>
@@ -390,5 +445,7 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         GameBuild Build,
         string AtlasVersion,
         DateTimeOffset CapturedAtUtc,
-        string SnapshotId);
+        string SnapshotId,
+        int IdentityVersion,
+        InstallationObservation Installation);
 }

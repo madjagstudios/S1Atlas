@@ -54,11 +54,14 @@ public sealed class CliApplication
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        IAtlasRepository repository = new SqliteAtlasRepository(_paths.DatabasePath);
+        IAtlasRepository repository = new SqliteAtlasRepository(
+            _paths.DatabasePath,
+            _paths.BackupsDirectory);
         var discovery = new EnvironmentDiscoveryService(
             new WindowsScheduleOneLocator(),
             new Sha256FileHasher(),
-            new InstalledDependencyDetector());
+            new InstalledDependencyDetector(),
+            new WindowsInstallationMetadataReader());
 
         var root = new RootCommand(
             "Local Schedule I developer-intelligence tools.");

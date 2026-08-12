@@ -32,7 +32,11 @@ internal static class StatusCommand
                 var installedCount = snapshot.Dependencies.Count(item => item.IsInstalled);
                 output.WriteLine($"Current build: {snapshot.Build.BuildId}");
                 output.WriteLine(
-                    $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
+                    $"Executable version: {snapshot.Installation.ExecutableVersion ?? "unknown"}");
+                output.WriteLine(
+                    $"Steam app ID: {snapshot.Installation.SteamAppId ?? "unknown"}");
+                output.WriteLine(
+                    $"Steam build ID: {snapshot.Installation.SteamBuildId ?? "unknown"}");
                 output.WriteLine($"Captured: {snapshot.CapturedAtUtc:O}");
                 output.WriteLine(
                     $"Dependencies installed: {installedCount}/{snapshot.Dependencies.Count}");

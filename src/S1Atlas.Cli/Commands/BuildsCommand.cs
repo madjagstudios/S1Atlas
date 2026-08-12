@@ -32,7 +32,8 @@ internal static class BuildsCommand
                 foreach (var build in builds)
                 {
                     output.WriteLine(
-                        $"{build.BuildId} | {build.GameVersion ?? "unknown"} | {build.ScannedAtUtc:O}");
+                        $"{build.BuildId} | first seen {build.FirstSeenAtUtc:O} | " +
+                        (build.IsValid ? "valid" : "invalid"));
                 }
 
                 return 0;

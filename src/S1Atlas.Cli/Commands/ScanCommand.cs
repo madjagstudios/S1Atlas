@@ -47,7 +47,11 @@ internal static class ScanCommand
 
                 output.WriteLine($"Indexed Schedule I build {snapshot.Build.BuildId}");
                 output.WriteLine(
-                    $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
+                    $"Executable version: {snapshot.Installation.ExecutableVersion ?? "unknown"}");
+                output.WriteLine(
+                    $"Steam app ID: {snapshot.Installation.SteamAppId ?? "unknown"}");
+                output.WriteLine(
+                    $"Steam build ID: {snapshot.Installation.SteamBuildId ?? "unknown"}");
                 foreach (var dependency in snapshot.Dependencies)
                 {
                     output.WriteLine(DependencyDisplay.Format(dependency));

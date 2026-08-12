@@ -4,6 +4,8 @@ public sealed record AtlasPaths(string RootDirectory)
 {
     public string DatabasePath => Path.Combine(RootDirectory, "atlas.db");
 
+    public string BackupsDirectory => Path.Combine(RootDirectory, "backups");
+
     public static AtlasPaths FromEnvironment()
     {
         var configuredRoot = System.Environment.GetEnvironmentVariable("S1ATLAS_HOME");
