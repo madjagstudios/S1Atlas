@@ -38,6 +38,50 @@ public sealed class SqliteAtlasRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SaveSnapshotAsync_SameGameBuildWithChangedDependency_PromotesNewEnvironmentWithoutDuplicatingBuild()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = new SqliteAtlasRepository(_databasePath);
+        await repository.InitializeAsync(cancellationToken);
+        var baselineTime = DateTimeOffset.Parse("2026-08-12T12:00:00Z");
+        var changedTime = DateTimeOffset.Parse("2026-08-12T13:00:00Z");
+        await repository.SaveSnapshotAsync(
+            CreateSnapshot(
+                "build-a",
+                baselineTime,
+                [
+                    new DependencyVersion(
+                        DependencyKind.S1Api,
+                        "1.0.0",
+                        "C:\\Mods\\S1API.dll",
+                        true)
+                ]),
+            cancellationToken);
+        var changedEnvironment = CreateSnapshot(
+            "build-a",
+            changedTime,
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api,
+                    "2.0.0",
+                    "C:\\Mods\\S1API.dll",
+                    true)
+            ]);
+
+        await repository.SaveSnapshotAsync(changedEnvironment, cancellationToken);
+
+        var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
+        var builds = await repository.ListBuildsAsync(cancellationToken);
+        Assert.NotNull(current);
+        Assert.Equal(changedTime, current.CapturedAtUtc);
+        Assert.Collection(
+            current.Dependencies,
+            dependency => Assert.Equal("2.0.0", dependency.Version));
+        Assert.Single(builds);
+        Assert.Equal("build-a", builds[0].BuildId);
+    }
+
+    [Fact]
     public async Task SaveSnapshotAsync_WhenDependencyInsertFails_RollsBackAndKeepsPreviousCurrentBuild()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
