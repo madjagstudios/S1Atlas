@@ -1,4 +1,5 @@
 using S1Atlas.Cli;
+using S1Atlas.Cli.Configuration;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
 
@@ -63,8 +64,7 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
                 firstOutput,
                 firstError,
                 cancellationToken));
-        var repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var before = await repository.GetCurrentSnapshotAsync(cancellationToken);
         Assert.NotNull(before);
@@ -103,8 +103,7 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
                     cancellationToken));
         }
 
-        var repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var builds = await repository.ListBuildsAsync(cancellationToken);
         Assert.Single(builds);
@@ -119,6 +118,8 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
 
         return ValueTask.CompletedTask;
     }
+
+    private string DatabasePath => new AtlasPaths(_dataDirectory).DatabasePath;
 
     private SortedDictionary<string, string> CaptureFiles()
     {
