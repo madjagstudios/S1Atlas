@@ -1,4 +1,5 @@
 using S1Atlas.Cli;
+using S1Atlas.Cli.Configuration;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
 
@@ -41,6 +42,29 @@ public sealed class FoundationCliTests : IAsyncDisposable
     }
 
     [Fact]
+    public void Status_WhenAtlasDirectoryCannotBeCreated_ReturnsCleanFailure()
+    {
+        File.WriteAllText(_dataDirectory, "this path is intentionally a file");
+        var application = CreateApplication();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var exitCode = -1;
+
+        var exception = Record.Exception(() =>
+            exitCode = application.Invoke(
+                ["status"],
+                output,
+                error,
+                TestContext.Current.CancellationToken));
+
+        Assert.Null(exception);
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, output.ToString());
+        Assert.Contains("S1Atlas failed:", error.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Scan_WithValidOverride_PersistsCurrentBuild()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -55,8 +79,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
             error,
             cancellationToken);
 
-        var repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
 
@@ -82,8 +105,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
             error,
             cancellationToken);
 
-        var repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
 
@@ -149,8 +171,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
                 scanOutput,
                 scanError,
                 cancellationToken));
-        var repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
         Assert.NotNull(current);
@@ -183,8 +204,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
                 scanOutput,
                 scanError,
                 cancellationToken));
-        var repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
         Assert.NotNull(current);
@@ -213,6 +233,8 @@ public sealed class FoundationCliTests : IAsyncDisposable
 
         return ValueTask.CompletedTask;
     }
+
+    private string DatabasePath => new AtlasPaths(_dataDirectory).DatabasePath;
 
     private CliApplication CreateApplication() =>
         new(_dataDirectory, AtlasVersion);

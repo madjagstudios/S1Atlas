@@ -39,6 +39,70 @@ public sealed class InstalledDependencyDetectorTests
         Assert.All(result, dependency => Assert.False(dependency.IsInstalled));
     }
 
+    [Fact]
+    public void Detect_WhenMultipleMatchesExist_ChoosesDeterministicPath()
+    {
+        using var fixture = DependencyFixture.Create();
+        fixture.CreateFile("UserLibs", "z-last", "S1API.dll");
+        var expectedPath = fixture.CreateFile("UserLibs", "a-first", "S1API.dll");
+        var detector = new InstalledDependencyDetector();
+
+        var result = detector.Detect(fixture.Installation);
+
+        var dependency = result.Single(item => item.Kind == DependencyKind.S1Api);
+        Assert.True(
+            string.Equals(
+                Path.GetFullPath(expectedPath),
+                dependency.Path,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Detect_WhenOneSearchRootCannotBeEnumerated_ContinuesToNextRoot()
+    {
+        using var fixture = DependencyFixture.Create();
+        var expectedPath = fixture.CreateFile("Mods", "S1API.dll");
+        var inaccessibleRoot = Path.Combine(fixture.RootPath, "UserLibs");
+        var fileEnumerator = new StubDependencyFileEnumerator(rootPath =>
+        {
+            if (string.Equals(
+                Path.GetFullPath(rootPath),
+                Path.GetFullPath(inaccessibleRoot),
+                StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnauthorizedAccessException("simulated inaccessible loader folder");
+            }
+
+            return Directory.Exists(rootPath)
+                ? Directory.GetFiles(rootPath, "*.dll", SearchOption.TopDirectoryOnly)
+                : [];
+        });
+        var detector = new InstalledDependencyDetector(
+            fileEnumerator,
+            new StubDependencyVersionReader());
+
+        var result = detector.Detect(fixture.Installation);
+
+        var dependency = result.Single(item => item.Kind == DependencyKind.S1Api);
+        Assert.True(dependency.IsInstalled);
+        Assert.True(
+            string.Equals(
+                Path.GetFullPath(expectedPath),
+                dependency.Path,
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class StubDependencyFileEnumerator(
+        Func<string, IReadOnlyList<string>> enumerate) : IDependencyFileEnumerator
+    {
+        public IReadOnlyList<string> EnumerateDlls(string rootPath) => enumerate(rootPath);
+    }
+
+    private sealed class StubDependencyVersionReader : IDependencyVersionReader
+    {
+        public string? TryReadVersion(string path) => null;
+    }
+
     private sealed class DependencyFixture : IDisposable
     {
         private DependencyFixture(string rootPath)
@@ -67,11 +131,12 @@ public sealed class InstalledDependencyDetectorTests
             return new DependencyFixture(root);
         }
 
-        public void CreateFile(params string[] parts)
+        public string CreateFile(params string[] parts)
         {
             var path = parts.Aggregate(RootPath, Path.Combine);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllBytes(path, [0x01]);
+            return path;
         }
 
         public void Dispose()

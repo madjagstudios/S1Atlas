@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Storage.Sqlite;
@@ -82,6 +83,56 @@ public sealed class SqliteAtlasRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SaveSnapshotAsync_MultipleDependenciesOfSameKind_RoundTripsEveryEntry()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = new SqliteAtlasRepository(_databasePath);
+        await repository.InitializeAsync(cancellationToken);
+        var snapshot = CreateSnapshot(
+            "build-a",
+            DateTimeOffset.Parse("2026-08-12T12:00:00Z"),
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api,
+                    "2.0.0",
+                    "C:\\Mods\\S1API-2.dll",
+                    true),
+                new DependencyVersion(
+                    DependencyKind.S1Api,
+                    "1.0.0",
+                    "C:\\Mods\\S1API-1.dll",
+                    true),
+                new DependencyVersion(
+                    DependencyKind.Sideload,
+                    null,
+                    null,
+                    false)
+            ]);
+
+        await repository.SaveSnapshotAsync(snapshot, cancellationToken);
+
+        var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
+        Assert.NotNull(current);
+        Assert.Collection(
+            current.Dependencies,
+            dependency =>
+            {
+                Assert.Equal(DependencyKind.S1Api, dependency.Kind);
+                Assert.Equal("1.0.0", dependency.Version);
+            },
+            dependency =>
+            {
+                Assert.Equal(DependencyKind.S1Api, dependency.Kind);
+                Assert.Equal("2.0.0", dependency.Version);
+            },
+            dependency =>
+            {
+                Assert.Equal(DependencyKind.Sideload, dependency.Kind);
+                Assert.False(dependency.IsInstalled);
+            });
+    }
+
+    [Fact]
     public async Task SaveSnapshotAsync_WhenDependencyInsertFails_RollsBackAndKeepsPreviousCurrentBuild()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -89,16 +140,17 @@ public sealed class SqliteAtlasRepositoryTests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
         var baseline = CreateSnapshot("build-a", DateTimeOffset.Parse("2026-08-12T12:00:00Z"));
         await repository.SaveSnapshotAsync(baseline, cancellationToken);
-
-        var duplicateDependencies = new[]
-        {
-            new DependencyVersion(DependencyKind.S1Api, "1.0.0", "C:\\Mods\\S1API.dll", true),
-            new DependencyVersion(DependencyKind.S1Api, "2.0.0", "C:\\Mods\\S1API-duplicate.dll", true)
-        };
+        await CreateFailingDependencyTriggerAsync(cancellationToken);
         var candidate = CreateSnapshot(
             "build-b",
             DateTimeOffset.Parse("2026-08-12T13:00:00Z"),
-            duplicateDependencies);
+            [
+                new DependencyVersion(
+                    DependencyKind.Sideload,
+                    "1.0.0",
+                    "C:\\Mods\\Sideload.dll",
+                    true)
+            ]);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => repository.SaveSnapshotAsync(candidate, cancellationToken));
@@ -161,6 +213,27 @@ public sealed class SqliteAtlasRepositoryTests : IAsyncDisposable
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    private async Task CreateFailingDependencyTriggerAsync(CancellationToken cancellationToken)
+    {
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = _databasePath,
+            Pooling = false
+        }.ToString();
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TRIGGER fail_sideload_dependency
+            BEFORE INSERT ON dependencies
+            WHEN NEW.kind = 'Sideload'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced dependency insert failure');
+            END;
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static EnvironmentSnapshot CreateSnapshot(
