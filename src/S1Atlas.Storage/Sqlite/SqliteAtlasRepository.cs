@@ -36,35 +36,43 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                 "Only validated build snapshots can become the current Atlas build.");
         }
 
+        var snapshotId = EnvironmentSnapshotId.Create(snapshot);
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var transaction =
             (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
         try
         {
-            var inserted = await InsertBuildAsync(
+            await InsertBuildAsync(
                 connection,
                 transaction,
+                snapshot.Build,
+                cancellationToken);
+
+            var snapshotInserted = await InsertEnvironmentSnapshotAsync(
+                connection,
+                transaction,
+                snapshotId,
                 snapshot,
                 cancellationToken);
 
-            if (inserted)
+            if (snapshotInserted)
             {
                 foreach (var dependency in snapshot.Dependencies)
                 {
                     await InsertDependencyAsync(
                         connection,
                         transaction,
-                        snapshot.Build.BuildId,
+                        snapshotId,
                         dependency,
                         cancellationToken);
                 }
             }
 
-            await PromoteCurrentBuildAsync(
+            await PromoteCurrentSnapshotAsync(
                 connection,
                 transaction,
-                snapshot.Build.BuildId,
+                snapshotId,
                 cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }
@@ -72,7 +80,8 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw new InvalidOperationException(
-                $"The snapshot for build '{snapshot.Build.BuildId}' could not be saved atomically.",
+                $"The environment snapshot for build '{snapshot.Build.BuildId}' " +
+                "could not be saved atomically.",
                 exception);
         }
     }
@@ -94,10 +103,14 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                     b.metadata_sha256,
                     b.scanned_at_utc,
                     b.is_valid,
-                    b.atlas_version,
-                    b.captured_at_utc
+                    snapshot.atlas_version,
+                    snapshot.captured_at_utc,
+                    snapshot.snapshot_id
                 FROM atlas_state AS state
-                INNER JOIN builds AS b ON b.build_id = state.current_build_id
+                INNER JOIN environment_snapshots AS snapshot
+                    ON snapshot.snapshot_id = state.current_snapshot_id
+                INNER JOIN builds AS b
+                    ON b.build_id = snapshot.build_id
                 WHERE state.singleton_id = 1;
                 """;
 
@@ -114,7 +127,7 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
 
         var dependencies = await GetDependenciesAsync(
             connection,
-            header.Build.BuildId,
+            header.SnapshotId,
             cancellationToken);
 
         return new EnvironmentSnapshot(
@@ -185,10 +198,10 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         }
     }
 
-    private static async Task<bool> InsertBuildAsync(
+    private static async Task InsertBuildAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        EnvironmentSnapshot snapshot,
+        GameBuild build,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
@@ -201,9 +214,7 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                 game_assembly_sha256,
                 metadata_sha256,
                 scanned_at_utc,
-                is_valid,
-                atlas_version,
-                captured_at_utc)
+                is_valid)
             VALUES (
                 $buildId,
                 $gameVersion,
@@ -211,25 +222,49 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                 $gameAssemblySha256,
                 $metadataSha256,
                 $scannedAtUtc,
-                $isValid,
+                $isValid);
+            """;
+        command.Parameters.AddWithValue("$buildId", build.BuildId);
+        command.Parameters.AddWithValue(
+            "$gameVersion",
+            (object?)build.GameVersion ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$steamBuildId",
+            (object?)build.SteamBuildId ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$gameAssemblySha256",
+            build.GameAssemblySha256);
+        command.Parameters.AddWithValue("$metadataSha256", build.MetadataSha256);
+        command.Parameters.AddWithValue(
+            "$scannedAtUtc",
+            FormatTimestamp(build.ScannedAtUtc));
+        command.Parameters.AddWithValue("$isValid", build.IsValid ? 1 : 0);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<bool> InsertEnvironmentSnapshotAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string snapshotId,
+        EnvironmentSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT OR IGNORE INTO environment_snapshots (
+                snapshot_id,
+                build_id,
+                atlas_version,
+                captured_at_utc)
+            VALUES (
+                $snapshotId,
+                $buildId,
                 $atlasVersion,
                 $capturedAtUtc);
             """;
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
         command.Parameters.AddWithValue("$buildId", snapshot.Build.BuildId);
-        command.Parameters.AddWithValue(
-            "$gameVersion",
-            (object?)snapshot.Build.GameVersion ?? DBNull.Value);
-        command.Parameters.AddWithValue(
-            "$steamBuildId",
-            (object?)snapshot.Build.SteamBuildId ?? DBNull.Value);
-        command.Parameters.AddWithValue(
-            "$gameAssemblySha256",
-            snapshot.Build.GameAssemblySha256);
-        command.Parameters.AddWithValue("$metadataSha256", snapshot.Build.MetadataSha256);
-        command.Parameters.AddWithValue(
-            "$scannedAtUtc",
-            FormatTimestamp(snapshot.Build.ScannedAtUtc));
-        command.Parameters.AddWithValue("$isValid", snapshot.Build.IsValid ? 1 : 0);
         command.Parameters.AddWithValue("$atlasVersion", snapshot.AtlasVersion);
         command.Parameters.AddWithValue(
             "$capturedAtUtc",
@@ -241,17 +276,17 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
     private static async Task InsertDependencyAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        string buildId,
+        string snapshotId,
         DependencyVersion dependency,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO dependencies (build_id, kind, version, path, is_installed)
-            VALUES ($buildId, $kind, $version, $path, $isInstalled);
+            INSERT INTO dependencies (snapshot_id, kind, version, path, is_installed)
+            VALUES ($snapshotId, $kind, $version, $path, $isInstalled);
             """;
-        command.Parameters.AddWithValue("$buildId", buildId);
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
         command.Parameters.AddWithValue("$kind", dependency.Kind.ToString());
         command.Parameters.AddWithValue(
             "$version",
@@ -261,33 +296,33 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task PromoteCurrentBuildAsync(
+    private static async Task PromoteCurrentSnapshotAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        string buildId,
+        string snapshotId,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
             UPDATE atlas_state
-            SET current_build_id = $buildId
+            SET current_snapshot_id = $snapshotId
             WHERE singleton_id = 1;
             """;
-        command.Parameters.AddWithValue("$buildId", buildId);
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<IReadOnlyList<DependencyVersion>> GetDependenciesAsync(
         SqliteConnection connection,
-        string buildId,
+        string snapshotId,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT kind, version, path, is_installed
             FROM dependencies
-            WHERE build_id = $buildId
+            WHERE snapshot_id = $snapshotId
             ORDER BY CASE kind
                 WHEN 'S1Api' THEN 0
                 WHEN 'S1Mapi' THEN 1
@@ -296,7 +331,7 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                 ELSE 99
             END;
             """;
-        command.Parameters.AddWithValue("$buildId", buildId);
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
 
         var dependencies = new List<DependencyVersion>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -318,7 +353,8 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         return new SnapshotHeader(
             build,
             reader.GetString(7),
-            ParseTimestamp(reader.GetString(8)));
+            ParseTimestamp(reader.GetString(8)),
+            reader.GetString(9));
     }
 
     private static GameBuild ReadBuild(SqliteDataReader reader)
@@ -342,5 +378,6 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
     private sealed record SnapshotHeader(
         GameBuild Build,
         string AtlasVersion,
-        DateTimeOffset CapturedAtUtc);
+        DateTimeOffset CapturedAtUtc,
+        string SnapshotId);
 }
