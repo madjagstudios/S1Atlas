@@ -23,37 +23,40 @@ internal static class ScanCommand
             "scan",
             "Discover the local Schedule I environment and save a build snapshot.");
         command.Options.Add(gamePathOption);
-        command.SetAction(parseResult =>
-        {
-            repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-            var gamePath = parseResult.GetValue(gamePathOption)?.FullName;
-            var snapshot = discovery
-                .DiscoverAsync(gamePath, atlasVersion, cancellationToken)
-                .GetAwaiter()
-                .GetResult();
-
-            if (snapshot is null)
+        command.SetAction(parseResult => CommandExecution.Run(
+            () =>
             {
-                error.WriteLine(
-                    "Schedule I installation could not be found or is missing required IL2CPP files.");
-                return 1;
-            }
+                repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                var gamePath = parseResult.GetValue(gamePathOption)?.FullName;
+                var snapshot = discovery
+                    .DiscoverAsync(gamePath, atlasVersion, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
 
-            repository
-                .SaveSnapshotAsync(snapshot, cancellationToken)
-                .GetAwaiter()
-                .GetResult();
+                if (snapshot is null)
+                {
+                    error.WriteLine(
+                        "Schedule I installation could not be found or is missing required IL2CPP files.");
+                    return 1;
+                }
 
-            output.WriteLine($"Indexed Schedule I build {snapshot.Build.BuildId}");
-            output.WriteLine(
-                $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
-            foreach (var dependency in snapshot.Dependencies)
-            {
-                output.WriteLine(DependencyDisplay.Format(dependency));
-            }
+                repository
+                    .SaveSnapshotAsync(snapshot, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
 
-            return 0;
-        });
+                output.WriteLine($"Indexed Schedule I build {snapshot.Build.BuildId}");
+                output.WriteLine(
+                    $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
+                foreach (var dependency in snapshot.Dependencies)
+                {
+                    output.WriteLine(DependencyDisplay.Format(dependency));
+                }
+
+                return 0;
+            },
+            error,
+            cancellationToken));
 
         return command;
     }

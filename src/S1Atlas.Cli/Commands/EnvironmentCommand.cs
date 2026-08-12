@@ -14,30 +14,33 @@ internal static class EnvironmentCommand
         var command = new Command(
             "env",
             "Show the current game and modding dependency environment.");
-        command.SetAction(_ =>
-        {
-            repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-            var snapshot = repository
-                .GetCurrentSnapshotAsync(cancellationToken)
-                .GetAwaiter()
-                .GetResult();
-
-            if (snapshot is null)
+        command.SetAction(_ => CommandExecution.Run(
+            () =>
             {
-                error.WriteLine("No indexed builds. Run 's1atlas scan' first.");
-                return 1;
-            }
+                repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                var snapshot = repository
+                    .GetCurrentSnapshotAsync(cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
 
-            output.WriteLine($"Build: {snapshot.Build.BuildId}");
-            output.WriteLine(
-                $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
-            foreach (var dependency in snapshot.Dependencies)
-            {
-                output.WriteLine(DependencyDisplay.Format(dependency));
-            }
+                if (snapshot is null)
+                {
+                    error.WriteLine("No indexed builds. Run 's1atlas scan' first.");
+                    return 1;
+                }
 
-            return 0;
-        });
+                output.WriteLine($"Build: {snapshot.Build.BuildId}");
+                output.WriteLine(
+                    $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
+                foreach (var dependency in snapshot.Dependencies)
+                {
+                    output.WriteLine(DependencyDisplay.Format(dependency));
+                }
+
+                return 0;
+            },
+            error,
+            cancellationToken));
 
         return command;
     }

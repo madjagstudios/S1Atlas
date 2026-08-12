@@ -71,11 +71,11 @@ public sealed class CliApplication
                 error,
                 cancellationToken));
         root.Subcommands.Add(
-            StatusCommand.Create(repository, output, cancellationToken));
+            StatusCommand.Create(repository, output, error, cancellationToken));
         root.Subcommands.Add(
             EnvironmentCommand.Create(repository, output, error, cancellationToken));
         root.Subcommands.Add(
-            BuildsCommand.Create(repository, output, cancellationToken));
+            BuildsCommand.Create(repository, output, error, cancellationToken));
 
         return root.Parse(args).Invoke();
     }
