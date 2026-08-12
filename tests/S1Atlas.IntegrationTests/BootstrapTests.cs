@@ -1,3 +1,5 @@
+using Xunit;
+
 namespace S1Atlas.IntegrationTests;
 
 public sealed class BootstrapTests
