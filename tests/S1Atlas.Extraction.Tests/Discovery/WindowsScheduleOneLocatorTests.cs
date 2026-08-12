@@ -11,10 +11,13 @@ public sealed class WindowsScheduleOneLocatorTests
         using var fixture = FakeScheduleOneInstall.Create();
         var locator = new WindowsScheduleOneLocator();
 
-        var result = await locator.LocateAsync(fixture.RootPath, CancellationToken.None);
+        var result = await locator.LocateAsync(
+            fixture.RootPath,
+            TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
         Assert.Equal(fixture.RootPath, result.RootPath);
+        Assert.Equal(fixture.ExecutablePath, result.ExecutablePath);
         Assert.Equal(fixture.GameAssemblyPath, result.GameAssemblyPath);
         Assert.Equal(fixture.MetadataPath, result.GlobalMetadataPath);
     }
@@ -25,7 +28,9 @@ public sealed class WindowsScheduleOneLocatorTests
         using var fixture = FakeScheduleOneInstall.Create(includeMetadata: false);
         var locator = new WindowsScheduleOneLocator();
 
-        var result = await locator.LocateAsync(fixture.RootPath, CancellationToken.None);
+        var result = await locator.LocateAsync(
+            fixture.RootPath,
+            TestContext.Current.CancellationToken);
 
         Assert.Null(result);
     }
@@ -36,7 +41,9 @@ public sealed class WindowsScheduleOneLocatorTests
         using var fixture = FakeScheduleOneInstall.Create(includeGameAssembly: false);
         var locator = new WindowsScheduleOneLocator();
 
-        var result = await locator.LocateAsync(fixture.RootPath, CancellationToken.None);
+        var result = await locator.LocateAsync(
+            fixture.RootPath,
+            TestContext.Current.CancellationToken);
 
         Assert.Null(result);
     }
@@ -46,17 +53,29 @@ public sealed class WindowsScheduleOneLocatorTests
         private FakeScheduleOneInstall(string rootPath)
         {
             RootPath = rootPath;
+            ExecutablePath = Path.Combine(rootPath, "Schedule I.exe");
             GameAssemblyPath = Path.Combine(rootPath, "GameAssembly.dll");
-            MetadataPath = Path.Combine(rootPath, "Schedule I_Data", "il2cpp_data", "Metadata", "global-metadata.dat");
+            MetadataPath = Path.Combine(
+                rootPath,
+                "Schedule I_Data",
+                "il2cpp_data",
+                "Metadata",
+                "global-metadata.dat");
         }
 
         public string RootPath { get; }
+        public string ExecutablePath { get; }
         public string GameAssemblyPath { get; }
         public string MetadataPath { get; }
 
-        public static FakeScheduleOneInstall Create(bool includeMetadata = true, bool includeGameAssembly = true)
+        public static FakeScheduleOneInstall Create(
+            bool includeMetadata = true,
+            bool includeGameAssembly = true)
         {
-            var root = Path.Combine(Path.GetTempPath(), "S1Atlas.Tests", Guid.NewGuid().ToString("N"));
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "S1Atlas.Tests",
+                Guid.NewGuid().ToString("N"));
             var fixture = new FakeScheduleOneInstall(root);
 
             Directory.CreateDirectory(root);
