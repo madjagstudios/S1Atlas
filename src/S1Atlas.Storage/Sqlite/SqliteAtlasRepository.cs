@@ -165,7 +165,8 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         {
             DataSource = _databasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared
+            Cache = SqliteCacheMode.Shared,
+            Pooling = false
         }.ToString();
 
         var connection = new SqliteConnection(connectionString);
