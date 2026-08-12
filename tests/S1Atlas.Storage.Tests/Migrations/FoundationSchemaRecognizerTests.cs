@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using S1Atlas.Storage.Migrations;
 using Xunit;
 
@@ -44,7 +43,7 @@ public sealed class FoundationSchemaRecognizerTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var schema = FoundationV1DatabaseFixture.SchemaSql.Replace(
-            "            game_version TEXT NULL,\n",
+            "    game_version TEXT NULL,\n",
             string.Empty,
             StringComparison.Ordinal);
         await using var connection = await FoundationV1DatabaseFixture.OpenAsync(
@@ -63,7 +62,7 @@ public sealed class FoundationSchemaRecognizerTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var schema = FoundationV1DatabaseFixture.SchemaSql.Replace(
-            "        CREATE INDEX ix_dependencies_snapshot_kind\n        ON dependencies(snapshot_id, kind);\n\n",
+            "CREATE INDEX ix_dependencies_snapshot_kind\nON dependencies(snapshot_id, kind);\n\n",
             string.Empty,
             StringComparison.Ordinal);
         await using var connection = await FoundationV1DatabaseFixture.OpenAsync(
