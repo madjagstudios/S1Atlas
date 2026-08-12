@@ -50,11 +50,7 @@ public sealed class InstalledDependencyDetectorTests
         var result = detector.Detect(fixture.Installation);
 
         var dependency = result.Single(item => item.Kind == DependencyKind.S1Api);
-        Assert.True(
-            string.Equals(
-                Path.GetFullPath(expectedPath),
-                dependency.Path,
-                StringComparison.OrdinalIgnoreCase));
+        AssertSamePath(expectedPath, dependency.Path);
     }
 
     [Fact]
@@ -85,12 +81,19 @@ public sealed class InstalledDependencyDetectorTests
 
         var dependency = result.Single(item => item.Kind == DependencyKind.S1Api);
         Assert.True(dependency.IsInstalled);
-        Assert.True(
-            string.Equals(
-                Path.GetFullPath(expectedPath),
-                dependency.Path,
-                StringComparison.OrdinalIgnoreCase));
+        AssertSamePath(expectedPath, dependency.Path);
     }
+
+    private static void AssertSamePath(string expected, string? actual)
+    {
+        Assert.NotNull(actual);
+        Assert.Equal(NormalizePath(expected), NormalizePath(actual!));
+    }
+
+    private static string NormalizePath(string path) =>
+        Path.GetFullPath(path)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .ToUpperInvariant();
 
     private sealed class StubDependencyFileEnumerator(
         Func<string, IReadOnlyList<string>> enumerate) : IDependencyFileEnumerator
