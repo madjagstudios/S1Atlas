@@ -22,6 +22,7 @@
 - “Game version” is removed from current human and JSON output. The Windows file version is labeled `Executable version` / `executableVersion`.
 - Steam app/build IDs are descriptive environment observations and do not participate in the game build ID.
 - JSON-mode stdout contains exactly one JSON document for `status`, `env`, and `builds`.
+- JSON schema version 1 fixes the top-level envelope, but command-specific `error` objects may add fields beyond `code` and `message`; consumers must ignore unknown error properties instead of assuming one universal closed error shape.
 - Existing exit codes remain: `0` success, `1` operational failure, `2` cancellation.
 - Normal human or JSON command output must not contain raw stack traces.
 - Tests use xUnit v3 and `TestContext.Current.CancellationToken`; do not add FluentAssertions.
@@ -287,7 +288,7 @@ internal static class FoundationV1DatabaseFixture
                 REFERENCES environment_snapshots(snapshot_id)
         );
 
-        INSERT INTO atlas_state (singleton_id, current_snapshot_id)
+        INSERT OR IGNORE INTO atlas_state (singleton_id, current_snapshot_id)
         VALUES (1, NULL);
         """;
 }
@@ -415,7 +416,7 @@ public async Task MigrateAsync_NewDatabase_AppliesV1AndV2WithoutBackup()
 
 ```csharp
 [Fact]
-public async Task MigrateAsync_ExistingFoundationDatabase_CreatesBackupAndPreservesRows()
+public async Task MigrateAsync_SyntheticFoundationDatabaseWithSteamBuildId_CreatesBackupAndPreservesRows()
 ```
 
 ```csharp
@@ -589,16 +590,18 @@ Before applying pending migrations, verify that every ledger row matches the cur
 
 - [ ] **Step 5: Prove data and pointer preservation**
 
-In `MigrateAsync_ExistingFoundationDatabase_CreatesBackupAndPreservesRows`, insert:
+In `MigrateAsync_SyntheticFoundationDatabaseWithSteamBuildId_CreatesBackupAndPreservesRows`, insert:
 
 ```text
-build ID:            6fbd38f8401afa2241a1322afd4b8a8eadc99aa1f1c660ece253da7859d54bdc
-snapshot ID:         foundation-snapshot-v1
-executable version:  2022.3.62.7762112
-Steam build ID:      12345678
+build ID:                  6fbd38f8401afa2241a1322afd4b8a8eadc99aa1f1c660ece253da7859d54bdc
+snapshot ID:               foundation-snapshot-v1
+executable version:        2022.3.62.7762112
+synthetic Steam build ID:  12345678
 four dependency rows
-current pointer:     foundation-snapshot-v1
+current pointer:           foundation-snapshot-v1
 ```
+
+The synthetic Steam build ID exists only to exercise the migration’s copy path. The shipped Foundation implementation always wrote `SteamBuildId: null`, so real Foundation databases are expected to migrate a null Steam build ID until a later v2 scan reads one from a local Steam manifest.
 
 After migration, query raw SQLite facts and assert:
 
@@ -609,7 +612,7 @@ After migration, query raw SQLite facts and assert:
 - snapshot ID is unchanged;
 - `identity_version == 1`;
 - `executable_version == 2022.3.62.7762112`;
-- snapshot `steam_build_id == 12345678`;
+- snapshot `steam_build_id == 12345678` for this synthetic copy-path fixture;
 - path and Steam app columns are null;
 - all dependency rows remain;
 - current pointer is unchanged;
@@ -1312,6 +1315,8 @@ internal sealed record CliError(
     string Message);
 ```
 
+For Phase 1 Foundation commands, `CliError` contains only `code` and `message`. `schemaVersion: 1` versions the top-level envelope, not one closed command-independent error-object union; later commands may add fields such as `attemptId` or `stage`, and consumers must ignore unknown error properties.
+
 Create `FoundationOutputModels.cs`:
 
 ```csharp
@@ -1517,6 +1522,7 @@ Add/update integration assertions:
 - JSON property names are camel case;
 - timestamps are ISO 8601;
 - `status --json` operational error is structured and contains no stack trace;
+- JSON consumers can ignore additional command-specific error properties without invalidating the schema-version 1 top-level envelope;
 - human errors retain the existing concise stderr behavior.
 
 Run:
@@ -1558,7 +1564,7 @@ It must create the exact v1 schema and insert:
 build ID:            6fbd38f8401afa2241a1322afd4b8a8eadc99aa1f1c660ece253da7859d54bdc
 snapshot ID:         real-scan-foundation-v1
 executable version:  2022.3.62.7762112
-Steam build ID:      null or a fixture value
+Steam build ID:      null (matches shipped Foundation behavior)
 Atlas version:       0.1.0
 captured time:       2026-08-12T19:06:40.3468325Z
 S1API:               3.1.12.0 installed
@@ -1581,7 +1587,7 @@ Flow:
 2. Invoke `status` through `CliApplication`.
 3. Assert exit 0 and accurate executable-version label.
 4. Assert the build ID is unchanged.
-5. Query the repository and assert identity version 1, copied executable version, dependencies, and current state.
+5. Query the repository and assert identity version 1, copied executable version, null Steam build ID, dependencies, and current state.
 6. Query raw SQLite and assert snapshot/current IDs unchanged.
 7. Assert exactly one pre-schema-2 backup exists.
 8. Open the backup and assert it still has `builds.game_version`.
@@ -1618,7 +1624,7 @@ After `scan --game-path`:
 - Steam IDs match the fixture;
 - build count remains one when hashes match the migrated build;
 - old v1 snapshot row remains;
-- new v2 snapshot becomes current.
+- a new v2 snapshot is intentionally created and becomes current even when the environment otherwise appears unchanged, because the identity algorithm and recorded inputs changed.
 
 - [ ] **Step 4: Prove unknown-schema CLI failure is clean and non-mutating**
 
@@ -1653,9 +1659,10 @@ Document:
 - the Foundation now reports `Executable version`, local Steam app ID, and Steam build ID;
 - the content-derived build ID remains authoritative;
 - first run after updating may create one backup under `%LOCALAPPDATA%\S1Atlas\backups`;
+- the first scan after migrating a v1 database intentionally creates and promotes a new identity-version 2 environment snapshot even when the observed environment is unchanged, while retaining the v1 snapshot as history;
 - unknown schemas are refused rather than guessed;
 - `status --json`, `env --json`, and `builds --json` are available;
-- JSON stdout is one stable envelope;
+- JSON stdout is one stable top-level envelope, while later command-specific error objects may add fields that consumers should ignore when unknown;
 - Phase 1 still does not install or run Cpp2IL;
 - the next implementation phase is the managed Cpp2IL tool supply chain.
 
@@ -1719,13 +1726,17 @@ Before opening the implementation PR, verify every statement below with current 
 [ ] Reference current snapshot ID remains unchanged during migration
 [ ] All dependency rows remain attached
 [ ] Migrated snapshot is identity version 1
+[ ] First post-migration scan intentionally promotes a new v2 snapshot while retaining v1 history
 [ ] New scans create identity version 2 snapshots
 [ ] Build rows contain only content identity and first-seen metadata
 [ ] Executable and Steam data live on environment snapshots
+[ ] Real migrated Foundation data keeps Steam build ID unknown until a v2 scan reads it locally
+[ ] Synthetic Steam build ID fixtures are labeled as test-only copy-path coverage
 [ ] Steam metadata is read offline from a matching local manifest
 [ ] Missing or malformed Steam metadata remains unknown
 [ ] No command displays “Game version”
 [ ] status/env/builds JSON stdout is one valid document
+[ ] JSON consumers tolerate unknown command-specific error properties within the schema-version 1 envelope
 [ ] Human output remains readable and exit codes remain 0/1/2
 [ ] Scan does not modify game or Steam files
 [ ] Full Release build has zero warnings/errors
