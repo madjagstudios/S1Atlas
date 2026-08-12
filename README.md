@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** the V1 Foundation milestone is implemented. Game extraction, symbol indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill are planned follow-on milestones.
+> **Current state:** the V1 Foundation milestone is implemented. The validated Cpp2IL extraction milestone is designed but not yet implemented. ILSpy decompilation, symbol indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
 
 ## What the Foundation Can Do
 
@@ -91,9 +91,12 @@ The dependency direction keeps game/tool-specific details out of the Core domain
 
 ## Next Milestone
 
-The next implementation milestone adds the extraction pipeline: Cpp2IL/LibCpp2IL orchestration, ILSpy decompilation, immutable per-build artifacts, and normalization into S1Atlas symbols.
+The next implementation milestone adds validated Cpp2IL extraction: a repository-pinned managed tool cache, explicit tool installation, isolated process execution, immutable toolchain-specific extraction runs, layered assembly validation, recovery, and preferred-extraction tracking.
+
+ILSpy decompilation and normalized symbol indexing follow only after reconstructed assemblies are validated and trusted.
 
 ## Project Documents
 
 - [V1 design specification](docs/superpowers/specs/2026-08-12-s1atlas-design.md)
 - [Foundation implementation plan](docs/superpowers/plans/2026-08-12-s1atlas-v1-foundation-plan.md)
+- [Validated Cpp2IL extraction design](docs/superpowers/specs/2026-08-12-cpp2il-extraction-design.md)
