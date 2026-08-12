@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'feature/**', 'design/**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore S1Atlas.sln
+      - name: Build
+        run: dotnet build S1Atlas.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test S1Atlas.sln --configuration Release --no-build --verbosity normal
