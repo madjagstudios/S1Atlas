@@ -26,15 +26,19 @@ internal static class SqliteSchema
 
         CREATE TABLE IF NOT EXISTS dependencies (
             snapshot_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
             kind TEXT NOT NULL,
             version TEXT NULL,
             path TEXT NULL,
             is_installed INTEGER NOT NULL CHECK (is_installed IN (0, 1)),
-            PRIMARY KEY (snapshot_id, kind),
+            PRIMARY KEY (snapshot_id, ordinal),
             FOREIGN KEY (snapshot_id)
                 REFERENCES environment_snapshots(snapshot_id)
                 ON DELETE CASCADE
         );
+
+        CREATE INDEX IF NOT EXISTS ix_dependencies_snapshot_kind
+        ON dependencies(snapshot_id, kind);
 
         CREATE TABLE IF NOT EXISTS atlas_state (
             singleton_id INTEGER NOT NULL PRIMARY KEY CHECK (singleton_id = 1),

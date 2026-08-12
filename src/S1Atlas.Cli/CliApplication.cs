@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Cli.Commands;
+using S1Atlas.Cli.Configuration;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Discovery;
 using S1Atlas.Extraction.Hashing;
@@ -9,7 +10,7 @@ namespace S1Atlas.Cli;
 
 public sealed class CliApplication
 {
-    private readonly string _dataDirectory;
+    private readonly AtlasPaths _paths;
     private readonly string _atlasVersion;
 
     public CliApplication(string dataDirectory, string atlasVersion)
@@ -17,7 +18,7 @@ public sealed class CliApplication
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(atlasVersion);
 
-        _dataDirectory = Path.GetFullPath(dataDirectory);
+        _paths = new AtlasPaths(Path.GetFullPath(dataDirectory));
         _atlasVersion = atlasVersion;
     }
 
@@ -31,8 +32,29 @@ public sealed class CliApplication
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(error);
 
-        IAtlasRepository repository = new SqliteAtlasRepository(
-            Path.Combine(_dataDirectory, "atlas.db"));
+        try
+        {
+            return InvokeCore(args, output, error, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            error.WriteLine("S1Atlas operation was canceled.");
+            return 2;
+        }
+        catch (Exception exception)
+        {
+            error.WriteLine($"S1Atlas failed: {exception.Message}");
+            return 1;
+        }
+    }
+
+    private int InvokeCore(
+        string[] args,
+        TextWriter output,
+        TextWriter error,
+        CancellationToken cancellationToken)
+    {
+        IAtlasRepository repository = new SqliteAtlasRepository(_paths.DatabasePath);
         var discovery = new EnvironmentDiscoveryService(
             new WindowsScheduleOneLocator(),
             new Sha256FileHasher(),

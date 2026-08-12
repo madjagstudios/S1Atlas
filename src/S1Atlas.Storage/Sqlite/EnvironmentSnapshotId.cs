@@ -15,12 +15,7 @@ internal static class EnvironmentSnapshotId
         Append(hash, snapshot.Build.BuildId);
         Append(hash, snapshot.AtlasVersion);
 
-        var dependencies = snapshot.Dependencies
-            .OrderBy(dependency => dependency.Kind)
-            .ThenBy(dependency => dependency.Version ?? string.Empty, StringComparer.Ordinal)
-            .ThenBy(dependency => dependency.Path ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
+        var dependencies = OrderDependencies(snapshot.Dependencies);
         Append(hash, dependencies.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
         foreach (var dependency in dependencies)
@@ -32,6 +27,25 @@ internal static class EnvironmentSnapshotId
         }
 
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+    }
+
+    internal static DependencyVersion[] OrderDependencies(
+        IEnumerable<DependencyVersion> dependencies)
+    {
+        ArgumentNullException.ThrowIfNull(dependencies);
+
+        return dependencies
+            .OrderBy(dependency => dependency.Kind)
+            .ThenBy(
+                dependency => dependency.Version ?? string.Empty,
+                StringComparer.Ordinal)
+            .ThenBy(
+                dependency => dependency.Path ?? string.Empty,
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(
+                dependency => dependency.Path ?? string.Empty,
+                StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static void Append(IncrementalHash hash, string value)

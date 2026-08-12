@@ -36,6 +36,8 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
                 "Only validated build snapshots can become the current Atlas build.");
         }
 
+        var orderedDependencies =
+            EnvironmentSnapshotId.OrderDependencies(snapshot.Dependencies);
         var snapshotId = EnvironmentSnapshotId.Create(snapshot);
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var transaction =
@@ -58,13 +60,14 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
 
             if (snapshotInserted)
             {
-                foreach (var dependency in snapshot.Dependencies)
+                for (var ordinal = 0; ordinal < orderedDependencies.Length; ordinal++)
                 {
                     await InsertDependencyAsync(
                         connection,
                         transaction,
                         snapshotId,
-                        dependency,
+                        ordinal,
+                        orderedDependencies[ordinal],
                         cancellationToken);
                 }
             }
@@ -277,16 +280,30 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
         SqliteConnection connection,
         SqliteTransaction transaction,
         string snapshotId,
+        int ordinal,
         DependencyVersion dependency,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO dependencies (snapshot_id, kind, version, path, is_installed)
-            VALUES ($snapshotId, $kind, $version, $path, $isInstalled);
+            INSERT INTO dependencies (
+                snapshot_id,
+                ordinal,
+                kind,
+                version,
+                path,
+                is_installed)
+            VALUES (
+                $snapshotId,
+                $ordinal,
+                $kind,
+                $version,
+                $path,
+                $isInstalled);
             """;
         command.Parameters.AddWithValue("$snapshotId", snapshotId);
+        command.Parameters.AddWithValue("$ordinal", ordinal);
         command.Parameters.AddWithValue("$kind", dependency.Kind.ToString());
         command.Parameters.AddWithValue(
             "$version",
@@ -323,13 +340,7 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
             SELECT kind, version, path, is_installed
             FROM dependencies
             WHERE snapshot_id = $snapshotId
-            ORDER BY CASE kind
-                WHEN 'S1Api' THEN 0
-                WHEN 'S1Mapi' THEN 1
-                WHEN 'MelonLoader' THEN 2
-                WHEN 'Sideload' THEN 3
-                ELSE 99
-            END;
+            ORDER BY ordinal;
             """;
         command.Parameters.AddWithValue("$snapshotId", snapshotId);
 

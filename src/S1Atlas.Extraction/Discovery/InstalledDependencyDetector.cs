@@ -1,6 +1,4 @@
-using System.ComponentModel;
-using System.Diagnostics;
-using System.Reflection;
+using System.Security;
 using S1Atlas.Core.Discovery;
 using S1Atlas.Core.Environment;
 
@@ -8,6 +6,26 @@ namespace S1Atlas.Extraction.Discovery;
 
 public sealed class InstalledDependencyDetector : IDependencyDetector
 {
+    private readonly IDependencyFileEnumerator _fileEnumerator;
+    private readonly IDependencyVersionReader _versionReader;
+
+    public InstalledDependencyDetector()
+        : this(
+            new SafeDependencyFileEnumerator(),
+            new DependencyVersionReader())
+    {
+    }
+
+    internal InstalledDependencyDetector(
+        IDependencyFileEnumerator fileEnumerator,
+        IDependencyVersionReader versionReader)
+    {
+        _fileEnumerator = fileEnumerator ??
+            throw new ArgumentNullException(nameof(fileEnumerator));
+        _versionReader = versionReader ??
+            throw new ArgumentNullException(nameof(versionReader));
+    }
+
     public IReadOnlyList<DependencyVersion> Detect(ScheduleOneInstallation installation)
     {
         ArgumentNullException.ThrowIfNull(installation);
@@ -36,28 +54,36 @@ public sealed class InstalledDependencyDetector : IDependencyDetector
         ];
     }
 
-    private static DependencyVersion DetectDll(
+    private DependencyVersion DetectDll(
         DependencyKind kind,
         IEnumerable<string> searchRoots,
         Func<string, bool> fileNameMatches)
     {
         foreach (var root in searchRoots)
         {
-            if (!Directory.Exists(root))
+            IReadOnlyList<string> files;
+            try
+            {
+                files = _fileEnumerator.EnumerateDlls(root);
+            }
+            catch (Exception exception) when (IsExpectedFileSystemFailure(exception))
             {
                 continue;
             }
 
-            var match = Directory
-                .EnumerateFiles(root, "*.dll", SearchOption.AllDirectories)
-                .FirstOrDefault(path => fileNameMatches(Path.GetFileName(path)));
+            var match = files
+                .Where(path => fileNameMatches(Path.GetFileName(path)))
+                .Select(Path.GetFullPath)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .FirstOrDefault();
 
             if (match is not null)
             {
                 return new DependencyVersion(
                     kind,
-                    TryReadVersion(match),
-                    Path.GetFullPath(match),
+                    _versionReader.TryReadVersion(match),
+                    match,
                     IsInstalled: true);
             }
         }
@@ -65,31 +91,6 @@ public sealed class InstalledDependencyDetector : IDependencyDetector
         return new DependencyVersion(kind, Version: null, Path: null, IsInstalled: false);
     }
 
-    private static string? TryReadVersion(string path)
-    {
-        try
-        {
-            var fileVersion = FileVersionInfo.GetVersionInfo(path).FileVersion;
-            if (!string.IsNullOrWhiteSpace(fileVersion))
-            {
-                return fileVersion;
-            }
-        }
-        catch (Win32Exception)
-        {
-        }
-
-        try
-        {
-            return AssemblyName.GetAssemblyName(path).Version?.ToString();
-        }
-        catch (BadImageFormatException)
-        {
-            return null;
-        }
-        catch (FileLoadException)
-        {
-            return null;
-        }
-    }
+    private static bool IsExpectedFileSystemFailure(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException or SecurityException;
 }
