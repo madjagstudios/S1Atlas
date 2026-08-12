@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# S1Atlas generated data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Extraction/decompilation artifacts
+artifacts/
+.staging/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
