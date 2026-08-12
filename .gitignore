@@ -2,12 +2,22 @@
 bin/
 obj/
 
+# Test output
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
 # IDE
 .vs/
 .vscode/
 .idea/
 *.user
 *.suo
+
+# Isolated development worktrees
+.worktrees/
+worktrees/
 
 # S1Atlas generated data
 data/
@@ -18,6 +28,9 @@ data/
 # Extraction/decompilation artifacts
 artifacts/
 .staging/
+extracted/
+reconstructed/
+decompiled/
 
 # Logs
 logs/
