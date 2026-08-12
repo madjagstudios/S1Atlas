@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.29" />
+  </ItemGroup>
+</Project>
