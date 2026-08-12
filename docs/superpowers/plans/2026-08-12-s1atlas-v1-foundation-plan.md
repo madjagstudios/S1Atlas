@@ -292,7 +292,7 @@ Each `DependencyVersion` records kind, optional version, optional path, and inst
 
 - [x] **Step 3: Implement deterministic game-build fingerprints**
 
-`BuildFingerprint.Create(gameAssemblySha256, metadataSha256)` length-delimits the two hash values, hashes the combined bytes with SHA-256, and returns lower-case hexadecimal.
+`BuildFingerprint.Create(gameAssemblySha256, metadataSha256)` validates both values, joins them with a colon, hashes the UTF-8 bytes with SHA-256, and returns lower-case hexadecimal.
 
 - [x] **Step 4: Verify fingerprint behavior**
 
