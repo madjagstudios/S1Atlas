@@ -42,12 +42,12 @@ public sealed class FoundationSchemaRecognizerTests
     public async Task IsExactFoundationV1Async_WhenColumnIsMissing_ReturnsFalse()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var schema = FoundationV1DatabaseFixture.SchemaSql.Replace(
-            "    game_version TEXT NULL,\n",
-            string.Empty,
-            StringComparison.Ordinal);
         await using var connection = await FoundationV1DatabaseFixture.OpenAsync(
-            schema,
+            FoundationV1DatabaseFixture.SchemaSql,
+            cancellationToken);
+        await ExecuteAsync(
+            connection,
+            "ALTER TABLE builds DROP COLUMN game_version;",
             cancellationToken);
 
         var result = await FoundationSchemaRecognizer.IsExactFoundationV1Async(
@@ -61,12 +61,12 @@ public sealed class FoundationSchemaRecognizerTests
     public async Task IsExactFoundationV1Async_WhenExplicitIndexIsMissing_ReturnsFalse()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var schema = FoundationV1DatabaseFixture.SchemaSql.Replace(
-            "CREATE INDEX ix_dependencies_snapshot_kind\nON dependencies(snapshot_id, kind);\n\n",
-            string.Empty,
-            StringComparison.Ordinal);
         await using var connection = await FoundationV1DatabaseFixture.OpenAsync(
-            schema,
+            FoundationV1DatabaseFixture.SchemaSql,
+            cancellationToken);
+        await ExecuteAsync(
+            connection,
+            "DROP INDEX ix_dependencies_snapshot_kind;",
             cancellationToken);
 
         var result = await FoundationSchemaRecognizer.IsExactFoundationV1Async(
@@ -80,10 +80,12 @@ public sealed class FoundationSchemaRecognizerTests
     public async Task IsExactFoundationV1Async_WhenUnexpectedUserTableExists_ReturnsFalse()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var schema = FoundationV1DatabaseFixture.SchemaSql +
-            "\nCREATE TABLE unexpected(value TEXT);";
         await using var connection = await FoundationV1DatabaseFixture.OpenAsync(
-            schema,
+            FoundationV1DatabaseFixture.SchemaSql,
+            cancellationToken);
+        await ExecuteAsync(
+            connection,
+            "CREATE TABLE unexpected(value TEXT);",
             cancellationToken);
 
         var result = await FoundationSchemaRecognizer.IsExactFoundationV1Async(
@@ -91,5 +93,15 @@ public sealed class FoundationSchemaRecognizerTests
             cancellationToken);
 
         Assert.False(result);
+    }
+
+    private static async Task ExecuteAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        string sql,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }
