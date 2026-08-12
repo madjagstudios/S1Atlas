@@ -1,3 +1,4 @@
+using System.Text.Json;
 using S1Atlas.Cli;
 using S1Atlas.Cli.Configuration;
 using S1Atlas.Storage.Sqlite;
@@ -85,6 +86,8 @@ public sealed class FoundationCliTests : IAsyncDisposable
 
         Assert.Equal(0, exitCode);
         Assert.Contains("Indexed Schedule I build", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Executable version:", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Game version:", output.ToString(), StringComparison.Ordinal);
         Assert.Equal(string.Empty, error.ToString());
         Assert.NotNull(current);
         Assert.Equal(AtlasVersion, current.AtlasVersion);
@@ -129,15 +132,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
             installMelonLoader: false,
             installSideload: false);
         var application = CreateApplication();
-        using var scanOutput = new StringWriter();
-        using var scanError = new StringWriter();
-        Assert.Equal(
-            0,
-            application.Invoke(
-                ["scan", "--game-path", _gameDirectory],
-                scanOutput,
-                scanError,
-                cancellationToken));
+        ScanSuccessfully(application, cancellationToken);
         using var output = new StringWriter();
         using var error = new StringWriter();
 
@@ -149,6 +144,8 @@ public sealed class FoundationCliTests : IAsyncDisposable
 
         var text = output.ToString();
         Assert.Equal(0, exitCode);
+        Assert.Contains("Executable version:", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Game version:", text, StringComparison.Ordinal);
         Assert.Contains("S1API: installed", text, StringComparison.Ordinal);
         Assert.Contains("S1MAPI: missing", text, StringComparison.Ordinal);
         Assert.Contains("MelonLoader: missing", text, StringComparison.Ordinal);
@@ -162,15 +159,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
         var cancellationToken = TestContext.Current.CancellationToken;
         await CreateFakeInstallationAsync(cancellationToken);
         var application = CreateApplication();
-        using var scanOutput = new StringWriter();
-        using var scanError = new StringWriter();
-        Assert.Equal(
-            0,
-            application.Invoke(
-                ["scan", "--game-path", _gameDirectory],
-                scanOutput,
-                scanError,
-                cancellationToken));
+        ScanSuccessfully(application, cancellationToken);
         var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
@@ -186,6 +175,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
 
         Assert.Equal(0, exitCode);
         Assert.Contains(current.Build.BuildId, output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("first seen", output.ToString(), StringComparison.Ordinal);
         Assert.Equal(string.Empty, error.ToString());
     }
 
@@ -195,15 +185,7 @@ public sealed class FoundationCliTests : IAsyncDisposable
         var cancellationToken = TestContext.Current.CancellationToken;
         await CreateFakeInstallationAsync(cancellationToken);
         var application = CreateApplication();
-        using var scanOutput = new StringWriter();
-        using var scanError = new StringWriter();
-        Assert.Equal(
-            0,
-            application.Invoke(
-                ["scan", "--game-path", _gameDirectory],
-                scanOutput,
-                scanError,
-                cancellationToken));
+        ScanSuccessfully(application, cancellationToken);
         var repository = new SqliteAtlasRepository(DatabasePath);
         await repository.InitializeAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
@@ -220,8 +202,144 @@ public sealed class FoundationCliTests : IAsyncDisposable
         var text = output.ToString();
         Assert.Equal(0, exitCode);
         Assert.Contains("Current build:", text, StringComparison.Ordinal);
+        Assert.Contains("Executable version:", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Game version:", text, StringComparison.Ordinal);
         Assert.Contains(current.Build.BuildId, text, StringComparison.Ordinal);
         Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
+    public async Task StatusJson_AfterScan_WritesSingleStableEnvelope()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await CreateFakeInstallationAsync(cancellationToken);
+        var application = CreateApplication();
+        ScanSuccessfully(application, cancellationToken);
+        var repository = new SqliteAtlasRepository(DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
+        Assert.NotNull(current);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["status", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        AssertSuccessEnvelope(root, "status");
+        var data = root.GetProperty("data");
+        Assert.True(data.GetProperty("hasCurrentBuild").GetBoolean());
+        Assert.Equal(
+            current.Build.BuildId,
+            data.GetProperty("buildId").GetString());
+        Assert.True(data.TryGetProperty("executableVersion", out _));
+        Assert.True(data.TryGetProperty("steamAppId", out _));
+        Assert.True(data.TryGetProperty("steamBuildId", out _));
+    }
+
+    [Fact]
+    public async Task EnvironmentJson_AfterScan_IncludesObservationsAndDependencies()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await CreateFakeInstallationAsync(
+            cancellationToken,
+            installS1Api: true,
+            installS1Mapi: false,
+            installMelonLoader: false,
+            installSideload: true);
+        var application = CreateApplication();
+        ScanSuccessfully(application, cancellationToken);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["env", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        AssertSuccessEnvelope(root, "env");
+        var data = root.GetProperty("data");
+        Assert.Equal(
+            Path.GetFullPath(_gameDirectory),
+            data.GetProperty("installationRoot").GetString());
+        var dependencies = data.GetProperty("dependencies");
+        Assert.Equal(4, dependencies.GetArrayLength());
+        Assert.Contains(
+            dependencies.EnumerateArray(),
+            item =>
+                item.GetProperty("kind").GetString() == "S1Api" &&
+                item.GetProperty("isInstalled").GetBoolean());
+        Assert.Contains(
+            dependencies.EnumerateArray(),
+            item =>
+                item.GetProperty("kind").GetString() == "S1Mapi" &&
+                !item.GetProperty("isInstalled").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildsJson_WhenEmpty_ReturnsEmptyArray()
+    {
+        var application = CreateApplication();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["builds", "--json"],
+            output,
+            error,
+            TestContext.Current.CancellationToken);
+
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        AssertSuccessEnvelope(root, "builds");
+        Assert.Equal(
+            0,
+            root.GetProperty("data").GetProperty("builds").GetArrayLength());
+    }
+
+    [Fact]
+    public void StatusJson_WhenDatabasePathFails_ReturnsJsonErrorWithoutStackTrace()
+    {
+        File.WriteAllText(_dataDirectory, "this path is intentionally a file");
+        var application = CreateApplication();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["status", "--json"],
+            output,
+            error,
+            TestContext.Current.CancellationToken);
+
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("status", root.GetProperty("command").GetString());
+        Assert.False(root.GetProperty("success").GetBoolean());
+        Assert.Equal(1, root.GetProperty("exitCode").GetInt32());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("data").ValueKind);
+        var publicError = root.GetProperty("error");
+        Assert.Equal("OperationalFailure", publicError.GetProperty("code").GetString());
+        Assert.StartsWith(
+            "S1Atlas failed:",
+            publicError.GetProperty("message").GetString(),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("   at ", output.ToString(), StringComparison.Ordinal);
     }
 
     public ValueTask DisposeAsync()
@@ -238,6 +356,44 @@ public sealed class FoundationCliTests : IAsyncDisposable
 
     private CliApplication CreateApplication() =>
         new(_dataDirectory, AtlasVersion);
+
+    private static void AssertSuccessEnvelope(JsonElement root, string command)
+    {
+        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(command, root.GetProperty("command").GetString());
+        Assert.True(root.GetProperty("success").GetBoolean());
+        Assert.Equal(0, root.GetProperty("exitCode").GetInt32());
+        Assert.NotEqual(JsonValueKind.Null, root.GetProperty("data").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("error").ValueKind);
+    }
+
+    private static void ScanSuccessfully(
+        CliApplication application,
+        CancellationToken cancellationToken,
+        string? gameDirectory = null)
+    {
+        using var scanOutput = new StringWriter();
+        using var scanError = new StringWriter();
+        var arguments = new[]
+        {
+            "scan",
+            "--game-path",
+            gameDirectory ?? throw new ArgumentNullException(nameof(gameDirectory))
+        };
+        Assert.Equal(
+            0,
+            application.Invoke(
+                arguments,
+                scanOutput,
+                scanError,
+                cancellationToken));
+        Assert.Equal(string.Empty, scanError.ToString());
+    }
+
+    private void ScanSuccessfully(
+        CliApplication application,
+        CancellationToken cancellationToken) =>
+        ScanSuccessfully(application, cancellationToken, _gameDirectory);
 
     private async Task CreateFakeInstallationAsync(
         CancellationToken cancellationToken,
