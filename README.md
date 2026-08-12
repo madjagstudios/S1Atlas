@@ -95,6 +95,10 @@ The next implementation milestone adds validated Cpp2IL extraction: a repository
 
 ILSpy decompilation and normalized symbol indexing follow only after reconstructed assemblies are validated and trusted.
 
+### Planned Phase 1 migration behavior
+
+Phase 1 first corrects the Foundation metadata model and introduces identity-version 2 environment snapshots. After a Foundation database is migrated, the first new scan intentionally creates and promotes a version-2 snapshot even when the observed environment is otherwise unchanged. The migrated identity-version 1 snapshot remains in the database as history; this transition is expected and is not duplicate-build churn.
+
 ## Project Documents
 
 - [V1 design specification](docs/superpowers/specs/2026-08-12-s1atlas-design.md)
