@@ -287,7 +287,13 @@ public sealed class SqliteAtlasRepository : IAtlasRepository
             SELECT kind, version, path, is_installed
             FROM dependencies
             WHERE build_id = $buildId
-            ORDER BY kind;
+            ORDER BY CASE kind
+                WHEN 'S1Api' THEN 0
+                WHEN 'S1Mapi' THEN 1
+                WHEN 'MelonLoader' THEN 2
+                WHEN 'Sideload' THEN 3
+                ELSE 99
+            END;
             """;
         command.Parameters.AddWithValue("$buildId", buildId);
 
