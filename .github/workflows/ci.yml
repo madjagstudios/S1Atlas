@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, 'feature/**', 'design/**' ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -20,3 +20,8 @@ jobs:
         run: dotnet build S1Atlas.sln --configuration Release --no-restore
       - name: Test
         run: dotnet test S1Atlas.sln --configuration Release --no-build --verbosity normal
+      - name: Format
+        run: dotnet format S1Atlas.sln --verify-no-changes --no-restore
+      - name: Repository hygiene
+        shell: pwsh
+        run: ./scripts/verify-repository-hygiene.ps1

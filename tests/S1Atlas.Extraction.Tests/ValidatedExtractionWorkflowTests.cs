@@ -431,7 +431,8 @@ public sealed class ValidatedExtractionWorkflowTests
         public string? ProcessInputSnapshotId { get; set; }
 
         public List<(string SnapshotId, string BuildId, string ManifestDigest)>
-            ReplayCertifications { get; } = [];
+            ReplayCertifications
+        { get; } = [];
 
         public Exception? ReplayCertificationFailure { get; set; }
 

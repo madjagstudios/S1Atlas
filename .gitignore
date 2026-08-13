@@ -25,10 +25,17 @@ data/
 *.db-shm
 *.db-wal
 Cpp2IL.exe
+GameAssembly.dll
+global-metadata.dat
+Assembly-CSharp.dll
 installation.json
 tool-manifest.json
 attempt.json
 input-manifest.json
+artifact-manifest.json
+validation.json
+extraction.json
+*.promotion.json
 complete.marker
 extraction.lock
 
