@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Attempts;
@@ -191,10 +189,7 @@ internal sealed class ExtractionCleanupPlanner
         }
 
         var aggregate = Aggregate(
-            [
-                ("attempt", attemptObservation.Observation!),
-                ("extraction-staging", stagingObservation.Observation!)
-            ]);
+            [attemptObservation.Observation!, stagingObservation.Observation!]);
         var item = new ExtractionCleanupItem(
             ExtractionCleanupItemKind.TerminalAttempt,
             attempt.AttemptId,
@@ -398,7 +393,6 @@ internal sealed class ExtractionCleanupPlanner
                 name,
                 buildId: null,
                 child,
-                "input-staging",
                 observation,
                 observation.NewestWriteUtc);
         }
@@ -456,7 +450,6 @@ internal sealed class ExtractionCleanupPlanner
                 name,
                 buildId: null,
                 child,
-                "tool-staging",
                 observation,
                 observation.NewestWriteUtc);
         }
@@ -519,7 +512,6 @@ internal sealed class ExtractionCleanupPlanner
                 name,
                 buildId: null,
                 child,
-                "tool-quarantine",
                 observation,
                 controlling);
         }
@@ -555,11 +547,10 @@ internal sealed class ExtractionCleanupPlanner
         string id,
         string? buildId,
         string ownedPath,
-        string role,
         CleanupTreeObservation observation,
         DateTimeOffset controllingTimestamp)
     {
-        var aggregate = Aggregate([(role, observation)]);
+        var aggregate = Aggregate([observation]);
         var item = new ExtractionCleanupItem(
             kind,
             id,
@@ -744,27 +735,18 @@ internal sealed class ExtractionCleanupPlanner
         Path.GetRelativePath(_dataRoot, path).Replace('\\', '/');
 
     private static (int FileCount, long ByteCount, string Digest) Aggregate(
-        IReadOnlyList<(string Role, CleanupTreeObservation Observation)> observations)
+        IReadOnlyList<CleanupTreeObservation> observations)
     {
-        var ordered = observations
-            .OrderBy(entry => entry.Role, StringComparer.Ordinal)
-            .ToArray();
-        var builder = new StringBuilder();
         var fileCount = 0;
         var byteCount = 0L;
-        foreach (var (role, observation) in ordered)
+        foreach (var observation in observations)
         {
-            builder.Append(role);
-            builder.Append('\n');
-            builder.Append(observation.ObservationDigest);
-            builder.Append('\n');
             fileCount = checked(fileCount + observation.FileCount);
             byteCount = checked(byteCount + observation.ByteCount);
         }
 
-        var digest = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())))
-            .ToLowerInvariant();
+        var digest = CleanupObservationAggregate.Digest(
+            observations.Select(observation => observation.ObservationDigest));
         return (fileCount, byteCount, digest);
     }
 

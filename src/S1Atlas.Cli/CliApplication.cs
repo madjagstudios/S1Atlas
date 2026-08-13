@@ -7,6 +7,7 @@ using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
 using S1Atlas.Extraction;
 using S1Atlas.Extraction.Attempts;
+using S1Atlas.Extraction.Cleanup;
 using S1Atlas.Extraction.Cpp2Il;
 using S1Atlas.Extraction.Discovery;
 using S1Atlas.Extraction.Hashing;
@@ -250,6 +251,20 @@ public sealed class CliApplication
             profileProvider,
             validationPolicyProvider,
             _timeProvider);
+        var cleanupPlanner = new ExtractionCleanupPlanner(
+            _paths.RootDirectory,
+            sqliteRepository,
+            _timeProvider,
+            new CleanupTreeInspector());
+        var cleanupDeleter = new CleanupFileSystemDeleter(_paths.RootDirectory);
+        var cleanupService = new ExtractionCleanupService(
+            repository.InitializeAsync,
+            recoveryService.RecoverAsync,
+            ct => IsExtractionActiveAsync(extractionLock, ct),
+            cleanupPlanner,
+            sqliteRepository,
+            new CleanupTreeInspector(),
+            cleanupDeleter.DeleteAsync);
 
         var root = new RootCommand(
             "Local Schedule I developer-intelligence tools.");
@@ -284,6 +299,7 @@ public sealed class CliApplication
         root.Subcommands.Add(
             ExtractionsCommand.Create(
                 historyService,
+                cleanupService,
                 repository,
                 output,
                 error,
@@ -294,6 +310,29 @@ public sealed class CliApplication
             Output = output,
             Error = error
         });
+    }
+
+    private static async Task<bool> IsExtractionActiveAsync(
+        ExtractionLock extractionLock,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var state = await extractionLock.ReadAsync(cancellationToken);
+            if (state is null)
+            {
+                return false;
+            }
+
+            return extractionLock.IsAlive(state.OwnerProcessId) ||
+                (state.ChildProcessId is int child && extractionLock.IsAlive(child));
+        }
+        catch (InvalidDataException)
+        {
+            // A malformed lock is ambiguous evidence: treat it as active and refuse to
+            // clean up rather than risk racing an in-flight extraction.
+            return true;
+        }
     }
 
     private static HttpClient CreateProductionToolHttpClient(string atlasVersion)
