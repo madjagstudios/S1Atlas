@@ -4,13 +4,13 @@
 
 **Goal:** Add an explicit, checksum-pinned, recoverable managed Cpp2IL installation pipeline with offline status inspection, safe package handling, capability probes, SQLite provenance, and human/JSON CLI commands.
 
-**Architecture:** The repository owns one typed Cpp2IL definition under `config/tools`. `S1Atlas.Core` owns immutable tool contracts and deterministic identities; `S1Atlas.Extraction` parses the committed definition, downloads and verifies packages, materializes them only in Atlas-owned staging, runs controlled probes, and atomically promotes verified installations; `S1Atlas.Storage` persists verified installation and tool-instance provenance; `S1Atlas.Cli` exposes `tools status` and `tools install`. No extraction profile, game input, Cpp2IL extraction, reconstructed assembly, or ILSpy behavior enters this phase.
+**Architecture:** The repository owns one typed Cpp2IL definition under `config/tools`. `S1Atlas.Core` owns immutable tool contracts and deterministic identities; `S1Atlas.Extraction` parses the committed definition, downloads and verifies packages, materializes them only in Atlas-owned staging, runs controlled probes, and atomically promotes verified installations; `S1Atlas.Storage` persists verified installation and tool-instance provenance; `S1Atlas.Cli` exposes `tools status` and `tools install`. No extraction profile, game input, Cpp2IL game execution, reconstructed assembly, or ILSpy behavior enters this phase.
 
 **Tech Stack:** C# / .NET 8, `System.Text.Json`, `System.Net.Http`, `System.IO.Compression`, `System.Diagnostics.Process`, SHA-256, Microsoft.Data.Sqlite, System.CommandLine, xUnit v3, Windows GitHub Actions.
 
 ## Global Constraints
 
-- Target Windows 10 or later and `win-x64`; the production Cpp2IL pin is not silently substituted on unsupported platforms.
+- Target Windows 10 or later and `win-x64`; the production Cpp2IL pin is never silently substituted on unsupported platforms.
 - Preserve the approved Cpp2IL pin exactly:
 
 ```text
@@ -29,10 +29,10 @@ Required format:     dll_il_recovery
 - Installation is explicit. No command automatically downloads Cpp2IL.
 - A package is never executed until its exact byte size and SHA-256 match the committed definition.
 - The normal managed trust level is `ManagedPinned`; `CustomOverride` is defined for later phases but is not exposed through a Phase 2 CLI path.
-- Tool definition changes are reviewed source changes. No mutable “latest” lookup exists.
-- The initial asset is a standalone executable. The implementation also safely supports a future ZIP archive definition, but no production archive pin is added.
+- Tool definition changes are reviewed source changes. No mutable “latest” lookup or remotely refreshed manifest exists.
+- The initial asset is a standalone executable. The code also safely supports a future ZIP definition, but no production archive pin is added.
 - All working, staging, quarantine, and final installation paths are under the configured Atlas data root. The Schedule I installation is never touched.
-- Use `ProcessStartInfo.ArgumentList`; never invoke probes through `cmd.exe`, PowerShell, or a shell string in production code.
+- Use `ProcessStartInfo.ArgumentList`; production probe execution never uses a shell string.
 - All automated tests use injected local bytes and fake HTTP handlers. CI never downloads Cpp2IL or any release asset.
 - Do not commit executable fixtures, downloaded packages, databases, backups, or generated local installation records.
 - Preserve Phase 1 human output, JSON envelopes, exit codes `0/1/2`, migration compatibility, and zero-warning Release builds.
@@ -45,20 +45,19 @@ Phase 2 delivers:
 
 ```text
 config/tools/cpp2il.win-x64.json
-repository-controlled tool-definition parsing and validation
-deterministic tool-definition and tool-instance identities
-schema migration 3 for managed tool provenance
+strict repository-controlled definition loading
+deterministic definition and tool-instance identities
+schema migration 3 for tool provenance
 safe HTTPS streaming download
-exact size and SHA-256 verification
+exact package size and SHA-256 verification
 single-file materialization
-safe ZIP extraction for future definitions
+safe ZIP materialization for future definitions
 controlled --help and --list-output-formats probes
 managed installation inspection and status states
 staged atomic installation
 repair and quarantine
-s1atlas tools status [cpp2il] [--json]
-s1atlas tools install cpp2il [--repair] [--json]
-README and local smoke instructions
+tools status/install human and JSON commands
+README and a real local managed-pin smoke gate
 ```
 
 Phase 2 explicitly does not deliver:
@@ -73,7 +72,7 @@ input snapshots
 artifact manifests
 managed assembly validation
 preferred extractions
-cleanup of extraction attempts
+extraction cleanup
 ILSpy or symbol indexing
 ```
 
@@ -86,8 +85,6 @@ ILSpy or symbol indexing
 ```text
 config/tools/cpp2il.win-x64.json
 ```
-
-The only production tool definition. It contains the approved pin, safety limits, license metadata, and controlled probe definitions.
 
 ### `S1Atlas.Core`
 
@@ -140,7 +137,7 @@ src/S1Atlas.Storage/Sqlite/SqliteAtlasRepository.cs
 src/S1Atlas.Storage/Sqlite/SqliteAtlasRepository.Tools.cs
 ```
 
-`SqliteAtlasRepository` becomes a partial class implementing both `IAtlasRepository` and `IToolRepository` so one migration runner and database remain authoritative.
+`SqliteAtlasRepository` becomes a partial class implementing `IAtlasRepository` and `IToolRepository` so one migration runner and database remain authoritative.
 
 ### `S1Atlas.Cli`
 
@@ -169,6 +166,7 @@ tests/S1Atlas.Extraction.Tests/Tools/RepositoryToolDefinitionProviderTests.cs
 tests/S1Atlas.Extraction.Tests/Tools/ToolDefinitionValidatorTests.cs
 tests/S1Atlas.Extraction.Tests/Tools/ToolDownloadClientTests.cs
 tests/S1Atlas.Extraction.Tests/Tools/ToolPackageVerifierTests.cs
+tests/S1Atlas.Extraction.Tests/Tools/ToolPathPolicyTests.cs
 tests/S1Atlas.Extraction.Tests/Tools/SafeToolPackageInstallerTests.cs
 tests/S1Atlas.Extraction.Tests/Tools/ToolProbeRunnerTests.cs
 tests/S1Atlas.Extraction.Tests/Tools/ManagedToolInstallationValidatorTests.cs
@@ -190,32 +188,19 @@ tests/S1Atlas.IntegrationTests/Tools/ManagedToolCliFixture.cs
 **Files:**
 - Create: `src/S1Atlas.Core/Identity/CanonicalHashWriter.cs`
 - Create: `src/S1Atlas.Core/Properties/AssemblyInfo.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolArchiveFormat.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolDefinition.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolDefinitionFingerprint.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolInstallResult.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolInstallationStatus.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolInstance.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolInstanceId.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolOperationException.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolPackageKind.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolPlatform.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolStatus.cs`
-- Create: `src/S1Atlas.Core/Tools/ToolTrustLevel.cs`
-- Create: `src/S1Atlas.Core/Tools/IToolDefinitionProvider.cs`
-- Create: `src/S1Atlas.Core/Tools/IToolInstaller.cs`
+- Create: `src/S1Atlas.Core/Tools/*.cs` listed above
 - Create: `src/S1Atlas.Core/Storage/IToolRepository.cs`
 - Test: `tests/S1Atlas.Core.Tests/Identity/CanonicalHashWriterTests.cs`
 - Test: `tests/S1Atlas.Core.Tests/Tools/ToolDefinitionFingerprintTests.cs`
 - Test: `tests/S1Atlas.Core.Tests/Tools/ToolInstanceIdTests.cs`
 
 **Interfaces:**
-- Produces `ResolvedToolDefinition`, `ManagedToolInstallation`, `ToolInstance`, `ManagedToolStatus`, `ToolInstallResult`, and deterministic digest helpers used by every later task.
+- Produces `ResolvedToolDefinition`, `ManagedToolInstallation`, `ManagedToolInstallOutcome`, `ToolInstance`, `ManagedToolStatus`, `ToolInstallResult`, and deterministic digest helpers used by later tasks.
 - Consumes no Phase 2 implementation types.
 
 - [ ] **Step 1: Add internals visibility and failing canonical-identity tests**
 
-Create `src/S1Atlas.Core/Properties/AssemblyInfo.cs`:
+Create:
 
 ```csharp
 using System.Runtime.CompilerServices;
@@ -223,19 +208,15 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("S1Atlas.Core.Tests")]
 ```
 
-Create tests proving the version-1 canonical writer:
+Tests:
 
 ```csharp
 [Fact]
 public void Complete_WithSameTypedValues_ReturnsSameLowercaseSha256()
-```
 
-```csharp
 [Fact]
 public void Complete_NullAndEmptyString_ReturnDifferentDigests()
-```
 
-```csharp
 [Fact]
 public void Complete_ChangingIdentityKindOrVersion_ChangesDigest()
 ```
@@ -250,13 +231,10 @@ Expected: compile failure because `CanonicalHashWriter` does not exist.
 
 - [ ] **Step 2: Implement `CanonicalHashWriter` version 1**
 
-Use an `IncrementalHash` with SHA-256. The constructor writes identity kind and identity schema version first.
-
 ```csharp
 internal sealed class CanonicalHashWriter : IDisposable
 {
     public CanonicalHashWriter(string identityKind, int identityVersion);
-
     public void AppendString(string value);
     public void AppendNullableString(string? value);
     public void AppendInt32(int value);
@@ -266,53 +244,26 @@ internal sealed class CanonicalHashWriter : IDisposable
 }
 ```
 
-Encoding rules:
+Use `IncrementalHash` with SHA-256. The constructor writes identity kind and identity version first.
+
+Encoding:
 
 ```text
-non-null scalar:
-  one byte 0x01
-  four-byte little-endian UTF-8 byte length
-  UTF-8 bytes
-
-null scalar:
-  one byte 0x00
-
-integers:
-  invariant decimal text through the non-null scalar encoding
-
-boolean:
-  "1" or "0" through the non-null scalar encoding
-
-result:
-  lower-case full SHA-256 hexadecimal
+non-null scalar: 0x01 + little-endian Int32 UTF-8 byte length + UTF-8 bytes
+null scalar:     0x00
+integers:        invariant decimal text encoded as non-null scalar
+boolean:         "1" or "0" encoded as non-null scalar
+result:          lower-case full SHA-256 hexadecimal
 ```
 
-`Complete()` may be called once. Subsequent appends or completion throw `InvalidOperationException`.
+`Complete()` is single-use. Appending or completing afterward throws `InvalidOperationException`.
 
-Run the focused tests and expect all to pass.
-
-- [ ] **Step 3: Define exact tool enums and immutable records**
-
-Create enums:
+- [ ] **Step 3: Define exact enums and immutable records**
 
 ```csharp
-public enum ToolPackageKind
-{
-    SingleFile,
-    Archive
-}
-
-public enum ToolArchiveFormat
-{
-    Zip
-}
-
-public enum ToolTrustLevel
-{
-    ManagedPinned,
-    CustomOverride
-}
-
+public enum ToolPackageKind { SingleFile, Archive }
+public enum ToolArchiveFormat { Zip }
+public enum ToolTrustLevel { ManagedPinned, CustomOverride }
 public enum ToolInstallationStatus
 {
     NotInstalled,
@@ -324,7 +275,7 @@ public enum ToolInstallationStatus
 }
 ```
 
-Create `ToolDefinition.cs` with these records:
+Create:
 
 ```csharp
 public sealed record ToolSafetyLimits(
@@ -369,7 +320,7 @@ public sealed record ResolvedToolDefinition(
     string DefinitionDigest);
 ```
 
-Create status/provenance records:
+Status/provenance:
 
 ```csharp
 public sealed record ToolProbeResult(
@@ -397,6 +348,12 @@ public sealed record ManagedToolInstallation(
     DateTimeOffset LastVerifiedAtUtc,
     IReadOnlyList<ToolProbeResult> ProbeResults,
     string? ReplacedInstallationPath);
+
+public sealed record ManagedToolInstallOutcome(
+    ManagedToolInstallation Installation,
+    bool WasAlreadyVerified,
+    bool Repaired,
+    string? QuarantinePath);
 
 public sealed record ToolInstance(
     string ToolInstanceId,
@@ -427,49 +384,35 @@ public sealed record ToolInstallResult(
     string? QuarantinePath);
 ```
 
-`ToolName` in tool-instance identity means the stable lower-case tool ID (`cpp2il`), not the display label.
+`ToolName` means the stable lower-case tool ID (`cpp2il`), not the display label.
 
 - [ ] **Step 4: Write failing definition and instance identity tests**
-
-Add tests:
 
 ```csharp
 [Fact]
 public void Create_WithEquivalentDefinition_ReturnsSameDigest()
-```
 
-```csharp
 [Fact]
 public void Create_WhenProbeRequirementChanges_ReturnsDifferentDigest()
-```
 
-```csharp
 [Fact]
 public void Create_WhenLicenseOrSafetyLimitChanges_ReturnsDifferentDigest()
-```
 
-```csharp
 [Fact]
 public void ToolInstanceId_SameBytesAtDifferentPaths_ReturnsSameId()
-```
 
-```csharp
 [Fact]
 public void ToolInstanceId_WhenTrustLevelChanges_ReturnsDifferentId()
-```
 
-```csharp
 [Fact]
-public void ToolInstanceId_NullAndEmptyVersionLabels_DoNotAffectIdentity()
+public void ToolInstanceId_WhenExecutableHashChanges_ReturnsDifferentId()
 ```
 
-The last test verifies version label is descriptive and excluded entirely from tool-instance identity.
-
-Run and expect compile failure because the fingerprint helpers do not exist.
+Expected: compile failure because fingerprint helpers do not exist.
 
 - [ ] **Step 5: Implement definition and tool-instance identities**
 
-`ToolDefinitionFingerprint.Create(ToolDefinition)` appends every effective field in this exact order:
+`ToolDefinitionFingerprint.Create(ToolDefinition)` appends every effective field in this order:
 
 ```text
 identity kind "tool-definition"
@@ -481,8 +424,8 @@ version
 platform
 package kind
 archive format or null
-source URL absolute URI
-release URL absolute URI
+source URL AbsoluteUri
+release URL AbsoluteUri
 asset name
 expected size
 package SHA-256
@@ -491,17 +434,30 @@ maximum download bytes
 maximum expanded bytes
 maximum file count
 license SPDX identifier
-license source URL absolute URI
+license URL AbsoluteUri
 probe count
 for each probe in declared order:
   probe ID
-  argument count and each argument
-  accepted exit-code count and each exit code
+  argument count and arguments
+  accepted-exit-code count and exit codes
   timeout milliseconds
-  required-output count and each substring
+  required-output count and substrings
 ```
 
-`ToolInstanceId.Create(...)` appends:
+Define the exact tool-instance helper:
+
+```csharp
+public static class ToolInstanceId
+{
+    public static string Create(
+        string toolName,
+        string executableSha256,
+        string platform,
+        ToolTrustLevel trustLevel);
+}
+```
+
+It appends only:
 
 ```text
 identity kind "tool-instance"
@@ -509,39 +465,32 @@ identity version 1
 stable tool ID
 observed executable SHA-256
 platform
-trust-level enum name
+trust enum name
 ```
 
-Absolute paths, timestamps, display name, and version label are not included.
+Display name, version label, path, and timestamps are deliberately not inputs.
 
-- [ ] **Step 6: Add platform and operation contracts**
+- [ ] **Step 6: Add platform, exception, and repository contracts**
 
-`ToolPlatform.GetCurrent()` returns `win-x64` only when:
-
-```csharp
-OperatingSystem.IsWindows() &&
-RuntimeInformation.ProcessArchitecture == Architecture.X64
-```
-
-Otherwise it throws:
+`ToolPlatform.GetCurrent()` returns `win-x64` only when Windows and x64. Otherwise:
 
 ```csharp
-new ToolOperationException(
+throw new ToolOperationException(
     "ToolPlatformUnsupported",
     "The managed Cpp2IL tool is supported only on Windows x64.");
 ```
 
-Create:
-
 ```csharp
 public sealed class ToolOperationException : InvalidOperationException
 {
-    public ToolOperationException(string code, string message, Exception? innerException = null);
+    public ToolOperationException(
+        string code,
+        string message,
+        Exception? innerException = null);
+
     public string Code { get; }
 }
 ```
-
-Interfaces:
 
 ```csharp
 public interface IToolDefinitionProvider
@@ -552,7 +501,7 @@ public interface IToolDefinitionProvider
 
 public interface IToolInstaller
 {
-    Task<ToolInstallResult> InstallAsync(
+    Task<ManagedToolInstallOutcome> InstallAsync(
         ResolvedToolDefinition definition,
         bool repair,
         CancellationToken cancellationToken);
@@ -582,14 +531,11 @@ public interface IToolRepository
 ```powershell
 dotnet test tests/S1Atlas.Core.Tests/S1Atlas.Core.Tests.csproj
 dotnet build S1Atlas.sln --configuration Release
-```
-
-Expected: all Core tests pass; zero warnings and zero errors.
-
-```powershell
 git add -- src/S1Atlas.Core tests/S1Atlas.Core.Tests
 git commit -m "feat: define managed tool identities and contracts"
 ```
+
+Expected: all Core tests pass; zero warnings/errors.
 
 ---
 
@@ -604,15 +550,13 @@ git commit -m "feat: define managed tool identities and contracts"
 - Modify: `src/S1Atlas.Cli/S1Atlas.Cli.csproj`
 - Test: `tests/S1Atlas.Extraction.Tests/Tools/RepositoryToolDefinitionProviderTests.cs`
 - Test: `tests/S1Atlas.Extraction.Tests/Tools/ToolDefinitionValidatorTests.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ToolTestFixture.cs`
+- Create: `tests/S1Atlas.Extraction.Tests/Tools/ToolTestFixture.cs`
 
 **Interfaces:**
 - Consumes Core tool records and `ToolDefinitionFingerprint`.
-- Produces a strict `IToolDefinitionProvider` and normalized manifest serializer used by installation and local verification.
+- Produces a strict `IToolDefinitionProvider` and normalized manifest serializer used by installation inspection.
 
-- [ ] **Step 1: Create the exact production definition**
-
-Add `config/tools/cpp2il.win-x64.json` exactly:
+- [ ] **Step 1: Add the exact production definition**
 
 ```json
 {
@@ -659,87 +603,75 @@ Add `config/tools/cpp2il.win-x64.json` exactly:
 }
 ```
 
-Do not add a mutable API URL, release lookup, or “latest” field.
-
-- [ ] **Step 2: Write failing production-pin and strict-validation tests**
-
-Tests must load the repository file and assert every independently verified value:
+- [ ] **Step 2: Write failing pin and strict-validation tests**
 
 ```csharp
 [Fact]
 public void GetRequired_Cpp2IlWindowsX64_ReturnsApprovedPin()
 ```
 
-Assert exact version, platform, source URL, release URL, asset name, expected size, SHA-256, executable relative path, MIT license, probe arguments, and `dll_il_recovery` requirement.
+Assert every verified value: version, platform, URLs, asset, exact size/hash, executable path, MIT license, both probes, and `dll_il_recovery`.
 
-Add invalid-definition cases:
+Invalid cases:
 
 ```csharp
 [Theory]
 [InlineData("http://example.test/tool.exe")]
 [InlineData("https://user:password@example.test/tool.exe")]
 public void Load_WhenSourceUrlIsNotApprovedHttpsShape_Rejects(string sourceUrl)
-```
 
-```csharp
+[Fact]
+public void Load_WhenVersionIsNotOneSafePathSegment_Rejects()
+
 [Fact]
 public void Load_WhenExpectedSizeExceedsDownloadLimit_Rejects()
-```
 
-```csharp
 [Fact]
 public void Load_WhenExecutablePathEscapesRoot_Rejects()
-```
 
-```csharp
 [Fact]
 public void Load_WhenProbeIdsRepeat_Rejects()
-```
 
-```csharp
 [Fact]
 public void Load_WhenArchiveFormatConflictsWithPackageKind_Rejects()
-```
 
-```csharp
 [Fact]
 public void GetAll_WhenToolPlatformPairRepeats_Rejects()
 ```
 
-Run and expect failure because the provider does not exist.
+Expected: compile failure because provider/validator do not exist.
 
-- [ ] **Step 3: Implement JSON document DTOs and strict parsing**
+- [ ] **Step 3: Implement document DTOs and strict validation**
 
-`ToolDefinitionDocument` mirrors the committed JSON with nullable document properties. Do not deserialize directly into trusted Core records.
+Deserialize into nullable document DTOs, never directly into trusted Core records.
 
-`ToolDefinitionValidator.Validate(document, sourceName)` must enforce:
+Enforce:
 
 ```text
 schemaVersion == 1
 toolId matches ^[a-z0-9][a-z0-9.-]*$
-displayName/version are nonblank
+version is one safe filename/path segment: not '.'/'..', no separators/colon, no invalid filename chars
+displayName is nonblank
 platform matches ^[a-z0-9][a-z0-9-]*$
-source, release, and license URLs are absolute HTTPS URLs with no user info
-assetName is a single file name and matches the final source-URL path segment
-expectedSize > 0
-expectedSize <= maximumDownloadBytes
-SHA-256 is exactly 64 hexadecimal characters and normalized lower-case
-executableRelativePath is relative, contains no empty, '.', or '..' segment, and has no drive/UNC root
-singleFile requires archiveFormat == null and maximumFileCount == 1
-archive requires archiveFormat == zip
-maximum download/expanded bytes and file count are positive
+package kind is exactly "singleFile" or "archive"
+archive format is null for singleFile and exactly "zip" for archive
+source/release/license URLs are absolute HTTPS with empty UserInfo
+assetName is one file name and matches the final source-URL segment
+expectedSize > 0 and <= maximumDownloadBytes
+SHA-256 is exactly 64 hex characters, normalized lower-case
+executableRelativePath is relative with no empty, '.', or '..' segment and no drive/UNC root
+singleFile requires maximumFileCount == 1
+all limits are positive
 probe list is nonempty
-probe IDs are unique using Ordinal comparison
-acceptedExitCodes is nonempty and contains no duplicates
+probe IDs are unique ordinally
+accepted exit codes are nonempty and unique
 1 <= timeoutSeconds <= 300
-arguments and required-output strings contain no null values
+argument/output collections contain no null values
 ```
 
-Any validation failure throws `ToolOperationException` with code `ToolDefinitionInvalid` and a message naming the source definition and invalid field.
+Failures throw `ToolOperationException("ToolDefinitionInvalid", ...)` naming the source and field.
 
-- [ ] **Step 4: Implement deterministic repository loading**
-
-`RepositoryToolDefinitionProvider` constructor accepts the tool-definition directory.
+- [ ] **Step 4: Implement deterministic repository loading and normalized serialization**
 
 ```csharp
 public sealed class RepositoryToolDefinitionProvider : IToolDefinitionProvider
@@ -752,33 +684,31 @@ public sealed class RepositoryToolDefinitionProvider : IToolDefinitionProvider
 
 Behavior:
 
-1. Enumerate only top-level `*.json` files.
-2. Order paths case-insensitively, then ordinally.
-3. Parse with `JsonSerializerOptions` that reject comments and trailing commas.
-4. Validate each document.
-5. Compute `ToolDefinitionFingerprint` from the trusted Core record.
-6. Reject duplicate `(toolId, platform)` pairs case-insensitively.
-7. `GetRequired` uses case-insensitive lookup but returns the committed canonical values.
-8. Unknown tool returns `ToolOperationException("UnknownTool", ...)`.
-9. Missing definition directory returns `ToolOperationException("ToolDefinitionInvalid", ...)`.
+1. Enumerate top-level `*.json` only.
+2. Order paths case-insensitively then ordinally.
+3. Reject comments and trailing commas.
+4. Validate and compute `ToolDefinitionFingerprint`.
+5. Reject duplicate `(toolId, platform)` pairs case-insensitively.
+6. Use case-insensitive lookup but return canonical values.
+7. Unknown tool => `UnknownTool`.
+8. Missing definition directory => `ToolDefinitionInvalid`.
 
-`ToolDefinitionSerializer` writes a normalized, indented, camel-case copy for `tool-manifest.json` and reads local copies through the same validator.
+`ToolDefinitionSerializer` writes normalized indented camel-case JSON and reads local `tool-manifest.json` through the same validator.
 
-- [ ] **Step 5: Add reusable test definitions without executable artifacts**
+- [ ] **Step 5: Add reusable test-definition helpers**
 
-`ToolTestFixture` must:
+`ToolTestFixture`:
 
-- locate the repository root by walking upward from `AppContext.BaseDirectory` until `S1Atlas.sln` exists;
-- build small `ToolDefinitionDocument` instances for `https://example.test/tool.exe`;
-- calculate expected size and SHA-256 from caller-provided bytes;
-- write fixture definitions to temporary directories;
-- never copy bytes into the repository.
+- locates repo root by walking upward from `AppContext.BaseDirectory` until `S1Atlas.sln` exists;
+- builds fixture documents for `https://example.test/tool.exe`;
+- computes expected size/SHA from caller bytes;
+- writes temporary config directories;
+- obtains `%ComSpec%` bytes only at test runtime;
+- never writes executable bytes into the repository.
 
-For executable probe tests later, obtain `%ComSpec%` at runtime and read its bytes into the test’s temporary directory only.
+- [ ] **Step 6: Copy production config into build/publish output**
 
-- [ ] **Step 6: Package configuration with the CLI output**
-
-Modify `src/S1Atlas.Cli/S1Atlas.Cli.csproj`:
+Modify CLI project:
 
 ```xml
 <ItemGroup>
@@ -789,21 +719,25 @@ Modify `src/S1Atlas.Cli/S1Atlas.Cli.csproj`:
 </ItemGroup>
 ```
 
-Add a test that `dotnet build` leaves `config/tools/cpp2il.win-x64.json` beside the CLI output. The test may inspect the known Release output after the build target; do not invoke publish or network access.
+Verification after Release build:
+
+```powershell
+Test-Path src\S1Atlas.Cli\bin\Release\net8.0\config\tools\cpp2il.win-x64.json
+```
+
+Expected: `True`.
 
 - [ ] **Step 7: Verify and commit Task 2**
 
 ```powershell
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ToolDefinition|RepositoryToolDefinitionProvider"
 dotnet build S1Atlas.sln --configuration Release
-```
-
-Expected: exact pin test passes; invalid documents are rejected; build has zero warnings/errors.
-
-```powershell
+Test-Path src\S1Atlas.Cli\bin\Release\net8.0\config\tools\cpp2il.win-x64.json
 git add -- config/tools src/S1Atlas.Extraction/Tools src/S1Atlas.Cli/S1Atlas.Cli.csproj tests/S1Atlas.Extraction.Tests/Tools
 git commit -m "feat: pin and validate the managed Cpp2IL definition"
 ```
+
+Expected: exact pin test passes, invalid documents fail safely, copied config exists, zero warnings/errors.
 
 ---
 
@@ -819,44 +753,34 @@ git commit -m "feat: pin and validate the managed Cpp2IL definition"
 
 **Interfaces:**
 - Consumes `IToolRepository`, `ManagedToolInstallation`, and `ToolInstance`.
-- Produces durable, atomic verified-tool provenance for the CLI and Phase 3 extraction resolver.
+- Produces atomic verified-tool provenance for CLI and Phase 3.
 
 - [ ] **Step 1: Write failing migration-3 tests**
-
-Add:
 
 ```csharp
 [Fact]
 public async Task MigrateAsync_V2Database_AddsToolTablesAndCreatesOneSchema3Backup()
-```
 
-```csharp
 [Fact]
 public async Task MigrateAsync_NewDatabase_AppliesThreeMigrationsWithoutBackup()
-```
 
-```csharp
 [Fact]
 public async Task MigrateAsync_FoundationV1Database_AppliesThroughV3AndPreservesFoundationState()
 ```
 
-Assertions:
+Create the v2 fixture by running an internal migration runner with:
 
-```text
-schema_migrations has versions 1, 2, and 3 with current checksums
-managed_tool_installations exists with the approved composite primary key
-tool_instances exists with its primary key
-ix_tool_instances_tool_trust exists
-v2 -> v3 creates exactly one atlas-before-schema-3-*.db backup
-new empty database creates no backup
-Foundation build/snapshot/dependencies/current pointer remain unchanged
+```csharp
+SqliteMigrations.All.Take(2).ToArray()
 ```
 
-Run and expect failure because migration 3 does not exist.
+Then reopen through the production runner containing all three migrations.
+
+Assert ledger versions `1/2/3`, both tool tables, index `ix_tool_instances_tool_trust`, exactly one schema-3 backup for v2 upgrade, no backup for an empty DB, and unchanged Foundation rows/pointer.
 
 - [ ] **Step 2: Add exact migration 3 SQL**
 
-Append to `SqliteMigrations` without modifying migration 1 or migration 2 text:
+Do not modify migration 1 or 2 text.
 
 ```sql
 CREATE TABLE managed_tool_installations (
@@ -899,45 +823,34 @@ Register:
 new(3, "managed-tools-v3", ManagedToolsV3Sql)
 ```
 
-Existing migration checksums must remain unchanged.
+- [ ] **Step 3: Implement the partial repository tool interface**
 
-- [ ] **Step 3: Make the SQLite repository a partial dual-interface implementation**
-
-Change the declaration only:
+Change declaration:
 
 ```csharp
 public sealed partial class SqliteAtlasRepository : IAtlasRepository, IToolRepository
 ```
 
-Keep existing Foundation methods in `SqliteAtlasRepository.cs`.
+Create tool methods in a separate partial file.
 
-Create `SqliteAtlasRepository.Tools.cs` with:
-
-```csharp
-public async Task SaveVerifiedManagedToolAsync(
-    ManagedToolInstallation installation,
-    ToolInstance toolInstance,
-    CancellationToken cancellationToken)
-```
-
-Hard requirements before opening a transaction:
+Before transaction, require:
 
 ```text
 installation.Status == Verified
 toolInstance.Status == Verified
 toolInstance.TrustLevel == ManagedPinned
-tool IDs/platform/executable SHA-256/definition digest agree
-ToolInstanceId.Create(...) equals toolInstance.ToolInstanceId
+tool IDs/platform/executable SHA/definition digest agree
+ToolInstanceId.Create(...) equals stored toolInstance ID
 ```
 
-In one SQLite transaction:
+In one transaction:
 
 1. Upsert `managed_tool_installations` by `(tool_id, version, platform)`.
 2. Upsert `tool_instances` by `tool_instance_id`.
-3. Preserve the earliest `first_observed_at_utc` on tool-instance conflict.
-4. Update observed path, status, version label, and last verification time.
-5. Serialize `ProbeResults` as compact camel-case JSON with string enums into `probe_summary`.
-6. Commit both rows together; rollback with `CancellationToken.None` on failure.
+3. Preserve earliest `first_observed_at_utc` on instance conflict.
+4. Update path/status/version/last verification.
+5. Store compact camel-case probe-result JSON with string enums in `probe_summary`.
+6. Commit both rows or rollback both.
 
 Reads:
 
@@ -946,48 +859,35 @@ public Task<ManagedToolInstallation?> GetManagedToolAsync(...)
 public Task<ToolInstance?> GetToolInstanceAsync(...)
 ```
 
-Use invariant `O` timestamps and strict enum parsing. A corrupt persisted enum or probe-summary document is an integrity error, not silently ignored.
+Use invariant `O` timestamps. Corrupt stored enums or probe JSON are integrity failures.
 
-- [ ] **Step 4: Write repository round-trip and atomicity tests**
-
-Add:
+- [ ] **Step 4: Add round-trip and atomicity tests**
 
 ```csharp
 [Fact]
 public async Task SaveVerifiedManagedToolAsync_RoundTripsInstallationAndToolInstance()
-```
 
-```csharp
 [Fact]
 public async Task SaveVerifiedManagedToolAsync_ReverificationPreservesFirstObservedAndUpdatesLastVerified()
-```
 
-```csharp
 [Fact]
 public async Task SaveVerifiedManagedToolAsync_WhenInstallationIsNotVerified_RejectsWithoutRows()
-```
 
-```csharp
 [Fact]
 public async Task SaveVerifiedManagedToolAsync_WhenToolInstanceIdentityDisagrees_RollsBackBothRows()
 ```
 
-Use a managed installation whose path is under a temporary Atlas root. No executable needs to exist for storage-only tests.
+- [ ] **Step 5: Reconcile Phase 1 migration tests**
 
-- [ ] **Step 5: Reconcile Phase 1 migration integration tests**
-
-Update existing expectations:
+Update only expected latest-schema facts:
 
 ```text
-migration ledger count: 3
-Foundation-v1 direct upgrade backup pattern: atlas-before-schema-3-*.db
-backup still contains original Foundation-v1 schema
-new v2 observations and current pointer behavior remain unchanged
+ledger count 3
+Foundation-v1 direct-upgrade backup pattern atlas-before-schema-3-*.db
+backup still contains original v1 schema
+v1/v2 snapshot identity and current-pointer behavior unchanged
+real Foundation Steam build ID remains null until a v2 scan
 ```
-
-Add an explicit v2-to-v3 fixture path so the real Phase 2 upgrade shape is tested independently from the Foundation-v1 adoption path.
-
-Do not rename Phase 1 tests in a way that implies shipped Foundation databases contained non-null Steam build IDs.
 
 - [ ] **Step 6: Verify and commit Task 3**
 
@@ -995,14 +895,11 @@ Do not rename Phase 1 tests in a way that implies shipped Foundation databases c
 dotnet test tests/S1Atlas.Storage.Tests/S1Atlas.Storage.Tests.csproj
 dotnet test tests/S1Atlas.IntegrationTests/S1Atlas.IntegrationTests.csproj --filter FoundationMigrationTests
 dotnet build S1Atlas.sln --configuration Release
+git add -- src/S1Atlas.Storage tests/S1Atlas.Storage.Tests tests/S1Atlas.IntegrationTests/Foundation/FoundationMigrationTests.cs
+git commit -m "feat: persist managed tool provenance"
 ```
 
 Expected: all selected tests pass; zero warnings/errors.
-
-```powershell
-git add -- src/S1Atlas.Storage src/S1Atlas.Core/Storage tests/S1Atlas.Storage.Tests tests/S1Atlas.IntegrationTests/Foundation/FoundationMigrationTests.cs
-git commit -m "feat: persist managed tool provenance"
-```
 
 ---
 
@@ -1013,46 +910,32 @@ git commit -m "feat: persist managed tool provenance"
 - Create: `src/S1Atlas.Extraction/Tools/ToolPackageVerifier.cs`
 - Create: `src/S1Atlas.Extraction/Tools/ToolPathPolicy.cs`
 - Create: `src/S1Atlas.Extraction/Tools/SafeToolPackageInstaller.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ToolDownloadClientTests.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ToolPackageVerifierTests.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/SafeToolPackageInstallerTests.cs`
+- Test: corresponding Task 4 test files
 
 **Interfaces:**
-- Consumes trusted `ResolvedToolDefinition` records.
-- Produces a verified staged package and a contained staged installation tree. It does not execute the tool or promote it to the managed cache.
+- Consumes trusted `ResolvedToolDefinition`.
+- Produces a verified staged package and contained staged install tree; it does not execute or promote the tool.
 
 - [ ] **Step 1: Write failing download-boundary tests**
-
-Add tests using a custom `HttpMessageHandler`:
 
 ```csharp
 [Fact]
 public async Task DownloadAsync_StreamsExactResponseToStaging()
-```
 
-```csharp
 [Fact]
 public async Task DownloadAsync_WhenContentLengthExceedsLimit_RejectsBeforeReadingBody()
-```
 
-```csharp
 [Fact]
 public async Task DownloadAsync_WhenChunkedBodyExceedsLimit_StopsAndDeletesPartialFile()
-```
 
-```csharp
 [Fact]
 public async Task DownloadAsync_WhenStatusIsNotSuccess_ReportsToolDownloadFailed()
-```
 
-```csharp
 [Fact]
-public async Task DownloadAsync_WhenFinalRequestUriIsNotHttps_Rejects()
+public async Task DownloadAsync_WhenFinalRequestUriIsNotHttps_RejectsBeforeReadingBody()
 ```
 
-Expected failures: `ToolDownloadClient` does not exist.
-
-- [ ] **Step 2: Implement the download client**
+- [ ] **Step 2: Implement bounded download**
 
 ```csharp
 internal sealed class ToolDownloadClient(HttpClient httpClient)
@@ -1065,38 +948,27 @@ internal sealed class ToolDownloadClient(HttpClient httpClient)
 }
 ```
 
-Implementation requirements:
+Requirements:
 
-1. Require an absolute HTTPS source URI with empty `UserInfo`.
-2. Use `HttpCompletionOption.ResponseHeadersRead`.
-3. Require a successful status code.
-4. Check `Content-Length` before reading when present.
-5. Create only the destination’s Atlas-owned staging parent.
-6. Stream with a fixed-size buffer.
-7. Count every byte and abort once the maximum would be exceeded.
-8. Flush and close before returning.
-9. On HTTP, IO, cancellation, limit, or disposal failure, delete the partial destination best-effort.
-10. After redirects, require `response.RequestMessage.RequestUri` to remain HTTPS with no user info.
-11. Map non-cancellation failures to `ToolOperationException("ToolDownloadFailed", ...)` unless a more specific size code applies.
+1. Initial and final URI must be absolute HTTPS with empty `UserInfo`.
+2. Use `ResponseHeadersRead`.
+3. Check final URI and status before body read.
+4. Reject oversized `Content-Length` before body read.
+5. Stream to an Atlas-owned staging path with fixed buffer.
+6. Count bytes and abort before exceeding maximum.
+7. Flush/close before success.
+8. Delete partial file best-effort on any failure/cancellation.
+9. Use `ToolDownloadFailed` except more specific size/cancellation errors.
 
-- [ ] **Step 3: Write failing exact package-verification tests**
+- [ ] **Step 3: Add exact package verification**
 
-```csharp
-[Fact]
-public async Task VerifyAsync_WhenSizeAndShaMatch_ReturnsObservedFacts()
-```
+Tests:
 
 ```csharp
-[Fact]
-public async Task VerifyAsync_WhenSizeDiffers_ThrowsToolSizeMismatch()
+VerifyAsync_WhenSizeAndShaMatch_ReturnsObservedFacts
+VerifyAsync_WhenSizeDiffers_ThrowsToolSizeMismatch
+VerifyAsync_WhenShaDiffers_ThrowsToolChecksumMismatch
 ```
-
-```csharp
-[Fact]
-public async Task VerifyAsync_WhenShaDiffers_ThrowsToolChecksumMismatch()
-```
-
-Implement:
 
 ```csharp
 internal sealed record VerifiedToolPackage(
@@ -1113,11 +985,9 @@ internal sealed class ToolPackageVerifier
 }
 ```
 
-Compute size and full SHA-256 from the staged file. Compare size first, then hash using ordinal lower-case comparison.
+Compare size first, then full lower-case SHA-256 ordinally.
 
-- [ ] **Step 4: Add path-containment policy tests and implementation**
-
-`ToolPathPolicy` must provide:
+- [ ] **Step 4: Add path-policy tests and implementation**
 
 ```csharp
 public static string GetManagedInstallRoot(string toolsRoot, ToolDefinition definition);
@@ -1130,55 +1000,30 @@ public static string CreateQuarantinePath(
     DateTimeOffset timestamp);
 ```
 
-Tests must reject:
+Reject absolute/UNC/drive paths, `.`/`..`, mixed-separator traversal, outside-root candidates, reparse points, and unsafe tool/version segments.
 
-```text
-absolute relative paths
-UNC paths
-drive-qualified paths
-'.' and '..' segments
-mixed slash/backslash traversal
-candidate paths outside root
-existing reparse points between root and candidate
-invalid tool/version path segments
-```
-
-Install root is:
+Install root:
 
 ```text
 <toolsRoot>/<toolId>/<version>
 ```
 
-Staging and quarantine names include tool ID, version, timestamp or GUID, and remain single safe path segments.
+- [ ] **Step 5: Write single-file and ZIP safety tests**
 
-- [ ] **Step 5: Write failing single-file and ZIP safety tests**
-
-Single-file tests:
-
-```csharp
-[Fact]
-public async Task MaterializeAsync_SingleFile_CopiesOnlyToDeclaredExecutablePath()
-```
-
-```csharp
-[Fact]
-public async Task MaterializeAsync_SingleFile_WhenDeclaredPathEscapes_Rejects()
-```
-
-ZIP tests must cover:
-
-```csharp
+```text
+MaterializeAsync_SingleFile_CopiesOnlyToDeclaredExecutablePath
+MaterializeAsync_SingleFile_WhenDeclaredPathEscapes_Rejects
 MaterializeAsync_Zip_ExtractsContainedRegularFiles
 MaterializeAsync_Zip_WhenEntryContainsDotDot_Rejects
 MaterializeAsync_Zip_WhenEntryIsAbsolute_Rejects
 MaterializeAsync_Zip_WhenEntriesCollideCaseInsensitively_Rejects
 MaterializeAsync_Zip_WhenEntryIsUnixSymlink_Rejects
 MaterializeAsync_Zip_WhenExpandedBytesExceedLimit_Rejects
-MaterializeAsync_Zip_WhenFileCountExceedsLimit_Rejects
+MaterializeAsync_Zip_WhenRegularFileCountExceedsLimit_Rejects
 MaterializeAsync_Zip_WhenDeclaredExecutableIsMissing_Rejects
 ```
 
-Construct ZIPs in temporary directories. Set Unix symlink external attributes in the malicious fixture; do not create real links on disk.
+ZIP `MaximumFileCount` counts regular file entries, not directory entries. Set Unix symlink external attributes in-memory; do not create real links.
 
 - [ ] **Step 6: Implement safe materialization**
 
@@ -1199,36 +1044,17 @@ internal sealed class SafeToolPackageInstaller
 }
 ```
 
-For `SingleFile`:
+Single file: create only contained executable parent, async copy, exact byte count, no overwrite/reparse.
 
-- create only the executable parent under staged root;
-- copy package bytes asynchronously;
-- verify copied byte count equals package size;
-- reject a pre-existing destination or reparse point.
+ZIP: preflight before writes; normalize both slash types; reject rooted/empty/dot/dot-dot segments; reject case-insensitive collisions, DOS reparse attributes, Unix symlink/special types; accept regular files/directories only; use overflow-safe count/size totals; extract without overwrite; require declared executable.
 
-For `Archive/Zip`:
-
-- open read-only with `ZipArchive`;
-- preflight all entries before writing any file;
-- normalize `/` and `\` as separators for security checks;
-- reject rooted, empty, `.`, and `..` segments;
-- reject duplicate case-insensitive destinations;
-- reject DOS reparse attributes and Unix file type `0xA000` symlinks;
-- accept only regular files and directories;
-- check total entries and expanded bytes with overflow-safe arithmetic;
-- extract each file without overwrite;
-- verify the declared executable exists as a regular contained file.
-
-On failure, delete the staged install root best-effort. Never delete outside the supplied staged root.
+On failure, delete only the supplied staged install root best-effort.
 
 - [ ] **Step 7: Verify and commit Task 4**
 
 ```powershell
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ToolDownloadClient|ToolPackageVerifier|ToolPathPolicy|SafeToolPackageInstaller"
 dotnet build S1Atlas.sln --configuration Release
-```
-
-```powershell
 git add -- src/S1Atlas.Extraction/Tools tests/S1Atlas.Extraction.Tests/Tools
 git commit -m "feat: safely acquire and materialize tool packages"
 ```
@@ -1238,39 +1064,19 @@ git commit -m "feat: safely acquire and materialize tool packages"
 ### Task 5: Add controlled capability probes and installation inspection
 
 **Files:**
-- Create: `src/S1Atlas.Extraction/Tools/ToolProbeRunner.cs`
-- Create: `src/S1Atlas.Extraction/Tools/ToolInstallationDocument.cs`
-- Create: `src/S1Atlas.Extraction/Tools/ToolInstallationDocumentStore.cs`
-- Create: `src/S1Atlas.Extraction/Tools/ManagedToolInstallationValidator.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ToolProbeRunnerTests.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ManagedToolInstallationValidatorTests.cs`
+- Create: `ToolProbeRunner.cs`, `ToolInstallationDocument.cs`, `ToolInstallationDocumentStore.cs`, `ManagedToolInstallationValidator.cs`
+- Test: corresponding Task 5 files
 
 **Interfaces:**
-- Consumes a contained executable and committed probe definitions.
-- Produces bounded probe results and one of the exact installation states: `NotInstalled`, `Verified`, `Corrupt`, `Incomplete`, `DefinitionMismatch`, or `ProbeFailed`.
+- Consumes a contained executable and committed probes.
+- Produces bounded probe results and exact managed states.
 
 - [ ] **Step 1: Write failing process-probe tests**
 
-Use `%ComSpec%` as a runtime-only test executable. Copy it to a temporary path so no system file is modified.
-
-Add:
-
-```csharp
-[Fact]
-public async Task RunAsync_WhenExitAndRequiredOutputMatch_ReturnsSucceeded()
-```
-
-Use arguments:
+Copy `%ComSpec%` to a temporary path for tests only. Use `/d`, `/c`, `echo dll_il_recovery`.
 
 ```text
-/d
-/c
-echo dll_il_recovery
-```
-
-Add:
-
-```csharp
+RunAsync_WhenExitAndRequiredOutputMatch_ReturnsSucceeded
 RunAsync_WhenExitCodeIsNotAccepted_ReturnsFailure
 RunAsync_WhenRequiredOutputIsMissing_ReturnsFailure
 RunAsync_WhenTimeoutExpires_KillsProcessAndReturnsTimedOut
@@ -1278,9 +1084,7 @@ RunAsync_WhenCancellationRequested_KillsProcessAndThrowsCancellation
 RunAsync_WhenOutputExceedsLimit_ContinuesDrainingAndMarksTruncated
 ```
 
-For timeout, use a command that remains alive longer than a 100 ms test timeout. Do not sleep the test thread.
-
-- [ ] **Step 2: Implement bounded no-shell probe execution**
+- [ ] **Step 2: Implement bounded no-shell probes**
 
 ```csharp
 internal sealed class ToolProbeRunner
@@ -1298,33 +1102,19 @@ internal sealed class ToolProbeRunner
 Process settings:
 
 ```text
-UseShellExecute = false
-CreateNoWindow = true
-RedirectStandardOutput = true
-RedirectStandardError = true
-WorkingDirectory = verified staged/final install root
-NO_COLOR = true
-arguments added one-by-one through ArgumentList
+UseShellExecute false
+CreateNoWindow true
+redirect stdout/stderr
+working directory = contained install root
+NO_COLOR=true
+arguments added individually via ArgumentList
 ```
 
-Read stdout and stderr concurrently at the byte-stream level. Retain at most 1 MiB from each while continuing to drain discarded bytes. Decode retained bytes as UTF-8 with replacement fallback.
+Drain both streams concurrently. Retain at most 1 MiB each while consuming discarded bytes. Decode UTF-8 with replacement fallback.
 
-Timeout and cancellation:
+On timeout/cancellation kill the entire process tree, await exit/drains, return timed-out result for timeout, and rethrow caller cancellation. Required substrings use ordinal comparison over combined retained output.
 
-- link caller cancellation with a probe timeout token;
-- on timeout or cancellation, call `Kill(entireProcessTree: true)` when still running;
-- await process exit and both drain tasks;
-- return `TimedOut = true` for timeout;
-- rethrow caller cancellation as `OperationCanceledException`;
-- never expose a public stack trace.
-
-A probe succeeds only when the exit code is accepted and every required substring occurs in combined retained stdout/stderr using ordinal comparison.
-
-- [ ] **Step 3: Define normalized local installation documents**
-
-`ToolInstallationDocument` mirrors `ManagedToolInstallation` using JSON-safe strings and probe result documents.
-
-`ToolInstallationDocumentStore`:
+- [ ] **Step 3: Define normalized local documents**
 
 ```csharp
 internal sealed class ToolInstallationDocumentStore
@@ -1335,68 +1125,29 @@ internal sealed class ToolInstallationDocumentStore
         ManagedToolInstallation installation,
         CancellationToken cancellationToken);
 
-    public Task<(ResolvedToolDefinition Definition, ManagedToolInstallation Installation)?>
-        TryReadAsync(
-            string installRoot,
-            CancellationToken cancellationToken);
+    public Task<(ResolvedToolDefinition Definition,
+                 ManagedToolInstallation Installation)?> TryReadAsync(
+        string installRoot,
+        CancellationToken cancellationToken);
 }
 ```
 
-Write:
-
-```text
-<installRoot>/tool-manifest.json
-<installRoot>/installation.json
-```
-
-Rules:
-
-- UTF-8 without BOM;
-- camel-case, indented JSON;
-- string enums;
-- write temporary sibling files and rename within staged root;
-- normalized tool manifest is generated through `ToolDefinitionSerializer`;
-- local manifest is parsed and validated through the same strict path as repository definitions;
-- malformed/missing local documents return null to the inspector, not a partially trusted record;
-- no public output contains probe stdout/stderr.
+Write `tool-manifest.json` and `installation.json` as UTF-8 no-BOM, indented camel-case JSON with string enums. Use sibling temp files and rename inside staged root. Parse local manifest through the same strict validator. Malformed/missing documents return null. Do not store probe stdout/stderr.
 
 - [ ] **Step 4: Write failing installation-state tests**
 
-Create a temporary managed root and add:
-
-```csharp
-[Fact]
-public async Task InspectAsync_WhenRootDoesNotExist_ReturnsNotInstalled()
+```text
+InspectAsync_WhenRootDoesNotExist_ReturnsNotInstalled
+InspectAsync_WhenDocumentsOrExecutableAreMissing_ReturnsIncomplete
+InspectAsync_WhenLocalDefinitionDigestDiffers_ReturnsDefinitionMismatch
+InspectAsync_WhenExecutableHashDiffers_ReturnsCorruptWithoutRunningProbes
+InspectAsync_WhenProbeFails_ReturnsProbeFailed
+InspectAsync_WhenEverythingMatches_ReturnsVerifiedWithFreshVerificationTime
 ```
 
-```csharp
-[Fact]
-public async Task InspectAsync_WhenDocumentsOrExecutableAreMissing_ReturnsIncomplete()
-```
+Use an injected probe executor/delegate to count invocations; hash mismatch must short-circuit probes.
 
-```csharp
-[Fact]
-public async Task InspectAsync_WhenLocalDefinitionDigestDiffers_ReturnsDefinitionMismatch()
-```
-
-```csharp
-[Fact]
-public async Task InspectAsync_WhenExecutableHashDiffers_ReturnsCorruptWithoutRunningProbes()
-```
-
-```csharp
-[Fact]
-public async Task InspectAsync_WhenProbeFails_ReturnsProbeFailed()
-```
-
-```csharp
-[Fact]
-public async Task InspectAsync_WhenEverythingMatches_ReturnsVerifiedWithFreshVerificationTime()
-```
-
-Use an injected probe runner abstraction or delegate in validator tests to count invocations. Hash mismatch must short-circuit before process execution.
-
-- [ ] **Step 5: Implement managed installation inspection**
+- [ ] **Step 5: Implement inspection**
 
 ```csharp
 internal sealed class ManagedToolInstallationValidator
@@ -1412,42 +1163,29 @@ internal sealed class ManagedToolInstallationValidator
 }
 ```
 
-Constructor dependencies:
+Dependencies: tools root, document store, probe runner, `IFileHasher`, `TimeProvider`.
+
+Order:
 
 ```text
-tools root
-ToolInstallationDocumentStore
-ToolProbeRunner
-IFileHasher
-TimeProvider
+root absent -> NotInstalled
+not contained/normal or reparse crossing -> Incomplete
+documents missing/malformed -> Incomplete
+definition digests differ -> DefinitionMismatch
+executable missing/not regular/reparse -> Incomplete
+executable hash differs -> Corrupt
+run probes in committed order
+any probe failure -> ProbeFailed
+all pass -> Verified
 ```
 
-Inspection order:
-
-```text
-1. expected install root absent -> NotInstalled
-2. root is not a normal contained directory or crosses a reparse point -> Incomplete
-3. local manifest/installation document missing or malformed -> Incomplete
-4. local effective definition digest or installation definition digest differs -> DefinitionMismatch
-5. declared executable missing/not regular/reparse point -> Incomplete
-6. observed executable SHA-256 differs -> Corrupt
-7. controlled probes run in committed order
-8. any probe failure -> ProbeFailed
-9. all checks pass -> Verified
-```
-
-For `Verified`, return a `ManagedToolInstallation` carrying the original `InstalledAtUtc`, current observed paths/hashes, current probe results, and `LastVerifiedAtUtc = TimeProvider.GetUtcNow()`.
-
-Do not invalidate an otherwise verified installation merely because an old absolute `RootPath` stored in `installation.json` differs after the entire Atlas data root was moved. Current contained root and bytes are authoritative local observations; paths are excluded from tool identity.
+Verified status preserves original install time, uses current root/hash/probes, and sets fresh last verification time. A moved whole Atlas root does not invalidate bytes merely because old absolute `RootPath` differs; paths are not identity inputs.
 
 - [ ] **Step 6: Verify and commit Task 5**
 
 ```powershell
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ToolProbeRunner|ManagedToolInstallationValidator"
 dotnet build S1Atlas.sln --configuration Release
-```
-
-```powershell
 git add -- src/S1Atlas.Extraction/Tools tests/S1Atlas.Extraction.Tests/Tools
 git commit -m "feat: probe and inspect managed tool installations"
 ```
@@ -1457,41 +1195,19 @@ git commit -m "feat: probe and inspect managed tool installations"
 ### Task 6: Add staged installation, repair, quarantine, and service orchestration
 
 **Files:**
-- Create: `src/S1Atlas.Extraction/Tools/ManagedToolInstaller.cs`
-- Create: `src/S1Atlas.Extraction/Tools/ManagedToolService.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ManagedToolInstallerTests.cs`
-- Test: `tests/S1Atlas.Extraction.Tests/Tools/ManagedToolServiceTests.cs`
+- Create: `ManagedToolInstaller.cs`, `ManagedToolService.cs`
+- Test: `ManagedToolInstallerTests.cs`, `ManagedToolServiceTests.cs`
 
 **Interfaces:**
 - Consumes Tasks 1–5 and `IToolRepository`.
-- Produces the complete Phase 2 application service used by CLI commands.
+- Produces the complete Phase 2 application service.
 
 - [ ] **Step 1: Write failing installer orchestration tests**
 
-Use copied `%ComSpec%` bytes, a fixture definition with fake HTTPS URL, and controlled probes that echo `dll_il_recovery`.
-
-Add:
-
-```csharp
-[Fact]
-public async Task InstallAsync_WhenNotInstalled_DownloadsVerifiesProbesAndPromotes()
-```
-
-Assert:
+Use copied `%ComSpec%` bytes, fake HTTPS, and probes that echo `dll_il_recovery`.
 
 ```text
-one HTTP request
-all network/package work occurs under tools/.staging
-final root is tools/<toolId>/<version>
-final root contains Cpp2IL.exe, tool-manifest.json, installation.json
-package/executable hashes match
-staging path is removed
-status is Verified
-```
-
-Add:
-
-```csharp
+InstallAsync_WhenNotInstalled_DownloadsVerifiesProbesAndPromotes
 InstallAsync_WhenAlreadyVerified_IsNoOpWithoutHttp
 InstallAsync_WhenExistingInstallationIsInvalidWithoutRepair_RequiresRepairWithoutHttp
 InstallAsync_WithRepair_StagesBeforeMovingExistingRootAndQuarantinesOldRoot
@@ -1500,9 +1216,7 @@ InstallAsync_WhenPromotionFails_RestoresQuarantinedRootBestEffort
 InstallAsync_WhenCanceled_RemovesOnlyOwnedStagingPath
 ```
 
-- [ ] **Step 2: Implement managed installer flow**
-
-Constructor dependencies:
+- [ ] **Step 2: Implement installer flow**
 
 ```csharp
 internal sealed class ManagedToolInstaller : IToolInstaller
@@ -1522,37 +1236,37 @@ internal sealed class ManagedToolInstaller : IToolInstaller
 }
 ```
 
-`InstallAsync` sequence:
+Sequence:
 
 ```text
-inspect expected final root
-  Verified -> return successful no-op and never call HTTP
-  invalid + !repair -> throw ToolRepairRequired and never call HTTP
+inspect final root
+  Verified -> return no-op, no HTTP
+  invalid + !repair -> ToolRepairRequired, no HTTP
   NotInstalled or invalid + repair -> continue
 
 create unique owned staging root
-  download package
-  verify exact size and SHA-256
-  materialize staged install tree
-  hash observed executable
-  run all committed probes
-  fail with ToolProbeFailed if any probe fails
-  create ManagedToolInstallation(status Verified)
-  write normalized local documents
-  inspect staged root again; require Verified
+download package to a contained asset path
+verify exact size/SHA
+materialize staged install
+hash executable
+run committed probes
+require every probe success
+precompute quarantine path when replacing
+create Verified ManagedToolInstallation
+write local documents
+inspect staged root; require Verified
 
 promotion
-  if no existing root: Directory.Move(staged install, final root)
-  if repair: move existing root/file to unique quarantine path,
-             then move staged install to final root
-  on second move failure: best-effort restore quarantined path
+  no existing root -> Directory.Move(staged install, final)
+  repair -> move old file/directory to quarantine, then move staged install to final
+  second move failure -> best-effort restore quarantine
 
-inspect final root again; require Verified
-return ToolInstallResult
-finally delete package and owned staging root best-effort
+inspect final root; require Verified
+return ManagedToolInstallOutcome
+finally remove package and owned staging path best-effort
 ```
 
-Specific error codes:
+Errors:
 
 ```text
 ToolRepairRequired
@@ -1563,38 +1277,19 @@ ToolProbeFailed
 ToolInstallationFailed
 ```
 
-A failed repair must not erase or overwrite the prior path. Promotion uses same-volume moves under the Atlas tools root.
+Failed repair never erases/overwrites prior root. Moves stay on the Atlas tools volume.
 
-- [ ] **Step 3: Write failing service and repository-registration tests**
+- [ ] **Step 3: Write failing service tests**
 
-Use fakes for provider, installer, validator, and repository:
-
-```csharp
-[Fact]
-public async Task GetStatusesAsync_WithoutToolId_ReturnsDefinitionsInDeterministicOrder()
+```text
+GetStatusesAsync_WithoutToolId_ReturnsCurrentPlatformDefinitionsInDeterministicOrder
+GetStatusAsync_WhenVerified_UpsertsInstallationAndToolInstance
+InstallAsync_WhenFilesystemSucceeds_RegistersVerifiedProvenance
+InstallAsync_WhenRepositorySaveFails_LeavesVerifiedFilesystemForLaterStatusRecovery
+InstallAsync_UnknownTool_FailsBeforeHttpOrFilesystemWork
 ```
 
-```csharp
-[Fact]
-public async Task GetStatusAsync_WhenVerified_UpsertsManagedInstallationAndToolInstance()
-```
-
-```csharp
-[Fact]
-public async Task InstallAsync_WhenFilesystemSucceeds_RegistersVerifiedProvenance()
-```
-
-```csharp
-[Fact]
-public async Task InstallAsync_WhenRepositorySaveFails_LeavesVerifiedFilesystemForLaterStatusRecovery()
-```
-
-```csharp
-[Fact]
-public async Task InstallAsync_UnknownTool_FailsBeforeHttpOrFilesystemWork()
-```
-
-- [ ] **Step 4: Implement the application service**
+- [ ] **Step 4: Implement service orchestration**
 
 ```csharp
 public sealed class ManagedToolService
@@ -1618,25 +1313,21 @@ public sealed class ManagedToolService
 }
 ```
 
-For every verified status/install, create the managed tool instance:
+No tool ID: filter `GetAll()` to current platform and order by tool ID ordinally.
+
+For each verified status or install outcome, construct:
 
 ```csharp
-var id = ToolInstanceId.Create(
+var toolInstanceId = ToolInstanceId.Create(
     definition.Definition.ToolId,
     installation.ExecutableSha256,
     definition.Definition.Platform,
     ToolTrustLevel.ManagedPinned);
 ```
 
-Use executable path:
+Observed executable path is the contained combination of install root and declared executable path. New instance first-observed time begins at installation time; repository preserves earlier time on re-verification.
 
-```text
-installation.RootPath + definition.Package.ExecutableRelativePath
-```
-
-`FirstObservedAtUtc` is the install time for a newly installed instance. On later status verification, the repository preserves the original first-observed timestamp and updates last verification.
-
-If filesystem promotion succeeds but the DB save fails, return an operational failure. Do not delete the verified filesystem installation. A later `tools status` re-verifies and registers it.
+Persist verified installation and instance atomically, then return `ToolInstallResult`. If DB save fails after filesystem promotion, return operational failure but do not delete the verified filesystem root; later `tools status` re-registers it.
 
 - [ ] **Step 5: Verify and commit Task 6**
 
@@ -1644,47 +1335,29 @@ If filesystem promotion succeeds but the DB save fails, return an operational fa
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ManagedToolInstaller|ManagedToolService"
 dotnet test tests/S1Atlas.Storage.Tests/S1Atlas.Storage.Tests.csproj --filter SqliteAtlasRepositoryToolTests
 dotnet build S1Atlas.sln --configuration Release
-```
-
-```powershell
 git add -- src/S1Atlas.Extraction/Tools tests/S1Atlas.Extraction.Tests/Tools
 git commit -m "feat: install and register managed tools atomically"
 ```
 
 ---
 
-### Task 7: Expose tool status/install CLI, document behavior, and prove the full boundary
+### Task 7: Expose CLI commands, document behavior, and prove the full boundary
 
 **Files:**
-- Modify: `src/S1Atlas.Cli/Configuration/AtlasPaths.cs`
-- Create: `src/S1Atlas.Cli/Configuration/CliConfigurationPaths.cs`
-- Create: `src/S1Atlas.Cli/Commands/ToolsCommand.cs`
-- Create: `src/S1Atlas.Cli/Commands/ToolsStatusCommand.cs`
-- Create: `src/S1Atlas.Cli/Commands/ToolsInstallCommand.cs`
-- Create: `src/S1Atlas.Cli/Output/ToolOutputModels.cs`
-- Create: `src/S1Atlas.Cli/Properties/AssemblyInfo.cs`
-- Modify: `src/S1Atlas.Cli/CliApplication.cs`
-- Modify: `src/S1Atlas.Cli/Commands/CommandExecution.cs`
-- Modify: `src/S1Atlas.Cli/Program.cs`
-- Create: `tests/S1Atlas.IntegrationTests/Tools/ManagedToolCliFixture.cs`
-- Create: `tests/S1Atlas.IntegrationTests/Tools/ManagedToolCliTests.cs`
-- Modify: `README.md`
+- Modify: `AtlasPaths.cs`, `CliApplication.cs`, `CommandExecution.cs`, `Program.cs`, `README.md`
+- Create: `CliConfigurationPaths.cs`, tool command/output files, CLI AssemblyInfo, integration fixture/tests
 
 **Interfaces:**
-- Consumes `ManagedToolService` and the existing `CommandOutput` envelope.
-- Produces the complete user-facing Phase 2 commands without changing Foundation command contracts.
+- Consumes `ManagedToolService` and existing `CommandOutput`.
+- Produces complete Phase 2 user commands without changing Foundation command contracts.
 
-- [ ] **Step 1: Add final Atlas and configuration paths**
-
-Extend `AtlasPaths`:
+- [ ] **Step 1: Add Atlas and config paths**
 
 ```csharp
 public string ToolsDirectory => Path.Combine(RootDirectory, "tools");
 public string ToolStagingDirectory => Path.Combine(ToolsDirectory, ".staging");
 public string ToolQuarantineDirectory => Path.Combine(ToolsDirectory, "quarantine");
 ```
-
-Create `CliConfigurationPaths`:
 
 ```csharp
 internal sealed record CliConfigurationPaths(string RootDirectory)
@@ -1694,28 +1367,28 @@ internal sealed record CliConfigurationPaths(string RootDirectory)
 }
 ```
 
-Resolution order:
+Resolution:
 
-1. `AppContext.BaseDirectory/config` when it contains `tools`.
-2. Walk upward from `AppContext.BaseDirectory` until a directory containing `S1Atlas.sln` and `config/tools` is found for development/test runs.
-3. Otherwise return the app-base candidate so the provider emits one clear `ToolDefinitionInvalid` error.
+1. `AppContext.BaseDirectory/config` when `tools` exists.
+2. Walk upward from app base until `S1Atlas.sln` plus `config/tools` exists for development/tests.
+3. Return app-base candidate otherwise so provider emits one clear error.
 
-No environment variable or CLI option may replace the repository-controlled definitions in Phase 2.
+No environment/CLI override for committed definitions in Phase 2.
 
 - [ ] **Step 2: Write failing CLI integration tests**
 
-`ManagedToolCliFixture` must:
+Fixture:
 
-- create a temporary Atlas root and temporary configuration root;
-- copy `%ComSpec%` bytes to memory only;
-- write a fixture tool definition whose expected size/SHA match those bytes;
-- provide a new fake `HttpClient` per invocation;
-- count requests;
-- create no files under the Schedule I fixture.
+- temporary Atlas and config roots;
+- `%ComSpec%` bytes held/copy only in temp;
+- fixture manifest with matching size/SHA;
+- new fake `HttpClient` per CLI invocation;
+- request counter;
+- no Schedule I path/files.
 
-Add human and JSON tests:
+Tests:
 
-```csharp
+```text
 ToolsStatus_WhenNotInstalled_ReportsNotInstalledWithoutHttp
 ToolsStatusJson_WhenNotInstalled_ReturnsOneStableEnvelope
 ToolsInstall_DownloadsOnceAndReportsVerified
@@ -1728,21 +1401,18 @@ ToolsInstall_WhenChecksumDiffers_ReturnsStructuredFailureAndNoFinalRoot
 ToolsStatus_UnknownTool_ReturnsUnknownToolWithoutHttp
 ```
 
-JSON assertions:
+JSON:
 
 ```text
-schemaVersion == 1
-command is "tools status" or "tools install"
-success/exitCode match
-normal status states, including NotInstalled/Corrupt, are successful query results
-install failures have null data and { code, message }
-stderr is empty in JSON mode
-no stack trace appears
+schemaVersion 1
+command "tools status" or "tools install"
+normal status states are success/exit 0
+install failures have null data and {code,message}
+stderr empty in JSON mode
+no stack trace
 ```
 
-Run and expect parse failure because `tools` is not registered.
-
-- [ ] **Step 3: Define tool output DTOs**
+- [ ] **Step 3: Define output DTOs**
 
 ```csharp
 internal sealed record ToolsStatusOutput(
@@ -1780,11 +1450,9 @@ internal sealed record ToolInstallOutput(
     string? QuarantinePath);
 ```
 
-Do not expose captured probe stdout/stderr.
+Never expose captured probe streams.
 
-- [ ] **Step 4: Implement the command tree**
-
-`ToolsCommand.Create(...)` creates the parent:
+- [ ] **Step 4: Implement command tree**
 
 ```text
 tools
@@ -1792,14 +1460,11 @@ tools
   install <tool-id> [--repair] [--json]
 ```
 
-`tools status`:
+Each tool command initializes `SqliteAtlasRepository` before service use so migration 3 is applied before provenance writes.
 
-- optional tool ID;
-- no ID lists all definitions for current platform;
-- query states return exit 0 even when NotInstalled, Corrupt, Incomplete, DefinitionMismatch, or ProbeFailed;
-- unknown tool/definition/platform/integrity exceptions return exit 1.
+`tools status` returns exit 0 for known NotInstalled/Corrupt/Incomplete/DefinitionMismatch/ProbeFailed states; unknown definition/platform/integrity errors return 1.
 
-Human status format:
+Human status:
 
 ```text
 Cpp2IL
@@ -1809,27 +1474,18 @@ Platform:             win-x64
 Definition digest:    <digest>
 Installation status:  <state>
 Executable checksum:  <hash or unknown>
-Installed at:         <path or not installed>
+Install root:         <path or not installed>
 Last verified:        <timestamp or never>
 ```
 
-When not installed, append:
+Not installed adds:
 
 ```text
 Install with:
   s1atlas tools install cpp2il
 ```
 
-`tools install`:
-
-- required tool ID;
-- `--repair` boolean;
-- invokes the only network-enabled service path;
-- normal verified installation is a successful no-op;
-- invalid existing installation without repair returns `ToolRepairRequired` before HTTP;
-- successful repair prints quarantine path.
-
-Human success messages:
+Install messages:
 
 ```text
 Cpp2IL 2022.1.0-pre-release.21 installed and verified.
@@ -1846,9 +1502,9 @@ Previous installation moved to:
   <quarantine path>
 ```
 
-- [ ] **Step 5: Make structured tool exceptions output-mode aware**
+- [ ] **Step 5: Make tool exceptions output-aware**
 
-Update `CommandExecution.Run` before the generic exception catch:
+Before generic catch:
 
 ```csharp
 catch (ToolOperationException exception)
@@ -1857,17 +1513,11 @@ catch (ToolOperationException exception)
 }
 ```
 
-Cancellation remains code `OperationCanceled`, exit 2. Generic exceptions remain `OperationalFailure`, exit 1.
+Cancellation remains exit 2/code `OperationCanceled`; generic remains exit 1/code `OperationalFailure`.
 
-- [ ] **Step 6: Compose production and test dependencies**
+- [ ] **Step 6: Compose production/test dependencies**
 
-Keep the public constructor:
-
-```csharp
-public CliApplication(string dataDirectory, string atlasVersion)
-```
-
-Add an internal constructor visible to integration tests:
+Keep public constructor. Add internal constructor:
 
 ```csharp
 internal CliApplication(
@@ -1878,30 +1528,18 @@ internal CliApplication(
     TimeProvider? timeProvider = null)
 ```
 
-Create `src/S1Atlas.Cli/Properties/AssemblyInfo.cs`:
+CLI internals visibility:
 
 ```csharp
 using System.Runtime.CompilerServices;
-
 [assembly: InternalsVisibleTo("S1Atlas.IntegrationTests")]
 ```
 
-Production HTTP client:
+Production HTTP client has infinite timeout, `User-Agent: S1Atlas/<atlasVersion>`, and is disposed after each invocation. Redirects are allowed; final URI is revalidated by download client.
 
-```text
-base address: none
-timeout: infinite; cancellation token controls operation
-User-Agent: S1Atlas/<atlasVersion>
-automatic redirects permitted, with final HTTPS validation in ToolDownloadClient
-```
+Compose one SQLite repository and the tool provider/validator/installer/service from Atlas/config paths. `tools status` must never issue an HTTP request; throwing fake handler proves it.
 
-`InvokeCore` constructs one `SqliteAtlasRepository`, initializes the existing Foundation commands exactly as before, and composes the tool provider/service from `AtlasPaths`, `CliConfigurationPaths`, and a fresh HTTP client factory.
-
-`tools status` must not call the HTTP client. Integration tests use a handler that throws on any unexpected request.
-
-- [ ] **Step 7: Wire Ctrl+C cancellation for downloads and probes**
-
-Update `Program.cs`:
+- [ ] **Step 7: Wire Ctrl+C**
 
 ```csharp
 using var cancellation = new CancellationTokenSource();
@@ -1912,32 +1550,26 @@ Console.CancelKeyPress += (_, eventArgs) =>
 };
 ```
 
-Pass `cancellation.Token` to `Invoke`. Existing command cancellation output and exit code 2 remain unchanged.
+Pass token to `Invoke`.
 
 - [ ] **Step 8: Update README**
 
 Document:
 
-- Phase 1 metadata/migrations are implemented.
-- The managed Cpp2IL tool supply chain is implemented.
-- Exact `tools status` and `tools install` commands.
-- Only `tools install` performs network access.
-- The official pin, size, and SHA-256.
-- Default tool cache under `%LOCALAPPDATA%\S1Atlas\tools` and `S1ATLAS_HOME` behavior.
-- Schema migration 3 may create one `atlas-before-schema-3-*.db` backup.
-- Repair is explicit and invalid roots are quarantined.
-- `tools status` is offline and may report invalid states without changing the game.
-- Phase 2 still does not run Cpp2IL against Schedule I.
-- The next implementation phase is extraction orchestration: profiles, typed arguments, attempts, live/archived inputs, process execution, cancellation, and logs.
-
-Update the command table with:
-
 ```text
-tools status [cpp2il] [--json]
-tools install cpp2il [--repair] [--json]
+Phase 1 implemented
+managed Cpp2IL supply chain implemented
+tools status/install commands
+only tools install uses network
+exact official pin/size/SHA
+default cache and S1ATLAS_HOME
+one possible atlas-before-schema-3 backup
+repair/quarantine behavior
+o game execution yet
+Phase 3 next: profiles, inputs, attempts, process execution, cancellation, logs
 ```
 
-- [ ] **Step 9: Run the complete automated verification**
+- [ ] **Step 9: Run full automated verification**
 
 ```powershell
 dotnet restore S1Atlas.sln
@@ -1945,20 +1577,9 @@ dotnet build S1Atlas.sln --configuration Release --no-restore
 dotnet test S1Atlas.sln --configuration Release --no-build --verbosity normal
 ```
 
-Expected:
+Expected: zero warnings/errors, all projects pass, no external download.
 
-```text
-Build succeeded
-0 warnings
-0 errors
-All Core tests pass
-All Extraction tests pass
-All Storage tests pass
-All Integration tests pass
-No test downloads an external asset
-```
-
-- [ ] **Step 10: Verify repository scope and generated-data safety**
+- [ ] **Step 10: Verify repository scope**
 
 ```powershell
 git status --short
@@ -1966,16 +1587,9 @@ git diff --check
 git ls-files | Select-String -Pattern "Cpp2IL\.exe|atlas\.db|\.db-wal|\.db-shm|installation\.json|tool-manifest\.json"
 ```
 
-Expected:
+Expected: no executable, generated manifest, DB, backup, or local record tracked. The committed file is `config/tools/cpp2il.win-x64.json`, not generated `tool-manifest.json`.
 
-- the only matched tool manifest is the committed `config/tools/cpp2il.win-x64.json`, not a generated local `tool-manifest.json`;
-- no executable, downloaded package, DB, backup, or generated installation record is tracked;
-- no whitespace errors;
-- existing CI files are unchanged unless an independently justified Windows test correction is required.
-
-- [ ] **Step 11: Run the real managed-pin smoke gate on the Windows development PC**
-
-Before taking the implementation PR out of draft, pull/check out the feature branch and run:
+- [ ] **Step 11: Run real Windows managed-pin smoke gate**
 
 ```cmd
 dotnet run --configuration Release --project src\S1Atlas.Cli -- tools status cpp2il
@@ -1988,32 +1602,15 @@ dotnet run --configuration Release --project src\S1Atlas.Cli -- tools status cpp
 Expected:
 
 ```text
-first status: NotInstalled, unless a verified managed pin already exists
-install: official asset downloaded once, exact size/hash verified, probes pass
-second status: Verified
-second install: successful no-op with no new download
-JSON: one valid schema-version-1 document
-managed executable path: %LOCALAPPDATA%\S1Atlas\tools\cpp2il\2022.1.0-pre-release.21\Cpp2IL.exe
+first status NotInstalled unless verified pin already exists
+first install downloads once and verifies exact official bytes/probes
+second status Verified
+second install successful no-op/no download
+JSON one schema-version-1 document
+path %LOCALAPPDATA%\S1Atlas\tools\cpp2il\2022.1.0-pre-release.21\Cpp2IL.exe
 ```
 
-Record, but do not commit:
-
-```text
-observed package SHA-256
-observed executable SHA-256
-definition digest
-probe success
-install root
-schema-3 backup path, when created
-```
-
-Also verify:
-
-```cmd
-git status
-```
-
-Expected: working tree clean. No game directory comparison is required because Phase 2 commands never receive or resolve a Schedule I path.
+Record without committing: observed package/executable hashes, definition digest, probes, install root, schema-3 backup path. `git status` remains clean.
 
 - [ ] **Step 12: Commit Task 7**
 
@@ -2026,71 +1623,62 @@ git commit -m "feat: expose the managed Cpp2IL tool supply chain"
 
 ## Phase 2 Review Checklist
 
-Before the implementation PR leaves draft, verify every statement with current tests, CI, repository inspection, or the real local smoke gate:
-
 ```text
-[ ] The production Cpp2IL pin exactly matches the approved version, asset, size, and SHA-256
-[ ] Tool definitions are typed, strict, and repository controlled
-[ ] No “latest” lookup or remote mutable manifest exists
-[ ] Definition digests change when any effective field changes
-[ ] Tool-instance identity depends on stable tool ID, executable bytes, platform, and trust only
-[ ] Paths and timestamps do not change tool-instance identity
-[ ] Migration 3 preserves migrations 1 and 2 checksums
-[ ] Existing v2 databases receive one pre-schema-3 backup
-[ ] Verified installation and tool-instance rows commit atomically
-[ ] Only HTTPS URLs without credentials are accepted
-[ ] Downloads stream with a hard byte limit and remove partial files on failure
-[ ] Exact expected package size is verified
-[ ] Exact expected package SHA-256 is verified before execution
-[ ] Single-file materialization stays inside Atlas staging
-[ ] Future ZIP definitions reject traversal, absolute paths, collisions, links, and safety-limit violations
-[ ] Probes use no shell and controlled ArgumentList values
-[ ] Probe output is bounded while streams continue draining
-[ ] Probe timeout/cancellation terminates the process tree
-[ ] Managed status states are exactly NotInstalled/Verified/Corrupt/Incomplete/DefinitionMismatch/ProbeFailed
-[ ] Hash mismatch prevents probe execution
-[ ] Verified normal install is a no-op without HTTP
-[ ] Invalid install requires explicit --repair without HTTP
-[ ] Repair stages and verifies before moving the existing root
-[ ] Failed repair leaves the existing root available
-[ ] Successful repair quarantines the old root
-[ ] Filesystem success can be re-registered after a DB write failure
+[ ] Production pin exactly matches approved version/asset/size/SHA
+[ ] Definitions are typed, strict, repository controlled
+[ ] No latest lookup or remote mutable manifest
+[ ] Every effective definition field affects definition digest
+[ ] Tool-instance identity uses stable ID, executable bytes, platform, trust only
+[ ] Paths/timestamps/display/version metadata do not affect tool-instance identity
+[ ] Migrations 1/2 text and checksums remain unchanged
+[ ] Existing v2 DB gets one schema-3 backup
+[ ] Installation and instance rows commit atomically
+[ ] Only credential-free HTTPS accepted
+[ ] Download has hard limit and partial cleanup
+[ ] Exact size and SHA verified before execution
+[ ] Single-file install stays inside staging
+[ ] ZIP traversal/absolute/collision/link/limit attacks rejected
+[ ] Probe execution has no shell string and bounded draining
+[ ] Timeout/cancellation kills process tree
+[ ] Status states exactly match approved six states
+[ ] Hash mismatch prevents probes
+[ ] Verified install is no-op without HTTP
+[ ] Invalid install requires explicit repair without HTTP
+[ ] Repair stages/verifies before moving old root
+[ ] Failed repair preserves old root
+[ ] Successful repair quarantines old root
+[ ] Filesystem success can be re-registered after DB failure
 [ ] tools status is offline
-[ ] tools install is the only Phase 2 network path
-[ ] Human and JSON outputs preserve schema version 1 and exit codes 0/1/2
-[ ] Normal status queries return exit 0 for invalid/not-installed states
-[ ] No stack trace appears in public output
-[ ] Ctrl+C cancellation reaches download and probe operations
-[ ] Full Windows Release build has zero warnings/errors
-[ ] Full automated suite passes without external downloads
-[ ] Real official-pin installation and no-op smoke gate pass
-[ ] No Cpp2IL executable, generated manifest, DB, backup, or game data enters Git
-[ ] No Cpp2IL game extraction behavior entered Phase 2
+[ ] tools install is only Phase 2 network path
+[ ] Human/JSON contracts and exit codes 0/1/2 preserved
+[ ] Known invalid/not-installed status query exits 0
+[ ] No public stack trace
+[ ] Ctrl+C reaches download/probes
+[ ] Full Windows suite passes, zero warnings/errors, no external test download
+[ ] Real official-pin install/no-op smoke passes
+[ ] No executable/generated manifest/DB/backup/game data enters Git
+[ ] No Cpp2IL game execution entered Phase 2
 ```
 
 ## Phase 2 Completion Boundary
 
-When this plan is complete, S1Atlas can explain the approved Cpp2IL pin, explicitly install it from the official asset, prove its package bytes, materialize it safely under Atlas ownership, verify required capabilities, repair/quarantine invalid installations, persist managed provenance, and report the result to humans or agents.
+After this plan, S1Atlas can explain the approved Cpp2IL pin, explicitly install the official asset, prove package bytes, materialize it safely under Atlas ownership, verify required capabilities, repair/quarantine invalid installations, persist managed provenance, and report the result to humans or agents.
 
-The following begin only in Phase 3 or later:
+Phase 3 or later begins:
 
 ```text
-repository extraction profiles
-validation policies
-Cpp2IL typed game arguments
-current/historical build input resolution
-live input pre/post hashing
+extraction profiles and validation policies
+typed Cpp2IL game arguments
+build input resolution and pre/post hashing
 archived input snapshots
-extraction locks and attempts
-Cpp2IL game process execution
-bounded extraction logs
+extraction locks/attempts
+Cpp2IL game process execution and bounded logs
 failed-output retention
-artifact inventories
-managed assembly validation
+artifact inventories and assembly validation
 preferred extractions
-ILSpy and symbol indexing
+ILSpy and symbols
 ```
 
 ## Execution Mode
 
-The user selected **inline execution** for implementation in ChatGPT. After this plan passes QA and is merged, execute Tasks 1–7 sequentially in the existing conversation using `superpowers:executing-plans`, TDD, focused commits, CI checkpoints, and a draft implementation PR.
+The user selected **inline execution** in ChatGPT. After this plan passes QA and merges, execute Tasks 1–7 sequentially with `superpowers:executing-plans`, TDD, focused commits, CI checkpoints, and a draft implementation PR.
