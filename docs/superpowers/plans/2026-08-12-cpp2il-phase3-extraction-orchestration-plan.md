@@ -2111,4 +2111,3 @@ No Phase 4 consumer may read `candidate-output` directly. It must enter through 
 ## Execution Mode
 
 After this plan is reviewed, create or switch to `feature/cpp2il-phase3-extraction-orchestration` from the merged `main` commit `f22ccac1d913c9e7409c9f1db3fa18e46fe681a2`. Execute Tasks 1-10 sequentially using TDD and coherent GREEN commits. Never push a RED/non-compiling checkpoint. Run the real capability smoke only after the automated suite is green and the user explicitly authorizes pointing Cpp2IL at Schedule I.
-
