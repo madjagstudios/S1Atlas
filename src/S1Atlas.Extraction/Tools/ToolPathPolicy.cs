@@ -1,10 +1,15 @@
 using System.Globalization;
 using S1Atlas.Core.Tools;
+using S1Atlas.Extraction.Attempts;
 
 namespace S1Atlas.Extraction.Tools;
 
 internal static class ToolPathPolicy
 {
+    private const string QuarantineTimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
+    private const int GuidNLength = 32;
+    private const int QuarantineTimestampLength = 19;
+
     private static readonly char[] UnsafeSegmentCharacters =
     [
         '/', '\\', ':', '<', '>', '"', '|', '?', '*'
@@ -128,6 +133,85 @@ internal static class ToolPathPolicy
             quarantineRoot,
             $"{definition.ToolId}-{definition.Version}-{timestampText}-{Guid.NewGuid():N}");
     }
+
+    /// <summary>
+    /// Recognizes an Atlas-owned tool staging child name of the exact shape
+    /// <c>&lt;safe-prefix&gt;-&lt;32 lower-hex GUID N&gt;</c>. The prefix (tool ID plus
+    /// version) may itself contain hyphens, so the GUID is matched from the fixed
+    /// suffix rather than by splitting on '-'.
+    /// </summary>
+    public static bool IsOwnedToolStagingEntryName(string name)
+    {
+        if (string.IsNullOrEmpty(name) ||
+            Path.GetFileName(name) != name ||
+            name.Length <= GuidNLength + 1)
+        {
+            return false;
+        }
+
+        var separatorIndex = name.Length - GuidNLength - 1;
+        if (name[separatorIndex] != '-')
+        {
+            return false;
+        }
+
+        var guid = name[(separatorIndex + 1)..];
+        var prefix = name[..separatorIndex];
+        return OwnedAttemptPaths.IsLowerGuidN(guid) && IsSafePrefix(prefix);
+    }
+
+    /// <summary>
+    /// Recognizes an Atlas-owned tool quarantine child name of the exact shape
+    /// <c>&lt;safe-prefix&gt;-&lt;yyyyMMddTHHmmssfffZ&gt;-&lt;32 lower-hex GUID N&gt;</c>
+    /// and returns the embedded UTC timestamp. Parsing works from the fixed-width
+    /// suffix because the prefix may contain hyphens.
+    /// </summary>
+    public static bool TryGetQuarantineTimestampUtc(
+        string name,
+        out DateTimeOffset timestampUtc)
+    {
+        timestampUtc = default;
+        const int suffixLength = QuarantineTimestampLength + GuidNLength + 2;
+        if (string.IsNullOrEmpty(name) ||
+            Path.GetFileName(name) != name ||
+            name.Length <= suffixLength)
+        {
+            return false;
+        }
+
+        var guidSeparatorIndex = name.Length - GuidNLength - 1;
+        var timestampSeparatorIndex = guidSeparatorIndex - QuarantineTimestampLength - 1;
+        if (name[guidSeparatorIndex] != '-' || name[timestampSeparatorIndex] != '-')
+        {
+            return false;
+        }
+
+        var guid = name[(guidSeparatorIndex + 1)..];
+        var timestampText = name[(timestampSeparatorIndex + 1)..guidSeparatorIndex];
+        var prefix = name[..timestampSeparatorIndex];
+        if (!OwnedAttemptPaths.IsLowerGuidN(guid) || !IsSafePrefix(prefix))
+        {
+            return false;
+        }
+
+        if (!DateTimeOffset.TryParseExact(
+                timestampText,
+                QuarantineTimestampFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+        {
+            return false;
+        }
+
+        timestampUtc = parsed;
+        return true;
+    }
+
+    private static bool IsSafePrefix(string prefix) =>
+        !string.IsNullOrEmpty(prefix) &&
+        prefix.IndexOfAny(UnsafeSegmentCharacters) < 0 &&
+        !prefix.Any(char.IsControl);
 
     private static string NormalizeRoot(string root) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
