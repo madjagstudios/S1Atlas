@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, Phase 3 extraction orchestration, and Phase 4 validation and promotion are complete. Phase 3 still runs Cpp2IL and produces a non-authoritative candidate; Phase 4 now inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. ILSpy decompilation, C# source generation, symbol/call indexing, generated HTML documentation, build diffing, MCP, extraction cleanup/retention, and the S1Atlas agent skill remain later milestones.
+> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, Phase 3 extraction orchestration, Phase 4 validation and promotion, and Phase 5 hardening, replay, and milestone finalization are complete. Phase 3 still runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. ILSpy decompilation, C# source generation, symbol/call indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
 
 ## What the Foundation Can Do
 
@@ -98,8 +98,19 @@ dotnet run --project src/S1Atlas.Cli -- extract --game-path "C:\Games\Schedule I
 dotnet run --project src/S1Atlas.Cli -- extract --cpp2il-path "C:\Tools\Cpp2IL.exe"
 dotnet run --project src/S1Atlas.Cli -- extract --profile cpp2il-reconstructed-assemblies-v1 --retry
 dotnet run --project src/S1Atlas.Cli -- extract --snapshot-inputs
+dotnet run --project src/S1Atlas.Cli -- extract --input-snapshot <64-character-snapshot-id> --retry
 dotnet run --project src/S1Atlas.Cli -- extract --keep-failed-artifacts
 ```
+
+`--input-snapshot` runs Cpp2IL from a stored input snapshot instead of live game
+input. It requires `--retry` (so it always runs a new process from the archive),
+never falls back to live input, and cannot be combined with `--game-path` or
+`--snapshot-inputs`. The snapshot's immutable `game-root` is the Cpp2IL root. Only
+after Cpp2IL runs from that exact snapshot and Phase 4 returns an authoritative
+validated extraction does S1Atlas certify the snapshot `replay_verified = 1`;
+certification is idempotent and preserves the first certification timestamp. Every
+process-backed `extract` reports the input source, the input snapshot ID (when
+one applies), and whether that snapshot is replay-verified.
 
 `extract` is always offline: it never installs or downloads a tool. Without
 `--cpp2il-path`, it requires the exact managed pin to be freshly verified and
@@ -127,6 +138,10 @@ dotnet run --project src/S1Atlas.Cli -- extractions list --build <64-character-b
 dotnet run --project src/S1Atlas.Cli -- extractions list --include-failed
 dotnet run --project src/S1Atlas.Cli -- extractions show <extraction-id-or-attempt-id>
 dotnet run --project src/S1Atlas.Cli -- extractions promote <extraction-id>
+dotnet run --project src/S1Atlas.Cli -- extractions cleanup
+dotnet run --project src/S1Atlas.Cli -- extractions cleanup --older-than 30d
+dotnet run --project src/S1Atlas.Cli -- extractions cleanup --older-than 30d --apply
+dotnet run --project src/S1Atlas.Cli -- extractions cleanup --json
 ```
 
 `extractions` commands never issue a network request. `list` shows validated
@@ -140,12 +155,37 @@ current policy, records a `ManualPromotion` audit, is idempotent when the
 extraction is already preferred, and rejects attempt IDs. Known history states
 exit `0`; unknown IDs and integrity failures exit `1`; cancellation exits `2`.
 
+`cleanup` is **preview-first and never automatic**: without `--apply` it only
+reports what it would remove and deletes nothing. `--older-than` takes a positive
+lower-case integer followed by `m`, `h`, or `d` (default `30d`, maximum `36500d`),
+and an item is eligible only when its controlling timestamp is strictly earlier
+than the cutoff. Cleanup may remove only proven Atlas-owned, age-eligible data:
+`Failed`, `Canceled`, or `Abandoned` attempts and their bounded logs, validation
+documents, and retained output; recoverably stale extraction, input, and tool
+staging; and old quarantined managed-tool installations. It **never** removes a
+`ProcessCompleted` candidate, a `Succeeded` attempt or one referenced by a
+validated extraction, a validated extraction, an input snapshot (verified or not),
+the current managed-tool installation, or any active or ambiguous evidence, and it
+never follows a reparse point or enumerates inside a validated extraction or input
+snapshot. It runs recovery first, refuses to run while an extraction lock is held,
+re-observes every candidate immediately before deletion (a changed candidate is
+preserved), and deletes files before the matching database row so an interrupted
+run stays truthful and idempotently retryable. Preview exits `0` even with blocked
+evidence; `--apply` exits `0` only when nothing remained blocked or failed,
+`1` when any did, and `2` on cancellation. `extractions cleanup` issues no network
+request.
+
 For live input, S1Atlas re-hashes the selected build inputs before process
 execution and again afterward. A mismatch before execution requires a new
 `scan`; a change during execution rejects the output. `--snapshot-inputs`
 copies and re-hashes the approved profile inputs into an immutable snapshot,
-but Phase 3 records that snapshot with `replay_verified = false`. It does not
-become eligible for archived replay merely because it was copied successfully.
+but records that snapshot with `replay_verified = false`. It does not become
+eligible for archived replay merely because it was copied successfully — a
+snapshot is certified only by a later explicit `extract --input-snapshot <id>
+--retry` that runs Cpp2IL from the archive and produces an authoritative
+extraction. Implicit historical input resolution uses only replay-verified
+snapshots; an explicit `--input-snapshot` run may select an unverified snapshot
+precisely so it can certify it.
 
 For machine-readable output, add `--json` to the query commands:
 
@@ -233,9 +273,11 @@ can be recovered on the next run. A validated extraction directory is immutable 
 S1Atlas never edits its artifacts or manifests in place — and only an extraction
 whose database row, marker, manifests, artifact rows, and current hashes all
 agree is returned as authoritative. Failed partial output is deleted by default
-or moved to `retained-output` only when `--keep-failed-artifacts` is explicit;
-Phase 4 cleanup never deletes validated extractions, input snapshots, or
-historical attempts (general cleanup and retention are Phase 5).
+or moved to `retained-output` only when `--keep-failed-artifacts` is explicit.
+Phase 5 `extractions cleanup` can remove only proven Atlas-owned, age-eligible
+failure, staging, and quarantine data, and never deletes a validated extraction,
+an input snapshot, a preferred or `ProcessCompleted` output, or any active or
+ambiguous evidence.
 
 Unknown nonempty schemas are rejected without a migration ledger, schema mutation, or backup because S1Atlas cannot safely infer their origin.
 
@@ -294,10 +336,11 @@ handler. They use no proprietary fixture and make no network request.
 | `builds [--json]` | List content-derived builds, newest first-seen first |
 | `tools status [tool-id] [--json]` | Inspect pinned managed-tool state offline |
 | `tools install <tool-id> [--repair] [--json]` | Explicitly download, verify, install, or repair a managed tool |
-| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--keep-failed-artifacts] [--json]` | Run offline extraction, then validate and immutably promote an authoritative extraction (or reuse an existing one) |
+| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--input-snapshot <id>] [--keep-failed-artifacts] [--json]` | Run offline extraction (from live input or an archived snapshot), then validate and immutably promote an authoritative extraction (or reuse an existing one) |
 | `extractions list [--build <id>] [--include-failed] [--json]` | List validated extractions newest first, optionally with failed attempts |
 | `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
 | `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
+| `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
 
 ## Validation Policy
 
@@ -325,13 +368,14 @@ test policy with a tiny managed-byte floor and never modify the production
 
 ## Next Milestone
 
-Phase 5 owns extraction cleanup and age-based retention, archived-only replay
-verification, the final real `--retry` and identical-output smoke coverage,
-privacy and source-control hardening, and the committed non-proprietary smoke
-report. Only after Phase 5 may ILSpy decompilation and symbol/call indexing
-consume the preferred extraction — always through the full integrity-verifying
-API, and never a Phase 3 candidate, retained failure output, or an unverified
-database row.
+With Phase 5 complete, the validated Cpp2IL extraction milestone is finished:
+conservative cleanup and retention, explicit archived-only replay with per-snapshot
+certification, and the repository-hygiene CI gate are in place. The next
+independent design cycle adds ILSpy decompilation, normalized source and symbol
+metadata, and initial search/type/method/source commands over the preferred,
+integrity-verified extraction — always through the full integrity-verifying API,
+and never a Phase 3 candidate, retained failure output, or an unverified database
+row.
 
 ## Project Documents
 
