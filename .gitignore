@@ -24,6 +24,9 @@ data/
 *.db
 *.db-shm
 *.db-wal
+Cpp2IL.exe
+installation.json
+tool-manifest.json
 
 # Extraction/decompilation artifacts
 artifacts/
