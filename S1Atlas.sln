@@ -1,4 +1,4 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -19,6 +19,12 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.IntegrationTests", "tests\S1Atlas.IntegrationTests\S1Atlas.IntegrationTests.csproj", "{88888888-8888-4888-8888-888888888888}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.FakeCpp2Il", "tests\S1Atlas.FakeCpp2Il\S1Atlas.FakeCpp2Il.csproj", "{99999999-9999-4999-8999-999999999999}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{12460D1E-0336-46BF-BD1A-B51D06414D84}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Fixtures", "Fixtures", "{2A117793-FB4E-42C1-9A89-6E501D206FE2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.ManagedAssemblyFixture", "tests\Fixtures\S1Atlas.ManagedAssemblyFixture\S1Atlas.ManagedAssemblyFixture.csproj", "{910A2258-A186-4C22-8025-5DFC38AF9D8B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -62,5 +68,13 @@ Global
 		{99999999-9999-4999-8999-999999999999}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.Build.0 = Release|Any CPU
+		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2A117793-FB4E-42C1-9A89-6E501D206FE2} = {12460D1E-0336-46BF-BD1A-B51D06414D84}
+		{910A2258-A186-4C22-8025-5DFC38AF9D8B} = {2A117793-FB4E-42C1-9A89-6E501D206FE2}
 	EndGlobalSection
 EndGlobal

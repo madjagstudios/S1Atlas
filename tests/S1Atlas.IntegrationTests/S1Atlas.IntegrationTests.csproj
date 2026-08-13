@@ -16,4 +16,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fixtures\S1Atlas.ManagedAssemblyFixture\S1Atlas.ManagedAssemblyFixture.csproj" />
+  </ItemGroup>
 </Project>
