@@ -1,6 +1,7 @@
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Inputs;
+using S1Atlas.Extraction.Promotion;
 
 namespace S1Atlas.Extraction.Attempts;
 
@@ -14,13 +15,15 @@ internal sealed class ExtractionRecoveryService
     private readonly AttemptDocumentStore _documentStore;
     private readonly Func<int, bool> _isProcessAlive;
     private readonly TimeProvider _timeProvider;
+    private readonly IValidatingAttemptRecovery? _validatedPromotionRecovery;
 
     public ExtractionRecoveryService(
         string dataRoot,
         IExtractionRepository repository,
         AttemptDocumentStore documentStore,
         Func<int, bool> isProcessAlive,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IValidatingAttemptRecovery? validatedPromotionRecovery = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
         ArgumentNullException.ThrowIfNull(repository);
@@ -31,6 +34,7 @@ internal sealed class ExtractionRecoveryService
         _documentStore = documentStore;
         _isProcessAlive = isProcessAlive;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _validatedPromotionRecovery = validatedPromotionRecovery;
     }
 
     public async Task RecoverAsync(CancellationToken cancellationToken)
@@ -51,6 +55,17 @@ internal sealed class ExtractionRecoveryService
             {
                 throw new ExtractionAlreadyActiveException(lockState.AttemptId);
             }
+        }
+
+        // Phase 4 validated-promotion recovery runs first, before any generic attempt
+        // recovery. It examines every Validating attempt's promotion evidence and
+        // registers, quarantines, or otherwise classifies it (transitioning it to a
+        // terminal state) so generic recovery below never abandons a Validating attempt
+        // that had recoverable promotion evidence. Only ordinary attempts remain for the
+        // generic recovery pass that follows.
+        if (_validatedPromotionRecovery is not null)
+        {
+            await _validatedPromotionRecovery.RecoverAsync(cancellationToken);
         }
 
         var repositoryAttempts = await _repository.ListNonTerminalAttemptsAsync(
