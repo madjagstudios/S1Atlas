@@ -27,6 +27,19 @@ public static class InputManifestFingerprint
         return writer.Complete();
     }
 
+    public static string CreateSnapshotId(
+        string buildId,
+        string manifestDigest)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
+        RequireLowerCaseSha256(manifestDigest);
+
+        using var writer = new CanonicalHashWriter("input-snapshot", 1);
+        writer.AppendString(buildId);
+        writer.AppendString(manifestDigest);
+        return writer.Complete();
+    }
+
     private static NormalizedEntry Normalize(InputManifestEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
