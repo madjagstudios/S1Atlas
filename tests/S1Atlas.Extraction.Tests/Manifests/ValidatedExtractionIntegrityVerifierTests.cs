@@ -50,6 +50,32 @@ public sealed class ValidatedExtractionIntegrityVerifierTests : IDisposable
     }
 
     [Fact]
+    public async Task VerifyAsync_DatabaseRowHasAggregateOnlyStatistics_ReturnsValid()
+    {
+        // Regression: the validated_extractions row stores only aggregate statistics, so the
+        // real GetValidatedExtractionAsync returns an empty Assemblies list. The on-disk
+        // extraction.json carries the full per-assembly breakdown. Integrity must still be
+        // Valid: per-assembly statistics are verified against the immutable artifact manifest,
+        // while the database row is compared on aggregate fields only.
+        var (extraction, manifest, _, _) = await BuildAndWriteValidExtractionAsync();
+        Assert.NotEmpty(extraction.Statistics.Assemblies);
+        var aggregateOnly = extraction with
+        {
+            Statistics = extraction.Statistics with
+            {
+                Assemblies = Array.Empty<AssemblyIdentityStatistics>()
+            }
+        };
+        var repository = new FakeValidatedExtractionRepository(aggregateOnly, manifest.Entries);
+        var verifier = CreateVerifier(repository);
+
+        var result = await verifier.VerifyAsync(
+            _dataRoot, extraction.BuildId, extraction.ExtractionId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(ValidatedExtractionIntegrityStatus.Valid, result.Status);
+    }
+
+    [Fact]
     public async Task VerifyAsync_RepositoryHasNoRow_ReturnsMissing()
     {
         var repository = new FakeValidatedExtractionRepository(null, []);

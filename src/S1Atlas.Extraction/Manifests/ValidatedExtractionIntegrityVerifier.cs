@@ -282,7 +282,7 @@ internal sealed class ValidatedExtractionIntegrityVerifier
         // Step 9: require document statistics agree with artifact annotations and database aggregates.
         var recomputedStatistics = RecomputeStatistics(manifestEntries);
         if (!StatisticsEqual(recomputedStatistics, bundle.Extraction.Statistics) ||
-            !StatisticsEqual(recomputedStatistics, expectedExtraction.Statistics))
+            !AggregateStatisticsEqual(recomputedStatistics, expectedExtraction.Statistics))
         {
             return Mismatch(
                 "StatisticsMismatch",
@@ -316,9 +316,14 @@ internal sealed class ValidatedExtractionIntegrityVerifier
         document.CreatedAtUtc == expected.CreatedAtUtc &&
         document.TrustLevel == expected.TrustLevel &&
         document.InitialValidationOutcome == expected.InitialValidationOutcome &&
-        StatisticsEqual(document.Statistics, expected.Statistics);
+        // The validated_extractions row stores only aggregate statistics; the per-assembly
+        // breakdown lives in extraction_artifacts and is verified against the immutable
+        // artifact manifest below (recomputed vs document). So the database-row comparison
+        // is aggregate-only — comparing Assemblies here would always fail because the
+        // reconstructed row carries an empty Assemblies list.
+        AggregateStatisticsEqual(document.Statistics, expected.Statistics);
 
-    private static bool StatisticsEqual(ExtractionStatistics a, ExtractionStatistics b) =>
+    private static bool AggregateStatisticsEqual(ExtractionStatistics a, ExtractionStatistics b) =>
         a.ArtifactCount == b.ArtifactCount &&
         a.LibraryCount == b.LibraryCount &&
         a.ManagedAssemblyCount == b.ManagedAssemblyCount &&
@@ -328,7 +333,10 @@ internal sealed class ValidatedExtractionIntegrityVerifier
         a.PropertyDefinitionCount == b.PropertyDefinitionCount &&
         a.EventDefinitionCount == b.EventDefinitionCount &&
         a.TotalOutputBytes == b.TotalOutputBytes &&
-        a.TotalManagedBytes == b.TotalManagedBytes &&
+        a.TotalManagedBytes == b.TotalManagedBytes;
+
+    private static bool StatisticsEqual(ExtractionStatistics a, ExtractionStatistics b) =>
+        AggregateStatisticsEqual(a, b) &&
         a.Assemblies.SequenceEqual(b.Assemblies);
 
     /// <summary>
