@@ -10,9 +10,13 @@ using S1Atlas.Extraction.Attempts;
 using S1Atlas.Extraction.Cpp2Il;
 using S1Atlas.Extraction.Discovery;
 using S1Atlas.Extraction.Hashing;
+using S1Atlas.Extraction.History;
 using S1Atlas.Extraction.Inputs;
+using S1Atlas.Extraction.Manifests;
 using S1Atlas.Extraction.Profiles;
+using S1Atlas.Extraction.Promotion;
 using S1Atlas.Extraction.Tools;
+using S1Atlas.Extraction.Validation;
 using S1Atlas.Storage.Sqlite;
 
 namespace S1Atlas.Cli;
@@ -163,12 +167,28 @@ public sealed class CliApplication
             System.Environment.ProcessId,
             _isProcessAlive,
             _timeProvider);
+        var validatedDocumentStore = new ValidatedExtractionDocumentStore();
+        var promotionJournalStore = new PromotionJournalStore();
+        var candidateInspector = new CandidateOutputInspector(fileHasher);
+        var integrityVerifier = new ValidatedExtractionIntegrityVerifier(
+            validatedDocumentStore,
+            fileHasher,
+            sqliteRepository);
+        var validatedRecoveryService = new ValidatedExtractionRecoveryService(
+            _paths.RootDirectory,
+            sqliteRepository,
+            sqliteRepository,
+            validatedDocumentStore,
+            integrityVerifier,
+            promotionJournalStore,
+            _timeProvider);
         var recoveryService = new ExtractionRecoveryService(
             _paths.RootDirectory,
             sqliteRepository,
             attemptDocumentStore,
             _isProcessAlive,
-            _timeProvider);
+            _timeProvider,
+            validatedRecoveryService);
         var processExtractor = _processExtractorFactory() ??
             throw new InvalidOperationException(
                 "The extraction process factory returned null.");
@@ -191,6 +211,44 @@ public sealed class CliApplication
             extractionLock,
             recoveryService,
             processExtractor,
+            _timeProvider);
+        var validationService = new ExtractionValidationService(
+            _paths.RootDirectory,
+            sqliteRepository,
+            sqliteRepository,
+            fileHasher,
+            validatedDocumentStore,
+            integrityVerifier,
+            candidateInspector,
+            promotionJournalStore,
+            attemptDocumentStore,
+            extractionLock,
+            _timeProvider);
+        var preparationService = new ExtractionPreparationService(
+            inputResolver,
+            profileProvider,
+            validationPolicyProvider,
+            toolResolver);
+        var workflow = new ValidatedExtractionWorkflow(
+            _paths.RootDirectory,
+            repository.InitializeAsync,
+            recoveryService.RecoverAsync,
+            preparationService.PrepareAsync,
+            sqliteRepository,
+            integrityVerifier,
+            validatedDocumentStore,
+            validationService,
+            orchestrator.RunPreparedAsync,
+            _timeProvider);
+        var historyService = new ExtractionHistoryService(
+            _paths.RootDirectory,
+            sqliteRepository,
+            sqliteRepository,
+            integrityVerifier,
+            validatedDocumentStore,
+            validationService,
+            profileProvider,
+            validationPolicyProvider,
             _timeProvider);
 
         var root = new RootCommand(
@@ -218,7 +276,14 @@ public sealed class CliApplication
                 cancellationToken));
         root.Subcommands.Add(
             ExtractCommand.Create(
-                orchestrator,
+                workflow,
+                repository,
+                output,
+                error,
+                cancellationToken));
+        root.Subcommands.Add(
+            ExtractionsCommand.Create(
+                historyService,
                 repository,
                 output,
                 error,

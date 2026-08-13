@@ -201,11 +201,144 @@ internal static class SqliteMigrations
         ON extraction_attempts(status);
         """;
 
+    private const string ValidatedExtractionsV5Sql = """
+        ALTER TABLE extraction_attempts
+        ADD COLUMN validation_source_extraction_id TEXT NULL;
+
+        CREATE TABLE validated_extractions (
+            extraction_id TEXT NOT NULL PRIMARY KEY,
+            recipe_id TEXT NOT NULL,
+            build_id TEXT NOT NULL,
+            tool_instance_id TEXT NOT NULL,
+            source_attempt_id TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            profile_version INTEGER NOT NULL,
+            profile_digest TEXT NOT NULL,
+            adapter_version INTEGER NOT NULL,
+            extraction_schema_version INTEGER NOT NULL,
+            artifact_manifest_digest TEXT NOT NULL,
+            root_path TEXT NOT NULL,
+            created_at_utc TEXT NOT NULL,
+            trust_level TEXT NOT NULL,
+            validation_outcome TEXT NOT NULL,
+            artifact_count INTEGER NOT NULL CHECK (artifact_count >= 0),
+            library_count INTEGER NOT NULL CHECK (library_count >= 0),
+            managed_assembly_count INTEGER NOT NULL CHECK (managed_assembly_count >= 0),
+            type_count INTEGER NOT NULL CHECK (type_count >= 0),
+            method_count INTEGER NOT NULL CHECK (method_count >= 0),
+            field_count INTEGER NOT NULL CHECK (field_count >= 0),
+            property_count INTEGER NOT NULL CHECK (property_count >= 0),
+            event_count INTEGER NOT NULL CHECK (event_count >= 0),
+            total_output_bytes INTEGER NOT NULL CHECK (total_output_bytes >= 0),
+            total_managed_bytes INTEGER NOT NULL CHECK (total_managed_bytes >= 0),
+            FOREIGN KEY (build_id) REFERENCES builds(build_id),
+            FOREIGN KEY (tool_instance_id) REFERENCES tool_instances(tool_instance_id),
+            FOREIGN KEY (source_attempt_id) REFERENCES extraction_attempts(attempt_id)
+        );
+
+        CREATE UNIQUE INDEX ux_validated_extractions_recipe_manifest
+        ON validated_extractions(recipe_id, artifact_manifest_digest);
+
+        CREATE INDEX ix_validated_extractions_build_created
+        ON validated_extractions(build_id, created_at_utc DESC);
+
+        CREATE TABLE extraction_artifacts (
+            extraction_id TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            size INTEGER NOT NULL CHECK (size >= 0),
+            sha256 TEXT NOT NULL,
+            assembly_name TEXT NULL,
+            module_name TEXT NULL,
+            type_count INTEGER NULL CHECK (type_count IS NULL OR type_count >= 0),
+            method_count INTEGER NULL CHECK (method_count IS NULL OR method_count >= 0),
+            field_count INTEGER NULL CHECK (field_count IS NULL OR field_count >= 0),
+            property_count INTEGER NULL CHECK (property_count IS NULL OR property_count >= 0),
+            event_count INTEGER NULL CHECK (event_count IS NULL OR event_count >= 0),
+            PRIMARY KEY (extraction_id, relative_path),
+            FOREIGN KEY (extraction_id)
+                REFERENCES validated_extractions(extraction_id)
+                ON DELETE RESTRICT
+        );
+
+        CREATE INDEX ix_extraction_artifacts_assembly_name
+        ON extraction_artifacts(assembly_name);
+
+        CREATE TABLE extraction_validation_results (
+            attempt_id TEXT NOT NULL PRIMARY KEY,
+            subject_extraction_id TEXT NULL,
+            artifact_manifest_digest TEXT NOT NULL,
+            policy_id TEXT NOT NULL,
+            policy_version INTEGER NOT NULL,
+            policy_digest TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            report_path TEXT NOT NULL,
+            baseline_extraction_id TEXT NULL,
+            preference_eligible INTEGER NOT NULL CHECK (preference_eligible IN (0, 1)),
+            validated_at_utc TEXT NOT NULL,
+            artifact_count INTEGER NOT NULL CHECK (artifact_count >= 0),
+            library_count INTEGER NOT NULL CHECK (library_count >= 0),
+            managed_assembly_count INTEGER NOT NULL CHECK (managed_assembly_count >= 0),
+            type_count INTEGER NOT NULL CHECK (type_count >= 0),
+            method_count INTEGER NOT NULL CHECK (method_count >= 0),
+            field_count INTEGER NOT NULL CHECK (field_count >= 0),
+            property_count INTEGER NOT NULL CHECK (property_count >= 0),
+            event_count INTEGER NOT NULL CHECK (event_count >= 0),
+            total_output_bytes INTEGER NOT NULL CHECK (total_output_bytes >= 0),
+            total_managed_bytes INTEGER NOT NULL CHECK (total_managed_bytes >= 0),
+            FOREIGN KEY (attempt_id) REFERENCES extraction_attempts(attempt_id),
+            FOREIGN KEY (subject_extraction_id) REFERENCES validated_extractions(extraction_id),
+            FOREIGN KEY (baseline_extraction_id) REFERENCES validated_extractions(extraction_id)
+        );
+
+        CREATE INDEX ix_extraction_validation_subject_policy
+        ON extraction_validation_results(subject_extraction_id, policy_digest, validated_at_utc DESC);
+
+        CREATE TABLE extraction_validation_issues (
+            attempt_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+            severity TEXT NOT NULL,
+            code TEXT NOT NULL,
+            message TEXT NOT NULL,
+            artifact_relative_path TEXT NULL,
+            preference_blocking INTEGER NOT NULL CHECK (preference_blocking IN (0, 1)),
+            PRIMARY KEY (attempt_id, ordinal),
+            FOREIGN KEY (attempt_id)
+                REFERENCES extraction_attempts(attempt_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE TABLE preferred_extractions (
+            build_id TEXT NOT NULL PRIMARY KEY,
+            extraction_id TEXT NOT NULL,
+            selected_at_utc TEXT NOT NULL,
+            selection_reason TEXT NOT NULL,
+            FOREIGN KEY (build_id) REFERENCES builds(build_id),
+            FOREIGN KEY (extraction_id) REFERENCES validated_extractions(extraction_id)
+        );
+
+        CREATE TABLE extraction_preference_events (
+            event_id TEXT NOT NULL PRIMARY KEY,
+            build_id TEXT NOT NULL,
+            previous_extraction_id TEXT NULL,
+            new_extraction_id TEXT NULL,
+            selected_at_utc TEXT NOT NULL,
+            selection_reason TEXT NOT NULL,
+            FOREIGN KEY (build_id) REFERENCES builds(build_id),
+            FOREIGN KEY (previous_extraction_id) REFERENCES validated_extractions(extraction_id),
+            FOREIGN KEY (new_extraction_id) REFERENCES validated_extractions(extraction_id)
+        );
+
+        CREATE INDEX ix_extraction_preference_events_build_time
+        ON extraction_preference_events(build_id, selected_at_utc DESC);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
         new(2, "environment-observations-v2", EnvironmentObservationsV2Sql),
         new(3, "managed-tools-v3", ManagedToolsV3Sql),
-        new(4, "extraction-attempts-v4", ExtractionAttemptsV4Sql)
+        new(4, "extraction-attempts-v4", ExtractionAttemptsV4Sql),
+        new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql)
     ];
 }

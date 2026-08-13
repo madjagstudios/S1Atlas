@@ -24,9 +24,11 @@ public sealed class ExtractionAttemptLifecycleTests
         Assert.Equal(next, ExtractionAttemptLifecycle.Transition(current, next));
     }
 
+    // Note: ProcessCompleted -> Validating was covered here as illegal under Phase 3.
+    // Phase 4 makes it a legal edge (candidate validation); see
+    // ExtractionAttemptLifecyclePhase4Tests for its coverage as a legal transition.
     [Theory]
     [InlineData(ExtractionAttemptStatus.Running, ExtractionAttemptStatus.Succeeded)]
-    [InlineData(ExtractionAttemptStatus.ProcessCompleted, ExtractionAttemptStatus.Validating)]
     [InlineData(ExtractionAttemptStatus.ProcessCompleted, ExtractionAttemptStatus.Failed)]
     [InlineData(ExtractionAttemptStatus.Succeeded, ExtractionAttemptStatus.Failed)]
     [InlineData(ExtractionAttemptStatus.Failed, ExtractionAttemptStatus.Preparing)]
@@ -176,6 +178,8 @@ public sealed class ExtractionAttemptLifecycleTests
         status == ExtractionAttemptStatus.Failed ? ExtractionFailureCode.ProcessExitNonZero : null,
         status == ExtractionAttemptStatus.Failed ? "failed" : null,
         false, 0, 0,
-        status == ExtractionAttemptStatus.ProcessCompleted ? "candidate-output" : null,
-        null);
+        status is ExtractionAttemptStatus.ProcessCompleted or ExtractionAttemptStatus.Validating
+            ? "candidate-output"
+            : null,
+        status == ExtractionAttemptStatus.Succeeded ? new string('f', 64) : null);
 }

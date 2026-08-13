@@ -30,6 +30,7 @@ public static class ExtractionAttemptLifecycle
         ExtractionAttemptStatus next) => current switch
         {
             ExtractionAttemptStatus.Created => next is ExtractionAttemptStatus.Preparing
+                or ExtractionAttemptStatus.Validating
                 or ExtractionAttemptStatus.Failed
                 or ExtractionAttemptStatus.Canceled
                 or ExtractionAttemptStatus.Abandoned,
@@ -41,6 +42,10 @@ public static class ExtractionAttemptLifecycle
                 or ExtractionAttemptStatus.Failed
                 or ExtractionAttemptStatus.Canceled
                 or ExtractionAttemptStatus.Abandoned,
+            // Phase 4: a completed candidate must be validated before it can
+            // succeed or fail; ProcessCompleted therefore only ever moves to
+            // Validating.
+            ExtractionAttemptStatus.ProcessCompleted => next is ExtractionAttemptStatus.Validating,
             ExtractionAttemptStatus.Validating => next is ExtractionAttemptStatus.Succeeded
                 or ExtractionAttemptStatus.Failed
                 or ExtractionAttemptStatus.Canceled
@@ -97,6 +102,25 @@ public static class ExtractionAttemptLifecycle
         {
             throw new InvalidOperationException(
                 "Process-completed attempts require a candidate output path.");
+        }
+
+        if (attempt.Status == ExtractionAttemptStatus.Validating)
+        {
+            var hasCandidateOutput = !string.IsNullOrWhiteSpace(attempt.CandidateOutputPath);
+            var hasValidationSource = !string.IsNullOrWhiteSpace(attempt.ValidationSourceExtractionId);
+            if (hasCandidateOutput == hasValidationSource)
+            {
+                throw new InvalidOperationException(
+                    "Validating attempts require exactly one of candidate output path or " +
+                    "validation source extraction ID.");
+            }
+        }
+
+        if (attempt.Status == ExtractionAttemptStatus.Succeeded
+            && string.IsNullOrWhiteSpace(attempt.ResultExtractionId))
+        {
+            throw new InvalidOperationException(
+                "Succeeded attempts require a result extraction ID.");
         }
 
         if (attempt.StandardOutputDiscardedBytes < 0

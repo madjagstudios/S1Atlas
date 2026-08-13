@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Extraction.Attempts;
 using Xunit;
@@ -80,7 +81,7 @@ public sealed class AttemptDocumentStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task WriteAsync_PersistsStrictVersionOneAndExactTypedFactsAtomically()
+    public async Task WriteAsync_PersistsStrictVersionTwoAndExactTypedFactsAtomically()
     {
         Directory.CreateDirectory(_dataRoot);
         var paths = OwnedAttemptPaths.Create(
@@ -106,7 +107,10 @@ public sealed class AttemptDocumentStoreTests : IDisposable
 
         Assert.NotNull(observedTemporary);
         Assert.False(File.Exists(observedTemporary));
-        Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(
+            JsonValueKind.Null,
+            document.RootElement.GetProperty("validationSourceExtractionId").ValueKind);
         Assert.Equal(attempt.AttemptId, document.RootElement.GetProperty("attemptId").GetString());
         Assert.Equal(attempt.RecipeId, document.RootElement.GetProperty("recipeId").GetString());
         Assert.Equal(attempt.ToolInstanceId, document.RootElement.GetProperty("toolInstanceId").GetString());
@@ -144,7 +148,7 @@ public sealed class AttemptDocumentStoreTests : IDisposable
         foreach (var invalid in new[]
         {
             valid[..^1] + ",\"unknown\":true}",
-            valid.Replace("\"schemaVersion\": 1", "\"schemaVersion\": 2", StringComparison.Ordinal),
+            valid.Replace("\"schemaVersion\": 2", "\"schemaVersion\": 3", StringComparison.Ordinal),
             valid.Replace(
                 "  \"toolTrust\": \"managedPinned\"," + Environment.NewLine,
                 string.Empty,
@@ -183,6 +187,102 @@ public sealed class AttemptDocumentStoreTests : IDisposable
         Assert.Contains("Cpp2IL exited unexpectedly.", json, StringComparison.Ordinal);
         Assert.DoesNotContain("Secret.Namespace", json, StringComparison.Ordinal);
         Assert.DoesNotContain(" at ", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TryReadAsync_SchemaOneDocument_MapsValidationSourceExtractionIdToNullAndRemainsReadable()
+    {
+        Directory.CreateDirectory(_dataRoot);
+        var paths = OwnedAttemptPaths.Create(
+            _dataRoot, "build-a", "0123456789abcdef0123456789abcdef");
+        var attempt = CreateAttempt(paths);
+        await new AttemptDocumentStore().WriteAsync(
+            paths, attempt, CreateFacts(), TestContext.Current.CancellationToken);
+        var schemaTwoJson = await File.ReadAllTextAsync(
+            paths.AttemptDocumentPath, TestContext.Current.CancellationToken);
+        var schemaOneJson = ToRealPhase3SchemaOneJson(schemaTwoJson);
+        await File.WriteAllTextAsync(
+            paths.AttemptDocumentPath, schemaOneJson, TestContext.Current.CancellationToken);
+
+        var read = await new AttemptDocumentStore().TryReadAsync(
+            paths, attempt, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(read);
+        Assert.Null(read.Attempt.ValidationSourceExtractionId);
+        Assert.Equal(attempt, read.Attempt);
+    }
+
+    [Fact]
+    public async Task TryReadAsync_SchemaTwoDocumentWithBothCandidateAndValidationSource_IsRejected()
+    {
+        Directory.CreateDirectory(_dataRoot);
+        var paths = OwnedAttemptPaths.Create(
+            _dataRoot, "build-a", "0123456789abcdef0123456789abcdef");
+        var attempt = CreateAttempt(paths);
+        await new AttemptDocumentStore().WriteAsync(
+            paths, attempt, CreateFacts(), TestContext.Current.CancellationToken);
+        var valid = await File.ReadAllTextAsync(
+            paths.AttemptDocumentPath, TestContext.Current.CancellationToken);
+        var node = JsonNode.Parse(valid)!.AsObject();
+        node["candidateOutputPath"] = "C:\\attempts\\candidate";
+        node["validationSourceExtractionId"] = new string('7', 64);
+        await File.WriteAllTextAsync(
+            paths.AttemptDocumentPath,
+            node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(await new AttemptDocumentStore().TryReadAsync(
+            paths, attempt, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task WriteAsync_BothCandidateOutputAndValidationSourceExtractionId_Throws()
+    {
+        Directory.CreateDirectory(_dataRoot);
+        var paths = OwnedAttemptPaths.Create(
+            _dataRoot, "build-a", "0123456789abcdef0123456789abcdef");
+        var attempt = CreateAttempt(paths) with
+        {
+            CandidateOutputPath = "C:\\attempts\\candidate",
+            ValidationSourceExtractionId = new string('8', 64)
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new AttemptDocumentStore().WriteAsync(
+                paths, attempt, CreateFacts(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task WriteAsync_ValidationSourceExtractionIdOnly_RoundTripsThroughSchemaTwo()
+    {
+        Directory.CreateDirectory(_dataRoot);
+        var paths = OwnedAttemptPaths.Create(
+            _dataRoot, "build-a", "0123456789abcdef0123456789abcdef");
+        var attempt = CreateAttempt(paths) with
+        {
+            ValidationSourceExtractionId = new string('9', 64)
+        };
+        var store = new AttemptDocumentStore();
+
+        await store.WriteAsync(paths, attempt, CreateFacts(), TestContext.Current.CancellationToken);
+        var read = await store.TryReadAsync(
+            paths, attempt, TestContext.Current.CancellationToken);
+        var json = await File.ReadAllTextAsync(
+            paths.AttemptDocumentPath, TestContext.Current.CancellationToken);
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Equal(
+            attempt.ValidationSourceExtractionId,
+            document.RootElement.GetProperty("validationSourceExtractionId").GetString());
+        Assert.Equal(attempt, read!.Attempt);
+    }
+
+    private static string ToRealPhase3SchemaOneJson(string schemaTwoJson)
+    {
+        var node = JsonNode.Parse(schemaTwoJson)!.AsObject();
+        node.Remove("validationSourceExtractionId");
+        node["schemaVersion"] = 1;
+        return node.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static ExtractionAttempt CreateAttempt(OwnedAttemptPaths paths) => new(

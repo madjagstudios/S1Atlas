@@ -124,9 +124,12 @@ public sealed class SqliteAtlasRepositoryExtractionTests : IAsyncDisposable
             ExtractionAttemptStatus.Running,
             cancellationToken);
 
+        // ProcessCompleted -> Validating is now a legal Phase 4 edge (covered in
+        // ExtractionAttemptLifecyclePhase4Tests); ProcessCompleted still rejects
+        // other transitions such as a backward move to Running.
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             repository.TransitionAttemptAsync(
-                processCompleted with { Status = ExtractionAttemptStatus.Validating },
+                processCompleted with { Status = ExtractionAttemptStatus.Running },
                 ExtractionAttemptStatus.ProcessCompleted,
                 cancellationToken));
 

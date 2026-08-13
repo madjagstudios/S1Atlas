@@ -37,4 +37,10 @@ public sealed record ExtractionAttempt(
     int DiscardedFileCount,
     long DiscardedByteCount,
     string? CandidateOutputPath,
-    string? ResultExtractionId);
+    string? ResultExtractionId,
+    // Phase 4: the plan places ValidationSourceExtractionId immediately before
+    // ResultExtractionId. It is declared here instead, as a trailing optional
+    // parameter, so the existing Phase 3 positional constructor call in
+    // AttemptDocumentStore.cs (owned by Task 2) keeps compiling unmodified.
+    // The field name, type, and semantics are unchanged from the plan.
+    string? ValidationSourceExtractionId = null);

@@ -25,7 +25,7 @@ internal sealed class AttemptDocumentStore
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
-    private static readonly string[] AttemptPropertyNames =
+    private static readonly string[] AttemptPropertyNamesV1 =
     [
         "schemaVersion", "attemptId", "recipeId", "buildId", "toolInstanceId",
         "toolTrust", "profileId", "profileVersion", "profileDigest",
@@ -41,6 +41,12 @@ internal sealed class AttemptDocumentStore
         "keepFailedArtifacts", "discardedFileCount", "discardedByteCount",
         "candidateOutputPath", "resultExtractionId"
     ];
+    // Phase 4: schema 2 adds validationSourceExtractionId. Schema 1 (real Phase 3
+    // documents already on disk) never carries this property; the writer now always
+    // emits schema 2, and the reader accepts both shapes with an exact per-version
+    // property set (see HasExactAttemptShape).
+    private static readonly string[] AttemptPropertyNamesV2 =
+        [.. AttemptPropertyNamesV1, "validationSourceExtractionId"];
     private static readonly string[] ManifestEntryPropertyNames =
         ["relativePath", "role", "size", "sha256", "lastWriteUtc"];
     private readonly Action<string, string>? _beforeReplace;
@@ -59,6 +65,7 @@ internal sealed class AttemptDocumentStore
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(attempt);
         ValidateAuthoritativeIdentity(paths, attempt);
+        ValidateSchemaTwoInvariant(attempt);
         if (executionFacts is not null)
         {
             ValidateExecutionFacts(executionFacts);
@@ -141,7 +148,7 @@ internal sealed class AttemptDocumentStore
         ExtractionAttempt attempt,
         AttemptExecutionFacts? facts) => new()
         {
-            SchemaVersion = 1,
+            SchemaVersion = 2,
             AttemptId = attempt.AttemptId,
             RecipeId = attempt.RecipeId,
             BuildId = attempt.BuildId,
@@ -190,12 +197,13 @@ internal sealed class AttemptDocumentStore
             DiscardedFileCount = attempt.DiscardedFileCount,
             DiscardedByteCount = attempt.DiscardedByteCount,
             CandidateOutputPath = attempt.CandidateOutputPath,
-            ResultExtractionId = attempt.ResultExtractionId
+            ResultExtractionId = attempt.ResultExtractionId,
+            ValidationSourceExtractionId = attempt.ValidationSourceExtractionId
         };
 
     private static AttemptDocumentSnapshot? FromDocument(AttemptDocument? document)
     {
-        if (document?.SchemaVersion != 1 ||
+        if (document?.SchemaVersion is not (1 or 2) ||
             !OwnedAttemptPaths.IsLowerGuidN(document.AttemptId) ||
             !HasText(document.BuildId) || !HasText(document.ProfileId) ||
             document.ProfileVersion <= 0 || !IsLowerSha256(document.ProfileDigest) ||
@@ -235,6 +243,20 @@ internal sealed class AttemptDocumentStore
             return null;
         }
 
+        // Phase 4: schema 1 documents structurally never carry
+        // validationSourceExtractionId (HasExactAttemptShape already enforced the
+        // exact schema-1 property set), so it deserializes to null; this is a
+        // defense-in-depth restatement of that mapping. Schema 2 documents may carry
+        // either a candidate output path or a validation source extraction ID, but
+        // never both.
+        if ((document.SchemaVersion == 1 && document.ValidationSourceExtractionId is not null) ||
+            (document.SchemaVersion == 2 &&
+             HasText(document.CandidateOutputPath) &&
+             HasText(document.ValidationSourceExtractionId)))
+        {
+            return null;
+        }
+
         var attempt = new ExtractionAttempt(
             document.AttemptId!, document.RecipeId, document.BuildId!, document.ToolInstanceId,
             document.ProfileId!, document.ProfileVersion, document.ProfileDigest!,
@@ -251,7 +273,8 @@ internal sealed class AttemptDocumentStore
             document.ProcessExitCode, document.FailureStage, document.FailureCode,
             document.FailureMessage, document.KeepFailedArtifacts.Value,
             document.DiscardedFileCount.Value, document.DiscardedByteCount.Value,
-            document.CandidateOutputPath, document.ResultExtractionId);
+            document.CandidateOutputPath, document.ResultExtractionId,
+            document.ValidationSourceExtractionId);
         var facts = executionFactsAbsent
             ? null
             : new AttemptExecutionFacts(
@@ -301,6 +324,17 @@ internal sealed class AttemptDocumentStore
         {
             throw new InvalidOperationException(
                 "The attempt contains paths outside its owned roots.");
+        }
+    }
+
+    private static void ValidateSchemaTwoInvariant(ExtractionAttempt attempt)
+    {
+        if (!string.IsNullOrWhiteSpace(attempt.CandidateOutputPath) &&
+            !string.IsNullOrWhiteSpace(attempt.ValidationSourceExtractionId))
+        {
+            throw new InvalidOperationException(
+                "An attempt document cannot carry both a candidate output path and " +
+                "a validation source extraction ID.");
         }
     }
 
@@ -424,7 +458,21 @@ internal sealed class AttemptDocumentStore
 
     private static bool HasExactAttemptShape(JsonElement root)
     {
-        if (!HasExactProperties(root, AttemptPropertyNames))
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("schemaVersion", out var schemaVersionElement) ||
+            schemaVersionElement.ValueKind != JsonValueKind.Number ||
+            !schemaVersionElement.TryGetInt32(out var schemaVersion))
+        {
+            return false;
+        }
+
+        var expectedProperties = schemaVersion switch
+        {
+            1 => AttemptPropertyNamesV1,
+            2 => AttemptPropertyNamesV2,
+            _ => null
+        };
+        if (expectedProperties is null || !HasExactProperties(root, expectedProperties))
         {
             return false;
         }
@@ -526,6 +574,7 @@ internal sealed class AttemptDocumentStore
         public long? DiscardedByteCount { get; init; }
         public string? CandidateOutputPath { get; init; }
         public string? ResultExtractionId { get; init; }
+        public string? ValidationSourceExtractionId { get; init; }
     }
 
     private sealed class ManifestDocument

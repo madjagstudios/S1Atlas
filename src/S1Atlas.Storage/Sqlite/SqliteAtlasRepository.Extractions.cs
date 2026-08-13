@@ -44,7 +44,51 @@ public sealed partial class SqliteAtlasRepository
         discarded_file_count,
         discarded_byte_count,
         candidate_output_path,
-        result_extraction_id
+        result_extraction_id,
+        validation_source_extraction_id
+        """;
+
+    private const string UpdateAttemptSql = """
+        UPDATE extraction_attempts
+        SET recipe_id = $recipeId,
+            build_id = $buildId,
+            tool_instance_id = $toolInstanceId,
+            profile_id = $profileId,
+            profile_version = $profileVersion,
+            profile_digest = $profileDigest,
+            validation_policy_id = $validationPolicyId,
+            validation_policy_version = $validationPolicyVersion,
+            validation_policy_digest = $validationPolicyDigest,
+            adapter_version = $adapterVersion,
+            extraction_schema_version = $extractionSchemaVersion,
+            input_source = $inputSource,
+            input_snapshot_id = $inputSnapshotId,
+            status = $status,
+            created_at_utc = $createdAtUtc,
+            started_at_utc = $startedAtUtc,
+            completed_at_utc = $completedAtUtc,
+            pre_input_manifest_digest = $preInputManifestDigest,
+            post_input_manifest_digest = $postInputManifestDigest,
+            working_path = $workingPath,
+            stdout_path = $stdoutPath,
+            stderr_path = $stderrPath,
+            stdout_truncated = $stdoutTruncated,
+            stderr_truncated = $stderrTruncated,
+            stdout_discarded_bytes = $stdoutDiscardedBytes,
+            stderr_discarded_bytes = $stderrDiscardedBytes,
+            process_id = $processId,
+            process_exit_code = $processExitCode,
+            failure_stage = $failureStage,
+            failure_code = $failureCode,
+            failure_message = $failureMessage,
+            keep_failed_artifacts = $keepFailedArtifacts,
+            discarded_file_count = $discardedFileCount,
+            discarded_byte_count = $discardedByteCount,
+            candidate_output_path = $candidateOutputPath,
+            result_extraction_id = $resultExtractionId,
+            validation_source_extraction_id = $validationSourceExtractionId
+        WHERE attempt_id = $attemptId
+          AND status = $expectedStatus;
         """;
 
     public async Task<GameBuild?> GetBuildAsync(
@@ -165,7 +209,8 @@ public sealed partial class SqliteAtlasRepository
                 $discardedFileCount,
                 $discardedByteCount,
                 $candidateOutputPath,
-                $resultExtractionId);
+                $resultExtractionId,
+                $validationSourceExtractionId);
             """;
         AddAttemptParameters(command, attempt);
 
@@ -193,64 +238,12 @@ public sealed partial class SqliteAtlasRepository
             (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         try
         {
-            var current = await GetAttemptAsync(
+            await TransitionAttemptWithinTransactionAsync(
                 connection,
                 transaction,
-                attempt.AttemptId,
-                cancellationToken) ?? throw new InvalidOperationException(
-                    $"Extraction attempt '{attempt.AttemptId}' does not exist.");
-            ExtractionAttemptLifecycle.Transition(current, attempt);
-
-            await using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = """
-                UPDATE extraction_attempts
-                SET recipe_id = $recipeId,
-                    build_id = $buildId,
-                    tool_instance_id = $toolInstanceId,
-                    profile_id = $profileId,
-                    profile_version = $profileVersion,
-                    profile_digest = $profileDigest,
-                    validation_policy_id = $validationPolicyId,
-                    validation_policy_version = $validationPolicyVersion,
-                    validation_policy_digest = $validationPolicyDigest,
-                    adapter_version = $adapterVersion,
-                    extraction_schema_version = $extractionSchemaVersion,
-                    input_source = $inputSource,
-                    input_snapshot_id = $inputSnapshotId,
-                    status = $status,
-                    created_at_utc = $createdAtUtc,
-                    started_at_utc = $startedAtUtc,
-                    completed_at_utc = $completedAtUtc,
-                    pre_input_manifest_digest = $preInputManifestDigest,
-                    post_input_manifest_digest = $postInputManifestDigest,
-                    working_path = $workingPath,
-                    stdout_path = $stdoutPath,
-                    stderr_path = $stderrPath,
-                    stdout_truncated = $stdoutTruncated,
-                    stderr_truncated = $stderrTruncated,
-                    stdout_discarded_bytes = $stdoutDiscardedBytes,
-                    stderr_discarded_bytes = $stderrDiscardedBytes,
-                    process_id = $processId,
-                    process_exit_code = $processExitCode,
-                    failure_stage = $failureStage,
-                    failure_code = $failureCode,
-                    failure_message = $failureMessage,
-                    keep_failed_artifacts = $keepFailedArtifacts,
-                    discarded_file_count = $discardedFileCount,
-                    discarded_byte_count = $discardedByteCount,
-                    candidate_output_path = $candidateOutputPath,
-                    result_extraction_id = $resultExtractionId
-                WHERE attempt_id = $attemptId
-                  AND status = $expectedStatus;
-                """;
-            AddAttemptParameters(command, attempt);
-            command.Parameters.AddWithValue("$expectedStatus", expectedStatus.ToString());
-            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
-            {
-                throw new InvalidOperationException(
-                    $"Extraction attempt '{attempt.AttemptId}' lost an optimistic status transition from {expectedStatus}.");
-            }
+                attempt,
+                expectedStatus,
+                cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
         }
@@ -263,6 +256,41 @@ public sealed partial class SqliteAtlasRepository
         {
             await transaction.RollbackAsync(CancellationToken.None);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Validates the legal-edge transition and applies the optimistic-concurrency
+    /// UPDATE for <paramref name="next"/> within an already-open transaction. Shared
+    /// by <see cref="TransitionAttemptAsync"/> and the Phase 4 validated-extraction
+    /// commit/link/revalidation commands in
+    /// <c>SqliteAtlasRepository.ValidatedExtractions.cs</c>, which must transition an
+    /// attempt atomically alongside other Phase 4 table writes.
+    /// </summary>
+    private static async Task TransitionAttemptWithinTransactionAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        ExtractionAttempt next,
+        ExtractionAttemptStatus expectedStatus,
+        CancellationToken cancellationToken)
+    {
+        var current = await GetAttemptAsync(
+            connection,
+            transaction,
+            next.AttemptId,
+            cancellationToken) ?? throw new InvalidOperationException(
+                $"Extraction attempt '{next.AttemptId}' does not exist.");
+        ExtractionAttemptLifecycle.Transition(current, next);
+
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = UpdateAttemptSql;
+        AddAttemptParameters(command, next);
+        command.Parameters.AddWithValue("$expectedStatus", expectedStatus.ToString());
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+        {
+            throw new InvalidOperationException(
+                $"Extraction attempt '{next.AttemptId}' lost an optimistic status transition from {expectedStatus}.");
         }
     }
 
@@ -495,7 +523,8 @@ public sealed partial class SqliteAtlasRepository
             DiscardedFileCount: reader.GetInt32(33),
             DiscardedByteCount: reader.GetInt64(34),
             CandidateOutputPath: ReadNullableString(reader, 35),
-            ResultExtractionId: ReadNullableString(reader, 36));
+            ResultExtractionId: ReadNullableString(reader, 36),
+            ValidationSourceExtractionId: ReadNullableString(reader, 37));
 
     private static void AddAttemptParameters(
         SqliteCommand command,
@@ -586,6 +615,10 @@ public sealed partial class SqliteAtlasRepository
             command,
             "$resultExtractionId",
             attempt.ResultExtractionId);
+        AddNullableParameter(
+            command,
+            "$validationSourceExtractionId",
+            attempt.ValidationSourceExtractionId);
     }
 
     private static void AddNullableTimestampParameter(

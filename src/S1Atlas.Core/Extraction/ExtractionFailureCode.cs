@@ -29,5 +29,9 @@ public enum ExtractionFailureCode
     InterruptedProcess,
     IntegrityMismatch,
     CustomToolPathInvalid,
-    ExtractionAlreadyActive
+    ExtractionAlreadyActive,
+    RecipeOutputAmbiguous,
+    ValidationPolicyInvalid,
+    ValidationReportInvalid,
+    PromotionEvidenceAmbiguous
 }
