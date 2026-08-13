@@ -392,7 +392,8 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
 
         await using var connection = await OpenDatabaseAsync(
             databasePath,
-            cancellationToken);
+            cancellationToken,
+            SqliteOpenMode.ReadWriteCreate);
         await using var command = connection.CreateCommand();
         command.CommandText = "CREATE TABLE unrelated (id INTEGER NOT NULL PRIMARY KEY);";
         await command.ExecuteNonQueryAsync(cancellationToken);
