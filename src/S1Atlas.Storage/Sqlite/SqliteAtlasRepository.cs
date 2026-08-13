@@ -10,7 +10,8 @@ namespace S1Atlas.Storage.Sqlite;
 public sealed partial class SqliteAtlasRepository :
     IAtlasRepository,
     IToolRepository,
-    IExtractionRepository
+    IExtractionRepository,
+    IValidatedExtractionRepository
 {
     private readonly string _databasePath;
     private readonly SqliteMigrationRunner _migrationRunner;

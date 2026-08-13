@@ -36,14 +36,20 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5], migrationVersions);
         Assert.True(await TableExistsAsync("extraction_attempts", cancellationToken));
         Assert.True(await TableExistsAsync("input_snapshots", cancellationToken));
         Assert.True(await TableExistsAsync("input_snapshot_files", cancellationToken));
-        Assert.False(await TableExistsAsync("validated_extractions", cancellationToken));
-        Assert.False(await TableExistsAsync("extraction_artifacts", cancellationToken));
-        Assert.False(await TableExistsAsync("extraction_validation_issues", cancellationToken));
-        Assert.False(await TableExistsAsync("preferred_extractions", cancellationToken));
+        Assert.True(await TableExistsAsync("validated_extractions", cancellationToken));
+        Assert.True(await TableExistsAsync("extraction_artifacts", cancellationToken));
+        Assert.True(await TableExistsAsync("extraction_validation_results", cancellationToken));
+        Assert.True(await TableExistsAsync("extraction_validation_issues", cancellationToken));
+        Assert.True(await TableExistsAsync("preferred_extractions", cancellationToken));
+        Assert.True(await TableExistsAsync("extraction_preference_events", cancellationToken));
+        Assert.True(await ColumnExistsAsync(
+            "extraction_attempts",
+            "validation_source_extraction_id",
+            cancellationToken));
         Assert.Equal(
             "current-build",
             (await repository.GetCurrentSnapshotAsync(cancellationToken))!
@@ -53,13 +59,13 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             "test-version",
             "win-x64",
             cancellationToken));
-        Assert.Single(GetVersionFourBackups());
+        Assert.Single(GetVersionFiveBackups());
 
         await repository.InitializeAsync(cancellationToken);
 
         migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4], migrationVersions);
-        Assert.Single(GetVersionFourBackups());
+        Assert.Equal([1, 2, 3, 4, 5], migrationVersions);
+        Assert.Single(GetVersionFiveBackups());
     }
 
     [Fact]
@@ -220,11 +226,11 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             cancellationToken);
     }
 
-    private string[] GetVersionFourBackups() =>
+    private string[] GetVersionFiveBackups() =>
         Directory.Exists(_backupDirectory)
             ? Directory.GetFiles(
                 _backupDirectory,
-                "atlas-before-schema-4-*.db",
+                "atlas-before-schema-5-*.db",
                 SearchOption.TopDirectoryOnly)
             : [];
 
@@ -263,6 +269,29 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
         return Convert.ToInt64(
             await command.ExecuteScalarAsync(cancellationToken),
             System.Globalization.CultureInfo.InvariantCulture) == 1;
+    }
+
+    private async Task<bool> ColumnExistsAsync(
+        string tableName,
+        string columnName,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(
+            SqliteOpenMode.ReadOnly,
+            cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            $"PRAGMA table_info('{tableName.Replace("'", "''", StringComparison.Ordinal)}');";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<SqliteConnection> OpenAsync(
