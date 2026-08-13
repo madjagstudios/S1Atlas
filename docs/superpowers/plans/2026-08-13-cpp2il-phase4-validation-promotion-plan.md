@@ -4,16 +4,16 @@
 
 **Goal:** Convert Phase 3 Cpp2IL candidates into immutable, structurally validated extraction records with deterministic artifact identities, recoverable filesystem/database promotion, explicit preference rules, and inspectable human/JSON history commands.
 
-**Architecture:** Phase 3 remains the only component that runs Cpp2IL and produces `ProcessCompleted` candidates. Phase 4 adds a separate validation-and-promotion pipeline: it inventories contained candidate bytes, inspects managed metadata without loading assemblies, applies the committed validation policy, compares reproducibility and preferred baselines, writes immutable manifests, promotes through an Atlas-owned staging directory, and commits extraction/history/preference facts atomically to SQLite. A new workflow façade reuses validated output, performs policy-only revalidation without rerunning Cpp2IL, consumes an existing Phase 3 candidate before launching a new process, and exposes only integrity-verified preferred or explicitly selected extractions to downstream phases.
+**Architecture:** Phase 3 remains the only component that runs Cpp2IL and produces `ProcessCompleted` candidates. Phase 4 adds a separate validation-and-promotion pipeline: it inventories contained candidate bytes, inspects managed metadata without loading assemblies, applies the committed validation policy, compares reproducibility and preferred baselines, writes immutable manifests, promotes through Atlas-owned staging, and commits extraction/history/preference facts atomically to SQLite. A workflow façade reuses validated output, performs policy-only revalidation without rerunning Cpp2IL, consumes an existing Phase 3 candidate before launching a new process, and exposes only integrity-verified extractions as authoritative.
 
-**Tech Stack:** C# / .NET 8, `System.Reflection.PortableExecutable.PEReader`, `System.Reflection.Metadata.MetadataReader`, `System.Text.Json`, SHA-256, Microsoft.Data.Sqlite, System.CommandLine, xUnit v3, source-built managed test fixture assemblies, Windows GitHub Actions.
+**Tech Stack:** C# / .NET 8, `System.Reflection.PortableExecutable.PEReader`, `System.Reflection.Metadata.MetadataReader`, `System.Text.Json`, SHA-256, Microsoft.Data.Sqlite, System.CommandLine, xUnit v3, source-built managed test fixtures, Windows GitHub Actions.
 
 ## Global Constraints
 
 - Start from merged Phase 3 `main` commit `f46c945aa9026e1248ff845c09e5bc4446291397`.
 - Preserve migrations 1–4 byte-for-byte; Phase 4 appends migration 5 only.
 - Preserve the production Cpp2IL pin, extraction profile, and validation policy exactly unless a separate reviewed design change explicitly authorizes a modification.
-- The current production policy remains:
+- The production policy remains:
 
 ```text
 Policy ID:                         managed-assemblies-v1
@@ -28,20 +28,40 @@ Catastrophic decrease threshold:   relative decrease > 0.80
 ```
 
 - Phase 3 `candidate-output` is never authoritative and cannot be consumed by ILSpy, symbol indexing, docs, MCP, or any other downstream component.
-- Only a validated extraction whose database row, `complete.marker`, immutable manifests, and current artifact hashes agree may be returned as authoritative.
+- Only a validated extraction whose database row, `complete.marker`, immutable manifests, database artifact rows, and current artifact hashes agree may be returned as authoritative.
 - Validation policy is provenance, not production identity. Policy-only revalidation cannot change `recipe_id`, `artifact_manifest_digest`, or `extraction_id`, and cannot rerun Cpp2IL.
-- Artifact production identity is derived from normalized relative path, byte size, and SHA-256. Classification and metadata counts are recorded annotations and are deliberately excluded from the content digest so validator implementation changes cannot duplicate byte-identical output.
+- Artifact production identity is derived from normalized relative path, byte size, and SHA-256. Classification and metadata counts are annotations and are deliberately excluded from the content digest so validator implementation changes cannot duplicate byte-identical output.
 - `extract --retry` is the only normal Phase 4 path that deliberately forces another Cpp2IL game process after an equivalent recipe or candidate exists.
 - `extract` remains offline. No Phase 4 service may download or install a tool.
 - Use `PEReader` and `MetadataReader`; never load reconstructed assemblies through `Assembly.Load`, `AssemblyLoadContext`, reflection-only substitutes, or execution.
-- Never follow symbolic links, junctions, hard-link-like archive metadata, or Windows reparse points while inventorying, validating, promoting, recovering, listing, showing, or manually promoting output.
+- Never follow symbolic links, junctions, or Windows reparse points while inventorying, validating, promoting, recovering, listing, showing, or manually promoting output.
 - Validated extraction directories are immutable. S1Atlas never edits artifacts or immutable manifests in place.
 - A custom-tool extraction may validate and remain in history, but it cannot become preferred automatically.
-- An automatic selection never overwrites a current `ManualPromotion`; manual choices remain until another explicit promotion or proven integrity/policy invalidation.
+- Automatic selection never overwrites a current `ManualPromotion`; manual choices remain until another explicit promotion or proven integrity/policy invalidation.
 - Phase 4 cleanup does not delete validated extractions, input snapshots, or historical attempts. General cleanup remains Phase 5.
-- Automated tests use only generated bytes, source-built fixture assemblies, temporary files, fake repositories, and injected process/tool seams. CI never downloads Cpp2IL and never uses Schedule I files.
+- Automated tests use generated bytes, source-built fixtures, temporary files, fake repositories, and injected process/tool seams. CI never downloads Cpp2IL and never uses Schedule I files.
 - No executable, reconstructed DLL, database, backup, attempt document, manifest, marker, log, candidate, or proprietary file may enter Git.
-- Preserve all Phase 1–3 human output, JSON envelope semantics, exit codes `0/1/2`, and zero-warning Release builds unless this plan explicitly replaces the successful `extract` result with its authoritative Phase 4 form.
+- Preserve Phase 1–3 human output, JSON envelope semantics, exit codes `0/1/2`, and zero-warning Release builds except where this plan explicitly replaces successful Phase 3 `extract` output with authoritative Phase 4 output.
+
+## Cross-Task Invariants
+
+These rules take precedence throughout all tasks:
+
+```text
+ValidationReport.Issues is the one in-memory source of validation issues.
+Persistence command records do not carry a second independent issues list.
+SQLite stores a validation summary and report path; strict validation.json stores the full report.
+A current-policy result is reusable only when both its SQLite summary and strict report file agree.
+Preferred comparative baselines use the latest successful current-policy report when present,
+otherwise the immutable initial extraction statistics.
+When multiple validated outputs share one recipe, the current preferred output disambiguates reuse.
+If none or more than one is selected, normal reuse fails with RecipeOutputAmbiguous.
+Candidate containment defects produce an Invalid validation report whenever safe evidence permits;
+they do not bypass validation.json through a generic exception path.
+Promotion journal is a sibling of the staging directory, never a file copied into final output.
+The Phase 4 real smoke passes a deliberately nonexistent --game-path guard so a missing candidate
+fails before Cpp2IL instead of silently falling back to a real game process.
+```
 
 ---
 
@@ -86,7 +106,7 @@ archived-only replay verification
 another required real Cpp2IL game execution
 ILSpy decompilation
 C# source generation
-symbol, caller, or callee indexing
+symbol/call indexing
 source/build diffing
 HTML portal
 MCP
@@ -110,6 +130,7 @@ src/S1Atlas.Core/Extraction/ExtractionStatistics.cs
 src/S1Atlas.Core/Extraction/ValidationOutcome.cs
 src/S1Atlas.Core/Extraction/ValidationIssue.cs
 src/S1Atlas.Core/Extraction/ValidationReport.cs
+src/S1Atlas.Core/Extraction/StoredValidationResult.cs
 src/S1Atlas.Core/Extraction/ValidatedExtraction.cs
 src/S1Atlas.Core/Extraction/ExtractionPreference.cs
 src/S1Atlas.Core/Extraction/ExtractionWorkflowResult.cs
@@ -132,7 +153,7 @@ src/S1Atlas.Extraction/Validation/AbsoluteSanityValidator.cs
 src/S1Atlas.Extraction/Validation/ComparativeSanityValidator.cs
 src/S1Atlas.Extraction/Validation/ReproducibilityValidator.cs
 src/S1Atlas.Extraction/Validation/ExtractionValidationEngine.cs
-src/S1Atlas.Extraction/Validation/ExtractionValidationService.cs
+src/S1Atlas.Extraction/ExtractionValidationService.cs
 src/S1Atlas.Extraction/Manifests/ValidatedExtractionDocuments.cs
 src/S1Atlas.Extraction/Manifests/ValidatedExtractionDocumentStore.cs
 src/S1Atlas.Extraction/Manifests/ValidatedExtractionIntegrityVerifier.cs
@@ -214,21 +235,33 @@ tests/S1Atlas.IntegrationTests/Extraction/Phase4ExtractionCliTests.cs
 ### Task 1: Add Phase 4 Domain Contracts, Identities, and Lifecycle Rules
 
 **Files:**
-- Create: all new `src/S1Atlas.Core/Extraction/*` files listed for Task 1 above
+- Create: `src/S1Atlas.Core/Extraction/ArtifactKind.cs`
+- Create: `src/S1Atlas.Core/Extraction/ArtifactManifest.cs`
+- Create: `src/S1Atlas.Core/Extraction/ArtifactManifestFingerprint.cs`
+- Create: `src/S1Atlas.Core/Extraction/ExtractionId.cs`
+- Create: `src/S1Atlas.Core/Extraction/ExtractionStatistics.cs`
+- Create: `src/S1Atlas.Core/Extraction/ValidationOutcome.cs`
+- Create: `src/S1Atlas.Core/Extraction/ValidationIssue.cs`
+- Create: `src/S1Atlas.Core/Extraction/ValidationReport.cs`
+- Create: `src/S1Atlas.Core/Extraction/StoredValidationResult.cs`
+- Create: `src/S1Atlas.Core/Extraction/ValidatedExtraction.cs`
+- Create: `src/S1Atlas.Core/Extraction/ExtractionPreference.cs`
+- Create: `src/S1Atlas.Core/Extraction/ExtractionWorkflowResult.cs`
+- Create: `src/S1Atlas.Core/Extraction/ValidatedExtractionIntegrity.cs`
 - Create: `src/S1Atlas.Core/Storage/IValidatedExtractionRepository.cs`
 - Modify: `src/S1Atlas.Core/Extraction/ExtractionAttempt.cs`
 - Modify: `src/S1Atlas.Core/Extraction/ExtractionAttemptLifecycle.cs`
 - Modify: `src/S1Atlas.Core/Extraction/ExtractionFailureCode.cs`
 - Modify: `src/S1Atlas.Core/Extraction/ExtractionFailureStage.cs`
-- Test: Core Phase 4 files listed above
+- Test: `tests/S1Atlas.Core.Tests/Extraction/ArtifactManifestFingerprintTests.cs`
+- Test: `tests/S1Atlas.Core.Tests/Extraction/ExtractionIdTests.cs`
+- Test: `tests/S1Atlas.Core.Tests/Extraction/ExtractionAttemptLifecyclePhase4Tests.cs`
 
 **Interfaces:**
 - Consumes the existing `CanonicalHashWriter`, recipe IDs, validation policy provenance, attempt records, and `ToolTrustLevel`.
 - Produces every immutable domain type and repository contract used by Tasks 2–10.
 
 - [ ] **Step 1: Write RED artifact-content identity tests**
-
-Create tests:
 
 ```csharp
 [Fact]
@@ -291,7 +324,7 @@ byte size
 lower-case SHA-256
 ```
 
-It deliberately excludes `Kind`, assembly/module names, and metadata counts because those describe bytes but do not produce them. Validate every path is non-rooted, contains no empty/`.`/`..` segment, and begins with `reconstructed/`. Reject duplicate paths using ordinal-ignore-case comparison, then sort ordinally for hashing.
+It excludes `Kind`, assembly/module names, and metadata counts because they describe bytes but do not produce them. Validate every path is non-rooted, has no empty/`.`/`..` segment, and begins with `reconstructed/`. Reject duplicate paths ordinal-ignore-case, then sort ordinally.
 
 - [ ] **Step 3: Define statistics and validation contracts**
 
@@ -375,24 +408,36 @@ public sealed record ValidationReport(
     IReadOnlyList<ValidationIssue> Issues,
     bool PreferenceEligible,
     DateTimeOffset ValidatedAtUtc);
+
+public sealed record StoredValidationResult(
+    string AttemptId,
+    string? SubjectExtractionId,
+    string ArtifactManifestDigest,
+    string PolicyId,
+    int PolicyVersion,
+    string PolicyDigest,
+    ValidationOutcome Outcome,
+    string ReportPath,
+    string? BaselineExtractionId,
+    bool PreferenceEligible,
+    DateTimeOffset ValidatedAtUtc,
+    ExtractionStatistics Statistics);
 ```
 
-Issue codes are stable PascalCase strings. Human messages are single-line and contain no stack trace.
+`StoredValidationResult` is the SQLite summary. `ValidationReport` is the complete strict document. A caller treats a stored result as reusable only after `ValidatedExtractionDocumentStore` reads `ReportPath` and proves report/summary agreement.
 
-- [ ] **Step 4: Write RED extraction-ID and preference tests**
+- [ ] **Step 4: Write RED extraction-ID tests**
 
 ```csharp
 [Fact]
-public void ExtractionId_WithSameRecipeAndManifest_ReturnsSameLowercaseSha256()
+public void Create_WithSameRecipeAndManifest_ReturnsSameLowercaseSha256()
 
 [Fact]
-public void ExtractionId_WhenRecipeOrManifestChanges_ReturnsDifferentId()
+public void Create_WhenRecipeOrManifestChanges_ReturnsDifferentId()
 
 [Fact]
-public void ExtractionId_DoesNotAcceptPolicyAsAnInput()
+public void Create_DoesNotAcceptPolicyAsAnInput()
 ```
-
-Expected: compile failure because `ExtractionId` does not exist.
 
 - [ ] **Step 5: Define validated extraction and preference records**
 
@@ -478,21 +523,19 @@ public sealed record ExtractionWorkflowResult(
 
 public sealed record ValidationPersistence(
     ExtractionAttempt Attempt,
-    ValidationReport Report,
-    IReadOnlyList<ValidationIssue> Issues);
+    ValidationReport Report);
 
 public sealed record ValidatedExtractionPromotion(
     ExtractionAttempt Attempt,
     ValidatedExtraction Extraction,
     ArtifactManifest ArtifactManifest,
     ValidationReport ValidationReport,
-    IReadOnlyList<ValidationIssue> Issues,
     ExtractionPreferenceReason? AutomaticPreferenceReason);
 ```
 
 - [ ] **Step 7: Extend attempt provenance and legal transitions**
 
-Add one nullable field immediately before `ResultExtractionId`:
+Add immediately before `ResultExtractionId`:
 
 ```csharp
 string? ValidationSourceExtractionId,
@@ -513,15 +556,12 @@ Rules:
 
 ```text
 ProcessCompleted requires CandidateOutputPath and no ResultExtractionId
-Validating requires either CandidateOutputPath or ValidationSourceExtractionId
+Validating requires CandidateOutputPath xor ValidationSourceExtractionId
 Succeeded requires ResultExtractionId and no failure metadata
 Failed validation may retain ValidationSourceExtractionId but cannot claim ResultExtractionId
-Candidate and source extraction cannot both be set on the same validation attempt
 ```
 
-Remove the Phase 3-only error text from lifecycle validation while preserving existing terminal immutability.
-
-Add failure stage `ReproducibilityValidation` if absent and codes:
+Retain terminal immutability. Add failure codes:
 
 ```text
 RecipeOutputAmbiguous
@@ -530,7 +570,7 @@ ValidationReportInvalid
 PromotionEvidenceAmbiguous
 ```
 
-Retain all existing enum values and spellings.
+`ReproducibilityValidation` already exists and remains unchanged.
 
 - [ ] **Step 8: Define `IValidatedExtractionRepository`**
 
@@ -545,6 +585,10 @@ public interface IValidatedExtractionRepository
         string extractionId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<ArtifactManifestEntry>> GetExtractionArtifactsAsync(
+        string extractionId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ValidatedExtraction>> ListValidatedExtractionsAsync(
         string? buildId,
         CancellationToken cancellationToken);
@@ -553,7 +597,7 @@ public interface IValidatedExtractionRepository
         string recipeId,
         CancellationToken cancellationToken);
 
-    Task<ValidationReport?> GetLatestValidationAsync(
+    Task<StoredValidationResult?> GetLatestValidationResultAsync(
         string extractionId,
         string policyDigest,
         CancellationToken cancellationToken);
@@ -599,8 +643,6 @@ public interface IValidatedExtractionRepository
 }
 ```
 
-All methods are command-oriented; callers do not perform multi-table transactions themselves.
-
 - [ ] **Step 9: Verify and commit Task 1**
 
 ```powershell
@@ -620,11 +662,14 @@ Expected: Core tests pass; zero warnings/errors.
 - Modify: `src/S1Atlas.Storage/Migrations/SqliteMigrations.cs`
 - Create: `src/S1Atlas.Storage/Sqlite/SqliteAtlasRepository.ValidatedExtractions.cs`
 - Modify: `src/S1Atlas.Storage/Sqlite/SqliteAtlasRepository.Extractions.cs`
-- Test: Phase 4 Storage tests listed above
+- Modify: `src/S1Atlas.Extraction/Attempts/AttemptDocumentStore.cs`
+- Test: `tests/S1Atlas.Storage.Tests/Migrations/SqliteMigrationRunnerPhase4Tests.cs`
+- Test: `tests/S1Atlas.Storage.Tests/Sqlite/SqliteAtlasRepositoryValidatedExtractionTests.cs`
+- Test: existing `tests/S1Atlas.Extraction.Tests/Attempts/AttemptDocumentStoreTests.cs`
 
 **Interfaces:**
 - Consumes Task 1 records and the existing v4 attempt/input schema.
-- Produces checked migration 5, validated extraction queries, atomic validation/promotion commits, and preference audit persistence.
+- Produces migration 5, validated extraction queries, atomic validation/promotion commits, and preference audit persistence.
 
 - [ ] **Step 1: Write RED migration-5 tests**
 
@@ -642,13 +687,11 @@ public async Task MigrateAsync_ExistingPhase3Candidate_PreservesAttemptAndAddsNu
 public async Task MigrateAsync_MigrationsOneThroughFourKeepCommittedChecksums()
 ```
 
-Create a v4 fixture by applying `SqliteMigrations.All.Take(4)` through the internal runner, insert a realistic `ProcessCompleted` attempt, then reopen with all migrations.
-
-Expected: RED because migration 5 and tables do not exist.
+Create a v4 fixture with `SqliteMigrations.All.Take(4)`, insert a realistic `ProcessCompleted` attempt, then reopen with all migrations.
 
 - [ ] **Step 2: Append exact migration 5 SQL**
 
-Do not modify the text of migrations 1–4.
+Do not modify migration 1–4 text.
 
 ```sql
 ALTER TABLE extraction_attempts
@@ -797,52 +840,50 @@ CommitValidatedExtractionAsync inserts extraction/artifacts/validation/issues at
 CommitValidatedExtractionAsync transitions Validating -> Succeeded and sets result ID
 failed artifact insert rolls back extraction, attempt, and preference
 same recipe+manifest cannot duplicate bytes
-LinkAttemptToValidatedExtractionAsync stores validation and succeeds without new extraction row
-SaveValidationFailureAsync stores report/issues and transitions to Failed with no extraction row
-SaveRevalidationAsync stores policy result against existing extraction without changing extraction row
+LinkAttemptToValidatedExtractionAsync stores validation and succeeds without a new extraction row
+SaveValidationFailureAsync stores summary/issues and transitions Failed with no extraction row
+SaveRevalidationAsync stores policy summary against existing extraction without changing extraction row
 SetPreferredExtractionAsync writes pointer and event atomically
-ClearPreferredExtractionAsync requires the expected pointer and writes a null-target audit event
-manual preference is preserved as ManualPromotion
-corrupt enum/report rows fail closed on reads
-list methods have deterministic ordering
+ClearPreferredExtractionAsync requires expected pointer and writes null-target event
+re-verification ordering returns the latest policy result deterministically
+corrupt enum/summary rows fail closed
+artifact reads retain deterministic path order
 ```
 
-- [ ] **Step 4: Implement strict row mapping and atomic command methods**
+- [ ] **Step 4: Implement strict row mapping and atomic commands**
 
-`SqliteAtlasRepository.ValidatedExtractions.cs` owns:
-
-```text
-validated extraction row mapping
-artifact row mapping
-validation-result and issue mapping
-preferred pointer and event mapping
-all Phase 4 transactions
-```
+`SqliteAtlasRepository.ValidatedExtractions.cs` owns all Phase 4 mapping/transactions.
 
 Rules:
 
-- Parse every enum case-sensitively.
-- Parse timestamps with the existing strict `O` helpers.
-- Validate full lower-case SHA-256 IDs/digests before writes.
-- Sort artifacts by normalized relative path and issues by supplied order.
-- Reject case-insensitive artifact path collisions before opening a transaction.
-- `CommitValidatedExtractionAsync` loads the authoritative attempt and invokes `ExtractionAttemptLifecycle.Transition` from `Validating` to `Succeeded` inside the same transaction.
-- `LinkAttemptToValidatedExtractionAsync` and `SaveRevalidationAsync` do not change immutable extraction/artifact rows.
-- A `ManualPromotion` event may overwrite any valid current pointer; automatic callers are filtered before reaching storage.
-- `ClearPreferredExtractionAsync` uses optimistic `WHERE build_id = ... AND extraction_id = ...`; disagreement fails without erasing another selection.
+- Parse enums case-sensitively and timestamps with existing strict `O` helpers.
+- Validate full lower-case IDs/digests.
+- Sort artifacts by normalized relative path and issues by report order.
+- Reject case-insensitive artifact collisions before a transaction.
+- Persist `ValidationReport.Issues`; no second issue source exists.
+- Persist only `StoredValidationResult` summary fields plus issues. Full comparisons, integrity booleans, assembly groups, and subject kind remain in strict `validation.json`.
+- `GetLatestValidationResultAsync` returns only the summary. The validation/history layer reads and verifies `ReportPath` before reuse.
+- `CommitValidatedExtractionAsync` transitions `Validating -> Succeeded` in the same transaction.
+- Link/revalidation methods do not change immutable extraction/artifact rows.
+- Storage verifies a preferred extraction belongs to the same build.
+- `ClearPreferredExtractionAsync` uses optimistic `WHERE build_id = ... AND extraction_id = ...`.
 
-- [ ] **Step 5: Extend attempt persistence and strict document compatibility**
+- [ ] **Step 5: Extend attempt persistence and document compatibility**
 
-Add `validation_source_extraction_id` to `AttemptColumns`, inserts, updates, row mapping, and parameters.
+Add `validation_source_extraction_id` to attempt SQL.
 
 Update `AttemptDocumentStore`:
 
-- writer schema becomes `2` and includes `validationSourceExtractionId`;
-- reader accepts schema 1 and schema 2;
-- schema 1 maps the new field to null;
-- exact-property validation remains version-specific;
-- existing real Phase 3 `attempt.json` files remain readable;
-- a schema-2 document cannot carry both candidate output and validation source.
+```text
+writer schema becomes 2
+schema 2 includes validationSourceExtractionId
+reader accepts schema 1 and 2
+schema 1 maps the field to null
+exact property sets remain version-specific
+schema 2 rejects both candidateOutputPath and validationSourceExtractionId together
+```
+
+Existing real Phase 3 documents remain readable.
 
 - [ ] **Step 6: Verify and commit Task 2**
 
@@ -850,46 +891,41 @@ Update `AttemptDocumentStore`:
 dotnet test tests/S1Atlas.Storage.Tests/S1Atlas.Storage.Tests.csproj --filter "Phase4|ValidatedExtraction"
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter AttemptDocumentStoreTests
 dotnet build S1Atlas.sln --configuration Release
-git add -- src/S1Atlas.Storage src/S1Atlas.Extraction/Attempts src/S1Atlas.Core/Storage tests/S1Atlas.Storage.Tests tests/S1Atlas.Extraction.Tests/Attempts
+git add -- src/S1Atlas.Storage src/S1Atlas.Extraction/Attempts tests/S1Atlas.Storage.Tests tests/S1Atlas.Extraction.Tests/Attempts
 git commit -m "feat: persist validated extraction history and preference"
 ```
-
-Expected: migration/repository/document tests pass; zero warnings/errors.
 
 ---
 
 ### Task 3: Inventory Candidate Bytes with Strict Containment
 
 **Files:**
-- Create: `CandidateArtifact.cs`
-- Create: `CandidateOutputInspector.cs`
-- Create: `OwnedValidatedExtractionPaths.cs`
-- Test: `CandidateOutputInspectorTests.cs`
-- Test: path tests within `ValidatedExtractionPromoterTests.cs`
+- Create: `src/S1Atlas.Extraction/Validation/CandidateArtifact.cs`
+- Create: `src/S1Atlas.Extraction/Validation/CandidateOutputInspector.cs`
+- Create: `src/S1Atlas.Extraction/Promotion/OwnedValidatedExtractionPaths.cs`
+- Test: `tests/S1Atlas.Extraction.Tests/Validation/CandidateOutputInspectorTests.cs`
+- Test: path-focused cases in `tests/S1Atlas.Extraction.Tests/Promotion/ValidatedExtractionPromoterTests.cs`
 
 **Interfaces:**
 - Consumes a `ProcessCompleted` attempt, Atlas root, exact candidate path, and `IFileHasher`.
-- Produces a deterministic, fully hashed list of regular files without classifying managed metadata yet.
+- Produces a deterministic, fully hashed candidate inventory or a structured invalid containment result without classifying managed metadata.
 
-- [ ] **Step 1: Write RED containment and inventory tests**
+- [ ] **Step 1: Write RED containment/inventory tests**
 
 ```text
 InspectAsync_NormalNestedTree_ReturnsEveryFileSortedByNormalizedRelativePath
 InspectAsync_UsesReconstructedPrefixInFinalRelativePaths
-InspectAsync_EmptyTree_ReturnsNoArtifactsIssueInput
-InspectAsync_RootOutsideExpectedAttemptPath_Rejects
-InspectAsync_CandidateFieldDoesNotEqualOwnedPath_Rejects
-InspectAsync_ReparseDirectoryOrFile_RejectsWithoutFollowing
-InspectAsync_FilePathEscapesThroughCaseOrTraversal_Rejects
-InspectAsync_CaseInsensitiveDuplicateRelativePaths_Rejects
-InspectAsync_FileChangesBetweenSizeAndHashObservation_Rejects
-InspectAsync_UnreadableFile_RejectsWithoutPartialManifest
-InspectAsync_OverflowingCountsOrBytes_Rejects
+InspectAsync_EmptyTree_ReturnsSuccessfulEmptyInventoryForPolicyEvaluation
+InspectAsync_RootOutsideExpectedAttemptPath_ReturnsInvalidContainment
+InspectAsync_CandidateFieldDoesNotEqualOwnedPath_ReturnsInvalidContainment
+InspectAsync_ReparseDirectoryOrFile_ReturnsInvalidWithoutFollowing
+InspectAsync_CaseInsensitiveDuplicatePaths_ReturnsInvalid
+InspectAsync_FileChangesDuringObservation_ReturnsInvalid
+InspectAsync_UnreadableFile_ReturnsInvalidWithoutPartialInventory
+InspectAsync_OverflowingCountsOrBytes_ReturnsInvalid
 ```
 
-Use injected filesystem/hash seams only where needed to reproduce a race; normal tests operate on real temporary Windows directories.
-
-- [ ] **Step 2: Define internal candidate facts**
+- [ ] **Step 2: Define internal candidate results**
 
 ```csharp
 internal sealed record CandidateArtifact(
@@ -902,9 +938,14 @@ internal sealed record CandidateInventory(
     string CandidateRoot,
     IReadOnlyList<CandidateArtifact> Artifacts,
     long TotalBytes);
+
+internal sealed record CandidateInspectionResult(
+    CandidateInventory? Inventory,
+    bool ContainmentPassed,
+    IReadOnlyList<ValidationIssue> Issues);
 ```
 
-`RelativePath` is the final manifest path:
+`RelativePath` is:
 
 ```text
 reconstructed/<candidate-relative-path with '/'>
@@ -927,36 +968,31 @@ internal sealed record OwnedValidatedExtractionPaths
 }
 ```
 
-Expose contained paths:
+Expose:
 
 ```text
 attempt candidate
 attempt validation.json
 promotion staging root: builds/<build>/extractions/.staging/<attempt-id>
-promotion journal
-staged reconstructed root
-staged logs root
+promotion journal sibling: builds/<build>/extractions/.staging/<attempt-id>.promotion.json
+staged reconstructed/logs roots
 final extraction root: builds/<build>/extractions/<extraction-id>
-extraction quarantine root: builds/<build>/extractions/quarantine
+quarantine root: builds/<build>/extractions/quarantine
 ```
 
-Reuse the same safe-segment, containment, normal-directory, and reparse rules as `OwnedAttemptPaths`; do not duplicate permissive path logic.
+Reuse `OwnedAttemptPaths` safety patterns; no permissive duplicate implementation.
 
-- [ ] **Step 4: Implement deterministic candidate inventory**
+- [ ] **Step 4: Implement deterministic inspection**
 
-`CandidateOutputInspector.InspectAsync`:
+1. Require status `ProcessCompleted` or `Validating`.
+2. Require attempt candidate equals exact owned candidate path.
+3. Walk explicitly without following reparse points.
+4. Observe regular files only.
+5. Reject ordinal-ignore-case duplicate paths.
+6. Record length/hash, re-observe, and reject changes.
+7. Sort paths ordinally and use checked totals.
 
-1. Require attempt status `ProcessCompleted` or `Validating`.
-2. Require `CandidateOutputPath` equals the exact owned candidate path after full normalization.
-3. Require a normal non-reparse root.
-4. Walk with an explicit stack; never use an API that follows a reparse directory.
-5. Observe only regular files.
-6. Reject case-insensitive duplicate normalized paths.
-7. Record length, hash with shared-read semantics, then re-observe length/last-write and reject changes.
-8. Sort by `RelativePath` ordinally.
-9. Use checked file count and byte totals.
-
-Do not infer authority, classify DLLs, write manifests, mutate the candidate, or touch SQLite.
+Containment, race, unreadable, and path-collision defects return `CandidateInspectionResult` with `Inventory=null`, `ContainmentPassed=false`, and an Error issue. Cancellation and inability to inspect Atlas ownership safely may throw. This lets `ExtractionValidationService` write `validation.json` and fail the attempt rather than bypassing the validation record.
 
 - [ ] **Step 5: Verify and commit Task 3**
 
@@ -972,20 +1008,27 @@ git commit -m "feat: inventory contained extraction candidates"
 ### Task 4: Inspect Managed Metadata and Apply Absolute Policy Checks
 
 **Files:**
-- Create: source-built fixture project and add it to `S1Atlas.sln`
-- Create: `ManagedAssemblyInspector.cs`
-- Create: `ArtifactManifestBuilder.cs`
-- Create: `AbsoluteSanityValidator.cs`
-- Create: `ExtractionValidationEngine.cs`
-- Test: corresponding validation tests
+- Create: `tests/Fixtures/S1Atlas.ManagedAssemblyFixture/S1Atlas.ManagedAssemblyFixture.csproj`
+- Create: `tests/Fixtures/S1Atlas.ManagedAssemblyFixture/FixtureRoot.cs`
+- Modify: `S1Atlas.sln`
+- Modify: `tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj`
+- Modify: `tests/S1Atlas.IntegrationTests/S1Atlas.IntegrationTests.csproj`
+- Create: `src/S1Atlas.Extraction/Validation/ManagedAssemblyInspector.cs`
+- Create: `src/S1Atlas.Extraction/Validation/ArtifactManifestBuilder.cs`
+- Create: `src/S1Atlas.Extraction/Validation/AbsoluteSanityValidator.cs`
+- Create: `src/S1Atlas.Extraction/Validation/ExtractionValidationEngine.cs`
+- Test: `ManagedAssemblyInspectorTests.cs`
+- Test: `ArtifactManifestBuilderTests.cs`
+- Test: `AbsoluteSanityValidatorTests.cs`
+- Test: `ExtractionValidationEngineTests.cs`
 
 **Interfaces:**
-- Consumes Task 3 candidate bytes and the existing `ResolvedValidationPolicy`.
-- Produces a fully annotated `ArtifactManifest`, aggregate statistics, and absolute validation issues without loading or executing candidate assemblies.
+- Consumes Task 3 inventory and existing `ResolvedValidationPolicy`.
+- Produces annotated artifacts, aggregate statistics, and absolute validation issues without loading assemblies.
 
-- [ ] **Step 1: Add the source-built managed fixture**
+- [ ] **Step 1: Add source-built `Assembly-CSharp` fixture**
 
-`S1Atlas.ManagedAssemblyFixture.csproj`:
+Use:
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -999,38 +1042,24 @@ git commit -m "feat: inventory contained extraction candidates"
 </Project>
 ```
 
-`FixtureRoot.cs` contains at least:
+`FixtureRoot` includes one event, property, returning method, and raising method. Test projects reference the fixture; only source is committed.
 
-```csharp
-public sealed class FixtureRoot
-{
-    public event EventHandler? Changed;
-    public string Name { get; set; } = "fixture";
-    public int Add(int left, int right) => left + right;
-    public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
-}
-```
+- [ ] **Step 2: Write RED inspection tests**
 
-Reference the fixture only from Extraction and Integration test projects. Do not add it as a production dependency.
-
-- [ ] **Step 2: Write RED managed-assembly inspection tests**
-
-Copy the fixture assembly from `typeof(FixtureRoot).Assembly.Location` at runtime.
-
-Cover:
+Copy `typeof(FixtureRoot).Assembly.Location` at runtime. Cover:
 
 ```text
-Inspect_ManagedAssembly_ReturnsAssemblyModuleAndTableCounts
-Inspect_ValidNativeDll_ReturnsNativeWithoutMetadataCounts
-Inspect_TruncatedOrInvalidPe_ReturnsInvalidManagedCandidate
-Inspect_DoesNotLoadAssemblyIntoCurrentAppDomain
-Inspect_MetadataEnumerationFailure_ReturnsStructuredFailure
-Inspect_TrailingByteCopy_KeepsIdentityButChangesHashForDuplicateTests
+managed assembly identity/module/table counts
+valid native DLL -> NativeLibrary
+truncated/invalid PE -> structured invalid DLL
+AssemblyLoad event count does not increase during inspector call
+metadata enumeration failure -> structured failure
+trailing-byte copy keeps assembly identity but changes hash
 ```
 
-Use `Path.Combine(Environment.SystemDirectory, "kernel32.dll")` as the runtime native fixture on Windows. Never copy it into the repository.
+Use runtime `kernel32.dll`; never commit it.
 
-- [ ] **Step 3: Implement PE/metadata inspection without loading**
+- [ ] **Step 3: Implement PE/metadata inspection**
 
 ```csharp
 internal sealed record ManagedAssemblyInspection(
@@ -1047,34 +1076,22 @@ internal sealed record ManagedAssemblyInspection(
     string? FailureMessage);
 ```
 
-For `.dll` files:
-
-1. Open a read-only `FileStream` with `FileShare.Read`.
-2. Construct `PEReader` with `PEStreamOptions.LeaveOpen`.
-3. Invalid/truncated PE is a structured invalid DLL.
-4. Valid PE without managed metadata is `NativeLibrary`.
-5. Managed PE uses `GetMetadataReader()` and reads assembly/module definitions and table counts.
-6. Use metadata row counts exactly as exposed, including the metadata `<Module>` type.
-7. Catch expected `BadImageFormatException`, `IOException`, `UnauthorizedAccessException`, and metadata overflow as validation facts, not process crashes.
-
-Non-`.dll` files are `Other` and are not opened as PE.
+For `.dll`: open read-only, construct `PEReader`, classify native when no managed metadata, and use `MetadataReader` for assembly/module and exact table row counts. Invalid/truncated DLLs become validation facts. Non-DLL files are `Other`.
 
 - [ ] **Step 4: Write RED manifest/statistics tests**
 
 ```text
-BuildAsync_AnnotatesManagedNativeAndOtherFiles
-BuildAsync_AggregatesCountsByAssemblyIdentity
-BuildAsync_IdenticalDuplicateAssemblyIdentity_AddsInformationalWarning
-BuildAsync_ConflictingDuplicateAssemblyIdentity_AddsHardError
-BuildAsync_InvalidDll_AddsHardError
-BuildAsync_ManifestDigestDependsOnlyOnContentProjection
+managed/native/other annotation
+aggregate counts by assembly identity
+identical duplicate identity -> informational issue
+same identity/different hash -> hard issue
+invalid DLL -> hard issue
+content digest unchanged when only annotations differ
 ```
 
-An identical duplicate is an exact byte copy under another path. A conflicting duplicate is the fixture copy with a trailing byte; PE metadata identity remains the same while SHA differs.
+A conflicting duplicate is the fixture copy with one trailing byte.
 
-- [ ] **Step 5: Implement artifact manifest and statistics construction**
-
-`ArtifactManifestBuilder.BuildAsync` returns:
+- [ ] **Step 5: Implement manifest/statistics construction**
 
 ```csharp
 internal sealed record ArtifactBuildResult(
@@ -1084,35 +1101,9 @@ internal sealed record ArtifactBuildResult(
     IReadOnlyList<ValidationIssue> Issues);
 ```
 
-Rules:
-
-- At least one output file is checked later by policy.
-- Every `.dll` is classified by the inspector.
-- `LibraryCount` counts all `.dll` artifacts.
-- Aggregate assembly counts group managed files by assembly name using ordinal-ignore-case comparison and emit results ordered ordinally.
-- Identical duplicate assembly identity/hashes are retained and create `IdenticalDuplicateAssemblyIdentity` information.
-- Same identity with different hashes creates `DuplicateAssemblyIdentity` error.
-- Invalid/truncated DLL creates `InvalidManagedAssembly` error.
-- Native DLL remains a valid `NativeLibrary` artifact unless another policy rule fails.
+Group assembly names ordinal-ignore-case and order results deterministically. `LibraryCount` counts all `.dll` files. Retain identical duplicate artifacts; do not rewrite candidate bytes.
 
 - [ ] **Step 6: Write RED absolute sanity tests**
-
-```text
-Validate_NoArtifacts_InvalidNoArtifactsProduced
-Validate_EmptyFile_InvalidEmptyArtifact
-Validate_NoManagedAssemblies_InvalidNoManagedAssembliesProduced
-Validate_RequiredAssemblyMissing_Invalid
-Validate_ZeroTypesOrMethods_Invalid
-Validate_TotalManagedBytesBelowPolicy_Invalid
-Validate_ValidFacts_NoHardIssues
-Validate_ExistingManifestErrorsRemainInvalid
-```
-
-Tests use a test policy with a small byte floor; the production JSON remains unchanged.
-
-- [ ] **Step 7: Implement absolute policy validation**
-
-`AbsoluteSanityValidator.Validate` appends stable issues:
 
 ```text
 NoArtifactsProduced
@@ -1121,18 +1112,33 @@ NoManagedAssembliesProduced
 RequiredAssemblyMissing
 InvalidManagedAssembly
 DuplicateAssemblyIdentity
-MinimumManagedAssemblyCountNotMet
-MinimumTypeDefinitionCountNotMet
-MinimumMethodDefinitionCountNotMet
-MinimumManagedBytesNotMet
+minimum managed assembly/type/method/byte checks
+valid facts with no hard issue
 ```
 
-Hard errors take precedence. `ExtractionValidationEngine` initially combines inventory/manifest issues and absolute checks into a report shell; Task 5 adds comparison/reproducibility and final preference eligibility.
+Use a test policy with a small byte floor; production JSON stays unchanged.
+
+- [ ] **Step 7: Implement absolute checks and failure mapping inputs**
+
+`AbsoluteSanityValidator` returns ordered issues. `ExtractionValidationEngine` accepts candidate inspection, artifact build, source-attempt integrity booleans, policy, optional baseline, and same-recipe rows.
+
+Phase 4 failure mapping used later:
+
+```text
+containment issue       -> OutputContainment / OutputOutsideStaging
+no/empty artifact       -> ArtifactValidation / NoArtifactsProduced or EmptyArtifact
+no managed assembly     -> AssemblyValidation / NoManagedAssembliesProduced
+invalid managed DLL     -> AssemblyValidation / InvalidManagedAssembly
+required missing        -> AssemblyValidation / RequiredAssemblyMissing
+duplicate identity      -> AssemblyValidation / DuplicateAssemblyIdentity
+catastrophic deviation  -> SanityValidation / CatastrophicSanityDeviation
+invalid policy/report   -> SanityValidation / ValidationPolicyInvalid or ValidationReportInvalid
+```
 
 - [ ] **Step 8: Verify and commit Task 4**
 
 ```powershell
-dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ManagedAssemblyInspector|ArtifactManifestBuilder|AbsoluteSanity"
+dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ManagedAssemblyInspector|ArtifactManifestBuilder|AbsoluteSanity|ExtractionValidationEngine"
 dotnet build S1Atlas.sln --configuration Release
 git add -- S1Atlas.sln tests/Fixtures src/S1Atlas.Extraction/Validation tests/S1Atlas.Extraction.Tests/Validation tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj tests/S1Atlas.IntegrationTests/S1Atlas.IntegrationTests.csproj
 git commit -m "feat: inspect and validate reconstructed assemblies"
@@ -1143,36 +1149,25 @@ git commit -m "feat: inspect and validate reconstructed assemblies"
 ### Task 5: Add Comparative Sanity, Reproducibility, and Preference Decisions
 
 **Files:**
-- Create: `ComparativeSanityValidator.cs`
-- Create: `ReproducibilityValidator.cs`
-- Create: `ExtractionPreferencePolicy.cs`
-- Modify: `ExtractionValidationEngine.cs`
-- Test: corresponding files
+- Create: `src/S1Atlas.Extraction/Validation/ComparativeSanityValidator.cs`
+- Create: `src/S1Atlas.Extraction/Validation/ReproducibilityValidator.cs`
+- Create: `src/S1Atlas.Extraction/Promotion/ExtractionPreferencePolicy.cs`
+- Modify: `src/S1Atlas.Extraction/Validation/ExtractionValidationEngine.cs`
+- Test: comparative, reproducibility, preference, and engine test files
 
 **Interfaces:**
-- Consumes absolute-valid candidate facts, current preferred extraction/statistics, same-recipe extractions, tool trust, and current preference reason.
+- Consumes absolute-valid facts, current preferred extraction/report, same-recipe extractions, tool trust, and current preference.
 - Produces final comparisons/issues/outcome, deduplication target, and optional automatic preference reason.
 
-- [ ] **Step 1: Write RED comparative sanity tests**
+- [ ] **Step 1: Write RED comparative tests**
 
-Use the exact formula:
+Use:
 
 ```text
 relative change = |candidate - baseline| / baseline
 ```
 
-Cover:
-
-```text
-more than 80 percent decrease in any major count -> Invalid
-exactly 80 percent decrease -> warning only when greater than 25 percent
-more than 25 percent increase or decrease -> warning
-exactly 25 percent -> no warning
-baseline zero and candidate nonzero -> warning without division
-large increase -> warning, not hard failure
-per-assembly type/method counts participate
-hard failure is emitted once per metric and takes precedence over warning
-```
+Cover >80% decrease hard failure first; exactly 80% warning only when >25%; >25% change warning; exactly 25% no warning; zero baseline warning without division; large increase warning; per-assembly type/method counts.
 
 Major metrics:
 
@@ -1187,34 +1182,23 @@ per-assembly method count
 
 - [ ] **Step 2: Implement comparative validation**
 
-`ComparativeSanityValidator.Compare` returns ordered metric comparisons and issues.
-
-Ordering:
-
-```text
-aggregate metrics in the list above
-assembly names ordinal-ignore-case then ordinal
-per-assembly TypeDefinitionCount then MethodDefinitionCount
-```
-
 Codes:
 
 ```text
-CatastrophicSanityDeviation        error, preference blocking
-ComparativeSanityDeviation         warning, not preference blocking
-BaselineZeroChanged                warning, not preference blocking
+CatastrophicSanityDeviation   Error + preference blocking
+ComparativeSanityDeviation    Warning
+BaselineZeroChanged           Warning
 ```
 
-If no preferred baseline exists, return no comparisons and no warning. A corrupt preferred extraction is cleared by the integrity/preference layer before comparison rather than used as a baseline.
+Hard checks run first. Aggregate metrics precede assembly metrics; assembly names order ordinal-ignore-case then ordinal. If preferred has a verified successful current-policy report, use that report’s statistics. Otherwise use immutable initial extraction statistics.
 
 - [ ] **Step 3: Write RED reproducibility tests**
 
 ```text
-no same-recipe extraction -> NewOutput
-same recipe and same manifest digest -> ExistingExtraction target
-same recipe and different digest -> NewOutput plus SameRecipeDifferentOutput blocking warning
-multiple same-recipe rows with same digest -> integrity error
-multiple different outputs and no preferred/manual disambiguation -> deterministic distinct result with blocking warning
+no same-recipe output -> NewOutput
+same digest -> ExistingOutput target
+other digest -> NewOutput + SameRecipeDifferentOutput blocking warning
+multiple rows with identical recipe+digest -> integrity error
 ```
 
 - [ ] **Step 4: Implement reproducibility comparison**
@@ -1232,57 +1216,34 @@ internal sealed record ReproducibilityResult(
     IReadOnlyList<ValidationIssue> Issues);
 ```
 
-A same-digest match means candidate bytes are discarded after successful comparison and the attempt links to the existing extraction. A different digest creates a distinct extraction ID and `SameRecipeDifferentOutput` warning with `PreferenceBlocking=true`.
+Same digest links and discards duplicate candidate after verification. Different digest produces a distinct extraction and preference-blocking warning.
 
-- [ ] **Step 5: Write RED automatic preference tests**
+- [ ] **Step 5: Write RED preference tests**
 
 ```text
-ManagedPinned valid candidate and no preferred -> ManagedAutomatic
-ManagedPinned valid candidate replacing auto-selected different tool instance -> ReplacementAfterToolUpgrade
-CustomOverride -> no automatic preference
-preference-blocking warning -> no automatic preference
-Invalid -> no automatic preference
-current ManualPromotion -> no automatic replacement
+ManagedPinned valid + no preferred -> ManagedAutomatic
+ManagedPinned valid replacing auto-selected different tool instance -> ReplacementAfterToolUpgrade
+CustomOverride -> none
+blocking warning or Invalid -> none
+current ManualPromotion -> none
 same extraction already preferred -> no new event
 ```
 
-- [ ] **Step 6: Implement `ExtractionPreferencePolicy`**
+- [ ] **Step 6: Implement preference policy and final outcome**
 
-```csharp
-internal static class ExtractionPreferencePolicy
-{
-    public static ExtractionPreferenceReason? SelectAutomaticReason(
-        ValidatedExtraction candidate,
-        ValidationReport report,
-        PreferredExtraction? currentPreference,
-        ValidatedExtraction? currentPreferredExtraction);
-}
-```
+Automatic eligibility requires managed-pinned, non-Invalid, report preference eligible, and no blocking issue. Manual choice is never automatically replaced.
 
-Automatic eligibility requires:
-
-```text
-ManagedPinned
-Valid or ValidWithWarnings
-report.PreferenceEligible true
-no PreferenceBlocking issue
-```
-
-A current `ManualPromotion` is never automatically replaced. `ReplacementAfterToolUpgrade` requires both old and new outputs to be managed-pinned and different tool-instance IDs.
-
-- [ ] **Step 7: Finish validation outcome and preference eligibility**
-
-`ExtractionValidationEngine` final rules:
+Outcome:
 
 ```text
 any Error -> Invalid
-no Error and any Warning -> ValidWithWarnings
+otherwise any Warning -> ValidWithWarnings
 otherwise -> Valid
 ```
 
-`PreferenceEligible` is false for Invalid, `CustomOverride`, or any preference-blocking issue. Informational issues do not change outcome. Preserve deterministic issue ordering: containment/inventory, assembly, absolute, comparative, reproducibility.
+Issues order: containment/inventory, assembly, absolute, comparative, reproducibility.
 
-- [ ] **Step 8: Verify and commit Task 5**
+- [ ] **Step 7: Verify and commit Task 5**
 
 ```powershell
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter "ComparativeSanity|Reproducibility|ExtractionPreferencePolicy|ExtractionValidationEngine"
@@ -1296,116 +1257,66 @@ git commit -m "feat: compare extraction sanity and reproducibility"
 ### Task 6: Write Strict Immutable Manifests and Verify Extraction Integrity
 
 **Files:**
-- Create: `ValidatedExtractionDocuments.cs`
-- Create: `ValidatedExtractionDocumentStore.cs`
-- Create: `ValidatedExtractionIntegrityVerifier.cs`
-- Test: corresponding manifest tests
+- Create: `src/S1Atlas.Extraction/Manifests/ValidatedExtractionDocuments.cs`
+- Create: `src/S1Atlas.Extraction/Manifests/ValidatedExtractionDocumentStore.cs`
+- Create: `src/S1Atlas.Extraction/Manifests/ValidatedExtractionIntegrityVerifier.cs`
+- Test: manifest and integrity test files
 
 **Interfaces:**
-- Consumes Task 1 domain facts, a staged/final extraction root, and shared hashing/path safety.
-- Produces strict immutable JSON documents, marker hashes, and a full integrity verdict suitable for authoritative consumption.
+- Consumes domain facts, staged/final roots, database artifact rows, and shared path/hash safety.
+- Produces strict documents, marker hashes, and a full verdict suitable for authoritative consumption.
 
-- [ ] **Step 1: Write RED strict document round-trip tests**
+- [ ] **Step 1: Write RED document tests**
 
-Cover exact schema-1 documents:
+Assert strict schema-1 `artifact-manifest.json`, `validation.json`, `extraction.json`, and `complete.marker`: UTF-8 no BOM, indented camel-case JSON, string enums, deterministic ordering, no absolute artifact paths, policy only in validation report, marker hashes all three documents, unknown/duplicate properties rejected.
 
-```text
-artifact-manifest.json
-validation.json
-extraction.json
-complete.marker
-```
-
-Assert:
-
-- UTF-8 without BOM;
-- indented camel-case JSON;
-- string enums;
-- deterministic artifact/issue/comparison ordering;
-- no absolute paths in artifact entries;
-- extraction manifest contains tool/profile provenance but no validation-policy identity;
-- validation manifest contains policy identity;
-- marker contains extraction ID, artifact digest, and SHA-256 of the other three documents;
-- unknown properties, duplicate properties, comments, trailing commas, malformed IDs, invalid paths, and non-single-line issue messages are rejected.
-
-- [ ] **Step 2: Define exact document shapes**
+- [ ] **Step 2: Define exact shapes**
 
 `extraction.json`:
 
 ```text
-schemaVersion
-extractionId
-recipeId
-sourceAttemptId
-buildId
-toolInstanceId
-profileId/profileVersion/profileDigest
-adapterVersion/extractionSchemaVersion
-artifactManifestDigest
-createdAtUtc
-trustLevel
-initialValidationOutcome
-statistics
+schemaVersion, extractionId, recipeId, sourceAttemptId, buildId, toolInstanceId,
+profileId/profileVersion/profileDigest, adapterVersion/extractionSchemaVersion,
+artifactManifestDigest, createdAtUtc, trustLevel, initialValidationOutcome, statistics
 ```
 
-`artifact-manifest.json`:
+`artifact-manifest.json` includes schema, digest, entries. `validation.json` is the exact report projection. `complete.marker` includes schema, extraction ID/digest, and SHA-256 of all three documents.
+
+Use strict DTOs; never deserialize untrusted JSON directly into Core records.
+
+- [ ] **Step 3: Implement atomic writes**
+
+Use owned sibling temp files, flush, and non-overwriting moves. Write marker last. Write the same strict report to attempt `validation.json` before terminal DB transition.
+
+Final initial report remains immutable. Policy revalidation writes only its new attempt-level report.
+
+- [ ] **Step 4: Write RED integrity tests**
 
 ```text
-schemaVersion
-artifactManifestDigest
-entries[]
+complete matching extraction -> Valid
+missing root/marker -> Missing/Incomplete
+manifest/document hash mismatch -> Mismatch
+artifact missing/extra/changed -> Mismatch
+reparse point -> Mismatch without following
+database extraction/artifact rows disagree -> Mismatch
+extraction ID recomputation fails -> Mismatch
+policy-only revalidation does not change immutable integrity
 ```
 
-`validation.json` is the exact `ValidationReport` projection.
+- [ ] **Step 5: Implement full verification**
 
-`complete.marker`:
+1. Validate expected root.
+2. Require normal root, strict docs, marker.
+3. Hash docs and compare marker.
+4. Recompute artifact digest and extraction ID.
+5. Compare extraction manifest with `ValidatedExtraction`.
+6. Compare every artifact annotation/path/size/hash with `GetExtractionArtifactsAsync` rows.
+7. Enumerate reconstructed tree without reparse following.
+8. Require exact path set and re-hash all artifacts.
+9. Require document statistics agree with artifact annotations and database aggregate fields.
+10. Treat logs as diagnostics only, while requiring contained normal paths when present.
 
-```text
-schemaVersion
-extractionId
-artifactManifestDigest
-extractionManifestSha256
-artifactManifestSha256
-validationReportSha256
-```
-
-Use a separate strict DTO layer; do not deserialize untrusted JSON directly into trusted Core records.
-
-- [ ] **Step 3: Implement atomic document writes**
-
-`ValidatedExtractionDocumentStore` writes each file through an owned sibling `.<guid>.tmp`, flushes, and moves without overwrite. It writes `complete.marker` last. It also writes the same strict validation report to the attempt root’s `validation.json` before a terminal database transition.
-
-Never rewrite any document under a final extraction root. A policy-only revalidation writes only `attempts/<new-attempt>/validation.json`; it does not alter the final extraction’s initial `validation.json`.
-
-- [ ] **Step 4: Write RED integrity-verifier tests**
-
-```text
-VerifyAsync_CompleteMatchingExtraction_ReturnsValid
-VerifyAsync_MissingRootOrMarker_ReturnsMissingOrIncomplete
-VerifyAsync_ManifestHashMismatch_ReturnsMismatch
-VerifyAsync_ArtifactMissingExtraOrChanged_ReturnsMismatch
-VerifyAsync_ReparsePoint_ReturnsMismatchWithoutFollowing
-VerifyAsync_DatabaseFactsDisagreeWithExtractionJson_ReturnsMismatch
-VerifyAsync_ExtractionIdCannotBeRecomputed_ReturnsMismatch
-VerifyAsync_PolicyOnlyRevalidationDoesNotAffectIntegrity
-```
-
-- [ ] **Step 5: Implement full integrity verification**
-
-`ValidatedExtractionIntegrityVerifier.VerifyAsync`:
-
-1. Validate expected root from build/extraction IDs.
-2. Require normal root, strict documents, and marker.
-3. Hash the three immutable documents and compare marker values.
-4. Recompute artifact content digest from manifest entries.
-5. Recompute extraction ID from recipe and artifact digest.
-6. Compare all extraction manifest facts with the database record.
-7. Enumerate `reconstructed/` without following reparse points.
-8. Require exact case-insensitive path set equality with artifact manifest.
-9. Re-hash every artifact and compare size/hash.
-10. Treat logs as non-authoritative diagnostics and require only normal contained paths when present.
-
-Return structured integrity facts; do not repair, delete, clear preference, or throw for ordinary mismatch. Throw only for cancellation or inability to inspect safely.
+Return structured mismatch; do not mutate preference here.
 
 - [ ] **Step 6: Verify and commit Task 6**
 
@@ -1421,135 +1332,93 @@ git commit -m "feat: write and verify immutable extraction manifests"
 ### Task 7: Promote Candidates Atomically and Recover Interrupted Promotions
 
 **Files:**
-- Create: `PromotionJournalStore.cs`
-- Create: `ValidatedExtractionPromoter.cs`
-- Create: `ValidatedExtractionRecoveryService.cs`
-- Modify: `ExtractionRecoveryService.cs`
-- Test: corresponding promotion/recovery files
+- Create: `src/S1Atlas.Extraction/Promotion/PromotionJournalStore.cs`
+- Create: `src/S1Atlas.Extraction/Promotion/ValidatedExtractionPromoter.cs`
+- Create: `src/S1Atlas.Extraction/Promotion/ValidatedExtractionRecoveryService.cs`
+- Modify: `src/S1Atlas.Extraction/Attempts/ExtractionRecoveryService.cs`
+- Test: promotion and recovery test files
 
 **Interfaces:**
-- Consumes a final valid candidate report, source attempt, artifact manifest, repository, document store, path policy, and preference decision.
-- Produces either a linked existing extraction or one immutable final extraction with recoverable database registration.
+- Consumes a non-Invalid report, source attempt, manifest, repository, documents, path policy, and preference decision.
+- Produces a linked existing extraction or immutable final output with recoverable registration.
 
 - [ ] **Step 1: Write RED promotion tests**
 
 ```text
-PromoteAsync_NewOutput_MovesCandidateToStagedReconstructedAndFinalizes
-PromoteAsync_WritesMarkerLastBeforeFinalRename
-PromoteAsync_DatabaseCommitAfterFinalRename_TransitionsSucceeded
-PromoteAsync_SameDigestExisting_DeletesDuplicateCandidateAndLinksAttempt
-PromoteAsync_DifferentDigest_CreatesDistinctExtractionAndBlockingWarning
-PromoteAsync_ValidationInvalid_StoresFailureAndAppliesKeepDiscardPolicy
-PromoteAsync_CustomValid_DoesNotAutoPrefer
-PromoteAsync_ManagedValid_AutoPrefersWhenAllowed
-PromoteAsync_ManualPreference_IsNotOverwritten
-PromoteAsync_FilesystemFailure_DoesNotCreateDatabaseExtraction
-PromoteAsync_DatabaseFailure_LeavesCompleteRecoverableFinalDirectory
+new output moves candidate to staged reconstructed and finalizes
+marker is written last before final rename
+DB commit follows final rename and succeeds attempt
+same digest existing deletes duplicate candidate and links
+invalid report stores failure and keep/discard policy
+custom valid does not auto-prefer
+managed valid auto-prefers when allowed
+manual preference is not overwritten
+filesystem failure creates no DB extraction
+DB failure leaves complete recoverable final directory
 ```
 
-Use injected directory-move and repository failure seams. Every test asserts no candidate becomes authoritative without marker and DB agreement.
+- [ ] **Step 2: Define sibling promotion journal**
 
-- [ ] **Step 2: Define strict promotion journal**
-
-Before moving candidate bytes, write `promotion.json` in the owned promotion staging root:
+Write strict journal at:
 
 ```text
-schemaVersion
-attemptId
-buildId
-recipeId
-plannedExtractionId
-artifactManifestDigest
-sourceCandidatePath
-finalExtractionPath
-createdAtUtc
+builds/<build>/extractions/.staging/<attempt-id>.promotion.json
 ```
 
-The journal is temporary recovery evidence and is not copied into the final extraction. It uses strict JSON and owned atomic replacement.
-
-- [ ] **Step 3: Implement new-output promotion order**
+Fields:
 
 ```text
-require attempt Validating and report non-Invalid
-require candidate inventory still matches artifact manifest
-create previously absent owned promotion staging root
-write promotion journal
+schemaVersion, attemptId, buildId, recipeId, plannedExtractionId,
+artifactManifestDigest, sourceCandidatePath, stagingPath, finalExtractionPath, createdAtUtc
+```
+
+It is outside the staging directory, never appears in final output, remains after a post-rename DB failure, and is deleted only after successful DB commit or recovery.
+
+- [ ] **Step 3: Implement new-output promotion**
+
+```text
+require Validating and non-Invalid
+require inventory still matches manifest
+create absent staging root
+write sibling journal
 Directory.Move(candidate-output, staging/reconstructed)
-copy bounded attempt logs into staging/logs
-write extraction.json
-write artifact-manifest.json
-write validation.json
-write complete.marker last
-verify staged extraction integrity against planned record
-Directory.Move(staging root, final extraction ID root)
-commit SQLite promotion transaction
-remove temporary promotion journal only as part of staging rename
+copy bounded attempt logs to staging/logs
+write extraction/artifact/validation documents
+write marker last
+verify staged output against planned record/artifact rows
+Directory.Move(staging, final extraction root)
+commit SQLite promotion
+best-effort delete journal after commit
 ```
 
-If an exception occurs before final rename, preserve owned staging evidence for recovery. If final rename succeeds but SQLite fails, return `DatabasePromotionFailed`; do not delete the complete final directory.
+Before final rename, integrity verification accepts the planned record and manifest rather than requiring a DB row that does not yet exist.
 
-- [ ] **Step 4: Implement same-output linking and invalid finalization**
+- [ ] **Step 4: Implement same-output and invalid finalization**
 
-Same content:
+Same bytes: write attempt report, verify existing final extraction, delete exact duplicate candidate, link attempt.
 
-```text
-write attempt validation.json
-verify existing final extraction integrity
-remove only the exact duplicate candidate tree
-LinkAttemptToValidatedExtractionAsync
-```
-
-Invalid candidate:
-
-```text
-write attempt validation.json
-if KeepFailedArtifacts: move candidate-output -> retained-output
-else count and delete candidate-output
-SaveValidationFailureAsync
-```
-
-No invalid validation creates an extraction directory, marker, preferred pointer, or result extraction ID.
+Invalid: write report; move candidate to retained output only when requested, otherwise count/delete; store failed validation. Never create marker/extraction/preference/result ID.
 
 - [ ] **Step 5: Write RED recovery tests**
 
-Simulate:
-
 ```text
-complete final directory + no DB row + Validating source attempt -> register and succeed
-complete staging directory + journal + no final -> verify, rename, register
-final DB row + valid directory -> no-op
-DB row + missing/invalid directory -> clear preferred if selected and report integrity mismatch
-incomplete staging with provable journal -> quarantine, abandon attempt, preserve evidence
-unknown staging or final directory -> fail closed without deletion
-same extraction registered concurrently -> converge on one row
+complete final + journal + no DB row -> register and succeed
+complete staging + journal -> verify, rename, register
+DB row + valid final -> no-op and remove stale journal
+DB row + invalid/missing final -> clear selected pointer and report mismatch
+incomplete owned staging + journal -> quarantine and abandon
+unknown staging/final -> preserve and fail closed
+concurrent same extraction -> converge
 manual preference survives unrelated recovery
 ```
 
-- [ ] **Step 6: Implement `ValidatedExtractionRecoveryService`**
+- [ ] **Step 6: Implement validated promotion recovery**
 
-Run before generic attempt recovery.
+Run before generic attempt recovery. It may complete provable staging, register complete final output, transition source attempt, quarantine incomplete owned promotion, and clear only a proven-invalid selected pointer with `IntegrityInvalidated`. It never invents manifests, trusts no-marker output, rewrites final files, deletes ambiguity, or auto-selects custom output.
 
-Recovery may:
+Ensure generic recovery does not abandon a `Validating` attempt before this service examines promotion evidence. After Phase 4 recovery handles or classifies every Validating attempt, generic recovery may process remaining ordinary attempts.
 
-- complete a fully provable staged promotion;
-- register a complete unregistered final extraction;
-- transition its source `Validating` attempt to `Succeeded` through the normal storage transaction;
-- quarantine incomplete owned promotion staging under `builds/<build>/extractions/quarantine/<attempt>-<timestamp>`;
-- mark a provably interrupted validation attempt `Abandoned` with stage `Recovery` and code `InterruptedProcess` or `PromotionEvidenceAmbiguous`;
-- clear a preferred pointer only when full integrity verification proves the selected extraction invalid, recording `IntegrityInvalidated`.
-
-Recovery may not:
-
-- invent a manifest;
-- trust a directory without `complete.marker`;
-- rewrite immutable final files;
-- delete ambiguous evidence;
-- select a custom extraction automatically;
-- consume a Phase 3 candidate without validation.
-
-Update the existing generic recovery service so it does not prematurely abandon `Validating` attempts owned by the Phase 4 recovery pass.
-
-- [ ] **Step 7: Run repeated recovery verification and commit Task 7**
+- [ ] **Step 7: Verify repeatedly and commit Task 7**
 
 ```powershell
 1..3 | ForEach-Object {
@@ -1567,34 +1436,33 @@ git commit -m "feat: promote and recover validated extractions"
 ### Task 8: Add Reuse, Policy Revalidation, and Authoritative `extract` Workflow
 
 **Files:**
-- Create: `ExtractionPreparationService.cs`
-- Create: `ExtractionValidationService.cs`
-- Create: `ValidatedExtractionWorkflow.cs`
-- Modify: `ExtractionOrchestrator.cs`
-- Test: `ValidatedExtractionWorkflowTests.cs`
-- Modify: existing orchestrator tests only where the public composition changes
+- Create: `src/S1Atlas.Extraction/ExtractionPreparationService.cs`
+- Create: `src/S1Atlas.Extraction/ExtractionValidationService.cs`
+- Create: `src/S1Atlas.Extraction/ValidatedExtractionWorkflow.cs`
+- Modify: `src/S1Atlas.Extraction/ExtractionOrchestrator.cs`
+- Test: `tests/S1Atlas.Extraction.Tests/ValidatedExtractionWorkflowTests.cs`
+- Modify: existing orchestrator tests only for explicit composition changes
 
 **Interfaces:**
-- Consumes existing Phase 3 orchestration, Task 1–7 validation/promotion services, profile/policy/tool providers, and repositories.
-- Produces the sole Phase 4 `extract` application workflow and an authoritative `ExtractionWorkflowResult`.
+- Consumes Phase 3 orchestration and Tasks 1–7.
+- Produces the sole Phase 4 extraction application workflow and authoritative result.
 
-- [ ] **Step 1: Write RED preparation and candidate-selection tests**
+- [ ] **Step 1: Write RED preparation/workflow tests**
 
 ```text
-PrepareAsync_ResolvesBuildProfilePolicyToolAndRecipeWithoutGameProcess
-PrepareAsync_RecipeExcludesPolicyAndPaths
-Workflow_ExistingCurrentPolicyExtraction_VerifiesIntegrityAndReturnsNoOp
-Workflow_PolicyChanged_CreatesValidationOnlyAttemptAndDoesNotRunCpp2Il
-Workflow_ProcessCompletedCandidate_ValidatesNewestCandidateBeforeRunningProcess
-Workflow_NoCandidate_RunsPhase3ProcessThenValidatesResult
-Workflow_Retry_AlwaysRunsNewProcess
-Workflow_MultipleCandidates_UsesNewestCompletedAtThenAttemptId
-Workflow_AmbiguousSameRecipeRows_FailsClosed
+prepare resolves build/profile/policy/tool/recipe without game process
+recipe excludes policy and paths
+one current-policy output -> integrity-verified no-op
+multiple recipe outputs + exactly one preferred -> preferred disambiguates reuse
+multiple recipe outputs + no/ambiguous preferred -> RecipeOutputAmbiguous
+policy changed -> validation-only attempt, no Cpp2IL
+ProcessCompleted candidate -> newest candidate validated before process
+no candidate -> Phase 3 process then validation
+Retry -> new process
+candidate ordering CompletedAtUtc DESC then AttemptId DESC
 ```
 
-Use spies asserting exact process and validator invocation counts.
-
-- [ ] **Step 2: Implement reusable preparation**
+- [ ] **Step 2: Implement preparation**
 
 ```csharp
 public sealed record PreparedExtractionContext(
@@ -1612,92 +1480,71 @@ public sealed class ExtractionPreparationService
 }
 ```
 
-Preparation resolves build/profile/policy and freshly verifies the requested managed/custom tool, then computes recipe. It does not resolve live game inputs or run Cpp2IL. Tool failures before an attempt exists return structured errors without an invented attempt ID.
+Resolve build/profile/policy/fresh tool and recipe. Do not resolve game input or run Cpp2IL. Refactor orchestrator with `RunPreparedAsync`; public `RunAsync` remains compatible.
 
-Refactor `ExtractionOrchestrator` to expose an internal `RunPreparedAsync` that accepts this context, creates/persists a Phase 3 process attempt, resolves inputs, and preserves the existing process/candidate safety behavior. Public `RunAsync` remains for Phase 3 unit compatibility and delegates through preparation.
-
-- [ ] **Step 3: Implement candidate/extraction decision order**
-
-`ValidatedExtractionWorkflow.RunAsync`:
+- [ ] **Step 3: Implement decision order**
 
 ```text
-initialize repository
-run validated-promotion recovery
-run generic attempt recovery
-prepare build/profile/policy/tool/recipe
+initialize
+validated-promotion recovery
+generic attempt recovery
+prepare
 if !Retry:
-  list validated extractions for recipe
-  if exact current-policy valid extraction exists:
-    verify full integrity
-    return authoritative no-op, no attempt/process/validation
-  if validated extraction exists but current policy has not evaluated it:
-    create validation-only attempt
-    validate immutable artifacts
-    persist revalidation
-    update/clear preference as rules require
-    return authoritative result
-  select newest ProcessCompleted candidate for recipe
-  if present:
-    validate/promote that existing attempt
-    return result without process
-run Phase 3 RunPreparedAsync
-validate/promote returned ProcessCompleted attempt
-return authoritative result
+  list recipe outputs
+  if multiple, use exactly one current preferred output or fail ambiguous
+  if selected output has verified current-policy summary+report:
+    full integrity -> authoritative no-op
+  if selected output lacks current-policy evaluation:
+    validation-only revalidation
+  else newest ProcessCompleted candidate:
+    validate/promote without process
+run Phase 3 prepared process
+validate/promote returned candidate
 ```
 
-Do not resolve a game path for a no-op or policy-only revalidation because paths are not recipe identity and no game process runs.
+No-op/revalidation does not resolve `--game-path` because no game process runs.
 
-- [ ] **Step 4: Create validation-only attempts safely**
-
-A validation-only attempt:
+- [ ] **Step 4: Implement validation-only attempts**
 
 ```text
-Created with current build/tool/profile/policy/recipe
-ValidationSourceExtractionId = existing extraction ID
-CandidateOutputPath = null
-zero-byte contained stdout/stderr logs
-strict schema-2 attempt.json
+Created with recipe/tool/profile/current policy
+ValidationSourceExtractionId set
+CandidateOutputPath null
+zero-byte stdout/stderr logs
+schema-2 attempt.json
 Created -> Validating -> Succeeded/Failed
 ```
 
-Its `validation.json` is under the new attempt root. It never modifies the validated extraction’s immutable initial report.
+Before reusing a stored current-policy summary, read strict report path and require summary/report agreement. Missing/malformed report means revalidation is required, not success.
 
-If revalidation becomes `Invalid`:
+Revalidation uses full extraction integrity plus immutable artifact manifest/statistics; it does not rewrite or reclassify final artifacts. If Invalid, retain historical extraction, fail validation attempt, and clear selected pointer with `PolicyInvalidated`.
 
-- retain the extraction as historical bytes;
-- transition the validation attempt to `Failed`;
-- clear the preferred pointer if it selects that extraction, with `PolicyInvalidated` audit reason;
-- return exit 1 for `extract` because current policy no longer accepts the recipe.
+- [ ] **Step 5: Handle integrity failures and baseline selection**
 
-- [ ] **Step 5: Handle integrity failures before reuse**
+Never reuse corrupt output. Clear only a selected corrupt pointer. Continue to a safe candidate/new process only when workflow conditions permit; otherwise return `Recovery/IntegrityMismatch`.
 
-If a database extraction fails full integrity:
-
-- never return it as authoritative;
-- clear its preferred pointer if selected with `IntegrityInvalidated`;
-- continue to a valid ProcessCompleted candidate or new process only when `--retry` or a safe candidate path permits;
-- otherwise fail with stage `Recovery`, code `IntegrityMismatch`, and no fabricated success.
-
-A same-policy no-op still performs full integrity verification; “no-op” means no Cpp2IL and no policy re-evaluation, not blind trust.
+Comparative baseline uses latest verified successful current-policy report for preferred output; if absent, initial immutable stats.
 
 - [ ] **Step 6: Implement `ExtractionValidationService`**
 
-The service owns:
+Own:
 
 ```text
-ProcessCompleted -> Validating transition
-candidate inventory and manifest construction
-absolute/comparative/reproducibility validation
+ProcessCompleted -> Validating
+source attempt integrity checks (matching pre/post digests, accepted exit, profile facts)
+candidate inspection and report
+absolute/comparative/reproducibility
 attempt validation.json
-same-output link or new-output promotion
-failed candidate retention/discard
+same-output link/new-output promotion
+invalid retention/discard
 validation-only revalidation
-preference invalidation/selection
+preference selection/invalidation
+hard-issue stage/code mapping
 ```
 
-It acquires the existing Atlas extraction lock for validation/promotion. If another process starts in the narrow interval after Phase 3 releases its process lock, the candidate remains `ProcessCompleted`; the command fails cleanly with `ExtractionAlreadyActive`, and the next invocation validates the preserved candidate before another process.
+Acquire the existing extraction lock for validation/promotion. If another process begins between Phase 3 lock release and validation acquisition, fail cleanly and preserve `ProcessCompleted`; next invocation consumes it.
 
-- [ ] **Step 7: Verify no-op, revalidation, candidate reuse, and retry repeatedly**
+- [ ] **Step 7: Verify repeatedly and commit Task 8**
 
 ```powershell
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter ValidatedExtractionWorkflowTests
@@ -1707,80 +1554,68 @@ dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --fil
 }
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj
 dotnet build S1Atlas.sln --configuration Release
-```
-
-- [ ] **Step 8: Commit Task 8**
-
-```powershell
 git add -- src/S1Atlas.Extraction/ExtractionPreparationService.cs src/S1Atlas.Extraction/ExtractionValidationService.cs src/S1Atlas.Extraction/ValidatedExtractionWorkflow.cs src/S1Atlas.Extraction/ExtractionOrchestrator.cs tests/S1Atlas.Extraction.Tests
 git commit -m "feat: validate and reuse extraction workflows"
 ```
 
 ---
 
-### Task 9: Expose Extraction History, Integrity, and Manual Promotion Commands
+### Task 9: Expose Extraction History, Integrity, and Manual Promotion
 
 **Files:**
-- Create: history service and command/output files listed above
-- Modify: `ExtractCommand.cs`
-- Modify: `AtlasPaths.cs`
-- Modify: `CliApplication.cs`
-- Test: `ExtractionHistoryServiceTests.cs`
-- Add integration tests in Task 10 fixture as needed
+- Create: `src/S1Atlas.Extraction/History/ExtractionHistoryService.cs`
+- Create: `src/S1Atlas.Cli/Commands/ExtractionsCommand.cs`
+- Create: `src/S1Atlas.Cli/Commands/ExtractionsListCommand.cs`
+- Create: `src/S1Atlas.Cli/Commands/ExtractionsShowCommand.cs`
+- Create: `src/S1Atlas.Cli/Commands/ExtractionsPromoteCommand.cs`
+- Create: `src/S1Atlas.Cli/Output/ExtractionHistoryOutputModels.cs`
+- Modify: `src/S1Atlas.Cli/Commands/ExtractCommand.cs`
+- Modify: `src/S1Atlas.Cli/Configuration/AtlasPaths.cs`
+- Modify: `src/S1Atlas.Cli/Output/ExtractionOutputModels.cs`
+- Modify: `src/S1Atlas.Cli/CliApplication.cs`
+- Test: `tests/S1Atlas.Extraction.Tests/History/ExtractionHistoryServiceTests.cs`
 
 **Interfaces:**
-- Consumes `ValidatedExtractionWorkflow`, repositories, integrity verifier, current policy provider, validation service, and preference storage.
-- Produces authoritative `extract` output and `extractions list/show/promote` human/JSON contracts.
+- Consumes workflow, validated repository, `IToolRepository`, integrity verifier, policy provider, validation service, and preference storage.
+- Produces authoritative `extract` and history/manual promotion CLI.
 
-- [ ] **Step 1: Write RED history-service tests**
-
-```text
-ListAsync_WithoutBuild_ReturnsAllValidatedNewestFirst
-ListAsync_WithBuild_FiltersExactly
-ListAsync_DefaultExcludesFailedAttempts
-ListAsync_IncludeFailed_AddsFailedCanceledAbandonedAndProcessCompletedAttempts
-ShowAsync_Extraction_PerformsFullIntegrityCheck
-ShowAsync_Attempt_ReturnsLifecycleValidationAndResultFacts
-ShowAsync_UnknownId_ReturnsNotFound
-PromoteAsync_ValidatedManagedOrCustom_RequiresIntegrityAndCurrentPolicy
-PromoteAsync_CustomValid_WritesManualPreference
-PromoteAsync_BlockingWarning_CanBeOverriddenManually
-PromoteAsync_CrossBuildOrInvalidExtraction_Rejects
-PromoteAsync_AlreadyPreferred_IsSuccessfulNoOpWithoutDuplicateEvent
-```
-
-- [ ] **Step 2: Implement `ExtractionHistoryService`**
-
-ID dispatch:
+- [ ] **Step 1: Write RED history tests**
 
 ```text
-32 lower-case hex -> attempt
-64 lower-case hex -> extraction
-other -> ExtractionHistoryIdInvalid
+list all validated newest first
+build filter
+include-failed adds Failed/Canceled/Abandoned/ProcessCompleted
+show extraction performs full integrity
+show attempt returns lifecycle/validation/result facts
+unknown/invalid ID
+promote validates integrity/current policy
+custom valid manual preference
+blocking warning explicit override
+invalid extraction rejection
+already preferred no-op without duplicate event
 ```
 
-List ordering:
+- [ ] **Step 2: Implement history service**
 
-```text
-validated extractions: createdAtUtc DESC, extractionId DESC
-included attempts: createdAtUtc DESC, attemptId DESC
-```
+ID dispatch: 32 lower hex attempt, 64 lower hex extraction, otherwise invalid.
 
-`show` on an extraction runs full integrity verification. It returns database/manifests/statistics/issues and `IntegrityStatus`; mismatch returns an operational failure envelope but still supplies a concise human explanation, never authoritative artifact paths for downstream use.
+List ordering: created time DESC then ID DESC. Tool trust for attempts resolves through `IToolRepository`; missing provenance fails closed rather than inventing trust.
 
-Manual promotion:
+`show` extraction performs full integrity. Mismatch returns an operational failure with a concise explanation and never exposes the root as authoritative.
 
-1. Load extraction and prove build association.
-2. Verify full integrity.
-3. Load current validation policy.
-4. Reuse a successful current-policy result or create a validation-only revalidation attempt.
-5. Require outcome `Valid` or `ValidWithWarnings`.
-6. Permit explicit override of preference-blocking warnings because the command itself is the explicit review action.
-7. Set `ManualPromotion` and audit previous/new pointers.
+Manual promote:
 
-- [ ] **Step 3: Define exact CLI output records**
+1. Load and verify extraction/build.
+2. Full integrity.
+3. Load current policy.
+4. Reuse verified current-policy summary/report or create revalidation attempt.
+5. Require `Valid`/`ValidWithWarnings`.
+6. Explicitly permit preference-blocking warnings.
+7. Store `ManualPromotion` audit.
 
-Update successful `extract` output:
+- [ ] **Step 3: Define CLI DTOs and commands**
+
+Authoritative extract output:
 
 ```csharp
 internal sealed record ExtractionOutput(
@@ -1798,9 +1633,7 @@ internal sealed record ExtractionOutput(
     bool Authoritative);
 ```
 
-Create list/show/promote DTOs with full IDs, UTC timestamps, trust, validation outcome, preference, statistics, issue summaries, and integrity status. JSON never includes raw stack traces or file contents.
-
-- [ ] **Step 4: Implement command tree**
+Command tree:
 
 ```text
 extractions
@@ -1809,162 +1642,79 @@ extractions
   promote <extraction-id> [--json]
 ```
 
-Human list example:
+`promote` is explicit/non-interactive and rejects attempt IDs.
 
-```text
-PREFERRED  VALIDATED  ManagedPinned   <extraction-id>  <build-id>  Valid
-           CANDIDATE  ManagedPinned   <attempt-id>     <build-id>  ProcessCompleted
-           FAILED     CustomOverride  <attempt-id>     <build-id>  InvalidManagedAssembly
-```
+- [ ] **Step 4: Update extract success and composition**
 
-`promote` is explicit and therefore non-interactive. It does not accept an attempt ID.
+Successful `extract` requires authoritative true and prints extraction ID/root, validation, trust, preference, process/validation/reuse flags. A mere ProcessCompleted result is exit 1 after Phase 4 composition.
 
-- [ ] **Step 5: Update authoritative `extract` behavior**
-
-Replace the Phase 3 warning with:
-
-```text
-Validated extraction ready.
-Attempt:      <attempt or none>
-Build:        <build>
-Extraction:   <extraction ID>
-Validation:   <Valid or ValidWithWarnings>
-Tool trust:   <trust>
-Preferred:    <yes/no>
-Output:       <final root>
-Process run:  <yes/no>
-```
-
-Success requires `Authoritative=true`. `ProcessCompleted` alone is no longer a successful command result after Phase 4 composition; a validation/promotion failure returns exit 1 while preserving the candidate/attempt according to policy.
-
-- [ ] **Step 6: Compose Phase 4 services**
-
-Add final extraction path helpers:
+Add paths:
 
 ```csharp
-public string GetBuildExtractionsDirectory(string buildId);
-public string GetValidatedExtractionDirectory(string buildId, string extractionId);
-public string GetBuildExtractionQuarantineDirectory(string buildId);
+GetBuildExtractionsDirectory
+GetValidatedExtractionDirectory
+GetBuildExtractionQuarantineDirectory
 ```
 
-`CliApplication` composes:
+Compose all Phase 4 services and register `ExtractionsCommand`. No HTTP path is added.
 
-```text
-ValidatedExtractionDocumentStore
-ValidatedExtractionIntegrityVerifier
-CandidateOutputInspector
-ManagedAssemblyInspector
-ArtifactManifestBuilder
-AbsoluteSanityValidator
-ComparativeSanityValidator
-ReproducibilityValidator
-ExtractionValidationEngine
-ExtractionPreferencePolicy
-ValidatedExtractionPromoter
-ValidatedExtractionRecoveryService
-ExtractionPreparationService
-ExtractionValidationService
-ValidatedExtractionWorkflow
-ExtractionHistoryService
-```
-
-Register `ExtractCommand` with the workflow and add `ExtractionsCommand`. No new HTTP path is introduced.
-
-- [ ] **Step 7: Verify and commit Task 9**
+- [ ] **Step 5: Verify and commit Task 9**
 
 ```powershell
 dotnet test tests/S1Atlas.Extraction.Tests/S1Atlas.Extraction.Tests.csproj --filter ExtractionHistoryServiceTests
 dotnet build S1Atlas.sln --configuration Release
-git add -- src/S1Atlas.Cli src/S1Atlas.Extraction/History src/S1Atlas.Cli/Configuration tests/S1Atlas.Extraction.Tests/History
+git add -- src/S1Atlas.Cli src/S1Atlas.Extraction/History tests/S1Atlas.Extraction.Tests/History
 git commit -m "feat: expose validated extraction history and preference"
 ```
 
 ---
 
-### Task 10: Prove the Full Phase 4 Boundary, Document It, and Validate the Existing Real Candidate
+### Task 10: Prove the Full Phase 4 Boundary and Validate the Existing Real Candidate
 
 **Files:**
-- Create: `Phase4ExtractionCliFixture.cs`
-- Create: `Phase4ExtractionCliTests.cs`
+- Create: `tests/S1Atlas.IntegrationTests/Extraction/Phase4ExtractionCliFixture.cs`
+- Create: `tests/S1Atlas.IntegrationTests/Extraction/Phase4ExtractionCliTests.cs`
 - Modify: `tests/S1Atlas.IntegrationTests/S1Atlas.IntegrationTests.csproj`
 - Modify: `README.md`
-- Modify: `.gitignore` only if a generated Phase 4 path is not already covered
+- Modify: `.gitignore` only for a demonstrably missing generated path
 
 **Interfaces:**
-- Consumes the complete production composition through `CliApplication`.
-- Produces end-to-end evidence that candidates cannot bypass validation, promotion is recoverable, reuse/revalidation avoid Cpp2IL, and history/preference commands are stable.
+- Consumes complete production composition.
+- Produces end-to-end evidence that no candidate bypasses validation and reuse/revalidation avoid Cpp2IL.
 
-- [ ] **Step 1: Build the integration fixture entirely from source/runtime bytes**
+- [ ] **Step 1: Build source/runtime-only integration fixture**
 
-The fixture creates:
+Create temporary Atlas/config, schema-5 DB, source-built fixture candidate, optional runtime native/text files, ProcessCompleted attempts/documents, fake process extractor, fake tool records, throwing HTTP handler, and controlled time. Use a test validation config with small byte floor; production config unchanged.
 
-```text
-temporary Atlas home and config copy
-a real schema-5 SQLite database
-source-built Assembly-CSharp fixture candidate
-optional runtime native DLL and text artifact
-Phase 3 ProcessCompleted attempts and attempt.json
-a fake Phase 3 process extractor for new-process paths
-fake managed/custom tool records
-throwing HTTP handler
-controlled TimeProvider
-```
-
-Use a test validation JSON with a small managed-byte floor for automated fixture candidates. Keep the production `managed-assemblies-v1.json` unchanged.
-
-- [ ] **Step 2: Write the end-to-end CLI matrix**
-
-Cover human and JSON:
+- [ ] **Step 2: Write end-to-end CLI matrix**
 
 ```text
-existing ProcessCompleted candidate -> validates/promotes without process
-invalid candidate -> exit 1, validation.json, no marker/extraction/preference
-managed valid candidate -> automatic preference
-custom valid candidate -> history only, no automatic preference
-manual promote custom -> preferred and audited
-same recipe/same bytes retry -> links existing extraction and removes duplicate candidate
-different bytes same recipe -> second extraction + blocking warning + no automatic replacement
-second normal extract -> authoritative no-op, no process, no new validation attempt
-policy-digest change -> validation-only attempt, no process, same extraction ID
-policy rejection -> historical extraction retained, preferred pointer cleared
-missing/changed final artifact -> show/promote/reuse fail integrity and clear selected pointer
-filesystem-complete/DB-missing promotion -> startup recovery registers
-extractions list/show/promote JSON is one document
-Phase 1–3 command JSON contracts remain compatible
-extract and all extraction history commands make zero HTTP requests
-no command loads fixture assembly into the production process
+existing candidate -> validates/promotes without process
+invalid candidate -> exit 1/report/no marker/preference
+managed candidate -> auto preference
+custom candidate -> history only; manual promote selects
+same recipe/same bytes retry -> links existing
+same recipe/different bytes -> blocking warning/no auto replacement
+second normal extract -> full integrity no-op/no new attempt
+policy digest change -> validation-only/same extraction ID
+policy rejection -> history retained/preference cleared
+changed final artifact -> show/promote/reuse fail and clear selected pointer
+complete filesystem/DB missing -> recovery registers
+list/show/promote JSON one document
+Phase 1–3 JSON compatibility
+zero HTTP requests
+no production assembly load
 ```
 
-Assert all final authoritative paths are under Atlas home and every Phase 3 candidate lacks authority until the full pipeline finishes.
-
-- [ ] **Step 3: Run focused integration tests and verify GREEN**
+- [ ] **Step 3: Run focused integration tests**
 
 ```powershell
 dotnet test tests/S1Atlas.IntegrationTests/S1Atlas.IntegrationTests.csproj --filter Phase4ExtractionCliTests
 ```
 
-Expected: all pass with no external network or proprietary files.
+- [ ] **Step 4: Update README**
 
-- [ ] **Step 4: Update README to the exact Phase 4 boundary**
-
-Document:
-
-```text
-Phases 1–4 implemented
-ProcessCompleted candidate vs validated extraction
-immutable manifests and complete.marker
-managed metadata validation without loading assemblies
-absolute/comparative/reproducibility checks
-policy-only revalidation and no-process reuse
-managed automatic vs custom/manual preference
-extractions list/show/promote examples
-validated extraction filesystem layout
-integrity mismatch behavior
-Phase 4 still does not run ILSpy or index symbols
-Phase 5 owns cleanup, archived replay, final smoke report, and hardening
-```
-
-Do not rewrite historical Phase 1–3 plans.
+Document Phases 1–4, candidate vs validated output, immutable manifests/marker, metadata validation without load, absolute/comparative/reproducibility checks, policy-only reuse, preferences, list/show/promote, layout/integrity behavior, and Phase 5 boundary. Do not rewrite historical plans.
 
 - [ ] **Step 5: Run complete automated verification**
 
@@ -1975,22 +1725,7 @@ dotnet build S1Atlas.sln --configuration Release --no-restore
 dotnet test S1Atlas.sln --configuration Release --no-build --verbosity normal
 ```
 
-Require:
-
-```text
-format exit 0
-build exit 0
-0 warnings
-0 errors
-all Core tests pass
-all Extraction tests pass
-all Storage tests pass
-all Integration tests pass
-0 failed
-0 skipped unless an existing platform-specific test already documents the skip
-```
-
-Record fresh per-project and total counts from this exact head.
+Require format/build/test exit 0, zero warnings/errors, all four test projects green, and fresh recorded counts.
 
 - [ ] **Step 6: Verify repository hygiene**
 
@@ -2000,174 +1735,127 @@ git status --short
 git ls-files | Select-String -Pattern "Cpp2IL\.exe|Assembly-CSharp\.dll|atlas\.db|\.db-wal|\.db-shm|attempt\.json|validation\.json|artifact-manifest\.json|extraction\.json|complete\.marker|promotion\.json|candidate-output|retained-output|stdout\.log|stderr\.log"
 ```
 
-Expected: the scan finds no generated/downloaded/compiled/proprietary artifact. Source fixture `.cs` and `.csproj` files are allowed; compiled DLLs are not.
+No generated/downloaded/compiled/proprietary artifact may be tracked.
 
-- [ ] **Step 7: Commit the automated-GREEN Phase 4 checkpoint**
+- [ ] **Step 7: Commit automated-GREEN boundary**
 
 ```powershell
 git add -- tests/S1Atlas.IntegrationTests README.md .gitignore
 git commit -m "test: verify validated extraction promotion boundary"
 ```
 
-Do not commit while any automated check is red.
+- [ ] **Step 8: Preflight existing real Phase 3 candidate**
 
-- [ ] **Step 8: Preflight the existing real Phase 3 candidate without permitting fallback execution**
+Identify attempt `25f9e52002f54a13be7112ff66f83c6a` or another explicitly recorded real candidate. Require ProcessCompleted, existing candidate under Atlas home, matching build/tool/profile/recipe, and no validated extraction for recipe.
 
-The local Phase 4 smoke must consume the already-created real candidate and must not run Cpp2IL again.
+Create a guaranteed nonexistent guard path under a temporary directory and retain it for the next commands. If no candidate qualifies, stop; do not execute another real Cpp2IL process in Phase 4.
 
-Before invoking `extract`, prove through SQLite/CLI that:
-
-```text
-attempt 25f9e52002f54a13be7112ff66f83c6a exists or another explicitly identified real attempt exists
-status is ProcessCompleted
-candidate-output exists under Atlas home
-recipe/build/tool/profile match the current managed pin and build
-no validated extraction for that recipe exists
-Schedule I is not required to be opened or modified
-```
-
-Add a temporary local test seam or use `extractions show <attempt-id>` after Task 9 to verify these facts. If no qualifying candidate exists, stop. Do not let the smoke command fall back to a Cpp2IL process; Phase 5 or a new explicit user confirmation handles another real game execution.
-
-- [ ] **Step 9: Validate and promote the existing real candidate**
-
-After the preflight proves a candidate exists, run:
+- [ ] **Step 9: Promote candidate with no-process guard**
 
 ```powershell
-dotnet run --configuration Release --no-build --project src\S1Atlas.Cli -- extract --json
-dotnet run --configuration Release --no-build --project src\S1Atlas.Cli -- extractions list --json
-dotnet run --configuration Release --no-build --project src\S1Atlas.Cli -- extractions show <extraction-id> --json
-dotnet run --configuration Release --no-build --project src\S1Atlas.Cli -- extract --json
+$guardPath = Join-Path ([IO.Path]::GetTempPath()) ("s1atlas-no-process-" + [Guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $guardPath) { throw 'Guard path unexpectedly exists.' }
+$firstText = ((& dotnet run --configuration Release --no-build --project src\S1Atlas.Cli -- extract --game-path $guardPath --json) | Out-String)
+$firstExit = $LASTEXITCODE
+$first = $firstText | ConvertFrom-Json
+if ($firstExit -ne 0) { throw $firstText }
 ```
 
-Require the first result:
+Because candidate validation/no-op ignores game path, it succeeds. If workflow attempts fallback execution, the nonexistent path forces `LiveInputNotFound` before Cpp2IL starts.
+
+Then run list/show and the same guarded `extract` again.
+
+Require first:
 
 ```text
-exit 0
 processWasRun false
 validationWasRun true
 reusedExistingExtraction false
 authoritative true
 Valid or ValidWithWarnings
-final extraction under Atlas home
-complete.marker exists
-artifact and manifest hashes verify
-managed Assembly-CSharp present
-preferred yes for ManagedPinned with no blocking warning
-source candidate attempt becomes Succeeded with resultExtractionId
+complete marker and verified artifacts
+managed Assembly-CSharp
+managed auto preference when no blocking warning
+source attempt Succeeded/result ID
 ```
 
-Require the second `extract`:
+Require second guarded extract:
 
 ```text
-exit 0
 processWasRun false
 validationWasRun false
 reusedExistingExtraction true
 same extraction ID
-no new Cpp2IL process
 ```
 
-Do not run `--retry` in Phase 4’s smoke.
+Do not run `--retry`.
 
-- [ ] **Step 10: Re-check game/repository safety after local validation**
-
-Phase 4 validation should not need to read or mutate Schedule I content. Confirm:
+- [ ] **Step 10: Re-check safety and open draft PR**
 
 ```powershell
 git status --short
 git ls-files | Select-String -Pattern "Cpp2IL\.exe|Assembly-CSharp\.dll|atlas\.db|attempt\.json|validation\.json|artifact-manifest\.json|extraction\.json|complete\.marker|candidate-output|stdout\.log|stderr\.log"
-```
-
-Inspect the final extraction only under `%LOCALAPPDATA%\S1Atlas` or `S1ATLAS_HOME`. Do not commit the real manifests, hashes list, reconstructed assemblies, or database.
-
-- [ ] **Step 11: Inspect history, push normally, and open a draft implementation PR**
-
-```powershell
 git log --oneline --decorate -15
 git diff origin/main...HEAD --check
-git status --short
 git push -u origin feature/cpp2il-phase4-validation-promotion
 ```
 
-Open a draft PR against `main`. Its body includes:
-
-```text
-Tasks 1–10 completion
-exact final head SHA
-migration 5 confirmation
-Release warning/error totals
-per-project and total tests
-existing-candidate Phase 4 smoke facts
-managed assembly/artifact/type/method counts without proprietary listings
-extraction ID and validation outcome
-first extract processWasRun false
-second extract no-op facts
-preference reason
-confirmation no Cpp2IL game process ran during the Phase 4 smoke
-confirmation no game/generated/proprietary files are tracked
-```
-
-Leave the implementation PR draft and unmerged for human QA.
+Open a draft implementation PR reporting Tasks 1–10, head SHA, migration 5, warning/error and test counts, real candidate artifact/managed/type/method counts without proprietary symbol listings, validation/extraction/preference facts, both guarded no-process results, and repository hygiene. Leave draft/unmerged for QA.
 
 ---
 
 ## Phase 4 Review Checklist
 
 ```text
-[ ] Phase 3 candidates remain non-authoritative until validation completes
-[ ] Migrations 1–4 text and checksums are unchanged
-[ ] Migration 5 is transactional, backed up, and idempotent
-[ ] Existing Phase 3 database attempts and schema-1 attempt.json remain readable
-[ ] Artifact content digest uses path/size/SHA only
-[ ] Classification and metadata annotations do not duplicate byte-identical output
-[ ] Every promoted artifact has normalized path, size, and SHA-256
-[ ] Case-insensitive path collisions are rejected
-[ ] Reparse points are never followed
-[ ] PEReader/MetadataReader are used without loading assemblies
-[ ] Native DLLs are inventoried without false managed failure
-[ ] Invalid/truncated DLLs fail validation
-[ ] Required Assembly-CSharp identity is enforced
-[ ] Aggregate types/methods/managed bytes meet policy
-[ ] Comparative hard-failure precedence and thresholds are exact
-[ ] Baseline zero never divides by zero
-[ ] Same recipe/same digest links existing output
-[ ] Same recipe/different digest remains distinct and blocks automatic preference
-[ ] Validation policy is excluded from recipe and extraction identity
-[ ] Policy-only revalidation creates no Cpp2IL process or duplicate extraction
-[ ] Same-policy reuse verifies integrity and creates no process/validation attempt
-[ ] --retry remains the explicit process-forcing path
-[ ] Initial validation report remains immutable in final extraction
-[ ] Revalidation report is attempt-level only
-[ ] complete.marker is written last
-[ ] Final rename occurs before the SQLite promotion transaction
-[ ] Complete unregistered filesystem output is recoverable
-[ ] Database rows without complete valid filesystem evidence are never authoritative
-[ ] Ambiguous recovery evidence is preserved/quarantined, never guessed
-[ ] ManagedPinned valid output may auto-prefer
-[ ] CustomOverride cannot auto-prefer
-[ ] ManualPromotion is not overwritten automatically
-[ ] Policy/integrity invalidation clears only the expected pointer and is audited
-[ ] Manual promote performs full integrity and current-policy validation
-[ ] extractions list/show/promote support human and JSON modes
-[ ] extract success is authoritative after Phase 4 composition
-[ ] Extraction commands perform no HTTP
-[ ] No Phase 4 code runs ILSpy or indexes symbols
-[ ] Full Release build has zero warnings/errors
-[ ] All automated tests pass
-[ ] Existing real candidate is validated without another Cpp2IL game process, or smoke stops safely
-[ ] No executable/reconstructed/game/generated output enters Git
-[ ] Draft implementation PR remains unmerged for human QA
+[ ] Phase 3 candidates remain non-authoritative until validation
+[ ] Migrations 1–4 unchanged; migration 5 transactional/backed up/idempotent
+[ ] Existing Phase 3 DB and schema-1 attempt documents remain readable
+[ ] Artifact digest uses path/size/SHA only
+[ ] Annotation changes do not duplicate byte-identical output
+[ ] Every promoted artifact has normalized path/size/SHA
+[ ] DB artifact rows and immutable manifest agree
+[ ] Case-insensitive collisions rejected
+[ ] Reparse points never followed
+[ ] PEReader/MetadataReader used without assembly load
+[ ] Native DLL valid; malformed DLL invalid
+[ ] Required Assembly-CSharp and minimum policy enforced
+[ ] Comparative thresholds and precedence exact
+[ ] Same recipe/same digest links; different digest blocks auto preference
+[ ] Policy excluded from recipe/extraction identity
+[ ] SQLite summary and strict report both required for result reuse
+[ ] Policy revalidation creates no process/duplicate extraction
+[ ] Same-policy reuse performs full integrity and no new attempt
+[ ] --retry is explicit process-forcing path
+[ ] Initial final validation report immutable
+[ ] complete.marker written last
+[ ] sibling promotion journal never enters final root
+[ ] final rename precedes DB commit
+[ ] complete unregistered output recoverable
+[ ] DB row without complete valid files is never authoritative
+[ ] ambiguity preserved/quarantined, not guessed
+[ ] ManagedPinned may auto-prefer; CustomOverride may not
+[ ] ManualPromotion not automatically overwritten
+[ ] policy/integrity invalidation clears only expected pointer and audits
+[ ] manual promotion verifies integrity/current policy
+[ ] list/show/promote human+JSON
+[ ] extract success authoritative
+[ ] extraction commands perform no HTTP
+[ ] no ILSpy/symbol indexing
+[ ] full Release build zero warnings/errors and all tests pass
+[ ] existing real candidate validates with nonexistent game-path guard or smoke stops
+[ ] no executable/reconstructed/game/generated output in Git
+[ ] draft implementation PR remains unmerged for QA
 ```
 
 ## Phase 4 Completion Boundary
 
-After this plan, S1Atlas can transform a Phase 3 candidate into an immutable validated extraction, prove every promoted byte, inspect managed metadata without executing it, apply absolute and comparative policy, distinguish reproducible and divergent output, recover interrupted promotion, maintain auditable preference state, reuse or revalidate without rerunning Cpp2IL, and expose trustworthy extraction history to humans and agents.
+After this plan, S1Atlas can transform a Phase 3 candidate into immutable validated output, prove every byte, inspect managed metadata without execution, apply absolute/comparative policy, distinguish reproducible/divergent output, recover promotion, maintain auditable preference, reuse/revalidate without Cpp2IL, and expose trustworthy history.
 
-The following remain Phase 5:
+Phase 5 remains:
 
 ```text
 extractions cleanup preview/apply
-age-based failed-attempt and quarantine cleanup
+age-based failed/quarantine cleanup
 archived-only replay verification
 real --retry and identical-output smoke
 final privacy/source-control hardening
@@ -2175,8 +1863,8 @@ committed non-proprietary smoke report
 final milestone QA
 ```
 
-Only after Phase 5 may the follow-on ILSpy/symbol milestone consume the preferred extraction through a full integrity-verifying API. It may never open Phase 3 `candidate-output`, retained failed output, an unpreferred historical extraction without explicit selection, or a database row whose marker/manifests/artifacts fail verification.
+Only after Phase 5 may ILSpy/symbol work consume the preferred extraction through a full integrity-verifying API. It may never open Phase 3 candidate output, retained failure output, or an unverified database row.
 
 ## Execution Mode
 
-The established execution mode is **local/inline Codex execution with green checkpoints**. After this plan passes QA and merges, implement Tasks 1–10 sequentially, keep RED TDD states local, push only coherent GREEN commits, and retain the implementation PR as a draft until human QA passes.
+The established mode is **local/inline Codex execution with green checkpoints**. After this plan passes QA and merges, implement Tasks 1–10 sequentially, keep RED TDD states local, push only coherent GREEN commits, and leave the implementation PR draft until human QA passes.
