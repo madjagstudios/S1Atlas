@@ -1,4 +1,6 @@
 using S1Atlas.Core.Extraction;
+using S1Atlas.Core.Tools;
+using S1Atlas.Extraction.Promotion;
 
 namespace S1Atlas.Extraction.Validation;
 
@@ -7,10 +9,16 @@ namespace S1Atlas.Extraction.Validation;
 /// a <see cref="ValidationReport"/> for one attempt. <see cref="ArtifactBuild"/>
 /// is <see langword="null"/> exactly when <see cref="CandidateInspection"/> did
 /// not pass containment, since <see cref="ArtifactManifestBuilder"/> has nothing
-/// safe to annotate in that case. <see cref="BaselineStatistics"/>,
-/// <see cref="BaselineExtractionId"/>, and <see cref="SameRecipeExtractions"/>
-/// are accepted here so Task 5 can complete comparative and reproducibility
-/// checks without another engine signature change; Task 4 does not evaluate them.
+/// safe to annotate in that case. <see cref="BaselineStatistics"/> is the
+/// preferred baseline's statistics (a verified successful current-policy report's
+/// statistics when one exists, otherwise the preferred extraction's immutable
+/// initial statistics) or <see langword="null"/> when no baseline exists yet (the
+/// first validated extraction for a recipe); comparative checks run only when it
+/// is present. <see cref="SameRecipeExtractions"/> is every already-validated
+/// extraction sharing this attempt's recipe ID, for reproducibility comparison.
+/// <see cref="ToolTrustLevel"/>, <see cref="CurrentPreferredExtraction"/>, and
+/// <see cref="CurrentPreferredToolInstanceId"/> feed the automatic preference
+/// decision; none of them are read unless the report ends up preference-eligible.
 /// </summary>
 internal sealed record ExtractionValidationRequest(
     ExtractionAttempt Attempt,
@@ -24,23 +32,33 @@ internal sealed record ExtractionValidationRequest(
     ExtractionStatistics? BaselineStatistics,
     string? BaselineExtractionId,
     IReadOnlyList<ValidatedExtraction> SameRecipeExtractions,
+    ToolTrustLevel ToolTrustLevel,
+    PreferredExtraction? CurrentPreferredExtraction,
+    string? CurrentPreferredToolInstanceId,
     DateTimeOffset ValidatedAtUtc);
+
+/// <summary>
+/// The complete outcome of evaluating one attempt: the strict
+/// <see cref="ValidationReport"/> itself, an optional
+/// <see cref="DeduplicationTarget"/> naming an already-validated extraction whose
+/// bytes this candidate exactly reproduces (a promoter should link to it and
+/// discard the duplicate candidate rather than promoting a second copy), and an
+/// optional <see cref="AutomaticPreferenceReason"/> naming the reason a promoter
+/// should automatically select this extraction as its build's new preference.
+/// </summary>
+internal sealed record ExtractionValidationResult(
+    ValidationReport Report,
+    ValidatedExtraction? DeduplicationTarget,
+    ExtractionPreferenceReason? AutomaticPreferenceReason);
 
 /// <summary>
 /// Produces the single strict <see cref="ValidationReport"/> for an attempt from
 /// its candidate containment result, its already-annotated artifact manifest, the
-/// source attempt's own input/process integrity facts, and the committed
-/// validation policy.
+/// source attempt's own input/process integrity facts, the committed validation
+/// policy, an optional preferred-baseline comparison, same-recipe reproducibility
+/// comparison, and an automatic-preference decision.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Task 4 evaluates output containment and absolute policy sanity only.
-/// Comparative preferred-baseline checks and same-recipe reproducibility checks
-/// are Task 5's concern: this engine already accepts their inputs (see
-/// <see cref="ExtractionValidationRequest"/>) but returns no comparisons and no
-/// baseline linkage yet, so Task 5 can complete them without another signature
-/// change.
-/// </para>
 /// <para>
 /// Failure mapping used by later callers when a validated attempt hard-fails
 /// (<see cref="ExtractionFailureStage"/> / <see cref="ExtractionFailureCode"/>),
@@ -75,7 +93,7 @@ internal static class ExtractionValidationEngine
         TotalManagedBytes: 0,
         Assemblies: []);
 
-    public static ValidationReport Evaluate(ExtractionValidationRequest request)
+    public static ExtractionValidationResult Evaluate(ExtractionValidationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.Attempt);
@@ -85,7 +103,7 @@ internal static class ExtractionValidationEngine
 
         if (!request.CandidateInspection.ContainmentPassed || request.CandidateInspection.Inventory is null)
         {
-            return new ValidationReport(
+            var containmentReport = new ValidationReport(
                 SchemaVersion,
                 request.Attempt.AttemptId,
                 request.SubjectKind,
@@ -106,6 +124,9 @@ internal static class ExtractionValidationEngine
                 Issues: request.CandidateInspection.Issues,
                 PreferenceEligible: false,
                 request.ValidatedAtUtc);
+
+            return new ExtractionValidationResult(
+                containmentReport, DeduplicationTarget: null, AutomaticPreferenceReason: null);
         }
 
         if (request.ArtifactBuild is null)
@@ -116,7 +137,21 @@ internal static class ExtractionValidationEngine
         }
 
         var artifactBuild = request.ArtifactBuild;
-        var issues = AbsoluteSanityValidator.Validate(artifactBuild, request.Policy);
+        var issues = new List<ValidationIssue>();
+        issues.AddRange(AbsoluteSanityValidator.Validate(artifactBuild, request.Policy));
+
+        IReadOnlyList<ValidationMetricComparison> comparisons = [];
+        if (request.BaselineStatistics is not null)
+        {
+            var comparative = ComparativeSanityValidator.Validate(
+                request.BaselineStatistics, artifactBuild.Statistics, request.Policy);
+            comparisons = comparative.Comparisons;
+            issues.AddRange(comparative.Issues);
+        }
+
+        var reproducibility = ReproducibilityValidator.Validate(
+            artifactBuild.ManifestDigest, request.SameRecipeExtractions);
+        issues.AddRange(reproducibility.Issues);
 
         var hasError = issues.Any(issue => issue.Severity == ValidationIssueSeverity.Error);
         var hasWarning = issues.Any(issue => issue.Severity == ValidationIssueSeverity.Warning);
@@ -132,7 +167,7 @@ internal static class ExtractionValidationEngine
             request.ProcessIntegrityPassed &&
             !issues.Any(issue => issue.PreferenceBlocking);
 
-        return new ValidationReport(
+        var report = new ValidationReport(
             SchemaVersion,
             request.Attempt.AttemptId,
             request.SubjectKind,
@@ -148,10 +183,30 @@ internal static class ExtractionValidationEngine
             OutputContainmentPassed: true,
             artifactBuild.ManifestDigest,
             artifactBuild.Statistics,
-            BaselineExtractionId: null,
-            Comparisons: [],
+            request.BaselineStatistics is not null ? request.BaselineExtractionId : null,
+            comparisons,
             issues,
             preferenceEligible,
             request.ValidatedAtUtc);
+
+        var deduplicationTarget = reproducibility.Disposition == ReproducibilityDisposition.ExistingOutput
+            ? reproducibility.ExistingExtraction
+            : null;
+
+        var candidateExtractionId = deduplicationTarget?.ExtractionId
+            ?? (request.SubjectKind == ValidationSubjectKind.ValidatedExtraction
+                ? request.SubjectExtractionId
+                : null);
+
+        var automaticPreferenceReason = ExtractionPreferencePolicy.Decide(new ExtractionPreferenceDecisionRequest(
+            request.ToolTrustLevel,
+            request.Attempt.ToolInstanceId,
+            candidateExtractionId,
+            outcome,
+            preferenceEligible,
+            request.CurrentPreferredExtraction,
+            request.CurrentPreferredToolInstanceId));
+
+        return new ExtractionValidationResult(report, deduplicationTarget, automaticPreferenceReason);
     }
 }

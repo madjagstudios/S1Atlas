@@ -1,4 +1,5 @@
 using S1Atlas.Core.Extraction;
+using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Validation;
 using Xunit;
 
@@ -19,21 +20,10 @@ public sealed class ExtractionValidationEngineTests
             PreferenceBlocking: true);
         var candidateInspection = new CandidateInspectionResult(
             Inventory: null, ContainmentPassed: false, Issues: [containmentIssue]);
-        var request = new ExtractionValidationRequest(
-            Attempt(),
-            ValidationSubjectKind.CandidateOutput,
-            SubjectExtractionId: null,
-            candidateInspection,
-            ArtifactBuild: null,
-            InputIntegrityPassed: true,
-            ProcessIntegrityPassed: true,
-            Policy(),
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(candidateInspection: candidateInspection, artifactBuild: null);
 
-        var report = ExtractionValidationEngine.Evaluate(request);
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
 
         Assert.Equal(ValidationOutcome.Invalid, report.Outcome);
         Assert.False(report.OutputContainmentPassed);
@@ -41,27 +31,18 @@ public sealed class ExtractionValidationEngineTests
         Assert.Equal(string.Empty, report.ArtifactManifestDigest);
         Assert.Equal([containmentIssue], report.Issues);
         Assert.Equal(0, report.Statistics.ArtifactCount);
+        Assert.Null(result.DeduplicationTarget);
+        Assert.Null(result.AutomaticPreferenceReason);
     }
 
     [Fact]
     public void Evaluate_ContainmentPassedNoIssues_ReturnsValidReportEligibleForPreference()
     {
         var artifactBuild = ValidArtifactBuild();
-        var request = new ExtractionValidationRequest(
-            Attempt(),
-            ValidationSubjectKind.CandidateOutput,
-            SubjectExtractionId: null,
-            PassedInspection(),
-            artifactBuild,
-            InputIntegrityPassed: true,
-            ProcessIntegrityPassed: true,
-            Policy(),
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(artifactBuild: artifactBuild);
 
-        var report = ExtractionValidationEngine.Evaluate(request);
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
 
         Assert.Equal(ValidationOutcome.Valid, report.Outcome);
         Assert.True(report.OutputContainmentPassed);
@@ -75,93 +56,51 @@ public sealed class ExtractionValidationEngineTests
     public void Evaluate_AbsoluteSanityHardIssue_ReturnsInvalidAndNotPreferenceEligible()
     {
         var emptyBuild = EmptyArtifactBuild();
-        var request = new ExtractionValidationRequest(
-            Attempt(),
-            ValidationSubjectKind.CandidateOutput,
-            SubjectExtractionId: null,
-            PassedInspection(),
-            emptyBuild,
-            InputIntegrityPassed: true,
-            ProcessIntegrityPassed: true,
-            Policy(),
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(artifactBuild: emptyBuild);
 
-        var report = ExtractionValidationEngine.Evaluate(request);
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
 
         Assert.Equal(ValidationOutcome.Invalid, report.Outcome);
         Assert.False(report.PreferenceEligible);
         Assert.Contains(report.Issues, issue => issue.Code == "NoArtifactsProduced");
+        Assert.Null(result.AutomaticPreferenceReason);
     }
 
     [Fact]
     public void Evaluate_InputIntegrityFailed_ReportsValidOutcomeButNotPreferenceEligible()
     {
         var artifactBuild = ValidArtifactBuild();
-        var request = new ExtractionValidationRequest(
-            Attempt(),
-            ValidationSubjectKind.CandidateOutput,
-            SubjectExtractionId: null,
-            PassedInspection(),
-            artifactBuild,
-            InputIntegrityPassed: false,
-            ProcessIntegrityPassed: true,
-            Policy(),
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(artifactBuild: artifactBuild, inputIntegrityPassed: false);
 
-        var report = ExtractionValidationEngine.Evaluate(request);
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
 
         Assert.Equal(ValidationOutcome.Valid, report.Outcome);
         Assert.False(report.InputIntegrityPassed);
         Assert.False(report.PreferenceEligible);
+        Assert.Null(result.AutomaticPreferenceReason);
     }
 
     [Fact]
     public void Evaluate_ProcessIntegrityFailed_ReportsValidOutcomeButNotPreferenceEligible()
     {
         var artifactBuild = ValidArtifactBuild();
-        var request = new ExtractionValidationRequest(
-            Attempt(),
-            ValidationSubjectKind.CandidateOutput,
-            SubjectExtractionId: null,
-            PassedInspection(),
-            artifactBuild,
-            InputIntegrityPassed: true,
-            ProcessIntegrityPassed: false,
-            Policy(),
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(artifactBuild: artifactBuild, processIntegrityPassed: false);
 
-        var report = ExtractionValidationEngine.Evaluate(request);
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
 
         Assert.Equal(ValidationOutcome.Valid, report.Outcome);
         Assert.False(report.ProcessIntegrityPassed);
         Assert.False(report.PreferenceEligible);
+        Assert.Null(result.AutomaticPreferenceReason);
     }
 
     [Fact]
     public void Evaluate_ContainmentPassedWithoutArtifactBuild_ThrowsArgumentException()
     {
-        var request = new ExtractionValidationRequest(
-            Attempt(),
-            ValidationSubjectKind.CandidateOutput,
-            SubjectExtractionId: null,
-            PassedInspection(),
-            ArtifactBuild: null,
-            InputIntegrityPassed: true,
-            ProcessIntegrityPassed: true,
-            Policy(),
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(artifactBuild: null);
 
         Assert.Throws<ArgumentException>(() => ExtractionValidationEngine.Evaluate(request));
     }
@@ -172,21 +111,15 @@ public sealed class ExtractionValidationEngineTests
         var attempt = Attempt();
         var policy = Policy();
         var artifactBuild = ValidArtifactBuild();
-        var request = new ExtractionValidationRequest(
-            attempt,
-            ValidationSubjectKind.ValidatedExtraction,
-            SubjectExtractionId: new string('9', 64),
-            PassedInspection(),
-            artifactBuild,
-            InputIntegrityPassed: true,
-            ProcessIntegrityPassed: true,
-            policy,
-            BaselineStatistics: null,
-            BaselineExtractionId: null,
-            SameRecipeExtractions: [],
-            ValidatedAtUtc);
+        var request = Request(
+            attempt: attempt,
+            subjectKind: ValidationSubjectKind.ValidatedExtraction,
+            subjectExtractionId: new string('9', 64),
+            artifactBuild: artifactBuild,
+            policy: policy);
 
-        var report = ExtractionValidationEngine.Evaluate(request);
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
 
         Assert.Equal(attempt.AttemptId, report.AttemptId);
         Assert.Equal(attempt.BuildId, report.BuildId);
@@ -200,6 +133,192 @@ public sealed class ExtractionValidationEngineTests
         Assert.Null(report.BaselineExtractionId);
         Assert.Empty(report.Comparisons);
     }
+
+    // --- Task 5: comparative sanity wiring ---
+
+    [Fact]
+    public void Evaluate_BaselineProvidedWithinTolerance_ReturnsComparisonsAndNoComparativeIssues()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var request = Request(
+            artifactBuild: artifactBuild,
+            baselineStatistics: artifactBuild.Statistics,
+            baselineExtractionId: new string('b', 64));
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
+
+        Assert.Equal(ValidationOutcome.Valid, report.Outcome);
+        Assert.True(report.PreferenceEligible);
+        Assert.Equal(new string('b', 64), report.BaselineExtractionId);
+        Assert.NotEmpty(report.Comparisons);
+        Assert.DoesNotContain(
+            report.Issues, issue => issue.Code is "ComparativeSanityDeviation" or "CatastrophicSanityDeviation");
+    }
+
+    [Fact]
+    public void Evaluate_BaselineCatastrophicDecrease_ReturnsInvalidWithBlockingIssueAndNoAutomaticPreference()
+    {
+        var candidate = ValidArtifactBuild();
+        var baselineStatistics = candidate.Statistics with { ManagedAssemblyCount = 10 };
+        var request = Request(
+            artifactBuild: candidate,
+            baselineStatistics: baselineStatistics,
+            baselineExtractionId: new string('b', 64));
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
+
+        Assert.Equal(ValidationOutcome.Invalid, report.Outcome);
+        Assert.False(report.PreferenceEligible);
+        Assert.Contains(report.Issues, issue =>
+            issue.Code == "CatastrophicSanityDeviation" &&
+            issue.Severity == ValidationIssueSeverity.Error &&
+            issue.PreferenceBlocking);
+        Assert.Null(result.AutomaticPreferenceReason);
+    }
+
+    [Fact]
+    public void Evaluate_NoBaseline_ProducesNoComparisonsAndNullBaselineExtractionId()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var request = Request(artifactBuild: artifactBuild, baselineExtractionId: new string('b', 64));
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
+
+        Assert.Empty(report.Comparisons);
+        Assert.Null(report.BaselineExtractionId);
+    }
+
+    // --- Task 5: reproducibility wiring ---
+
+    [Fact]
+    public void Evaluate_SameRecipeSameDigest_ReturnsDeduplicationTargetAndNoNewOutputIssue()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var existing = ValidatedExtractionFixture(
+            extractionId: new string('e', 64), artifactManifestDigest: artifactBuild.ManifestDigest);
+        var request = Request(artifactBuild: artifactBuild, sameRecipeExtractions: [existing]);
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+
+        Assert.Equal(ValidationOutcome.Valid, result.Report.Outcome);
+        Assert.True(result.Report.PreferenceEligible);
+        Assert.Same(existing, result.DeduplicationTarget);
+        Assert.DoesNotContain(result.Report.Issues, issue => issue.Code == "SameRecipeDifferentOutput");
+    }
+
+    [Fact]
+    public void Evaluate_SameRecipeDifferentDigest_ReturnsBlockingWarningAndNoDeduplicationTarget()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var existing = ValidatedExtractionFixture(
+            extractionId: new string('e', 64), artifactManifestDigest: new string('f', 64));
+        var request = Request(artifactBuild: artifactBuild, sameRecipeExtractions: [existing]);
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+        var report = result.Report;
+
+        Assert.Equal(ValidationOutcome.ValidWithWarnings, report.Outcome);
+        Assert.False(report.PreferenceEligible);
+        Assert.Contains(report.Issues, issue =>
+            issue.Code == "SameRecipeDifferentOutput" && issue.PreferenceBlocking);
+        Assert.Null(result.DeduplicationTarget);
+        Assert.Null(result.AutomaticPreferenceReason);
+    }
+
+    // --- Task 5: automatic preference wiring ---
+
+    [Fact]
+    public void Evaluate_ManagedPinnedNoCurrentPreference_ReturnsManagedAutomatic()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var request = Request(artifactBuild: artifactBuild, toolTrustLevel: ToolTrustLevel.ManagedPinned);
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+
+        Assert.Equal(ExtractionPreferenceReason.ManagedAutomatic, result.AutomaticPreferenceReason);
+    }
+
+    [Fact]
+    public void Evaluate_CustomOverride_NeverReturnsAutomaticPreference()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var request = Request(artifactBuild: artifactBuild, toolTrustLevel: ToolTrustLevel.CustomOverride);
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+
+        Assert.Null(result.AutomaticPreferenceReason);
+    }
+
+    [Fact]
+    public void Evaluate_ManagedPinnedReplacingAutomaticFromDifferentToolInstance_ReturnsReplacementAfterToolUpgrade()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var currentPreferred = new PreferredExtraction(
+            "build-a", new string('c', 64), DateTimeOffset.Parse("2026-08-01T00:00:00Z"),
+            ExtractionPreferenceReason.ManagedAutomatic);
+        var request = Request(
+            artifactBuild: artifactBuild,
+            toolTrustLevel: ToolTrustLevel.ManagedPinned,
+            currentPreferredExtraction: currentPreferred,
+            currentPreferredToolInstanceId: "tool-0");
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+
+        Assert.Equal(ExtractionPreferenceReason.ReplacementAfterToolUpgrade, result.AutomaticPreferenceReason);
+    }
+
+    [Fact]
+    public void Evaluate_CurrentPreferenceIsManualPromotion_NeverReturnsAutomaticPreference()
+    {
+        var artifactBuild = ValidArtifactBuild();
+        var currentPreferred = new PreferredExtraction(
+            "build-a", new string('c', 64), DateTimeOffset.Parse("2026-08-01T00:00:00Z"),
+            ExtractionPreferenceReason.ManualPromotion);
+        var request = Request(
+            artifactBuild: artifactBuild,
+            toolTrustLevel: ToolTrustLevel.ManagedPinned,
+            currentPreferredExtraction: currentPreferred,
+            currentPreferredToolInstanceId: "tool-0");
+
+        var result = ExtractionValidationEngine.Evaluate(request);
+
+        Assert.Null(result.AutomaticPreferenceReason);
+    }
+
+    private static ExtractionValidationRequest Request(
+        ExtractionAttempt? attempt = null,
+        ValidationSubjectKind subjectKind = ValidationSubjectKind.CandidateOutput,
+        string? subjectExtractionId = null,
+        CandidateInspectionResult? candidateInspection = null,
+        ArtifactBuildResult? artifactBuild = null,
+        bool inputIntegrityPassed = true,
+        bool processIntegrityPassed = true,
+        ResolvedValidationPolicy? policy = null,
+        ExtractionStatistics? baselineStatistics = null,
+        string? baselineExtractionId = null,
+        IReadOnlyList<ValidatedExtraction>? sameRecipeExtractions = null,
+        ToolTrustLevel toolTrustLevel = ToolTrustLevel.ManagedPinned,
+        PreferredExtraction? currentPreferredExtraction = null,
+        string? currentPreferredToolInstanceId = null) =>
+        new(
+            attempt ?? Attempt(),
+            subjectKind,
+            subjectExtractionId,
+            candidateInspection ?? PassedInspection(),
+            artifactBuild,
+            inputIntegrityPassed,
+            processIntegrityPassed,
+            policy ?? Policy(),
+            baselineStatistics,
+            baselineExtractionId,
+            sameRecipeExtractions ?? [],
+            toolTrustLevel,
+            currentPreferredExtraction,
+            currentPreferredToolInstanceId,
+            ValidatedAtUtc);
 
     private static ExtractionAttempt Attempt() => new(
         AttemptId: new string('1', 32),
@@ -308,4 +427,23 @@ public sealed class ExtractionValidationEngineTests
             Assemblies: []);
         return new ArtifactBuildResult(manifest, "empty-digest", statistics, []);
     }
+
+    private static ValidatedExtraction ValidatedExtractionFixture(
+        string extractionId, string artifactManifestDigest) => new(
+        ExtractionId: extractionId,
+        RecipeId: new string('2', 64),
+        BuildId: "build-a",
+        ToolInstanceId: "tool-1",
+        SourceAttemptId: new string('1', 32),
+        ProfileId: "profile",
+        ProfileVersion: 1,
+        ProfileDigest: new string('3', 64),
+        AdapterVersion: 1,
+        ExtractionSchemaVersion: 1,
+        ArtifactManifestDigest: artifactManifestDigest,
+        RootPath: "C:/atlas/builds/build-a/extractions/" + extractionId,
+        CreatedAtUtc: DateTimeOffset.Parse("2026-08-01T00:00:00Z"),
+        TrustLevel: ToolTrustLevel.ManagedPinned,
+        InitialValidationOutcome: ValidationOutcome.Valid,
+        Statistics: ValidArtifactBuild().Statistics);
 }
