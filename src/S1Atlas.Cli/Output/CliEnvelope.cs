@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace S1Atlas.Cli.Output;
 
 internal sealed record CliEnvelope<T>(
@@ -9,5 +11,9 @@ internal sealed record CliEnvelope<T>(
     CliError? Error);
 
 internal sealed record CliError(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? AttemptId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Stage,
     string Code,
     string Message);

@@ -23,7 +23,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesV1ThroughV3WithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesV1ThroughV4WithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(
@@ -38,7 +38,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             SqliteOpenMode.ReadOnly,
             cancellationToken);
         Assert.Equal(
-            3L,
+            4L,
             await ScalarInt64Async(
                 connection,
                 "SELECT COUNT(*) FROM schema_migrations;",
@@ -99,7 +99,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             cancellationToken))
         {
             Assert.Equal(
-                3L,
+                4L,
                 await ScalarInt64Async(
                     connection,
                     "SELECT COUNT(*) FROM schema_migrations;",

@@ -17,6 +17,39 @@ public sealed partial class SqliteAtlasRepository
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
+    public async Task SaveToolInstanceAsync(
+        ToolInstance toolInstance,
+        CancellationToken cancellationToken)
+    {
+        ValidateToolInstanceIdentity(toolInstance);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            await UpsertToolInstanceAsync(
+                connection,
+                transaction,
+                toolInstance,
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw new InvalidOperationException(
+                $"Tool instance '{toolInstance.ToolInstanceId}' could not be saved.",
+                exception);
+        }
+    }
+
     public async Task SaveVerifiedManagedToolAsync(
         ManagedToolInstallation installation,
         ToolInstance toolInstance,
@@ -187,6 +220,7 @@ public sealed partial class SqliteAtlasRepository
     {
         ArgumentNullException.ThrowIfNull(installation);
         ArgumentNullException.ThrowIfNull(toolInstance);
+        ValidateToolInstanceIdentity(toolInstance);
 
         if (installation.Status != ToolInstallationStatus.Verified)
         {
@@ -234,12 +268,17 @@ public sealed partial class SqliteAtlasRepository
             throw new InvalidOperationException(
                 "The managed installation and tool instance provenance disagree.");
         }
+    }
+
+    private static void ValidateToolInstanceIdentity(ToolInstance toolInstance)
+    {
+        ArgumentNullException.ThrowIfNull(toolInstance);
 
         var expectedId = ToolInstanceId.Create(
-            installation.ToolId,
-            installation.ExecutableSha256,
-            installation.Platform,
-            ToolTrustLevel.ManagedPinned);
+            toolInstance.ToolName,
+            toolInstance.ExecutableSha256,
+            toolInstance.Platform,
+            toolInstance.TrustLevel);
         if (!string.Equals(
                 expectedId,
                 toolInstance.ToolInstanceId,
@@ -247,6 +286,15 @@ public sealed partial class SqliteAtlasRepository
         {
             throw new InvalidOperationException(
                 "The stored tool instance ID does not match its production identity inputs.");
+        }
+
+        if (toolInstance.TrustLevel == ToolTrustLevel.CustomOverride &&
+            (toolInstance.VersionLabel is not null ||
+             toolInstance.DefinitionDigest is not null ||
+             toolInstance.PackageSha256 is not null))
+        {
+            throw new InvalidOperationException(
+                "Custom tool instances cannot claim pinned definition or package provenance.");
         }
     }
 
@@ -362,12 +410,7 @@ public sealed partial class SqliteAtlasRepository
                 package_sha256 = excluded.package_sha256,
                 executable_sha256 = excluded.executable_sha256,
                 observed_path = excluded.observed_path,
-                first_observed_at_utc = CASE
-                    WHEN julianday(excluded.first_observed_at_utc) <
-                         julianday(tool_instances.first_observed_at_utc)
-                    THEN excluded.first_observed_at_utc
-                    ELSE tool_instances.first_observed_at_utc
-                END,
+                first_observed_at_utc = tool_instances.first_observed_at_utc,
                 last_verified_at_utc = excluded.last_verified_at_utc,
                 status = excluded.status;
             """;

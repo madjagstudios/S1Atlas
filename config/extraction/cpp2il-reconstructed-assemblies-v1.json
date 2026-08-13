@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "profileId": "cpp2il-reconstructed-assemblies-v1",
+  "profileVersion": 1,
+  "adapterVersion": 1,
+  "extractionSchemaVersion": 1,
+  "executableName": "Schedule I",
+  "outputFormat": "dll_il_recovery",
+  "timeoutSeconds": 1800,
+  "maximumRetainedStandardOutputBytes": 67108864,
+  "maximumRetainedStandardErrorBytes": 67108864,
+  "acceptedExitCodes": [0],
+  "requiredAssemblyIdentities": ["Assembly-CSharp"],
+  "snapshotInputs": [
+    { "relativePath": "GameAssembly.dll", "role": "gameAssembly" },
+    { "relativePath": "Schedule I_Data/il2cpp_data/Metadata/global-metadata.dat", "role": "globalMetadata" },
+    { "relativePath": "Schedule I.exe", "role": "executableSupport" }
+  ],
+  "unityVersionSources": [
+    "Schedule I_Data/globalgamemanagers",
+    "Schedule I_Data/data.unity3d"
+  ]
+}

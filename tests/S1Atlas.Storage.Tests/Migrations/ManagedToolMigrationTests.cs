@@ -35,6 +35,7 @@ public sealed class ManagedToolMigrationTests : IAsyncDisposable
         var productionRunner = new SqliteMigrationRunner(
             _databasePath,
             _backupDirectory,
+            SqliteMigrations.All.Take(3).ToArray(),
             _timeProvider);
 
         await productionRunner.MigrateAsync(cancellationToken);
@@ -73,6 +74,7 @@ public sealed class ManagedToolMigrationTests : IAsyncDisposable
         var runner = new SqliteMigrationRunner(
             _databasePath,
             _backupDirectory,
+            SqliteMigrations.All.Take(3).ToArray(),
             _timeProvider);
 
         await runner.MigrateAsync(cancellationToken);
@@ -109,6 +111,7 @@ public sealed class ManagedToolMigrationTests : IAsyncDisposable
         var runner = new SqliteMigrationRunner(
             _databasePath,
             _backupDirectory,
+            SqliteMigrations.All.Take(3).ToArray(),
             _timeProvider);
 
         await runner.MigrateAsync(cancellationToken);

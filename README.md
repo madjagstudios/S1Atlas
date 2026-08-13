@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** the V1 Foundation, metadata/database migrations, and the managed Cpp2IL tool supply chain are implemented. Cpp2IL game execution, assembly validation, ILSpy decompilation, symbol indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
+> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, and Phase 3 extraction orchestration are complete. Phase 3 can run Cpp2IL under S1Atlas control, but its candidate output is deliberately unvalidated and non-authoritative. Assembly validation, immutable promotion, ILSpy decompilation, symbol indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
 
 ## What the Foundation Can Do
 
@@ -20,7 +20,12 @@ The current CLI can:
 - show current status, dependency information, and indexed build history in human-readable or stable JSON form;
 - inspect the repository-pinned Cpp2IL installation entirely offline;
 - explicitly download, checksum, capability-probe, and register the approved Cpp2IL pin;
-- repair an invalid managed installation only with `--repair`, quarantining the replaced files.
+- repair an invalid managed installation only with `--repair`, quarantining the replaced files;
+- resolve a freshly verified managed Cpp2IL pin or an explicitly supplied `CustomOverride` executable;
+- verify live game inputs before and after an isolated Cpp2IL process run;
+- optionally snapshot verified inputs while keeping new snapshots unavailable for replay until a later verification phase;
+- persist extraction attempts, bounded logs, failures, and quarantined candidate or retained output;
+- stop on timeout or Ctrl+C and preserve a truthful terminal attempt state.
 
 S1Atlas treats both the Schedule I installation and local Steam app manifest as **read-only input**. Integration tests verify that a scan does not add, remove, or change game files, game directories, or the matching Steam manifest.
 
@@ -68,6 +73,38 @@ dotnet run --project src/S1Atlas.Cli -- tools install cpp2il --repair
 `tools install cpp2il` can access the network, and installation never happens
 implicitly during a scan or status query.
 
+Run an extraction against the current indexed build and verified managed pin:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- extract
+dotnet run --project src/S1Atlas.Cli -- extract --json
+```
+
+Use an explicit build, game root, custom tool, or input snapshot request when
+needed:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- extract --build <64-character-build-id>
+dotnet run --project src/S1Atlas.Cli -- extract --game-path "C:\Games\Schedule I"
+dotnet run --project src/S1Atlas.Cli -- extract --cpp2il-path "C:\Tools\Cpp2IL.exe"
+dotnet run --project src/S1Atlas.Cli -- extract --profile cpp2il-reconstructed-assemblies-v1 --retry
+dotnet run --project src/S1Atlas.Cli -- extract --snapshot-inputs
+dotnet run --project src/S1Atlas.Cli -- extract --keep-failed-artifacts
+```
+
+`extract` is always offline: it never installs or downloads a tool. Without
+`--cpp2il-path`, it requires the exact managed pin to be freshly verified and
+reports `ManagedPinned` trust. An explicit executable is freshly hashed and
+capability-probed, remains outside the managed tools root, and reports
+`CustomOverride` trust.
+
+For live input, S1Atlas re-hashes the selected build inputs before process
+execution and again afterward. A mismatch before execution requires a new
+`scan`; a change during execution rejects the output. `--snapshot-inputs`
+copies and re-hashes the approved profile inputs into an immutable snapshot,
+but Phase 3 records that snapshot with `replay_verified = false`. It does not
+become eligible for archived replay merely because it was copied successfully.
+
 For machine-readable output, add `--json` to the query commands:
 
 ```powershell
@@ -76,6 +113,7 @@ dotnet run --project src/S1Atlas.Cli -- env --json
 dotnet run --project src/S1Atlas.Cli -- builds --json
 dotnet run --project src/S1Atlas.Cli -- tools status cpp2il --json
 dotnet run --project src/S1Atlas.Cli -- tools install cpp2il --json
+dotnet run --project src/S1Atlas.Cli -- extract --json
 ```
 
 Each JSON invocation writes exactly one top-level envelope to stdout with `schemaVersion`, `command`, `success`, `exitCode`, `data`, and `error`. Schema version 1 defines that top-level contract. Later command-specific error objects may add fields, so consumers should ignore error properties they do not recognize.
@@ -121,6 +159,26 @@ no-op. An invalid installation is never silently overwritten; `--repair`
 stages and fully verifies a replacement before moving the prior installation
 to quarantine.
 
+Phase 3 extraction data is stored only below the Atlas data root:
+
+```text
+%LOCALAPPDATA%\S1Atlas\extraction.lock
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\.staging\<attempt-id>
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\attempt.json
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\logs\stdout.log
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\logs\stderr.log
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\candidate-output
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\retained-output
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\inputs\<input-snapshot-id>
+```
+
+`ProcessCompleted` is a terminal Phase 3 status, but it is explicitly
+non-authoritative. Candidate output has no `complete.marker`, cannot feed a
+downstream consumer, and has no validated extraction ID. Failed partial output
+is deleted by default or moved to `retained-output` only when
+`--keep-failed-artifacts` is explicit. Phase 4 must validate and immutably
+promote a candidate before any consumer can read it.
+
 Unknown nonempty schemas are rejected without a migration ledger, schema mutation, or backup because S1Atlas cannot safely infer their origin.
 
 Generated data, databases, backups, extraction artifacts, decompiled output, and logs are intentionally excluded from Git.
@@ -161,8 +219,12 @@ ever started. It then runs controlled `--help` and `--list-output-formats`
 probes and requires `dll_il_recovery`. Automated tests inject fake local bytes
 and fake HTTP handlers; they do not download the official package.
 
-This phase does not point Cpp2IL at Schedule I and does not execute an
-extraction. The Schedule I installation remains read-only.
+The production pin above remains byte-for-byte unchanged. Phase 3 may point a
+freshly verified tool at Schedule I only through the explicit `extract`
+command. The Schedule I installation remains read-only; live input hashes are
+required to match before and after execution. Automated integration tests use
+generated fake game bytes, a source-built fake executable, and a rejecting HTTP
+handler. They use no proprietary fixture and make no network request.
 
 ## Current Commands
 
@@ -174,14 +236,17 @@ extraction. The Schedule I installation remains read-only.
 | `builds [--json]` | List content-derived builds, newest first-seen first |
 | `tools status [tool-id] [--json]` | Inspect pinned managed-tool state offline |
 | `tools install <tool-id> [--repair] [--json]` | Explicitly download, verify, install, or repair a managed tool |
+| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--keep-failed-artifacts] [--json]` | Run offline extraction into a non-authoritative Phase 3 candidate |
 
 ## Next Milestone
 
-Phase 3 adds repository-controlled extraction profiles and validation policies,
-typed game-input resolution, extraction attempts, isolated Cpp2IL process
-execution, Ctrl+C/timeout process-tree termination, and bounded logs. Layered
-assembly validation and immutable reconstructed-output promotion follow before
-ILSpy decompilation or normalized symbol indexing.
+Phase 4 adds output-containment validation, complete artifact inventory and
+hashing, managed assembly inspection, absolute and comparative sanity checks,
+policy application, reproducibility comparison, immutable extraction IDs and
+manifests, two-phase filesystem/database promotion, validated extraction
+history and recovery, managed automatic/custom manual preference rules, and
+`extractions list/show/promote` commands. No Phase 4 consumer may read a Phase
+3 `candidate-output` directory directly.
 
 ## Project Documents
 

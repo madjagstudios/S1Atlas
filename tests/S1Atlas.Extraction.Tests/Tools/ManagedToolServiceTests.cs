@@ -340,9 +340,18 @@ public sealed class ManagedToolServiceTests : IAsyncDisposable
     private sealed class RecordingRepository : IToolRepository
     {
         public List<(ManagedToolInstallation Installation, ToolInstance ToolInstance)>
-            Saves { get; } = [];
+            Saves
+        { get; } = [];
 
         public Exception? SaveException { get; init; }
+
+        public Task SaveToolInstanceAsync(
+            ToolInstance toolInstance,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
 
         public Task SaveVerifiedManagedToolAsync(
             ManagedToolInstallation installation,
