@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "toolId": "cpp2il",
+  "displayName": "Cpp2IL",
+  "version": "2022.1.0-pre-release.21",
+  "platform": "win-x64",
+  "package": {
+    "kind": "singleFile",
+    "archiveFormat": null,
+    "sourceUrl": "https://github.com/SamboyCoding/Cpp2IL/releases/download/2022.1.0-pre-release.21/Cpp2IL-2022.1.0-pre-release.21-Windows.exe",
+    "releaseUrl": "https://github.com/SamboyCoding/Cpp2IL/releases/tag/2022.1.0-pre-release.21",
+    "assetName": "Cpp2IL-2022.1.0-pre-release.21-Windows.exe",
+    "expectedSize": 15137811,
+    "sha256": "663fb432433b4371fd1ee0ebc321a8fff2a9aac5ac4230c843f9e03ddee4e04c",
+    "executableRelativePath": "Cpp2IL.exe",
+    "limits": {
+      "maximumDownloadBytes": 15137811,
+      "maximumExpandedBytes": 15137811,
+      "maximumFileCount": 1
+    }
+  },
+  "license": {
+    "spdxIdentifier": "MIT",
+    "sourceUrl": "https://github.com/SamboyCoding/Cpp2IL/blob/2022.1.0-pre-release.21/LICENSE"
+  },
+  "probes": [
+    {
+      "probeId": "help",
+      "arguments": ["--help"],
+      "acceptedExitCodes": [0],
+      "timeoutSeconds": 30,
+      "requiredOutputSubstrings": []
+    },
+    {
+      "probeId": "output-formats",
+      "arguments": ["--list-output-formats"],
+      "acceptedExitCodes": [0],
+      "timeoutSeconds": 30,
+      "requiredOutputSubstrings": ["dll_il_recovery"]
+    }
+  ]
+}
