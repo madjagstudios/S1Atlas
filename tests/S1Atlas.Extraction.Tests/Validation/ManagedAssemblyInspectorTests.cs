@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Extraction.Validation;
 using S1Atlas.ManagedAssemblyFixture;
@@ -136,8 +137,26 @@ public sealed class ManagedAssemblyInspectorTests : IDisposable
         var invalidPath = Path.Combine(_workRoot, "load-count-invalid.dll");
         File.WriteAllBytes(invalidPath, [0x00, 0x01, 0x02]);
 
-        var loadCount = 0;
-        void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args) => Interlocked.Increment(ref loadCount);
+        // The real invariant: inspection must never load the *inspected* file into this
+        // runtime. Counting all process-global AssemblyLoad events is racy in a parallel
+        // suite (other tests, or the first-use JIT load of System.Reflection.Metadata /
+        // System.Collections.Immutable, fire unrelated events). Instead, capture the
+        // locations of assemblies loaded during inspection and assert none is one of the
+        // paths we inspected.
+        var loadedLocations = new ConcurrentBag<string>();
+        void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(args.LoadedAssembly.Location))
+                {
+                    loadedLocations.Add(Path.GetFullPath(args.LoadedAssembly.Location));
+                }
+            }
+            catch (NotSupportedException)
+            {
+            }
+        }
 
         AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
         try
@@ -151,7 +170,10 @@ public sealed class ManagedAssemblyInspectorTests : IDisposable
             AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
         }
 
-        Assert.Equal(0, loadCount);
+        var inspectedPaths = new[] { managedPath, nativePath, invalidPath }
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain(loadedLocations, inspectedPaths.Contains);
     }
 
     [Fact]
