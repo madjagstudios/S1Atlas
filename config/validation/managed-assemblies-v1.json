@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "policyId": "managed-assemblies-v1",
+  "policyVersion": 1,
+  "requiredAssemblyIdentities": ["Assembly-CSharp"],
+  "minimumManagedAssemblyCount": 1,
+  "minimumTypeDefinitionCount": 1,
+  "minimumMethodDefinitionCount": 1,
+  "minimumTotalManagedBytes": 1048576,
+  "comparativeWarningRelativeChange": 0.25,
+  "catastrophicDecreaseRelativeChange": 0.80
+}
