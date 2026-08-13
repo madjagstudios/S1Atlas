@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Storage.Tests", "te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.IntegrationTests", "tests\S1Atlas.IntegrationTests\S1Atlas.IntegrationTests.csproj", "{88888888-8888-4888-8888-888888888888}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.FakeCpp2Il", "tests\S1Atlas.FakeCpp2Il\S1Atlas.FakeCpp2Il.csproj", "{99999999-9999-4999-8999-999999999999}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -56,5 +58,9 @@ Global
 		{88888888-8888-4888-8888-888888888888}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{88888888-8888-4888-8888-888888888888}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{88888888-8888-4888-8888-888888888888}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99999999-9999-4999-8999-999999999999}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
