@@ -152,7 +152,80 @@ public sealed class ExtractionOrchestrator
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ProfileId);
 
-        ExtractionFailureStage stage = ExtractionFailureStage.Recovery;
+        GameBuild build;
+        ResolvedExtractionProfile profile;
+        ResolvedValidationPolicy policy;
+        var prefixStage = ExtractionFailureStage.Recovery;
+        try
+        {
+            await _dependencies.InitializeRepositoryAsync(cancellationToken);
+            await _dependencies.RecoverAsync(cancellationToken);
+
+            prefixStage = ExtractionFailureStage.InputResolution;
+            build = await _dependencies.SelectBuildAsync(
+                options.BuildId,
+                cancellationToken);
+            try
+            {
+                profile = _dependencies.GetProfile(options.ProfileId);
+                policy = _dependencies.GetPolicy(ValidationPolicyId);
+            }
+            catch (ToolOperationException exception)
+            {
+                throw MapToolFailure(exception, attemptId: null);
+            }
+        }
+        catch (Exception exception)
+        {
+            throw MapFailure(exception, prefixStage, attemptId: null);
+        }
+
+        return await RunResolvedCoreAsync(
+            options,
+            build,
+            profile,
+            policy,
+            ct => _dependencies.ResolveToolAsync(options.CustomCpp2IlPath, ct),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Runs the Phase 3 Cpp2IL process for an already-prepared extraction context
+    /// (build/profile/policy/tool/recipe resolved by
+    /// <see cref="ExtractionPreparationService"/>). Unlike <see cref="RunAsync"/>,
+    /// it neither initializes the repository, runs recovery, nor re-resolves the
+    /// build/profile/policy/tool: the Phase 4 workflow performs those steps once and
+    /// only reaches here when no reuse, revalidation, or existing candidate can
+    /// satisfy the request. It produces the same durable, non-authoritative
+    /// <c>ProcessCompleted</c> candidate <see cref="RunAsync"/> does.
+    /// </summary>
+    internal Task<ExtractionOperationResult> RunPreparedAsync(
+        PreparedExtractionContext context,
+        ExtractionOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ProfileId);
+
+        return RunResolvedCoreAsync(
+            options,
+            context.Build,
+            context.Profile,
+            context.Policy,
+            _ => Task.FromResult(context.Tool),
+            cancellationToken);
+    }
+
+    private async Task<ExtractionOperationResult> RunResolvedCoreAsync(
+        ExtractionOptions options,
+        GameBuild build,
+        ResolvedExtractionProfile profile,
+        ResolvedValidationPolicy policy,
+        Func<CancellationToken, Task<ResolvedExtractionTool>> resolveToolAsync,
+        CancellationToken cancellationToken)
+    {
+        ExtractionFailureStage stage = ExtractionFailureStage.InputResolution;
         OwnedAttemptPaths? paths = null;
         IExtractionOrchestrationLockLease? lockLease = null;
         ExtractionAttempt? attempt = null;
@@ -166,25 +239,6 @@ public sealed class ExtractionOrchestrator
 
         try
         {
-            await _dependencies.InitializeRepositoryAsync(cancellationToken);
-            await _dependencies.RecoverAsync(cancellationToken);
-
-            stage = ExtractionFailureStage.InputResolution;
-            var build = await _dependencies.SelectBuildAsync(
-                options.BuildId,
-                cancellationToken);
-            ResolvedExtractionProfile profile;
-            ResolvedValidationPolicy policy;
-            try
-            {
-                profile = _dependencies.GetProfile(options.ProfileId);
-                policy = _dependencies.GetPolicy(ValidationPolicyId);
-            }
-            catch (ToolOperationException exception)
-            {
-                throw MapToolFailure(exception, attemptId: null);
-            }
-
             var attemptId = _attemptIdFactory();
             paths = OwnedAttemptPaths.Create(_dataRoot, build.BuildId, attemptId);
             try
@@ -245,9 +299,7 @@ public sealed class ExtractionOrchestrator
             stage = ExtractionFailureStage.ToolResolution;
             try
             {
-                tool = await _dependencies.ResolveToolAsync(
-                    options.CustomCpp2IlPath,
-                    cancellationToken);
+                tool = await resolveToolAsync(cancellationToken);
             }
             catch (ToolOperationException exception)
             {
