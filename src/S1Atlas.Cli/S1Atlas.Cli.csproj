@@ -6,4 +6,10 @@
     <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
     <PackageReference Include="System.CommandLine" Version="2.0.10" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\config\tools\*.json"
+             Link="config\tools\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
