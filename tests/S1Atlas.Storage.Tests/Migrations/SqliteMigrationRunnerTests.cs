@@ -23,7 +23,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesV1AndV2WithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesV1ThroughV3WithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(
@@ -38,7 +38,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             SqliteOpenMode.ReadOnly,
             cancellationToken);
         Assert.Equal(
-            2L,
+            3L,
             await ScalarInt64Async(
                 connection,
                 "SELECT COUNT(*) FROM schema_migrations;",
@@ -57,6 +57,14 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             connection,
             "environment_snapshots",
             "identity_version",
+            cancellationToken));
+        Assert.True(await TableExistsAsync(
+            connection,
+            "managed_tool_installations",
+            cancellationToken));
+        Assert.True(await TableExistsAsync(
+            connection,
+            "tool_instances",
             cancellationToken));
         Assert.Equal(
             1L,
@@ -91,7 +99,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             cancellationToken))
         {
             Assert.Equal(
-                2L,
+                3L,
                 await ScalarInt64Async(
                     connection,
                     "SELECT COUNT(*) FROM schema_migrations;",
@@ -166,6 +174,14 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
                     connection,
                     "SELECT current_snapshot_id FROM atlas_state WHERE singleton_id = 1;",
                     cancellationToken));
+            Assert.True(await TableExistsAsync(
+                connection,
+                "managed_tool_installations",
+                cancellationToken));
+            Assert.True(await TableExistsAsync(
+                connection,
+                "tool_instances",
+                cancellationToken));
         }
 
         await using var backup = await FoundationV1DatabaseFixture.OpenFileAsync(

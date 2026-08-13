@@ -91,9 +91,45 @@ internal static class SqliteMigrations
         ALTER TABLE builds DROP COLUMN steam_build_id;
         """;
 
+    private const string ManagedToolsV3Sql = """
+        CREATE TABLE managed_tool_installations (
+            tool_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            definition_digest TEXT NOT NULL,
+            package_sha256 TEXT NOT NULL,
+            executable_sha256 TEXT NOT NULL,
+            root_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            installed_at_utc TEXT NOT NULL,
+            last_verified_at_utc TEXT NOT NULL,
+            probe_summary TEXT NOT NULL,
+            PRIMARY KEY (tool_id, version, platform)
+        );
+
+        CREATE TABLE tool_instances (
+            tool_instance_id TEXT NOT NULL PRIMARY KEY,
+            tool_name TEXT NOT NULL,
+            version_label TEXT NULL,
+            platform TEXT NOT NULL,
+            trust_level TEXT NOT NULL,
+            definition_digest TEXT NULL,
+            package_sha256 TEXT NULL,
+            executable_sha256 TEXT NOT NULL,
+            observed_path TEXT NOT NULL,
+            first_observed_at_utc TEXT NOT NULL,
+            last_verified_at_utc TEXT NOT NULL,
+            status TEXT NOT NULL
+        );
+
+        CREATE INDEX ix_tool_instances_tool_trust
+        ON tool_instances(tool_name, trust_level);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
-        new(2, "environment-observations-v2", EnvironmentObservationsV2Sql)
+        new(2, "environment-observations-v2", EnvironmentObservationsV2Sql),
+        new(3, "managed-tools-v3", ManagedToolsV3Sql)
     ];
 }
