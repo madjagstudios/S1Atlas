@@ -143,28 +143,32 @@ public sealed class ExtractionLockTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadAsync_ReparsePointLock_IsRejectedAndPreserved()
+    public async Task ReadAsync_InjectedReparsePointLock_IsRejected()
     {
         Directory.CreateDirectory(_dataRoot);
-        var target = Path.Combine(_dataRoot, "lock-target.json");
-        await File.WriteAllTextAsync(
-            target, "{}", TestContext.Current.CancellationToken);
         var path = Path.Combine(_dataRoot, "extraction.lock");
-        try
-        {
-            File.CreateSymbolicLink(path, target);
-        }
-        catch (IOException) when (OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        var inspectedLockPath = false;
+        var manager = new ExtractionLock(
+            _dataRoot,
+            ownerProcessId: 101,
+            _ => false,
+            new FixedTimeProvider(_now),
+            candidate =>
+            {
+                if (string.Equals(candidate, path, StringComparison.OrdinalIgnoreCase))
+                {
+                    inspectedLockPath = true;
+                    return FileAttributes.ReparsePoint;
+                }
+
+                return File.GetAttributes(candidate);
+            });
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            CreateLock(ownerProcessId: 101, alive: _ => false)
-                .ReadAsync(TestContext.Current.CancellationToken));
+            manager.ReadAsync(TestContext.Current.CancellationToken));
 
-        Assert.True(File.Exists(path));
-        Assert.True(File.Exists(target));
+        Assert.True(inspectedLockPath);
+        Assert.False(File.Exists(path));
     }
 
     [Fact]

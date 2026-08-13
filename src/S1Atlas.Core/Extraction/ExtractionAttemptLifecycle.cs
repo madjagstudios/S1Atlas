@@ -64,23 +64,32 @@ public static class ExtractionAttemptLifecycle
                 "Phase 3 attempts cannot carry a result extraction ID.");
         }
 
-        var hasFailureMetadata = attempt.FailureStage is not null
+        var hasAnyFailureMetadata = attempt.FailureStage is not null
             || attempt.FailureCode is not null
             || attempt.FailureMessage is not null;
+        var hasCompleteFailureMetadata = attempt.FailureStage is not null
+            && attempt.FailureCode is not null
+            && !string.IsNullOrWhiteSpace(attempt.FailureMessage);
         if (attempt.Status == ExtractionAttemptStatus.Failed)
         {
-            if (attempt.FailureStage is null
-                || attempt.FailureCode is null
-                || string.IsNullOrWhiteSpace(attempt.FailureMessage))
+            if (!hasCompleteFailureMetadata)
             {
                 throw new InvalidOperationException(
                     "Failed attempts require failure stage, code, and message.");
             }
         }
-        else if (hasFailureMetadata)
+        else if (attempt.Status == ExtractionAttemptStatus.Abandoned)
+        {
+            if (hasAnyFailureMetadata && !hasCompleteFailureMetadata)
+            {
+                throw new InvalidOperationException(
+                    "Abandoned attempt failure metadata must include stage, code, and message together.");
+            }
+        }
+        else if (hasAnyFailureMetadata)
         {
             throw new InvalidOperationException(
-                "Only failed attempts can carry failure metadata.");
+                "Only failed or abandoned attempts can carry failure metadata.");
         }
 
         if (attempt.Status == ExtractionAttemptStatus.ProcessCompleted

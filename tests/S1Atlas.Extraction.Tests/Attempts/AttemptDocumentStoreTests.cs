@@ -56,22 +56,27 @@ public sealed class AttemptDocumentStoreTests : IDisposable
     }
 
     [Fact]
-    public void Create_ReparsePointAncestor_IsRejected()
+    public void Create_InjectedReparsePointAncestor_IsRejected()
     {
         Directory.CreateDirectory(_dataRoot);
-        var target = Path.Combine(_dataRoot, "target-builds");
-        Directory.CreateDirectory(target);
-        try
-        {
-            Directory.CreateSymbolicLink(Path.Combine(_dataRoot, "builds"), target);
-        }
-        catch (IOException) when (OperatingSystem.IsWindows())
-        {
-            return;
-        }
+        var reparsePath = Path.Combine(_dataRoot, "builds");
+        var inspectedReparsePath = false;
 
         Assert.Throws<InvalidOperationException>(() => OwnedAttemptPaths.Create(
-            _dataRoot, "build-a", "0123456789abcdef0123456789abcdef"));
+            _dataRoot,
+            "build-a",
+            "0123456789abcdef0123456789abcdef",
+            path =>
+            {
+                if (string.Equals(path, reparsePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    inspectedReparsePath = true;
+                    return FileAttributes.Directory | FileAttributes.ReparsePoint;
+                }
+
+                return File.GetAttributes(path);
+            }));
+        Assert.True(inspectedReparsePath);
     }
 
     [Fact]

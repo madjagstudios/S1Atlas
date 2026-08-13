@@ -41,12 +41,14 @@ internal sealed class ExtractionLock
     private readonly int _ownerProcessId;
     private readonly Func<int, bool> _isProcessAlive;
     private readonly TimeProvider _timeProvider;
+    private readonly Func<string, FileAttributes> _getFileAttributes;
 
     public ExtractionLock(
         string dataRoot,
         int ownerProcessId,
         Func<int, bool> isProcessAlive,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Func<string, FileAttributes>? getFileAttributes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(ownerProcessId);
@@ -56,6 +58,7 @@ internal sealed class ExtractionLock
         _ownerProcessId = ownerProcessId;
         _isProcessAlive = isProcessAlive;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _getFileAttributes = getFileAttributes ?? File.GetAttributes;
     }
 
     public async Task<ExtractionLockLease> AcquireAsync(
@@ -214,7 +217,10 @@ internal sealed class ExtractionLock
         }
 
         OwnedAttemptPaths.EnsureSafeExistingPath(
-            _dataRoot, _lockPath, allowFinalFile: true);
+            _dataRoot,
+            _lockPath,
+            allowFinalFile: true,
+            getFileAttributes: _getFileAttributes);
     }
 
     private void DeleteExactLockBestEffort()

@@ -116,6 +116,49 @@ public sealed class ExtractionAttemptLifecycleTests
     }
 
     [Fact]
+    public void Transition_WhenAbandonedHasCompleteRecoveryMetadata_ReturnsNextAttempt()
+    {
+        var current = CreateAttempt(ExtractionAttemptStatus.Running);
+        var abandoned = CreateAttempt(ExtractionAttemptStatus.Abandoned) with
+        {
+            AttemptId = current.AttemptId,
+            CompletedAtUtc = DateTimeOffset.Parse("2026-08-12T13:00:00Z"),
+            FailureStage = ExtractionFailureStage.Recovery,
+            FailureCode = ExtractionFailureCode.InterruptedProcess,
+            FailureMessage = "The extraction attempt was interrupted."
+        };
+
+        Assert.Equal(
+            abandoned,
+            ExtractionAttemptLifecycle.Transition(current, abandoned));
+    }
+
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public void Transition_WhenAbandonedFailureMetadataIsPartial_RejectsAttempt(
+        bool hasStage,
+        bool hasCode,
+        bool hasMessage)
+    {
+        var current = CreateAttempt(ExtractionAttemptStatus.Running);
+        var abandoned = CreateAttempt(ExtractionAttemptStatus.Abandoned) with
+        {
+            AttemptId = current.AttemptId,
+            FailureStage = hasStage ? ExtractionFailureStage.Recovery : null,
+            FailureCode = hasCode ? ExtractionFailureCode.InterruptedProcess : null,
+            FailureMessage = hasMessage ? "interrupted" : null
+        };
+
+        Assert.Throws<InvalidOperationException>(() =>
+            ExtractionAttemptLifecycle.Transition(current, abandoned));
+    }
+
+    [Fact]
     public void Transition_WhenAttemptIdChanges_RejectsAttempt()
     {
         Assert.Throws<InvalidOperationException>(() =>

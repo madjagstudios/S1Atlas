@@ -42,7 +42,8 @@ internal sealed record OwnedAttemptPaths
     public static OwnedAttemptPaths Create(
         string dataRoot,
         string buildId,
-        string attemptId)
+        string attemptId,
+        Func<string, FileAttributes>? getFileAttributes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
         RequireSafeSegment(buildId, "build ID");
@@ -57,15 +58,17 @@ internal sealed record OwnedAttemptPaths
         var staging = ResolveContained(
             root, "builds", buildId, "extractions", ".staging", attemptId);
         var attempt = ResolveContained(root, "builds", buildId, "attempts", attemptId);
-        EnsureSafeExistingPath(root, staging);
-        EnsureSafeExistingPath(root, attempt);
+        var readAttributes = getFileAttributes ?? File.GetAttributes;
+        EnsureSafeExistingPath(root, staging, getFileAttributes: readAttributes);
+        EnsureSafeExistingPath(root, attempt, getFileAttributes: readAttributes);
         return new OwnedAttemptPaths(root, buildId, attemptId, staging, attempt);
     }
 
     internal static void EnsureSafeExistingPath(
         string root,
         string candidate,
-        bool allowFinalFile = false)
+        bool allowFinalFile = false,
+        Func<string, FileAttributes>? getFileAttributes = null)
     {
         var fullRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         var fullCandidate = Path.GetFullPath(candidate);
@@ -75,7 +78,8 @@ internal sealed record OwnedAttemptPaths
         }
 
         var current = fullRoot;
-        InspectExisting(current);
+        var readAttributes = getFileAttributes ?? File.GetAttributes;
+        InspectExisting(current, allowFile: false, readAttributes);
         var relative = Path.GetRelativePath(fullRoot, fullCandidate);
         if (relative == ".")
         {
@@ -88,7 +92,10 @@ internal sealed record OwnedAttemptPaths
         for (var index = 0; index < segments.Length; index++)
         {
             current = Path.Combine(current, segments[index]);
-            InspectExisting(current, allowFinalFile && index == segments.Length - 1);
+            InspectExisting(
+                current,
+                allowFinalFile && index == segments.Length - 1,
+                readAttributes);
         }
     }
 
@@ -158,11 +165,14 @@ internal sealed record OwnedAttemptPaths
         }
     }
 
-    private static void InspectExisting(string path, bool allowFile = false)
+    private static void InspectExisting(
+        string path,
+        bool allowFile,
+        Func<string, FileAttributes> getFileAttributes)
     {
         try
         {
-            var attributes = File.GetAttributes(path);
+            var attributes = getFileAttributes(path);
             if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
                 throw new InvalidOperationException(

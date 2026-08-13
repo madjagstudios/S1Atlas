@@ -1,7 +1,9 @@
 using S1Atlas.Core.Builds;
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Attempts;
+using S1Atlas.Storage.Sqlite;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Attempts;
@@ -257,8 +259,82 @@ public sealed class ExtractionRecoveryServiceTests : IDisposable
         Assert.True(File.Exists(Path.Combine(paths.FinalLogsRoot, "stdout.log")));
     }
 
+    [Theory]
+    [InlineData(ExtractionAttemptStatus.Created)]
+    [InlineData(ExtractionAttemptStatus.Preparing)]
+    [InlineData(ExtractionAttemptStatus.Running)]
+    public async Task RecoverAsync_RealSqliteRepository_PersistsAbandonedRecoveryMetadata(
+        ExtractionAttemptStatus initialStatus)
+    {
+        Directory.CreateDirectory(_dataRoot);
+        var repository = new SqliteAtlasRepository(
+            Path.Combine(_dataRoot, "atlas.db"),
+            Path.Combine(_dataRoot, "backups"));
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await repository.InitializeAsync(cancellationToken);
+        await SeedBuildAsync(repository, cancellationToken);
+        var paths = CreatePaths();
+        var attempt = CreateAttempt(paths, ExtractionAttemptStatus.Created) with
+        {
+            RecipeId = null,
+            ToolInstanceId = null
+        };
+        await repository.CreateAttemptAsync(attempt, cancellationToken);
+        if (initialStatus is ExtractionAttemptStatus.Preparing or ExtractionAttemptStatus.Running)
+        {
+            attempt = attempt with { Status = ExtractionAttemptStatus.Preparing };
+            await repository.TransitionAttemptAsync(
+                attempt, ExtractionAttemptStatus.Created, cancellationToken);
+        }
+
+        if (initialStatus == ExtractionAttemptStatus.Running)
+        {
+            attempt = attempt with { Status = ExtractionAttemptStatus.Running };
+            await repository.TransitionAttemptAsync(
+                attempt, ExtractionAttemptStatus.Preparing, cancellationToken);
+        }
+
+        await CreateService(repository, new AttemptDocumentStore(), _ => false)
+            .RecoverAsync(cancellationToken);
+
+        var stored = await repository.GetAttemptAsync(attempt.AttemptId, cancellationToken);
+        Assert.Equal(ExtractionAttemptStatus.Abandoned, stored!.Status);
+        Assert.Equal(ExtractionFailureStage.Recovery, stored.FailureStage);
+        Assert.Equal(ExtractionFailureCode.InterruptedProcess, stored.FailureCode);
+        Assert.Equal(ExtractionRecoveryService.InterruptedMessage, stored.FailureMessage);
+        Assert.Equal(_now, stored.CompletedAtUtc);
+    }
+
     private OwnedAttemptPaths CreatePaths() => OwnedAttemptPaths.Create(
         _dataRoot, "build-a", "0123456789abcdef0123456789abcdef");
+
+    private static Task SeedBuildAsync(
+        SqliteAtlasRepository repository,
+        CancellationToken cancellationToken)
+    {
+        var observedAt = DateTimeOffset.Parse("2026-08-12T12:00:00Z");
+        var gameRoot = Path.GetFullPath(Path.Combine(@"C:\games", "build-a"));
+        return repository.SaveSnapshotAsync(
+            new EnvironmentSnapshot(
+                IdentityVersion: 2,
+                Build: new GameBuild(
+                    "build-a",
+                    "assembly-build-a",
+                    "metadata-build-a",
+                    observedAt,
+                    IsValid: true),
+                Installation: new InstallationObservation(
+                    "2022.3",
+                    "3164500",
+                    "123",
+                    gameRoot,
+                    Path.Combine(gameRoot, "GameAssembly.dll"),
+                    Path.Combine(gameRoot, "global-metadata.dat")),
+                Dependencies: [],
+                AtlasVersion: "0.3.0-test",
+                CapturedAtUtc: observedAt),
+            cancellationToken);
+    }
 
     private ExtractionRecoveryService CreateService(
         IExtractionRepository repository,
