@@ -9,7 +9,9 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
 {
     private readonly string _temporaryDirectory;
     private readonly string _dataDirectory;
+    private readonly string _steamAppsDirectory;
     private readonly string _gameDirectory;
+    private readonly string _manifestPath;
 
     public FoundationSafetyTests()
     {
@@ -17,7 +19,14 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
             Path.GetTempPath(),
             $"s1atlas-safety-tests-{Guid.NewGuid():N}");
         _dataDirectory = Path.Combine(_temporaryDirectory, "data");
-        _gameDirectory = Path.Combine(_temporaryDirectory, "Schedule I");
+        _steamAppsDirectory = Path.Combine(_temporaryDirectory, "Steam", "steamapps");
+        _gameDirectory = Path.Combine(
+            _steamAppsDirectory,
+            "common",
+            "Schedule I");
+        _manifestPath = Path.Combine(
+            _steamAppsDirectory,
+            "appmanifest_3164500.acf");
         Directory.CreateDirectory(_temporaryDirectory);
     }
 
@@ -28,6 +37,9 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
         await CreateFakeInstallationAsync(cancellationToken);
         var filesBefore = CaptureFiles();
         var directoriesBefore = CaptureDirectories();
+        var manifestBefore = await File.ReadAllBytesAsync(
+            _manifestPath,
+            cancellationToken);
         var application = new CliApplication(_dataDirectory, "0.1.0-test");
         using var output = new StringWriter();
         using var error = new StringWriter();
@@ -40,6 +52,9 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
 
         var filesAfter = CaptureFiles();
         var directoriesAfter = CaptureDirectories();
+        var manifestAfter = await File.ReadAllBytesAsync(
+            _manifestPath,
+            cancellationToken);
         Assert.Equal(0, exitCode);
         Assert.Equal(directoriesBefore, directoriesAfter);
         Assert.Equal(filesBefore.Keys, filesAfter.Keys);
@@ -47,6 +62,8 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
         {
             Assert.Equal(filesBefore[relativePath], filesAfter[relativePath]);
         }
+
+        Assert.Equal(manifestBefore, manifestAfter);
     }
 
     [Fact]
@@ -147,6 +164,10 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
         Directory.CreateDirectory(Path.Combine(_gameDirectory, "MelonLoader"));
 
         await File.WriteAllBytesAsync(
+            Path.Combine(_gameDirectory, "Schedule I.exe"),
+            [77, 90],
+            cancellationToken);
+        await File.WriteAllBytesAsync(
             Path.Combine(_gameDirectory, "GameAssembly.dll"),
             [1, 2, 3, 4],
             cancellationToken);
@@ -163,6 +184,19 @@ public sealed class FoundationSafetyTests : IAsyncDisposable
         await File.WriteAllBytesAsync(
             Path.Combine(_gameDirectory, "UserLibs", "S1API.dll"),
             [0],
+            cancellationToken);
+
+        Directory.CreateDirectory(_steamAppsDirectory);
+        await File.WriteAllTextAsync(
+            _manifestPath,
+            """
+            "AppState"
+            {
+                "appid" "3164500"
+                "installdir" "Schedule I"
+                "buildid" "19628042"
+            }
+            """,
             cancellationToken);
     }
 }

@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Discovery;
 using S1Atlas.Core.Environment;
@@ -12,17 +10,22 @@ public sealed class EnvironmentDiscoveryService
     private readonly IScheduleOneLocator _locator;
     private readonly IFileHasher _fileHasher;
     private readonly IDependencyDetector _dependencyDetector;
+    private readonly IInstallationMetadataReader _installationMetadataReader;
     private readonly TimeProvider _timeProvider;
 
     public EnvironmentDiscoveryService(
         IScheduleOneLocator locator,
         IFileHasher fileHasher,
         IDependencyDetector dependencyDetector,
+        IInstallationMetadataReader installationMetadataReader,
         TimeProvider? timeProvider = null)
     {
         _locator = locator ?? throw new ArgumentNullException(nameof(locator));
         _fileHasher = fileHasher ?? throw new ArgumentNullException(nameof(fileHasher));
-        _dependencyDetector = dependencyDetector ?? throw new ArgumentNullException(nameof(dependencyDetector));
+        _dependencyDetector = dependencyDetector ??
+            throw new ArgumentNullException(nameof(dependencyDetector));
+        _installationMetadataReader = installationMetadataReader ??
+            throw new ArgumentNullException(nameof(installationMetadataReader));
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -33,7 +36,9 @@ public sealed class EnvironmentDiscoveryService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(atlasVersion);
 
-        var installation = await _locator.LocateAsync(overridePath, cancellationToken);
+        var installation = await _locator.LocateAsync(
+            overridePath,
+            cancellationToken);
         if (installation is null)
         {
             return null;
@@ -45,40 +50,23 @@ public sealed class EnvironmentDiscoveryService
         var metadataHash = await _fileHasher.ComputeSha256Async(
             installation.GlobalMetadataPath,
             cancellationToken);
-        var buildId = BuildFingerprint.Create(gameAssemblyHash, metadataHash);
         var capturedAt = _timeProvider.GetUtcNow();
-
+        var observation = await _installationMetadataReader.ReadAsync(
+            installation,
+            cancellationToken);
         var build = new GameBuild(
-            buildId,
-            TryReadGameVersion(installation.RootPath),
-            SteamBuildId: null,
+            BuildFingerprint.Create(gameAssemblyHash, metadataHash),
             gameAssemblyHash,
             metadataHash,
             capturedAt,
             IsValid: true);
 
         return new EnvironmentSnapshot(
-            build,
-            _dependencyDetector.Detect(installation),
-            atlasVersion,
-            capturedAt);
-    }
-
-    private static string? TryReadGameVersion(string rootPath)
-    {
-        var executablePath = Path.Combine(rootPath, "Schedule I.exe");
-        if (!File.Exists(executablePath))
-        {
-            return null;
-        }
-
-        try
-        {
-            return FileVersionInfo.GetVersionInfo(executablePath).FileVersion;
-        }
-        catch (Win32Exception)
-        {
-            return null;
-        }
+            IdentityVersion: 2,
+            Build: build,
+            Installation: observation,
+            Dependencies: _dependencyDetector.Detect(installation),
+            AtlasVersion: atlasVersion,
+            CapturedAtUtc: capturedAt);
     }
 }

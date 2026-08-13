@@ -32,16 +32,28 @@ public sealed class WindowsScheduleOneLocator : IScheduleOneLocator
             yield break;
         }
 
-        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var programFilesX86 = Environment.GetFolderPath(
+            Environment.SpecialFolder.ProgramFilesX86);
         if (!string.IsNullOrWhiteSpace(programFilesX86))
         {
-            yield return Path.Combine(programFilesX86, "Steam", "steamapps", "common", "Schedule I");
+            yield return Path.Combine(
+                programFilesX86,
+                "Steam",
+                "steamapps",
+                "common",
+                "Schedule I");
         }
 
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFiles = Environment.GetFolderPath(
+            Environment.SpecialFolder.ProgramFiles);
         if (!string.IsNullOrWhiteSpace(programFiles))
         {
-            yield return Path.Combine(programFiles, "Steam", "steamapps", "common", "Schedule I");
+            yield return Path.Combine(
+                programFiles,
+                "Steam",
+                "steamapps",
+                "common",
+                "Schedule I");
         }
     }
 
@@ -52,6 +64,7 @@ public sealed class WindowsScheduleOneLocator : IScheduleOneLocator
             return null;
         }
 
+        var executablePath = Path.Combine(rootPath, "Schedule I.exe");
         var gameAssemblyPath = Path.Combine(rootPath, "GameAssembly.dll");
         var globalMetadataPath = Path.Combine(
             rootPath,
@@ -67,6 +80,7 @@ public sealed class WindowsScheduleOneLocator : IScheduleOneLocator
 
         return new ScheduleOneInstallation(
             RootPath: rootPath,
+            ExecutablePath: executablePath,
             GameAssemblyPath: gameAssemblyPath,
             GlobalMetadataPath: globalMetadataPath,
             ModsPath: Path.Combine(rootPath, "Mods"),

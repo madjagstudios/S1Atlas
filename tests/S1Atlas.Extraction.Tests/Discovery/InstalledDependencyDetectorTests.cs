@@ -66,7 +66,8 @@ public sealed class InstalledDependencyDetectorTests
                 Path.GetFullPath(inaccessibleRoot),
                 StringComparison.OrdinalIgnoreCase))
             {
-                throw new UnauthorizedAccessException("simulated inaccessible loader folder");
+                throw new UnauthorizedAccessException(
+                    "simulated inaccessible loader folder");
             }
 
             return Directory.Exists(rootPath)
@@ -118,11 +119,17 @@ public sealed class InstalledDependencyDetectorTests
             Directory.CreateDirectory(Path.Combine(rootPath, "MelonLoader"));
 
             Installation = new ScheduleOneInstallation(
-                rootPath,
-                Path.Combine(rootPath, "GameAssembly.dll"),
-                Path.Combine(rootPath, "Schedule I_Data", "il2cpp_data", "Metadata", "global-metadata.dat"),
-                Path.Combine(rootPath, "Mods"),
-                Path.Combine(rootPath, "MelonLoader"));
+                RootPath: rootPath,
+                ExecutablePath: Path.Combine(rootPath, "Schedule I.exe"),
+                GameAssemblyPath: Path.Combine(rootPath, "GameAssembly.dll"),
+                GlobalMetadataPath: Path.Combine(
+                    rootPath,
+                    "Schedule I_Data",
+                    "il2cpp_data",
+                    "Metadata",
+                    "global-metadata.dat"),
+                ModsPath: Path.Combine(rootPath, "Mods"),
+                MelonLoaderPath: Path.Combine(rootPath, "MelonLoader"));
         }
 
         public string RootPath { get; }
@@ -130,7 +137,10 @@ public sealed class InstalledDependencyDetectorTests
 
         public static DependencyFixture Create()
         {
-            var root = Path.Combine(Path.GetTempPath(), "S1Atlas.Tests", Guid.NewGuid().ToString("N"));
+            var root = Path.Combine(
+                Path.GetTempPath(),
+                "S1Atlas.Tests",
+                Guid.NewGuid().ToString("N"));
             return new DependencyFixture(root);
         }
 

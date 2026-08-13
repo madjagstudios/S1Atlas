@@ -1,4 +1,5 @@
 using System.CommandLine;
+using S1Atlas.Cli.Output;
 using S1Atlas.Core.Storage;
 
 namespace S1Atlas.Cli.Commands;
@@ -11,34 +12,55 @@ internal static class BuildsCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
+        var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(
             "builds",
             "List all indexed Schedule I builds.");
-        command.SetAction(_ => CommandExecution.Run(
-            () =>
-            {
-                repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                var builds = repository
-                    .ListBuildsAsync(cancellationToken)
-                    .GetAwaiter()
-                    .GetResult();
-
-                if (builds.Count == 0)
+        command.Options.Add(jsonOption);
+        command.SetAction(parseResult =>
+        {
+            var commandOutput = new CommandOutput(
+                "builds",
+                parseResult.GetValue(jsonOption),
+                output,
+                error);
+            return CommandExecution.Run(
+                () =>
                 {
-                    output.WriteLine("No indexed builds.");
-                    return 0;
-                }
+                    repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    var builds = repository
+                        .ListBuildsAsync(cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
+                    var data = new BuildsOutput(
+                        builds
+                            .Select(build => new BuildOutput(
+                                build.BuildId,
+                                build.FirstSeenAtUtc,
+                                build.IsValid))
+                            .ToArray());
 
-                foreach (var build in builds)
-                {
-                    output.WriteLine(
-                        $"{build.BuildId} | {build.GameVersion ?? "unknown"} | {build.ScannedAtUtc:O}");
-                }
+                    return commandOutput.Success(
+                        data,
+                        writer =>
+                        {
+                            if (builds.Count == 0)
+                            {
+                                writer.WriteLine("No indexed builds.");
+                                return;
+                            }
 
-                return 0;
-            },
-            error,
-            cancellationToken));
+                            foreach (var build in builds)
+                            {
+                                writer.WriteLine(
+                                    $"{build.BuildId} | first seen {build.FirstSeenAtUtc:O} | " +
+                                    (build.IsValid ? "valid" : "invalid"));
+                            }
+                        });
+                },
+                commandOutput,
+                cancellationToken);
+        });
 
         return command;
     }

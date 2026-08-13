@@ -1,4 +1,5 @@
 using System.CommandLine;
+using S1Atlas.Cli.Output;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Discovery;
 
@@ -23,40 +24,57 @@ internal static class ScanCommand
             "scan",
             "Discover the local Schedule I environment and save a build snapshot.");
         command.Options.Add(gamePathOption);
-        command.SetAction(parseResult => CommandExecution.Run(
-            () =>
-            {
-                repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                var gamePath = parseResult.GetValue(gamePathOption)?.FullName;
-                var snapshot = discovery
-                    .DiscoverAsync(gamePath, atlasVersion, cancellationToken)
-                    .GetAwaiter()
-                    .GetResult();
-
-                if (snapshot is null)
+        command.SetAction(parseResult =>
+        {
+            var commandOutput = new CommandOutput(
+                "scan",
+                json: false,
+                output,
+                error);
+            return CommandExecution.Run(
+                () =>
                 {
-                    error.WriteLine(
-                        "Schedule I installation could not be found or is missing required IL2CPP files.");
-                    return 1;
-                }
+                    repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    var gamePath = parseResult.GetValue(gamePathOption)?.FullName;
+                    var snapshot = discovery
+                        .DiscoverAsync(gamePath, atlasVersion, cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
 
-                repository
-                    .SaveSnapshotAsync(snapshot, cancellationToken)
-                    .GetAwaiter()
-                    .GetResult();
+                    if (snapshot is null)
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "InstallationNotFound",
+                            "Schedule I installation could not be found or is missing required IL2CPP files.");
+                    }
 
-                output.WriteLine($"Indexed Schedule I build {snapshot.Build.BuildId}");
-                output.WriteLine(
-                    $"Game version: {snapshot.Build.GameVersion ?? "unknown"}");
-                foreach (var dependency in snapshot.Dependencies)
-                {
-                    output.WriteLine(DependencyDisplay.Format(dependency));
-                }
+                    repository
+                        .SaveSnapshotAsync(snapshot, cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
 
-                return 0;
-            },
-            error,
-            cancellationToken));
+                    return commandOutput.Success(
+                        snapshot.Build.BuildId,
+                        writer =>
+                        {
+                            writer.WriteLine(
+                                $"Indexed Schedule I build {snapshot.Build.BuildId}");
+                            writer.WriteLine(
+                                $"Executable version: {snapshot.Installation.ExecutableVersion ?? "unknown"}");
+                            writer.WriteLine(
+                                $"Steam app ID: {snapshot.Installation.SteamAppId ?? "unknown"}");
+                            writer.WriteLine(
+                                $"Steam build ID: {snapshot.Installation.SteamBuildId ?? "unknown"}");
+                            foreach (var dependency in snapshot.Dependencies)
+                            {
+                                writer.WriteLine(DependencyDisplay.Format(dependency));
+                            }
+                        });
+                },
+                commandOutput,
+                cancellationToken);
+        });
 
         return command;
     }
