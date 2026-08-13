@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, and Phase 3 extraction orchestration are complete. Phase 3 can run Cpp2IL under S1Atlas control, but its candidate output is deliberately unvalidated and non-authoritative. Assembly validation, immutable promotion, ILSpy decompilation, symbol indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
+> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, Phase 3 extraction orchestration, and Phase 4 validation and promotion are complete. Phase 3 still runs Cpp2IL and produces a non-authoritative candidate; Phase 4 now inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. ILSpy decompilation, C# source generation, symbol/call indexing, generated HTML documentation, build diffing, MCP, extraction cleanup/retention, and the S1Atlas agent skill remain later milestones.
 
 ## What the Foundation Can Do
 
@@ -25,7 +25,16 @@ The current CLI can:
 - verify live game inputs before and after an isolated Cpp2IL process run;
 - optionally snapshot verified inputs while keeping new snapshots unavailable for replay until a later verification phase;
 - persist extraction attempts, bounded logs, failures, and quarantined candidate or retained output;
-- stop on timeout or Ctrl+C and preserve a truthful terminal attempt state.
+- stop on timeout or Ctrl+C and preserve a truthful terminal attempt state;
+- inventory every contained candidate file, reject candidates that escape their staging directory or cross reparse points, and SHA-256 every promoted artifact;
+- inspect reconstructed managed assemblies with `PEReader`/`MetadataReader` — never loading or executing them — to classify managed/native/other files and count types, methods, fields, properties, and events;
+- apply the committed validation policy: absolute floors (required `Assembly-CSharp` identity, minimum managed assembly/type/method counts and total managed bytes), comparative checks against the preferred baseline, and same-recipe reproducibility comparison;
+- derive an immutable extraction ID from normalized path, byte size, and SHA-256 alone (classification and metadata counts are deliberately excluded from the content digest);
+- write immutable `artifact-manifest.json`, `validation.json`, and `extraction.json`, then a `complete.marker` last, and promote through a two-phase filesystem-then-SQLite commit that is recoverable if interrupted after the final rename;
+- expose only an integrity-verified extraction (database row, marker, immutable manifests, artifact rows, and current on-disk hashes all agreeing) as authoritative;
+- reuse a matching validated extraction, or revalidate one under a changed policy, without rerunning Cpp2IL — a policy-only revalidation never changes the recipe, manifest digest, or extraction ID;
+- automatically prefer a managed-pinned valid extraction while never auto-preferring custom-tool output, and never overwrite a manual promotion automatically;
+- list validated extraction history, show an extraction (with a fresh full integrity check) or an attempt's facts, and explicitly promote a validated extraction as preferred.
 
 S1Atlas treats both the Schedule I installation and local Steam app manifest as **read-only input**. Integration tests verify that a scan does not add, remove, or change game files, game directories, or the matching Steam manifest.
 
@@ -98,6 +107,39 @@ reports `ManagedPinned` trust. An explicit executable is freshly hashed and
 capability-probed, remains outside the managed tools root, and reports
 `CustomOverride` trust.
 
+A successful `extract` now reports an **authoritative validated extraction**: it
+prints the extraction ID and root, the validation outcome, tool trust, whether
+the output is the preferred one for the build, and whether the process,
+validation, and reuse ran. It exits `0` only when the extraction is authoritative
+(validation outcome `Valid` or `ValidWithWarnings` and full integrity proven). A
+candidate that runs the process but fails validation is never authoritative and
+exits `1` without a `complete.marker` or preference change. When a matching
+validated extraction already exists, `extract` reuses it after a full integrity
+check without rerunning Cpp2IL (`reusedExistingExtraction` is `true`,
+`processWasRun` is `false`); `--retry` is the only path that deliberately forces a
+new Cpp2IL process.
+
+Inspect validated extraction history and manage the preferred output:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- extractions list
+dotnet run --project src/S1Atlas.Cli -- extractions list --build <64-character-build-id>
+dotnet run --project src/S1Atlas.Cli -- extractions list --include-failed
+dotnet run --project src/S1Atlas.Cli -- extractions show <extraction-id-or-attempt-id>
+dotnet run --project src/S1Atlas.Cli -- extractions promote <extraction-id>
+```
+
+`extractions` commands never issue a network request. `list` shows validated
+extractions newest first and, with `--include-failed`, also folds in failed,
+canceled, abandoned, and candidate attempts. `show` accepts a 64-character
+extraction ID (and performs a fresh full integrity check, reporting an
+operational failure without exposing the root if the output no longer matches) or
+a 32-character attempt ID (returning its lifecycle, validation, and result
+facts). `promote` is explicit and non-interactive: it verifies integrity and the
+current policy, records a `ManualPromotion` audit, is idempotent when the
+extraction is already preferred, and rejects attempt IDs. Known history states
+exit `0`; unknown IDs and integrity failures exit `1`; cancellation exits `2`.
+
 For live input, S1Atlas re-hashes the selected build inputs before process
 execution and again afterward. A mismatch before execution requires a new
 `scan`; a change during execution rejects the output. `--snapshot-inputs`
@@ -143,7 +185,10 @@ When an existing recognized Foundation database requires migration, S1Atlas crea
 
 An existing schema-version-2 database can produce one
 `atlas-before-schema-3-*.db` backup when managed-tool provenance tables are
-added. New databases apply all migrations without a backup.
+added, and a schema-version-4 database produces one `atlas-before-schema-5-*.db`
+backup when the validated-extraction, artifact, validation-result, and preference
+tables are added. Migrations 1–4 remain byte-for-byte unchanged and Phase 4
+appends migration 5 only. New databases apply all migrations without a backup.
 
 Managed tools are stored only below the Atlas data root:
 
@@ -159,25 +204,38 @@ no-op. An invalid installation is never silently overwritten; `--repair`
 stages and fully verifies a replacement before moving the prior installation
 to quarantine.
 
-Phase 3 extraction data is stored only below the Atlas data root:
+Extraction data is stored only below the Atlas data root:
 
 ```text
 %LOCALAPPDATA%\S1Atlas\extraction.lock
-%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\.staging\<attempt-id>
 %LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\attempt.json
 %LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\logs\stdout.log
 %LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\logs\stderr.log
 %LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\candidate-output
 %LOCALAPPDATA%\S1Atlas\builds\<build-id>\attempts\<attempt-id>\retained-output
 %LOCALAPPDATA%\S1Atlas\builds\<build-id>\inputs\<input-snapshot-id>
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\.staging\<attempt-id>
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\.staging\<attempt-id>.promotion.json
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\<extraction-id>\reconstructed
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\<extraction-id>\complete.marker
+%LOCALAPPDATA%\S1Atlas\builds\<build-id>\extractions\quarantine
 ```
 
-`ProcessCompleted` is a terminal Phase 3 status, but it is explicitly
-non-authoritative. Candidate output has no `complete.marker`, cannot feed a
-downstream consumer, and has no validated extraction ID. Failed partial output
-is deleted by default or moved to `retained-output` only when
-`--keep-failed-artifacts` is explicit. Phase 4 must validate and immutably
-promote a candidate before any consumer can read it.
+`ProcessCompleted` remains a non-authoritative Phase 3 status: the Cpp2IL
+candidate under `candidate-output` has no `complete.marker`, no validated
+extraction ID, and cannot feed a downstream consumer. Phase 4 promotes a valid
+candidate into an immutable `extractions\<extraction-id>` directory whose
+`artifact-manifest.json`, `validation.json`, and `extraction.json` are written
+before a `complete.marker` is written last. The promotion journal is a sibling of
+the staging directory (never copied into the final output) and survives a
+database failure after the final rename so a complete-but-unregistered extraction
+can be recovered on the next run. A validated extraction directory is immutable —
+S1Atlas never edits its artifacts or manifests in place — and only an extraction
+whose database row, marker, manifests, artifact rows, and current hashes all
+agree is returned as authoritative. Failed partial output is deleted by default
+or moved to `retained-output` only when `--keep-failed-artifacts` is explicit;
+Phase 4 cleanup never deletes validated extractions, input snapshots, or
+historical attempts (general cleanup and retention are Phase 5).
 
 Unknown nonempty schemas are rejected without a migration ledger, schema mutation, or backup because S1Atlas cannot safely infer their origin.
 
@@ -236,17 +294,44 @@ handler. They use no proprietary fixture and make no network request.
 | `builds [--json]` | List content-derived builds, newest first-seen first |
 | `tools status [tool-id] [--json]` | Inspect pinned managed-tool state offline |
 | `tools install <tool-id> [--repair] [--json]` | Explicitly download, verify, install, or repair a managed tool |
-| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--keep-failed-artifacts] [--json]` | Run offline extraction into a non-authoritative Phase 3 candidate |
+| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--keep-failed-artifacts] [--json]` | Run offline extraction, then validate and immutably promote an authoritative extraction (or reuse an existing one) |
+| `extractions list [--build <id>] [--include-failed] [--json]` | List validated extractions newest first, optionally with failed attempts |
+| `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
+| `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
+
+## Validation Policy
+
+The committed `managed-assemblies-v1` policy is reviewed with the repository and
+is provenance, not production identity — it can never change a recipe, manifest
+digest, or extraction ID, and a policy-only revalidation never reruns Cpp2IL:
+
+```text
+Policy ID:                         managed-assemblies-v1
+Required assembly identity:        Assembly-CSharp
+Minimum managed assembly count:    1
+Minimum type-definition count:     1
+Minimum method-definition count:   1
+Minimum total managed bytes:       1,048,576
+Comparative warning threshold:     relative change > 0.25
+Catastrophic decrease threshold:   relative decrease > 0.80
+```
+
+Absolute checks enforce those floors; comparative checks flag large deviations
+from the preferred baseline and hard-fail a catastrophic decrease; reproducibility
+comparison links a byte-identical same-recipe result and blocks automatic
+preference when the same recipe produces different bytes. Automated tests use a
+test policy with a tiny managed-byte floor and never modify the production
+`config/validation/*.json`.
 
 ## Next Milestone
 
-Phase 4 adds output-containment validation, complete artifact inventory and
-hashing, managed assembly inspection, absolute and comparative sanity checks,
-policy application, reproducibility comparison, immutable extraction IDs and
-manifests, two-phase filesystem/database promotion, validated extraction
-history and recovery, managed automatic/custom manual preference rules, and
-`extractions list/show/promote` commands. No Phase 4 consumer may read a Phase
-3 `candidate-output` directory directly.
+Phase 5 owns extraction cleanup and age-based retention, archived-only replay
+verification, the final real `--retry` and identical-output smoke coverage,
+privacy and source-control hardening, and the committed non-proprietary smoke
+report. Only after Phase 5 may ILSpy decompilation and symbol/call indexing
+consume the preferred extraction — always through the full integrity-verifying
+API, and never a Phase 3 candidate, retained failure output, or an unverified
+database row.
 
 ## Project Documents
 

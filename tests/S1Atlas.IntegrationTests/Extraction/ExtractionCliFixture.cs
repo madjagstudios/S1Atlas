@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using S1Atlas.Cli;
 using S1Atlas.Core.Extraction;
+using S1Atlas.ManagedAssemblyFixture;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
 
@@ -379,12 +380,15 @@ internal sealed class ScriptedProcessExtractor : IIl2CppExtractor
 
     public CancellationToken ObservedCancellationToken { get; private set; }
 
+    public string? ObservedGameRoot { get; private set; }
+
     public async Task<ExtractionProcessResult> ExtractAsync(
         ExtractionProcessRequest request,
         Func<int, CancellationToken, Task> processStarted,
         CancellationToken cancellationToken)
     {
         ObservedCancellationToken = cancellationToken;
+        ObservedGameRoot = request.GameRoot;
         var startedAt = DateTimeOffset.UtcNow;
         await processStarted(4242, cancellationToken);
         Started.TrySetResult();
@@ -395,10 +399,21 @@ internal sealed class ScriptedProcessExtractor : IIl2CppExtractor
         }
 
         Directory.CreateDirectory(request.OutputDirectory);
-        await File.WriteAllTextAsync(
-            Path.Combine(request.OutputDirectory, "partial-or-candidate.dll"),
-            "source-built fake extraction output",
-            CancellationToken.None);
+        if (_outcome == ScriptedProcessOutcome.ValidManagedAssembly)
+        {
+            File.Copy(
+                typeof(FixtureRoot).Assembly.Location,
+                Path.Combine(request.OutputDirectory, "Assembly-CSharp.dll"),
+                overwrite: true);
+        }
+        else
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(request.OutputDirectory, "partial-or-candidate.dll"),
+                "source-built fake extraction output",
+                CancellationToken.None);
+        }
+
         await File.WriteAllTextAsync(
             request.StandardOutputPath,
             "fake stdout",
@@ -445,7 +460,12 @@ internal enum ScriptedProcessOutcome
     NonZero,
     TimedOut,
     Canceled,
-    MutateInput
+    MutateInput,
+    ValidManagedAssembly,
+
+    // The process exits 0 without mutating input, but the candidate is not a valid managed
+    // Assembly-CSharp, so validation (not the process) rejects it as non-authoritative.
+    InvalidManagedAssembly
 }
 
 internal sealed record InvocationResult(

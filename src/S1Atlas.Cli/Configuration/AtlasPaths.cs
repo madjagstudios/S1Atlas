@@ -28,6 +28,17 @@ public sealed record AtlasPaths(string RootDirectory)
     public string GetBuildExtractionStagingDirectory(string buildId) =>
         Path.Combine(GetBuildDirectory(buildId), "extractions", ".staging");
 
+    public string GetBuildExtractionsDirectory(string buildId) =>
+        Path.Combine(GetBuildDirectory(buildId), "extractions");
+
+    public string GetValidatedExtractionDirectory(string buildId, string extractionId) =>
+        Path.Combine(
+            GetBuildExtractionsDirectory(buildId),
+            RequireExtractionId(extractionId));
+
+    public string GetBuildExtractionQuarantineDirectory(string buildId) =>
+        Path.Combine(GetBuildExtractionsDirectory(buildId), "quarantine");
+
     public string GetBuildInputsDirectory(string buildId) =>
         Path.Combine(GetBuildDirectory(buildId), "inputs");
 
@@ -58,5 +69,18 @@ public sealed record AtlasPaths(string RootDirectory)
         }
 
         return buildId;
+    }
+
+    private static string RequireExtractionId(string extractionId)
+    {
+        if (extractionId is not { Length: 64 } || extractionId.Any(character =>
+                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            throw new ArgumentException(
+                "The extraction ID must be exactly 64 lower-case hexadecimal characters.",
+                nameof(extractionId));
+        }
+
+        return extractionId;
     }
 }

@@ -1,17 +1,15 @@
 namespace S1Atlas.Cli.Output;
 
 internal sealed record ExtractionOutput(
-    string AttemptId,
-    string Status,
+    string? AttemptId,
     string BuildId,
     string RecipeId,
-    string ToolInstanceId,
+    string ExtractionId,
+    string ExtractionRoot,
     string ToolTrustLevel,
-    string InputSource,
-    string? InputSnapshotId,
-    string CandidateOutputPath,
-    string StandardOutputPath,
-    string StandardErrorPath,
+    string ValidationOutcome,
     bool ProcessWasRun,
-    bool Authoritative,
-    string? ValidationOutcome);
+    bool ValidationWasRun,
+    bool ReusedExistingExtraction,
+    bool Preferred,
+    bool Authoritative);

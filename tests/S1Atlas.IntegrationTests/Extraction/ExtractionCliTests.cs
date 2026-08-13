@@ -88,10 +88,14 @@ public sealed class ExtractionCliTests
         Assert.True(Directory.Exists(configuration.ValidationPoliciesDirectory));
     }
 
+    // Phase 4 legitimately changes this assertion: `extract` now validates and promotes the
+    // candidate, so a valid managed candidate produces authoritative output (not a bare
+    // ProcessCompleted candidate). A custom tool validates but is never auto-preferred.
     [Fact]
-    public async Task Extract_DefaultCurrentBuildAndCustomTool_CompletesNonAuthoritatively()
+    public async Task Extract_DefaultCurrentBuildAndCustomTool_ValidatesAndPromotesAuthoritatively()
     {
-        await using var fixture = new ExtractionCliFixture();
+        await using var fixture = new ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         var buildId = await fixture.SeedBuildAsync();
         var before = await fixture.GetAuthoritativeHashesAsync();
 
@@ -108,25 +112,26 @@ public sealed class ExtractionCliTests
         Assert.Equal(string.Empty, result.StandardError);
         AssertSuccessEnvelope(root, "extract");
         var data = root.GetProperty("data");
-        Assert.Equal("ProcessCompleted", data.GetProperty("status").GetString());
         Assert.Equal(buildId, data.GetProperty("buildId").GetString());
         Assert.Equal("CustomOverride", data.GetProperty("toolTrustLevel").GetString());
-        Assert.Equal("Live", data.GetProperty("inputSource").GetString());
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("inputSnapshotId").ValueKind);
+        Assert.Equal("Valid", data.GetProperty("validationOutcome").GetString());
         Assert.True(data.GetProperty("processWasRun").GetBoolean());
-        Assert.False(data.GetProperty("authoritative").GetBoolean());
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("validationOutcome").ValueKind);
+        Assert.True(data.GetProperty("validationWasRun").GetBoolean());
+        Assert.False(data.GetProperty("reusedExistingExtraction").GetBoolean());
+        Assert.True(data.GetProperty("authoritative").GetBoolean());
+        Assert.False(data.GetProperty("preferred").GetBoolean());
         Assert.Equal(before, after);
-        Assert.False(
-            File.Exists(Path.Combine(
-                data.GetProperty("candidateOutputPath").GetString()!,
-                "complete.marker")));
+        var extractionRoot = data.GetProperty("extractionRoot").GetString()!;
+        Assert.True(File.Exists(Path.Combine(extractionRoot, "complete.marker")));
     }
 
+    // Phase 4 legitimately changes this assertion: successful `extract` now reports the
+    // authoritative validated extraction instead of the Phase 3 candidate caveat.
     [Fact]
-    public async Task Extract_HumanSuccess_StatesThePhase3AuthorityBoundary()
+    public async Task Extract_HumanSuccess_StatesTheAuthoritativeExtraction()
     {
-        await using var fixture = new ExtractionCliFixture();
+        await using var fixture = new ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         await fixture.SeedBuildAsync();
 
         var result = fixture.Invoke(
@@ -137,28 +142,21 @@ public sealed class ExtractionCliTests
         Assert.Equal(0, result.ExitCode);
         Assert.Equal(string.Empty, result.StandardError);
         Assert.Contains(
-            "Cpp2IL process completed under S1Atlas control.",
+            "Authoritative validated extraction is available.",
             result.StandardOutput,
             StringComparison.Ordinal);
-        Assert.Contains("Attempt:       ", result.StandardOutput, StringComparison.Ordinal);
-        Assert.Contains("Build:         ", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Extraction:    ", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Root:          ", result.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("Tool trust:    CustomOverride", result.StandardOutput, StringComparison.Ordinal);
-        Assert.Contains("Input source:  Live", result.StandardOutput, StringComparison.Ordinal);
-        Assert.Contains("Candidate:     ", result.StandardOutput, StringComparison.Ordinal);
-        Assert.Contains(
-            "This Phase 3 output is unvalidated and is not available to downstream consumers.",
-            result.StandardOutput,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Phase 4 validation and immutable promotion are still required.",
-            result.StandardOutput,
-            StringComparison.Ordinal);
+        Assert.Contains("Validation:    Valid", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Preferred:     no", result.StandardOutput, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task Extract_ExplicitKnownBuild_Completes()
     {
-        await using var fixture = new ExtractionCliFixture();
+        await using var fixture = new ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         var buildId = await fixture.SeedBuildAsync();
 
         var result = fixture.Invoke(
@@ -174,10 +172,10 @@ public sealed class ExtractionCliTests
 
         using var document = JsonDocument.Parse(result.StandardOutput);
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(buildId, document.RootElement
-            .GetProperty("data")
-            .GetProperty("buildId")
-            .GetString());
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(buildId, data.GetProperty("buildId").GetString());
+        Assert.True(data.GetProperty("authoritative").GetBoolean());
+        Assert.True(data.GetProperty("processWasRun").GetBoolean());
     }
 
     [Fact]
@@ -260,10 +258,15 @@ public sealed class ExtractionCliTests
         Assert.Equal("ToolProbeFailed", error.GetProperty("code").GetString());
     }
 
+    // Phase 4 legitimately changes this assertion: the authoritative `extract` output no
+    // longer exposes candidateOutputPath and the attempt document's resolved paths are
+    // cleared once validation rewrites it, so the resolved game root is observed directly
+    // at the process seam.
     [Fact]
     public async Task Extract_ExplicitGamePath_TakesPriorityOverStoredObservation()
     {
-        await using var fixture = new ExtractionCliFixture();
+        var extractor = new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly);
+        await using var fixture = new ExtractionCliFixture(extractor);
         await fixture.SeedBuildAsync();
         await fixture.CreateGameAsync(fixture.AlternateGameDirectory);
 
@@ -275,21 +278,10 @@ public sealed class ExtractionCliTests
             fixture.FakeCpp2IlPath,
             "--json");
 
-        using var document = JsonDocument.Parse(result.StandardOutput);
         Assert.Equal(0, result.ExitCode);
-        var candidate = document.RootElement
-            .GetProperty("data")
-            .GetProperty("candidateOutputPath")
-            .GetString()!;
-        using var attempt = JsonDocument.Parse(await File.ReadAllTextAsync(
-            Path.Combine(Path.GetDirectoryName(candidate)!, "attempt.json"),
-            TestContext.Current.CancellationToken));
         Assert.Equal(
             Path.GetFullPath(fixture.AlternateGameDirectory),
-            attempt.RootElement
-                .GetProperty("resolvedInputPaths")
-                .GetProperty("gameRoot")
-                .GetString());
+            Path.GetFullPath(extractor.ObservedGameRoot!));
     }
 
     [Fact]
@@ -428,10 +420,13 @@ public sealed class ExtractionCliTests
                 .GetString());
     }
 
+    // Phase 4 legitimately changes this assertion: the authoritative `extract` output no
+    // longer surfaces inputSnapshotId, so the snapshot is located through the attempt row.
     [Fact]
     public async Task Extract_SnapshotInputs_RetainsUnverifiedReplaySnapshot()
     {
-        await using var fixture = new ExtractionCliFixture();
+        await using var fixture = new ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         await fixture.SeedBuildAsync();
 
         var result = fixture.Invoke(
@@ -444,22 +439,21 @@ public sealed class ExtractionCliTests
         using var document = JsonDocument.Parse(result.StandardOutput);
         Assert.Equal(0, result.ExitCode);
         var data = document.RootElement.GetProperty("data");
-        var snapshotId = data.GetProperty("inputSnapshotId").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(snapshotId));
-        var snapshotRoot = Path.Combine(
-            fixture.DataDirectory,
-            "builds",
-            data.GetProperty("buildId").GetString()!,
-            "inputs",
-            snapshotId!);
-        Assert.True(File.Exists(Path.Combine(snapshotRoot, "input-manifest.json")));
-        Assert.True(File.Exists(Path.Combine(snapshotRoot, "complete.marker")));
+        var buildId = data.GetProperty("buildId").GetString()!;
+        var attemptId = data.GetProperty("attemptId").GetString()!;
 
         var repository = new SqliteAtlasRepository(fixture.DatabasePath);
         await repository.InitializeAsync(TestContext.Current.CancellationToken);
+        var attempt = await repository.GetAttemptAsync(
+            attemptId, TestContext.Current.CancellationToken);
+        var snapshotId = attempt!.InputSnapshotId;
+        Assert.False(string.IsNullOrWhiteSpace(snapshotId));
+        var snapshotRoot = Path.Combine(
+            fixture.DataDirectory, "builds", buildId, "inputs", snapshotId!);
+        Assert.True(File.Exists(Path.Combine(snapshotRoot, "input-manifest.json")));
+        Assert.True(File.Exists(Path.Combine(snapshotRoot, "complete.marker")));
         Assert.Empty(await repository.ListReplayVerifiedInputSnapshotsAsync(
-            data.GetProperty("buildId").GetString()!,
-            TestContext.Current.CancellationToken));
+            buildId, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -490,7 +484,8 @@ public sealed class ExtractionCliTests
     [Fact]
     public async Task Extract_JsonStdout_IsExactlyOneDocumentWithoutProgress()
     {
-        await using var fixture = new ExtractionCliFixture();
+        await using var fixture = new ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         await fixture.SeedBuildAsync();
 
         var result = fixture.Invoke(
@@ -503,7 +498,7 @@ public sealed class ExtractionCliTests
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("extract", document.RootElement.GetProperty("command").GetString());
         Assert.DoesNotContain(
-            "Cpp2IL process completed",
+            "Authoritative validated extraction",
             result.StandardOutput,
             StringComparison.Ordinal);
         Assert.Equal(string.Empty, result.StandardError);
@@ -525,10 +520,14 @@ public sealed class ExtractionCliTests
         Assert.DoesNotContain("Exception", result.StandardError, StringComparison.Ordinal);
     }
 
+    // Phase 4 legitimately changes this assertion: the source attempt is now driven to
+    // Succeeded with a result extraction ID, and the authoritative extraction root is the
+    // contained, immutable output carrying complete.marker.
     [Fact]
-    public async Task Extract_CandidateAndAttemptFacts_RemainContainedAndAgree()
+    public async Task Extract_ExtractionAndAttemptFacts_RemainContainedAndAgree()
     {
-        await using var fixture = new ExtractionCliFixture();
+        await using var fixture = new ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         await fixture.SeedBuildAsync();
 
         var result = fixture.Invoke(
@@ -539,37 +538,24 @@ public sealed class ExtractionCliTests
 
         using var document = JsonDocument.Parse(result.StandardOutput);
         var data = document.RootElement.GetProperty("data");
-        var candidate = Path.GetFullPath(
-            data.GetProperty("candidateOutputPath").GetString()!);
+        var extractionId = data.GetProperty("extractionId").GetString()!;
+        var extractionRoot = Path.GetFullPath(
+            data.GetProperty("extractionRoot").GetString()!);
         var atlasPrefix = Path.TrimEndingDirectorySeparator(
             Path.GetFullPath(fixture.DataDirectory)) + Path.DirectorySeparatorChar;
-        Assert.StartsWith(atlasPrefix, candidate, StringComparison.OrdinalIgnoreCase);
-        Assert.True(Directory.Exists(candidate));
-        Assert.False(File.Exists(Path.Combine(candidate, "complete.marker")));
+        Assert.StartsWith(atlasPrefix, extractionRoot, StringComparison.OrdinalIgnoreCase);
+        Assert.True(Directory.Exists(extractionRoot));
+        Assert.True(File.Exists(Path.Combine(extractionRoot, "complete.marker")));
 
         var attemptId = data.GetProperty("attemptId").GetString()!;
-        var attemptPath = Path.Combine(
-            Path.GetDirectoryName(candidate)!,
-            "attempt.json");
-        using var attemptDocument = JsonDocument.Parse(
-            await File.ReadAllTextAsync(
-                attemptPath,
-                TestContext.Current.CancellationToken));
-        var attempt = attemptDocument.RootElement;
-        Assert.Equal(attemptId, attempt.GetProperty("attemptId").GetString());
-        Assert.Equal("processCompleted", attempt.GetProperty("status").GetString());
-        Assert.Equal(candidate, attempt.GetProperty("candidateOutputPath").GetString());
-        Assert.Equal(JsonValueKind.Null, attempt.GetProperty("resultExtractionId").ValueKind);
-
         var repository = new SqliteAtlasRepository(fixture.DatabasePath);
         await repository.InitializeAsync(TestContext.Current.CancellationToken);
         var stored = await repository.GetAttemptAsync(
             attemptId,
             TestContext.Current.CancellationToken);
         Assert.NotNull(stored);
-        Assert.Equal(ExtractionAttemptStatus.ProcessCompleted, stored.Status);
-        Assert.Equal(candidate, stored.CandidateOutputPath);
-        Assert.Null(stored.ResultExtractionId);
+        Assert.Equal(ExtractionAttemptStatus.Succeeded, stored.Status);
+        Assert.Equal(extractionId, stored.ResultExtractionId);
     }
 
     [Fact]

@@ -12,13 +12,13 @@ internal static class ExtractCommand
         "cpp2il-reconstructed-assemblies-v1";
 
     public static Command Create(
-        ExtractionOrchestrator orchestrator,
+        ValidatedExtractionWorkflow workflow,
         IAtlasRepository repository,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(orchestrator);
+        ArgumentNullException.ThrowIfNull(workflow);
         ArgumentNullException.ThrowIfNull(repository);
 
         var buildOption = new Option<string?>("--build")
@@ -39,7 +39,7 @@ internal static class ExtractCommand
         };
         var retryOption = new Option<bool>("--retry")
         {
-            Description = "Run a new attempt even when prior attempt facts exist."
+            Description = "Run a new Cpp2IL process even when reusable output exists."
         };
         var snapshotInputsOption = new Option<bool>("--snapshot-inputs")
         {
@@ -53,7 +53,7 @@ internal static class ExtractCommand
 
         var command = new Command(
             "extract",
-            "Run offline Cpp2IL extraction into a non-authoritative candidate.");
+            "Extract, validate, and promote an authoritative reconstructed assembly set.");
         command.Options.Add(buildOption);
         command.Options.Add(gamePathOption);
         command.Options.Add(cpp2IlPathOption);
@@ -72,7 +72,7 @@ internal static class ExtractCommand
             return CommandExecution.Run(
                 () =>
                 {
-                    var result = orchestrator.RunAsync(
+                    var result = workflow.RunAsync(
                             new ExtractionOptions(
                                 parseResult.GetValue(buildOption),
                                 parseResult.GetValue(gamePathOption),
@@ -84,22 +84,35 @@ internal static class ExtractCommand
                             cancellationToken)
                         .GetAwaiter()
                         .GetResult();
-                    var attempt = result.Attempt;
+
+                    if (!result.IsAuthoritative)
+                    {
+                        // A candidate that ran the process but failed validation is not
+                        // authoritative and never reaches downstream consumers; report it
+                        // as an operational failure rather than a successful extraction.
+                        return commandOutput.Failure(
+                            1,
+                            "ExtractionNotAuthoritative",
+                            "The extraction did not produce authoritative validated output " +
+                            $"(validation outcome: {result.ValidationOutcome}). See the attempt's " +
+                            "validation report for the recorded issues.",
+                            result.AttemptId,
+                            result.ValidationOutcome.ToString());
+                    }
+
                     var data = new ExtractionOutput(
-                        attempt.AttemptId,
-                        attempt.Status.ToString(),
-                        attempt.BuildId,
-                        attempt.RecipeId ?? throw InvalidResult("recipe ID"),
-                        attempt.ToolInstanceId ?? throw InvalidResult("tool instance ID"),
-                        result.ToolInstance.TrustLevel.ToString(),
-                        result.InputSource.ToString(),
-                        result.InputSnapshotId,
-                        attempt.CandidateOutputPath ?? throw InvalidResult("candidate output path"),
-                        attempt.StandardOutputPath,
-                        attempt.StandardErrorPath,
+                        result.AttemptId,
+                        result.BuildId,
+                        result.RecipeId,
+                        result.ExtractionId,
+                        result.ExtractionRoot,
+                        result.ToolTrustLevel.ToString(),
+                        result.ValidationOutcome.ToString(),
                         result.ProcessWasRun,
-                        result.IsAuthoritative,
-                        ValidationOutcome: null);
+                        result.ValidationWasRun,
+                        result.ReusedExistingExtraction,
+                        result.IsPreferred,
+                        result.IsAuthoritative);
                     return commandOutput.Success(
                         data,
                         writer => WriteHuman(writer, data));
@@ -113,19 +126,16 @@ internal static class ExtractCommand
 
     private static void WriteHuman(TextWriter writer, ExtractionOutput data)
     {
-        writer.WriteLine("Cpp2IL process completed under S1Atlas control.");
-        writer.WriteLine($"Attempt:       {data.AttemptId}");
+        writer.WriteLine("Authoritative validated extraction is available.");
+        writer.WriteLine($"Extraction:    {data.ExtractionId}");
+        writer.WriteLine($"Root:          {data.ExtractionRoot}");
         writer.WriteLine($"Build:         {data.BuildId}");
         writer.WriteLine($"Tool trust:    {data.ToolTrustLevel}");
-        writer.WriteLine($"Input source:  {data.InputSource}");
-        writer.WriteLine($"Candidate:     {data.CandidateOutputPath}");
-        writer.WriteLine();
+        writer.WriteLine($"Validation:    {data.ValidationOutcome}");
+        writer.WriteLine($"Preferred:     {(data.Preferred ? "yes" : "no")}");
         writer.WriteLine(
-            "This Phase 3 output is unvalidated and is not available to downstream consumers.");
-        writer.WriteLine(
-            "Phase 4 validation and immutable promotion are still required.");
+            $"Process run:   {(data.ProcessWasRun ? "yes" : "no")}    " +
+            $"Validation run: {(data.ValidationWasRun ? "yes" : "no")}    " +
+            $"Reused: {(data.ReusedExistingExtraction ? "yes" : "no")}");
     }
-
-    private static InvalidOperationException InvalidResult(string description) =>
-        new($"A successful extraction did not include its {description}.");
 }
