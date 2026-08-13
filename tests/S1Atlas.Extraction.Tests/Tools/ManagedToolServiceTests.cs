@@ -340,7 +340,8 @@ public sealed class ManagedToolServiceTests : IAsyncDisposable
     private sealed class RecordingRepository : IToolRepository
     {
         public List<(ManagedToolInstallation Installation, ToolInstance ToolInstance)>
-            Saves { get; } = [];
+            Saves
+        { get; } = [];
 
         public Exception? SaveException { get; init; }
 

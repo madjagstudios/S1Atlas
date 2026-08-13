@@ -8,11 +8,31 @@ public sealed record AtlasPaths(string RootDirectory)
 
     public string ToolsDirectory => Path.Combine(RootDirectory, "tools");
 
+    public string BuildsDirectory => Path.Combine(RootDirectory, "builds");
+
+    public string ExtractionLockPath =>
+        Path.Combine(RootDirectory, "extraction.lock");
+
     public string ToolStagingDirectory =>
         Path.Combine(ToolsDirectory, ".staging");
 
     public string ToolQuarantineDirectory =>
         Path.Combine(ToolsDirectory, "quarantine");
+
+    public string GetBuildDirectory(string buildId) =>
+        Path.Combine(BuildsDirectory, RequireBuildId(buildId));
+
+    public string GetBuildAttemptsDirectory(string buildId) =>
+        Path.Combine(GetBuildDirectory(buildId), "attempts");
+
+    public string GetBuildExtractionStagingDirectory(string buildId) =>
+        Path.Combine(GetBuildDirectory(buildId), "extractions", ".staging");
+
+    public string GetBuildInputsDirectory(string buildId) =>
+        Path.Combine(GetBuildDirectory(buildId), "inputs");
+
+    public string GetBuildInputStagingDirectory(string buildId) =>
+        Path.Combine(GetBuildInputsDirectory(buildId), ".staging");
 
     public static AtlasPaths FromEnvironment()
     {
@@ -25,5 +45,18 @@ public sealed record AtlasPaths(string RootDirectory)
                 "S1Atlas");
 
         return new AtlasPaths(Path.GetFullPath(root));
+    }
+
+    private static string RequireBuildId(string buildId)
+    {
+        if (buildId is not { Length: 64 } || buildId.Any(character =>
+                character is not (>= '0' and <= '9' or >= 'a' and <= 'f')))
+        {
+            throw new ArgumentException(
+                "The build ID must be exactly 64 lower-case hexadecimal characters.",
+                nameof(buildId));
+        }
+
+        return buildId;
     }
 }

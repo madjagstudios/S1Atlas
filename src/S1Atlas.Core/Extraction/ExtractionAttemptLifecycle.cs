@@ -28,25 +28,25 @@ public static class ExtractionAttemptLifecycle
     private static bool IsLegalEdge(
         ExtractionAttemptStatus current,
         ExtractionAttemptStatus next) => current switch
-    {
-        ExtractionAttemptStatus.Created => next is ExtractionAttemptStatus.Preparing
-            or ExtractionAttemptStatus.Failed
-            or ExtractionAttemptStatus.Canceled
-            or ExtractionAttemptStatus.Abandoned,
-        ExtractionAttemptStatus.Preparing => next is ExtractionAttemptStatus.Running
-            or ExtractionAttemptStatus.Failed
-            or ExtractionAttemptStatus.Canceled
-            or ExtractionAttemptStatus.Abandoned,
-        ExtractionAttemptStatus.Running => next is ExtractionAttemptStatus.ProcessCompleted
-            or ExtractionAttemptStatus.Failed
-            or ExtractionAttemptStatus.Canceled
-            or ExtractionAttemptStatus.Abandoned,
-        ExtractionAttemptStatus.Validating => next is ExtractionAttemptStatus.Succeeded
-            or ExtractionAttemptStatus.Failed
-            or ExtractionAttemptStatus.Canceled
-            or ExtractionAttemptStatus.Abandoned,
-        _ => false
-    };
+        {
+            ExtractionAttemptStatus.Created => next is ExtractionAttemptStatus.Preparing
+                or ExtractionAttemptStatus.Failed
+                or ExtractionAttemptStatus.Canceled
+                or ExtractionAttemptStatus.Abandoned,
+            ExtractionAttemptStatus.Preparing => next is ExtractionAttemptStatus.Running
+                or ExtractionAttemptStatus.Failed
+                or ExtractionAttemptStatus.Canceled
+                or ExtractionAttemptStatus.Abandoned,
+            ExtractionAttemptStatus.Running => next is ExtractionAttemptStatus.ProcessCompleted
+                or ExtractionAttemptStatus.Failed
+                or ExtractionAttemptStatus.Canceled
+                or ExtractionAttemptStatus.Abandoned,
+            ExtractionAttemptStatus.Validating => next is ExtractionAttemptStatus.Succeeded
+                or ExtractionAttemptStatus.Failed
+                or ExtractionAttemptStatus.Canceled
+                or ExtractionAttemptStatus.Abandoned,
+            _ => false
+        };
 
     private static void ValidateState(ExtractionAttempt attempt)
     {

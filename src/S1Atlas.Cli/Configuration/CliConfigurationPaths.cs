@@ -5,12 +5,18 @@ internal sealed record CliConfigurationPaths(string RootDirectory)
     public string ToolDefinitionsDirectory =>
         Path.Combine(RootDirectory, "tools");
 
+    public string ExtractionProfilesDirectory =>
+        Path.Combine(RootDirectory, "extraction");
+
+    public string ValidationPoliciesDirectory =>
+        Path.Combine(RootDirectory, "validation");
+
     public static CliConfigurationPaths Resolve()
     {
         var appBaseCandidate = Path.Combine(
             AppContext.BaseDirectory,
             "config");
-        if (Directory.Exists(Path.Combine(appBaseCandidate, "tools")))
+        if (HasRequiredDirectories(appBaseCandidate))
         {
             return new CliConfigurationPaths(
                 Path.GetFullPath(appBaseCandidate));
@@ -21,7 +27,7 @@ internal sealed record CliConfigurationPaths(string RootDirectory)
         {
             var repositoryConfig = Path.Combine(current.FullName, "config");
             if (File.Exists(Path.Combine(current.FullName, "S1Atlas.sln")) &&
-                Directory.Exists(Path.Combine(repositoryConfig, "tools")))
+                HasRequiredDirectories(repositoryConfig))
             {
                 return new CliConfigurationPaths(
                     Path.GetFullPath(repositoryConfig));
@@ -33,4 +39,9 @@ internal sealed record CliConfigurationPaths(string RootDirectory)
         return new CliConfigurationPaths(
             Path.GetFullPath(appBaseCandidate));
     }
+
+    private static bool HasRequiredDirectories(string root) =>
+        Directory.Exists(Path.Combine(root, "tools")) &&
+        Directory.Exists(Path.Combine(root, "extraction")) &&
+        Directory.Exists(Path.Combine(root, "validation"));
 }

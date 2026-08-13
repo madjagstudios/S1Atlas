@@ -569,7 +569,8 @@ public sealed class ExtractionToolResolverTests : IAsyncDisposable
         public List<ToolInstance> InstanceSaves { get; } = [];
 
         public List<(ManagedToolInstallation Installation, ToolInstance Instance)>
-            ManagedSaves { get; } = [];
+            ManagedSaves
+        { get; } = [];
 
         public Task SaveToolInstanceAsync(
             ToolInstance toolInstance,

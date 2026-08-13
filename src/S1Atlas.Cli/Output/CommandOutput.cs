@@ -55,7 +55,12 @@ internal sealed class CommandOutput
         return 0;
     }
 
-    public int Failure(int exitCode, string code, string message)
+    public int Failure(
+        int exitCode,
+        string code,
+        string message,
+        string? attemptId = null,
+        string? stage = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(exitCode);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
@@ -69,11 +74,24 @@ internal sealed class CommandOutput
                 Success: false,
                 ExitCode: exitCode,
                 Data: null,
-                Error: new CliError(code, message)));
+                Error: new CliError(attemptId, stage, code, message)));
         }
         else
         {
             _standardError.WriteLine(message);
+            if (stage is not null || attemptId is not null)
+            {
+                if (stage is not null)
+                {
+                    _standardError.WriteLine($"Stage:   {stage}");
+                }
+
+                _standardError.WriteLine($"Code:    {code}");
+                if (attemptId is not null)
+                {
+                    _standardError.WriteLine($"Attempt: {attemptId}");
+                }
+            }
         }
 
         return exitCode;

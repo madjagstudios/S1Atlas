@@ -27,6 +27,10 @@ data/
 Cpp2IL.exe
 installation.json
 tool-manifest.json
+attempt.json
+input-manifest.json
+complete.marker
+extraction.lock
 
 # Extraction/decompilation artifacts
 artifacts/
@@ -34,6 +38,8 @@ artifacts/
 extracted/
 reconstructed/
 decompiled/
+candidate-output/
+retained-output/
 
 # Logs
 logs/
