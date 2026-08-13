@@ -344,6 +344,14 @@ public sealed class ManagedToolServiceTests : IAsyncDisposable
 
         public Exception? SaveException { get; init; }
 
+        public Task SaveToolInstanceAsync(
+            ToolInstance toolInstance,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
+
         public Task SaveVerifiedManagedToolAsync(
             ManagedToolInstallation installation,
             ToolInstance toolInstance,

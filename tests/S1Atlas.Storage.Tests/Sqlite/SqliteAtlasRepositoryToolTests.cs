@@ -197,6 +197,80 @@ public sealed class SqliteAtlasRepositoryToolTests : IAsyncDisposable
             cancellationToken));
     }
 
+    [Fact]
+    public async Task SaveToolInstanceAsync_RoundTripsCustomOverrideWithNullPinnedProvenance()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = CreateRepository();
+        await repository.InitializeAsync(cancellationToken);
+        var firstObserved = DateTimeOffset.Parse("2026-08-13T03:00:00Z");
+        var executableSha256 = new string('c', 64);
+        var instance = new ToolInstance(
+            ToolInstanceId.Create(
+                "cpp2il",
+                executableSha256,
+                "win-x64",
+                ToolTrustLevel.CustomOverride),
+            "cpp2il",
+            VersionLabel: null,
+            "win-x64",
+            ToolTrustLevel.CustomOverride,
+            DefinitionDigest: null,
+            PackageSha256: null,
+            executableSha256,
+            Path.Combine(_temporaryDirectory, "custom", "Cpp2IL.exe"),
+            firstObserved,
+            firstObserved,
+            ToolInstallationStatus.Verified);
+
+        await repository.SaveToolInstanceAsync(instance, cancellationToken);
+
+        var stored = await repository.GetToolInstanceAsync(
+            instance.ToolInstanceId,
+            cancellationToken);
+        Assert.Equal(instance, stored);
+        Assert.Null(await repository.GetManagedToolAsync(
+            "cpp2il",
+            "test-version",
+            "win-x64",
+            cancellationToken));
+    }
+
+    [Fact]
+    public async Task SaveToolInstanceAsync_ReverificationPreservesFirstObservedAndUpdatesProvenance()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = CreateRepository();
+        await repository.InitializeAsync(cancellationToken);
+        var installation = CreateInstallation(
+            DateTimeOffset.Parse("2026-08-13T01:00:00Z"),
+            DateTimeOffset.Parse("2026-08-13T01:05:00Z"));
+        var originalFirstObserved = DateTimeOffset.Parse("2026-08-13T00:55:00Z");
+        var first = CreateToolInstance(
+            installation,
+            Path.Combine(_temporaryDirectory, "first", "Cpp2IL.exe"),
+            originalFirstObserved,
+            installation.LastVerifiedAtUtc);
+        var later = DateTimeOffset.Parse("2026-08-13T04:00:00Z");
+        var second = first with
+        {
+            ObservedPath = Path.Combine(_temporaryDirectory, "second", "Cpp2IL.exe"),
+            FirstObservedAtUtc = later,
+            LastVerifiedAtUtc = later
+        };
+
+        await repository.SaveToolInstanceAsync(first, cancellationToken);
+        await repository.SaveToolInstanceAsync(second, cancellationToken);
+
+        var stored = await repository.GetToolInstanceAsync(
+            first.ToolInstanceId,
+            cancellationToken);
+        Assert.NotNull(stored);
+        Assert.Equal(originalFirstObserved, stored.FirstObservedAtUtc);
+        Assert.Equal(later, stored.LastVerifiedAtUtc);
+        Assert.Equal(second.ObservedPath, stored.ObservedPath);
+    }
+
     public ValueTask DisposeAsync()
     {
         if (Directory.Exists(_temporaryDirectory))

@@ -4,6 +4,10 @@ namespace S1Atlas.Core.Storage;
 
 public interface IToolRepository
 {
+    Task SaveToolInstanceAsync(
+        ToolInstance toolInstance,
+        CancellationToken cancellationToken);
+
     Task SaveVerifiedManagedToolAsync(
         ManagedToolInstallation installation,
         ToolInstance toolInstance,

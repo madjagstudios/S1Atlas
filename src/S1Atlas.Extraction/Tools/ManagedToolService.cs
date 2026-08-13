@@ -59,7 +59,7 @@ public sealed class ManagedToolService
             if (status.Status == ToolInstallationStatus.Verified &&
                 status.Installation is not null)
             {
-                var toolInstance = CreateManagedToolInstance(
+                var toolInstance = ManagedToolInstanceFactory.Create(
                     definition,
                     status.Installation);
                 await _repository.SaveVerifiedManagedToolAsync(
@@ -92,7 +92,7 @@ public sealed class ManagedToolService
                 "The managed tool installer returned an unverified installation.");
         }
 
-        var toolInstance = CreateManagedToolInstance(
+        var toolInstance = ManagedToolInstanceFactory.Create(
             definition,
             outcome.Installation);
         await _repository.SaveVerifiedManagedToolAsync(
@@ -106,32 +106,5 @@ public sealed class ManagedToolService
             outcome.WasAlreadyVerified,
             outcome.Repaired,
             outcome.QuarantinePath);
-    }
-
-    private static ToolInstance CreateManagedToolInstance(
-        ResolvedToolDefinition definition,
-        ManagedToolInstallation installation)
-    {
-        var executablePath = ToolPathPolicy.ResolveContainedRelativePath(
-            installation.RootPath,
-            definition.Definition.Package.ExecutableRelativePath);
-        var toolInstanceId = ToolInstanceId.Create(
-            definition.Definition.ToolId,
-            installation.ExecutableSha256,
-            definition.Definition.Platform,
-            ToolTrustLevel.ManagedPinned);
-        return new ToolInstance(
-            toolInstanceId,
-            definition.Definition.ToolId,
-            definition.Definition.Version,
-            definition.Definition.Platform,
-            ToolTrustLevel.ManagedPinned,
-            definition.DefinitionDigest,
-            installation.PackageSha256,
-            installation.ExecutableSha256,
-            executablePath,
-            installation.InstalledAtUtc,
-            installation.LastVerifiedAtUtc,
-            ToolInstallationStatus.Verified);
     }
 }
