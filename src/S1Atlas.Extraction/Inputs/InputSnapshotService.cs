@@ -144,7 +144,17 @@ internal sealed class InputSnapshotService
                     innerException: exception);
             }
 
-            return snapshot;
+            // Return the canonical persisted record rather than the freshly built
+            // candidate: when identical snapshot bytes were recreated over an existing
+            // row, the save is an idempotent no-op and the persisted record may already
+            // be replay-certified. Reloading preserves that certification state.
+            return await _repository.GetInputSnapshotAsync(
+                snapshot.InputSnapshotId,
+                cancellationToken) ?? throw new ExtractionOperationException(
+                    ExtractionFailureStage.DatabasePromotion,
+                    ExtractionFailureCode.DatabasePromotionFailed,
+                    $"Input snapshot '{snapshot.InputSnapshotId}' was registered but " +
+                    "could not be reloaded from the database.");
         }
         catch (OverflowException exception)
         {

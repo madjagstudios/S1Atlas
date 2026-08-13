@@ -408,5 +408,22 @@ public sealed class ExtractionInputResolverTests
             InputSnapshot snapshot,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<InputSnapshot?> GetInputSnapshotAsync(
+            string inputSnapshotId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Snapshots.FirstOrDefault(item =>
+                string.Equals(
+                    item.InputSnapshotId,
+                    inputSnapshotId,
+                    StringComparison.Ordinal)));
+
+        public Task MarkInputSnapshotReplayVerifiedAsync(
+            string inputSnapshotId,
+            string expectedBuildId,
+            string expectedManifestDigest,
+            DateTimeOffset verifiedAtUtc,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }

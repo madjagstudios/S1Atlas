@@ -122,6 +122,41 @@ public sealed class InputSnapshotServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAsync_IdenticalCertifiedSnapshot_PreservesCertification()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = new RecordingRepository();
+        var service = CreateService(repository: repository);
+
+        var first = await service.CreateAsync(
+            ResolvedInput(),
+            _input.Build,
+            InputTestFixture.Profile,
+            cancellationToken);
+        Assert.False(first.ReplayVerified);
+
+        // Simulate the snapshot having been replay-certified in the database. Recreating
+        // the identical snapshot bytes must return the persisted certified record, never
+        // the freshly built unverified candidate.
+        var certifiedAt = new DateTimeOffset(2026, 8, 13, 9, 0, 0, TimeSpan.Zero);
+        repository.CertifiedOverride = first with
+        {
+            ReplayVerified = true,
+            ReplayVerifiedAtUtc = certifiedAt
+        };
+
+        var second = await service.CreateAsync(
+            ResolvedInput(),
+            _input.Build,
+            InputTestFixture.Profile,
+            cancellationToken);
+
+        Assert.Equal(first.InputSnapshotId, second.InputSnapshotId);
+        Assert.True(second.ReplayVerified);
+        Assert.Equal(certifiedAt, second.ReplayVerifiedAtUtc);
+    }
+
+    [Fact]
     public async Task CreateAsync_UsesFirstExistingUnitySourceInProfileOrder()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -492,6 +527,13 @@ public sealed class InputSnapshotServiceTests : IDisposable
 
         public Exception? Failure { get; set; }
 
+        /// <summary>
+        /// When set, <see cref="GetInputSnapshotAsync"/> returns this record for a
+        /// matching ID, simulating a database row that was already replay-certified
+        /// before the identical snapshot was recreated.
+        /// </summary>
+        public InputSnapshot? CertifiedOverride { get; set; }
+
         public Task SaveInputSnapshotAsync(
             InputSnapshot snapshot,
             CancellationToken cancellationToken)
@@ -530,6 +572,35 @@ public sealed class InputSnapshotServiceTests : IDisposable
 
         public Task<IReadOnlyList<InputSnapshot>> ListReplayVerifiedInputSnapshotsAsync(
             string buildId,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<InputSnapshot?> GetInputSnapshotAsync(
+            string inputSnapshotId,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (CertifiedOverride is { } certified &&
+                string.Equals(
+                    certified.InputSnapshotId,
+                    inputSnapshotId,
+                    StringComparison.Ordinal))
+            {
+                return Task.FromResult<InputSnapshot?>(certified);
+            }
+
+            var snapshot = Saved.LastOrDefault(candidate =>
+                string.Equals(
+                    candidate.InputSnapshotId,
+                    inputSnapshotId,
+                    StringComparison.Ordinal));
+            return Task.FromResult(snapshot);
+        }
+
+        public Task MarkInputSnapshotReplayVerifiedAsync(
+            string inputSnapshotId,
+            string expectedBuildId,
+            string expectedManifestDigest,
+            DateTimeOffset verifiedAtUtc,
             CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 

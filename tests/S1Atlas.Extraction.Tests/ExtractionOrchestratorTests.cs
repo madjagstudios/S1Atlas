@@ -867,6 +867,17 @@ public sealed class ExtractionOrchestratorTests
         public Task<IReadOnlyList<InputSnapshot>> ListReplayVerifiedInputSnapshotsAsync(
             string buildId,
             CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<InputSnapshot>>([]);
+
+        public Task<InputSnapshot?> GetInputSnapshotAsync(
+            string inputSnapshotId,
+            CancellationToken cancellationToken) => Task.FromResult<InputSnapshot?>(null);
+
+        public Task MarkInputSnapshotReplayVerifiedAsync(
+            string inputSnapshotId,
+            string expectedBuildId,
+            string expectedManifestDigest,
+            DateTimeOffset verifiedAtUtc,
+            CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class RecordingLockLease(List<string> events)

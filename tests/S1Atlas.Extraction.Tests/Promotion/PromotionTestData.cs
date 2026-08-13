@@ -356,4 +356,10 @@ internal sealed class ThrowingCommitRepository(IValidatedExtractionRepository in
         DateTimeOffset occurredAtUtc, CancellationToken cancellationToken) =>
         inner.ClearPreferredExtractionAsync(
             buildId, expectedExtractionId, reason, occurredAtUtc, cancellationToken);
+
+    public Task DeleteCleanupEligibleAttemptAsync(
+        string attemptId, ExtractionAttemptStatus expectedStatus,
+        DateTimeOffset expectedCompletedAtUtc, CancellationToken cancellationToken) =>
+        inner.DeleteCleanupEligibleAttemptAsync(
+            attemptId, expectedStatus, expectedCompletedAtUtc, cancellationToken);
 }

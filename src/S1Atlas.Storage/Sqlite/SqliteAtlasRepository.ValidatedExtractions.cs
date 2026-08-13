@@ -791,6 +791,165 @@ public sealed partial class SqliteAtlasRepository
         }
     }
 
+    /// <summary>
+    /// Deletes a proven cleanup-eligible terminal attempt together with its
+    /// attempt-scoped validation rows in one transaction. The attempt is deleted only
+    /// when it is still <see cref="ExtractionAttemptStatus.Failed"/>,
+    /// <see cref="ExtractionAttemptStatus.Canceled"/>, or
+    /// <see cref="ExtractionAttemptStatus.Abandoned"/> with the exact expected status
+    /// and completion timestamp, owns no result extraction, and is referenced by no
+    /// validated extraction. Any mismatch or forced failure rolls the whole write back,
+    /// so a partial delete is never visible and the caller can retry idempotently.
+    /// </summary>
+    public async Task DeleteCleanupEligibleAttemptAsync(
+        string attemptId,
+        ExtractionAttemptStatus expectedStatus,
+        DateTimeOffset expectedCompletedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(attemptId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var current = await GetAttemptAsync(
+                connection,
+                transaction,
+                attemptId,
+                cancellationToken) ?? throw new InvalidOperationException(
+                    $"Extraction attempt '{attemptId}' does not exist to delete.");
+            if (current.Status is not (ExtractionAttemptStatus.Failed
+                or ExtractionAttemptStatus.Canceled
+                or ExtractionAttemptStatus.Abandoned))
+            {
+                throw new InvalidOperationException(
+                    $"Extraction attempt '{attemptId}' is not in a cleanup-eligible " +
+                    $"terminal state (status {current.Status}).");
+            }
+
+            if (current.Status != expectedStatus)
+            {
+                throw new InvalidOperationException(
+                    $"Extraction attempt '{attemptId}' status changed from the " +
+                    $"expected {expectedStatus}.");
+            }
+
+            if (current.CompletedAtUtc != expectedCompletedAtUtc)
+            {
+                throw new InvalidOperationException(
+                    $"Extraction attempt '{attemptId}' completion time changed from " +
+                    "the expected value.");
+            }
+
+            if (current.ResultExtractionId is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Extraction attempt '{attemptId}' references a result extraction " +
+                    "and cannot be deleted.");
+            }
+
+            if (await AttemptIsReferencedBySourceAsync(
+                    connection,
+                    transaction,
+                    attemptId,
+                    cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    $"Extraction attempt '{attemptId}' is the source of a validated " +
+                    "extraction and cannot be deleted.");
+            }
+
+            await DeleteAttemptScopedRowsAsync(
+                connection,
+                transaction,
+                "extraction_validation_results",
+                attemptId,
+                cancellationToken);
+            await DeleteAttemptScopedRowsAsync(
+                connection,
+                transaction,
+                "extraction_validation_issues",
+                attemptId,
+                cancellationToken);
+
+            await using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = """
+                    DELETE FROM extraction_attempts
+                    WHERE attempt_id = $attemptId
+                      AND status = $status
+                      AND completed_at_utc = $completedAtUtc;
+                    """;
+                command.Parameters.AddWithValue("$attemptId", attemptId);
+                command.Parameters.AddWithValue("$status", expectedStatus.ToString());
+                command.Parameters.AddWithValue(
+                    "$completedAtUtc",
+                    FormatTimestamp(expectedCompletedAtUtc));
+                if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Extraction attempt '{attemptId}' deletion affected no row.");
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        catch (InvalidOperationException)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw new InvalidOperationException(
+                $"Extraction attempt '{attemptId}' could not be deleted atomically.",
+                exception);
+        }
+    }
+
+    private static async Task<bool> AttemptIsReferencedBySourceAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string attemptId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT EXISTS (
+                SELECT 1 FROM validated_extractions
+                WHERE source_attempt_id = $attemptId);
+            """;
+        command.Parameters.AddWithValue("$attemptId", attemptId);
+        return Convert.ToInt64(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture) == 1;
+    }
+
+    private static async Task DeleteAttemptScopedRowsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tableName,
+        string attemptId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = $"DELETE FROM {tableName} WHERE attempt_id = $attemptId;";
+        command.Parameters.AddWithValue("$attemptId", attemptId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task<IReadOnlyList<ValidatedExtraction>> MaterializeValidatedExtractionsAsync(
         SqliteConnection connection,
         IReadOnlyList<ValidatedExtraction> headers,
