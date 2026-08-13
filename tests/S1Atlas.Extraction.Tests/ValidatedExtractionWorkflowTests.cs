@@ -205,6 +205,65 @@ public sealed class ValidatedExtractionWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_ArchivedProcess_AuthoritativeResult_CertifiesSnapshot()
+    {
+        using var fixture = await WorkflowFixture.CreateAsync(TestContext.Current.CancellationToken);
+        fixture.ProcessInputSource = ExtractionInputSource.ArchivedSnapshot;
+        fixture.ProcessInputSnapshotId = new string('a', 64);
+
+        var result = await fixture.CreateWorkflow().RunAsync(
+            fixture.Options with { Retry = true }, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsAuthoritative);
+        Assert.Equal(ExtractionInputSource.ArchivedSnapshot, result.InputSource);
+        Assert.Equal(new string('a', 64), result.InputSnapshotId);
+        Assert.True(result.InputSnapshotReplayVerified);
+        var certification = Assert.Single(fixture.ReplayCertifications);
+        Assert.Equal(new string('a', 64), certification.SnapshotId);
+        Assert.Equal(fixture.Context.Build.BuildId, certification.BuildId);
+        // Certification uses the process attempt's pre-input manifest digest.
+        Assert.Equal(new string('7', 64), certification.ManifestDigest);
+    }
+
+    [Fact]
+    public async Task RunAsync_LiveProcess_DoesNotCertifyButReportsSnapshotId()
+    {
+        using var fixture = await WorkflowFixture.CreateAsync(TestContext.Current.CancellationToken);
+        // A live retry that also archived its inputs reports the snapshot but never certifies.
+        fixture.ProcessInputSource = ExtractionInputSource.Live;
+        fixture.ProcessInputSnapshotId = new string('b', 64);
+
+        var result = await fixture.CreateWorkflow().RunAsync(
+            fixture.Options with { Retry = true }, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsAuthoritative);
+        Assert.Equal(ExtractionInputSource.Live, result.InputSource);
+        Assert.Equal(new string('b', 64), result.InputSnapshotId);
+        Assert.False(result.InputSnapshotReplayVerified);
+        Assert.Empty(fixture.ReplayCertifications);
+    }
+
+    [Fact]
+    public async Task RunAsync_CertificationDbFailure_PreservesExtractionAndReportsFailure()
+    {
+        using var fixture = await WorkflowFixture.CreateAsync(TestContext.Current.CancellationToken);
+        fixture.ProcessInputSource = ExtractionInputSource.ArchivedSnapshot;
+        fixture.ProcessInputSnapshotId = new string('c', 64);
+        fixture.ReplayCertificationFailure =
+            new InvalidOperationException("Injected certification failure.");
+
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(() =>
+            fixture.CreateWorkflow().RunAsync(
+                fixture.Options with { Retry = true }, TestContext.Current.CancellationToken));
+
+        Assert.Equal(ExtractionFailureCode.DatabasePromotionFailed, exception.Code);
+        // The authoritative extraction was committed before certification and is preserved.
+        var outputs = await fixture.Repository.ListValidatedExtractionsByRecipeAsync(
+            PromotionTestData.RecipeId, TestContext.Current.CancellationToken);
+        Assert.Single(outputs);
+    }
+
+    [Fact]
     public async Task RunAsync_Retry_RunsNewProcessEvenWhenReusableOutputExists()
     {
         using var fixture = await WorkflowFixture.CreateAsync(TestContext.Current.CancellationToken);
@@ -366,6 +425,16 @@ public sealed class ValidatedExtractionWorkflowTests
             return new WorkflowFixture(atlasRoot, repository);
         }
 
+        public ExtractionInputSource ProcessInputSource { get; set; } =
+            ExtractionInputSource.Live;
+
+        public string? ProcessInputSnapshotId { get; set; }
+
+        public List<(string SnapshotId, string BuildId, string ManifestDigest)>
+            ReplayCertifications { get; } = [];
+
+        public Exception? ReplayCertificationFailure { get; set; }
+
         public ValidatedExtractionWorkflow CreateWorkflow() => new(
             AtlasRoot,
             _ => Task.CompletedTask,
@@ -376,7 +445,24 @@ public sealed class ValidatedExtractionWorkflowTests
             _documentStore,
             ValidationService,
             RunPreparedProcessAsync,
+            MarkReplayVerifiedAsync,
             Clock);
+
+        private Task MarkReplayVerifiedAsync(
+            string snapshotId,
+            string buildId,
+            string manifestDigest,
+            DateTimeOffset verifiedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            if (ReplayCertificationFailure is not null)
+            {
+                throw ReplayCertificationFailure;
+            }
+
+            ReplayCertifications.Add((snapshotId, buildId, manifestDigest));
+            return Task.CompletedTask;
+        }
 
         public async Task<string> SeedValidatedExtractionAsync(
             string attemptId,
@@ -481,8 +567,8 @@ public sealed class ValidatedExtractionWorkflowTests
             return new ExtractionOperationResult(
                 candidate,
                 context.Tool.Instance,
-                ExtractionInputSource.Live,
-                InputSnapshotId: null,
+                ProcessInputSource,
+                ProcessInputSnapshotId,
                 ProcessWasRun: true,
                 IsAuthoritative: false);
         }

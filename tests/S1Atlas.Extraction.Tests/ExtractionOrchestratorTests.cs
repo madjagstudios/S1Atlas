@@ -516,7 +516,7 @@ public sealed class ExtractionOrchestratorTests
                 },
                 AttemptRepository = Repository,
                 ResolveToolAsync = (_, _) => ResolveTool(),
-                ResolveInputAsync = (_, _, _, _) => ResolveInput(),
+                ResolveInputAsync = (_, _, _, _, _) => ResolveInput(),
                 CaptureInputManifestAsync = (_, _, _, _, _) => CaptureManifest(),
                 VerifyInputUnchanged = (_, _, _) =>
                 {

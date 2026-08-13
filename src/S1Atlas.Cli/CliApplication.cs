@@ -152,7 +152,8 @@ public sealed class CliApplication
             repository,
             sqliteRepository,
             new WindowsScheduleOneLocator(),
-            liveInputVerifier);
+            liveInputVerifier,
+            fileHasher);
         var toolResolver = new ExtractionToolResolver(
             definitionProvider,
             validator,
@@ -240,6 +241,7 @@ public sealed class CliApplication
             validatedDocumentStore,
             validationService,
             orchestrator.RunPreparedAsync,
+            sqliteRepository.MarkInputSnapshotReplayVerifiedAsync,
             _timeProvider);
         var historyService = new ExtractionHistoryService(
             _paths.RootDirectory,

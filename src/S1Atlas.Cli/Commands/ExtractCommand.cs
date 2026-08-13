@@ -45,6 +45,13 @@ internal static class ExtractCommand
         {
             Description = "Archive the verified live inputs for later review."
         };
+        var inputSnapshotOption = new Option<string?>("--input-snapshot")
+        {
+            Description =
+                "Run Cpp2IL from an archived input snapshot (64-character lower-case hex) " +
+                "instead of live input. Requires --retry and cannot be combined with " +
+                "--game-path or --snapshot-inputs."
+        };
         var keepFailedArtifactsOption = new Option<bool>("--keep-failed-artifacts")
         {
             Description = "Retain failed partial output inside the attempt quarantine."
@@ -60,6 +67,7 @@ internal static class ExtractCommand
         command.Options.Add(profileOption);
         command.Options.Add(retryOption);
         command.Options.Add(snapshotInputsOption);
+        command.Options.Add(inputSnapshotOption);
         command.Options.Add(keepFailedArtifactsOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
@@ -72,15 +80,27 @@ internal static class ExtractCommand
             return CommandExecution.Run(
                 () =>
                 {
+                    var inputSnapshot = parseResult.GetValue(inputSnapshotOption);
+                    var gamePath = parseResult.GetValue(gamePathOption);
+                    var retry = parseResult.GetValue(retryOption);
+                    var snapshotInputs = parseResult.GetValue(snapshotInputsOption);
+                    var validationFailure = ValidateInputSnapshotOption(
+                        inputSnapshot, gamePath, retry, snapshotInputs, commandOutput);
+                    if (validationFailure is int failureExitCode)
+                    {
+                        return failureExitCode;
+                    }
+
                     var result = workflow.RunAsync(
                             new ExtractionOptions(
                                 parseResult.GetValue(buildOption),
-                                parseResult.GetValue(gamePathOption),
+                                gamePath,
                                 parseResult.GetValue(cpp2IlPathOption),
                                 parseResult.GetValue(profileOption) ?? DefaultProfileId,
-                                parseResult.GetValue(retryOption),
-                                parseResult.GetValue(snapshotInputsOption),
-                                parseResult.GetValue(keepFailedArtifactsOption)),
+                                retry,
+                                snapshotInputs,
+                                parseResult.GetValue(keepFailedArtifactsOption),
+                                inputSnapshot),
                             cancellationToken)
                         .GetAwaiter()
                         .GetResult();
@@ -112,7 +132,10 @@ internal static class ExtractCommand
                         result.ValidationWasRun,
                         result.ReusedExistingExtraction,
                         result.IsPreferred,
-                        result.IsAuthoritative);
+                        result.IsAuthoritative,
+                        result.InputSource?.ToString(),
+                        result.InputSnapshotId,
+                        result.InputSnapshotReplayVerified);
                     return commandOutput.Success(
                         data,
                         writer => WriteHuman(writer, data));
@@ -123,6 +146,52 @@ internal static class ExtractCommand
 
         return command;
     }
+
+    private static int? ValidateInputSnapshotOption(
+        string? inputSnapshot,
+        string? gamePath,
+        bool retry,
+        bool snapshotInputs,
+        CommandOutput commandOutput)
+    {
+        if (inputSnapshot is null)
+        {
+            return null;
+        }
+
+        if (!IsLowerSha256(inputSnapshot))
+        {
+            return commandOutput.Failure(
+                1,
+                "InvalidInputSnapshot",
+                "The --input-snapshot value must be a 64-character lower-case hexadecimal " +
+                "snapshot ID.");
+        }
+
+        if (!retry)
+        {
+            return commandOutput.Failure(
+                1,
+                "InputSnapshotRequiresRetry",
+                "An explicit --input-snapshot run requires --retry so it always runs a new " +
+                "process from the archived snapshot.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(gamePath) || snapshotInputs)
+        {
+            return commandOutput.Failure(
+                1,
+                "InputSnapshotConflict",
+                "The --input-snapshot option cannot be combined with --game-path or " +
+                "--snapshot-inputs.");
+        }
+
+        return null;
+    }
+
+    private static bool IsLowerSha256(string value) =>
+        value.Length == 64 &&
+        value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static void WriteHuman(TextWriter writer, ExtractionOutput data)
     {
@@ -137,5 +206,12 @@ internal static class ExtractCommand
             $"Process run:   {(data.ProcessWasRun ? "yes" : "no")}    " +
             $"Validation run: {(data.ValidationWasRun ? "yes" : "no")}    " +
             $"Reused: {(data.ReusedExistingExtraction ? "yes" : "no")}");
+        writer.WriteLine($"Input source:  {data.InputSource ?? "unknown"}");
+        if (data.InputSnapshotId is not null)
+        {
+            writer.WriteLine(
+                $"Input snapshot: {data.InputSnapshotId} " +
+                $"(replay-verified: {(data.InputSnapshotReplayVerified ? "yes" : "no")})");
+        }
     }
 }

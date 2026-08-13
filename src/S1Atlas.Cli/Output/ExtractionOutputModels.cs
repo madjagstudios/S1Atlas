@@ -12,4 +12,7 @@ internal sealed record ExtractionOutput(
     bool ValidationWasRun,
     bool ReusedExistingExtraction,
     bool Preferred,
-    bool Authoritative);
+    bool Authoritative,
+    string? InputSource,
+    string? InputSnapshotId,
+    bool InputSnapshotReplayVerified);
