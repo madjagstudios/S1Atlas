@@ -7,7 +7,7 @@ using S1Atlas.Storage.Migrations;
 
 namespace S1Atlas.Storage.Sqlite;
 
-public sealed class SqliteAtlasRepository : IAtlasRepository
+public sealed partial class SqliteAtlasRepository : IAtlasRepository, IToolRepository
 {
     private readonly string _databasePath;
     private readonly SqliteMigrationRunner _migrationRunner;
