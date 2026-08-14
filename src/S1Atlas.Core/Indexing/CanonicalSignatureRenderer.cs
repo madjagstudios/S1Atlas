@@ -4,6 +4,14 @@ namespace S1Atlas.Core.Indexing;
 
 public static class CanonicalSignatureRenderer
 {
+    private static readonly IReadOnlySet<string> KnownValueTypes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "System.Boolean", "System.Byte", "System.SByte", "System.Char", "System.Decimal",
+        "System.Double", "System.Int16", "System.Int32", "System.Int64", "System.IntPtr",
+        "System.UInt16", "System.UInt32", "System.UInt64", "System.UIntPtr", "System.Single",
+        "System.DateTime", "System.DateTimeOffset", "System.Guid", "System.TimeSpan"
+    };
+
     private static readonly IReadOnlyDictionary<string, string> PrimitiveAliases =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -65,8 +73,8 @@ public static class CanonicalSignatureRenderer
         if (nullable) value = value[..^1];
 
         var canonical = RenderNamedType(value);
-        if (nullable && canonical is not "System.Void" && IsValueTypeName(canonical))
-            canonical = "System.Nullable<" + canonical + ">";
+        if (nullable && KnownValueTypes.Contains(canonical))
+            canonical = "System.Nullable`1<" + canonical + ">";
         else if (nullable)
             canonical += "?";
 
@@ -113,9 +121,6 @@ public static class CanonicalSignatureRenderer
 
     private static string NormalizeName(string value) =>
         PrimitiveAliases.TryGetValue(value, out var alias) ? alias : value.Replace('/', '+');
-
-    private static bool IsValueTypeName(string value) =>
-        value.StartsWith("System.", StringComparison.Ordinal) && value is not "System.String" and not "System.Object";
 
     private static string RemoveWhitespace(string value) =>
         string.Concat(value.Where(character => !char.IsWhiteSpace(character)));

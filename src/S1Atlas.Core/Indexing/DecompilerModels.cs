@@ -18,7 +18,14 @@ public sealed record ManagedMemberFacts(
     ManagedMemberKind Kind,
     string Signature,
     bool HasBody,
-    IReadOnlyList<ManagedReferenceFact> References);
+    IReadOnlyList<ManagedReferenceFact> References,
+    IReadOnlyList<string>? ParameterTypes = null,
+    string? ReturnType = null,
+    string? ValueType = null,
+    int GenericParameterCount = 0)
+{
+    public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
+}
 
 public enum ManagedMemberKind
 {

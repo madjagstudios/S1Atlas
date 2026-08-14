@@ -30,12 +30,20 @@ public sealed class IlSpyManagedDecompilerTests
             2,
             type.Members.Count(member =>
                 member.Kind == ManagedMemberKind.Method && member.Name == "Overload"));
+        var overloads = type.Members
+            .Where(member => member.Kind == ManagedMemberKind.Method && member.Name == "Overload")
+            .Select(member => member.Signature)
+            .ToArray();
+        Assert.Equal(2, overloads.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(overloads, signature => signature.Contains("System.Int32", StringComparison.Ordinal));
+        Assert.Contains(overloads, signature => signature.Contains("System.String", StringComparison.Ordinal));
         Assert.Contains(type.Members, member => member.Kind == ManagedMemberKind.Field);
         Assert.Contains(type.Members, member => member.Kind == ManagedMemberKind.Property);
         Assert.Contains(type.Members, member => member.Kind == ManagedMemberKind.Event);
 
         var genericMethod = Assert.Single(type.Members, member => member.Name == "GenericMethod");
-        Assert.True(genericMethod.Signature.Contains("T", StringComparison.Ordinal));
+        Assert.Equal(1, genericMethod.GenericParameterCount);
+        Assert.Contains("!!0", genericMethod.Signature, StringComparison.Ordinal);
 
         var body = Assert.Single(type.Members, member => member.Name == "BuildAndTouch");
         Assert.True(body.HasBody);
@@ -43,5 +51,6 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.Constructs);
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.ReadsField);
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.WritesField);
+        Assert.Contains(body.References, reference => reference.Target.Contains("DerivedFixture::Overload", StringComparison.Ordinal));
     }
 }

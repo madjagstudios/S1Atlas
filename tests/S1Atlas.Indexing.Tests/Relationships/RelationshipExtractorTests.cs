@@ -16,14 +16,19 @@ public sealed class RelationshipExtractorTests
                 "Demo.Derived", "Demo", "Derived", "Demo.Base", ["Demo.IContract"],
                 [new ManagedMemberFacts(
                     "Run", ManagedMemberKind.Method, "Run(0)", true,
-                    [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Demo.Service::Do()")])])]);
+                    [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Demo.Service::Do()")])]),
+                new ManagedTypeFacts("Demo.Base", "Demo", "Base", null, [], []),
+                new ManagedTypeFacts("Demo.IContract", "Demo", "IContract", null, [], []),
+                new ManagedTypeFacts(
+                    "Demo.Service", "Demo", "Service", null, [],
+                    [new ManagedMemberFacts("Do", ManagedMemberKind.Method, "Do()", true, [])])]);
 
         var result = new RelationshipExtractor().Extract(input, CodebaseKind.S1Api, CodeChannel.Release);
 
-        Assert.Contains(result, relationship => relationship.Kind == RelationshipKind.Inherits && relationship.TargetText == "Demo.Base" && relationship.Evidence == RelationshipEvidence.Metadata);
-        Assert.Contains(result, relationship => relationship.Kind == RelationshipKind.ImplementsInterface && relationship.TargetText == "Demo.IContract");
+        Assert.Contains(result, relationship => relationship.Kind == RelationshipKind.Inherits && relationship.TargetText == "Demo.Base" && relationship.TargetKey is not null && relationship.Evidence == RelationshipEvidence.Metadata);
+        Assert.Contains(result, relationship => relationship.Kind == RelationshipKind.ImplementsInterface && relationship.TargetText == "Demo.IContract" && relationship.TargetKey is not null);
         var call = Assert.Single(result, relationship => relationship.Kind == RelationshipKind.Calls);
-        Assert.Null(call.TargetKey);
+        Assert.NotNull(call.TargetKey);
         Assert.Equal("Demo.Service::Do()", call.TargetText);
         Assert.Equal(RelationshipEvidence.RecoveredIL, call.Evidence);
     }

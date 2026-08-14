@@ -29,8 +29,11 @@ public sealed class CanonicalSignatureRendererTests
     public void Complex_type_shapes_are_normalized()
     {
         Assert.Equal(
-            "System.Nullable<System.Int32>[]*&",
+            "System.Nullable`1<System.Int32>[]*&",
             CanonicalSignatureRenderer.RenderType("ref int?[]*"));
+        Assert.Equal(
+            CanonicalSignatureRenderer.RenderType("int?"),
+            CanonicalSignatureRenderer.RenderType("System.Nullable<System.Int32>"));
         Assert.Equal(
             "System.ValueTuple<System.Int32,System.String>",
             CanonicalSignatureRenderer.RenderType("(int, string)"));

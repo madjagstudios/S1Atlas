@@ -129,7 +129,7 @@ public sealed class IndexingWorkflow
             symbols.Add(new IndexSymbolRecord(HashId(typeKey), snapshotId, typeKey, "Type", type.FullName, type.FullName, false));
             foreach (var member in type.Members)
             {
-                var memberName = type.FullName + "::" + member.Signature;
+                var memberName = ManagedMemberIdentity.Render(type.FullName, member);
                 var kind = member.Kind.ToString();
                 var key = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, Enum.Parse<SymbolKind>(kind), memberName).CanonicalKey;
                 symbols.Add(new IndexSymbolRecord(HashId(key), snapshotId, key, kind, memberName, member.Signature, false));

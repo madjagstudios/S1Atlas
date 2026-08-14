@@ -2,6 +2,7 @@ using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Collections.Immutable;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
 using S1Atlas.Core.Indexing;
@@ -62,37 +63,48 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             .ToArray();
 
         var members = new List<ManagedMemberFacts>();
+        var typeProvider = new MetadataTypeNameProvider();
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = metadata.GetFieldDefinition(fieldHandle);
+            var valueType = field.DecodeSignature(typeProvider, null);
             members.Add(new ManagedMemberFacts(
                 metadata.GetString(field.Name),
                 ManagedMemberKind.Field,
-                metadata.GetString(field.Name),
+                CanonicalSignatureRenderer.RenderType(valueType) + " " + metadata.GetString(field.Name),
                 false,
-                []));
+                [],
+                ValueType: valueType));
         }
 
         foreach (var propertyHandle in definition.GetProperties())
         {
             var property = metadata.GetPropertyDefinition(propertyHandle);
+            var signature = property.DecodeSignature(typeProvider, null);
+            var propertyName = metadata.GetString(property.Name);
+            var parameterTypes = signature.ParameterTypes.ToArray();
             members.Add(new ManagedMemberFacts(
-                metadata.GetString(property.Name),
+                propertyName,
                 ManagedMemberKind.Property,
-                metadata.GetString(property.Name),
+                CanonicalPropertySignature(propertyName, signature.ReturnType, parameterTypes),
                 false,
-                []));
+                [],
+                ParameterTypes: parameterTypes,
+                ValueType: signature.ReturnType));
         }
 
         foreach (var eventHandle in definition.GetEvents())
         {
             var @event = metadata.GetEventDefinition(eventHandle);
+            var valueType = GetTypeName(metadata, @event.Type);
+            var eventName = metadata.GetString(@event.Name);
             members.Add(new ManagedMemberFacts(
-                metadata.GetString(@event.Name),
+                eventName,
                 ManagedMemberKind.Event,
-                metadata.GetString(@event.Name),
+                CanonicalSignatureRenderer.RenderType(valueType) + " " + eventName,
                 false,
-                []));
+                [],
+                ValueType: valueType));
         }
 
         foreach (var methodHandle in definition.GetMethods())
@@ -104,21 +116,37 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 ".ctor" or ".cctor" => ManagedMemberKind.Constructor,
                 _ => ManagedMemberKind.Method
             };
-            var genericParameterCount = method.GetGenericParameters().Count;
-            var parameterCount = method.GetParameters()
-                .Count(parameter => metadata.GetParameter(parameter).SequenceNumber != 0);
-            var signature = methodName +
-                (genericParameterCount == 0 ? string.Empty : $"<{new string('T', genericParameterCount)}>") +
-                $"({parameterCount})";
+            var methodSignature = method.DecodeSignature(typeProvider, null);
+            var parameterTypes = methodSignature.ParameterTypes.ToArray();
+            var genericParameterCount = methodSignature.GenericParameterCount;
+            var signature = CanonicalSignatureRenderer.RenderMethod(
+                fullName,
+                methodName,
+                methodSignature.ReturnType,
+                parameterTypes,
+                genericParameterCount);
             var hasBody = method.RelativeVirtualAddress != 0;
             var references = hasBody
                 ? ReadReferences(metadata, peReader, method.RelativeVirtualAddress)
                 : [];
-            members.Add(new ManagedMemberFacts(methodName, kind, signature, hasBody, references));
+            members.Add(new ManagedMemberFacts(
+                methodName,
+                kind,
+                signature,
+                hasBody,
+                references,
+                parameterTypes,
+                methodSignature.ReturnType,
+                GenericParameterCount: genericParameterCount));
         }
 
         return new ManagedTypeFacts(fullName, @namespace, name, baseType, interfaces, members);
     }
+
+    private static string CanonicalPropertySignature(string name, string valueType, IReadOnlyList<string> parameterTypes) =>
+        parameterTypes.Count == 0
+            ? CanonicalSignatureRenderer.RenderType(valueType) + " " + name
+            : CanonicalSignatureRenderer.RenderType(valueType) + " " + name + "(" + string.Join(",", parameterTypes.Select(CanonicalSignatureRenderer.RenderType)) + ")";
 
     private static IReadOnlyList<ManagedReferenceFact> ReadReferences(
         MetadataReader metadata,
@@ -128,6 +156,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var body = peReader.GetMethodBody(relativeVirtualAddress);
         var il = body.GetILBytes() ?? [];
         var references = new List<ManagedReferenceFact>();
+        var typeProvider = new MetadataTypeNameProvider();
         var offset = 0;
 
         while (offset < il.Length)
@@ -142,7 +171,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                         offset += 4;
                         references.Add(new ManagedReferenceFact(
                             opcode == OpCodes.Newobj ? ManagedReferenceKind.Constructs : ManagedReferenceKind.Calls,
-                            GetMemberName(metadata, token)));
+                            GetMemberIdentity(metadata, token, typeProvider)));
                         break;
                     }
                 case OperandType.InlineField:
@@ -153,7 +182,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                             opcode is { } op && (op == OpCodes.Stfld || op == OpCodes.Stsfld)
                                 ? ManagedReferenceKind.WritesField
                                 : ManagedReferenceKind.ReadsField,
-                            GetMemberName(metadata, token)));
+                            GetMemberIdentity(metadata, token, typeProvider)));
                         break;
                     }
                 default:
@@ -189,16 +218,17 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         _ => throw new InvalidDataException($"Unsupported IL operand type '{operandType}'.")
     };
 
-    private static string GetMemberName(MetadataReader metadata, int token)
+    private static string GetMemberIdentity(MetadataReader metadata, int token, MetadataTypeNameProvider typeProvider)
     {
         try
         {
             var handle = MetadataTokens.EntityHandle(token);
             return handle.Kind switch
             {
-                HandleKind.MethodDefinition => metadata.GetString(metadata.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
-                HandleKind.FieldDefinition => metadata.GetString(metadata.GetFieldDefinition((FieldDefinitionHandle)handle).Name),
-                HandleKind.MemberReference => metadata.GetString(metadata.GetMemberReference((MemberReferenceHandle)handle).Name),
+                HandleKind.MethodDefinition => GetMethodIdentity(metadata, (MethodDefinitionHandle)handle, typeProvider),
+                HandleKind.FieldDefinition => GetFieldIdentity(metadata, (FieldDefinitionHandle)handle, typeProvider),
+                HandleKind.MemberReference => GetMemberReferenceIdentity(metadata, (MemberReferenceHandle)handle, typeProvider),
+                HandleKind.MethodSpecification => GetMemberIdentity(metadata, MetadataTokens.GetToken(metadata.GetMethodSpecification((MethodSpecificationHandle)handle).Method), typeProvider),
                 _ => $"0x{token:X8}"
             };
         }
@@ -206,6 +236,94 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         {
             return $"0x{token:X8}";
         }
+    }
+
+    private static string GetMethodIdentity(MetadataReader metadata, MethodDefinitionHandle handle, MetadataTypeNameProvider typeProvider)
+    {
+        var method = metadata.GetMethodDefinition(handle);
+        var signature = method.DecodeSignature(typeProvider, null);
+        return CanonicalSignatureRenderer.RenderMethod(
+            GetTypeName(metadata, method.GetDeclaringType()),
+            metadata.GetString(method.Name),
+            signature.ReturnType,
+            signature.ParameterTypes,
+            signature.GenericParameterCount);
+    }
+
+    private static string GetFieldIdentity(MetadataReader metadata, FieldDefinitionHandle handle, MetadataTypeNameProvider typeProvider)
+    {
+        var field = metadata.GetFieldDefinition(handle);
+        var name = metadata.GetString(field.Name);
+        return GetTypeName(metadata, field.GetDeclaringType()) + "::" + CanonicalSignatureRenderer.RenderType(field.DecodeSignature(typeProvider, null)) + " " + name;
+    }
+
+    private static string GetMemberReferenceIdentity(MetadataReader metadata, MemberReferenceHandle handle, MetadataTypeNameProvider typeProvider)
+    {
+        var member = metadata.GetMemberReference(handle);
+        var containingType = GetTypeName(metadata, member.Parent);
+        var name = metadata.GetString(member.Name);
+        if (member.GetKind() == MemberReferenceKind.Method)
+        {
+            var signature = member.DecodeMethodSignature(typeProvider, null);
+            return CanonicalSignatureRenderer.RenderMethod(containingType, name, signature.ReturnType, signature.ParameterTypes, signature.GenericParameterCount);
+        }
+
+        return containingType + "::" + CanonicalSignatureRenderer.RenderType(member.DecodeFieldSignature(typeProvider, null)) + " " + name;
+    }
+
+    private sealed class MetadataTypeNameProvider : ISignatureTypeProvider<string, object?>
+    {
+        public string GetArrayType(string elementType, ArrayShape shape) =>
+            elementType + "[" + new string(',', Math.Max(0, shape.Rank - 1)) + "]";
+
+        public string GetByReferenceType(string elementType) => "ref " + elementType;
+
+        public string GetFunctionPointerType(MethodSignature<string> signature) =>
+            "delegate*<" + string.Join(",", signature.ParameterTypes.Prepend(signature.ReturnType)) + ">";
+
+        public string GetGenericInstantiation(string genericType, ImmutableArray<string> typeArguments) =>
+            genericType + "<" + string.Join(",", typeArguments) + ">";
+
+        public string GetGenericMethodParameter(object? genericContext, int index) => "!!" + index;
+
+        public string GetGenericTypeParameter(object? genericContext, int index) => "!" + index;
+
+        public string GetModifiedType(string modifier, string unmodifiedType, bool isRequired) => unmodifiedType;
+
+        public string GetPinnedType(string elementType) => elementType;
+
+        public string GetPointerType(string elementType) => elementType + "*";
+
+        public string GetPrimitiveType(PrimitiveTypeCode typeCode) => typeCode switch
+        {
+            PrimitiveTypeCode.Boolean => "System.Boolean",
+            PrimitiveTypeCode.Byte => "System.Byte",
+            PrimitiveTypeCode.SByte => "System.SByte",
+            PrimitiveTypeCode.Char => "System.Char",
+            PrimitiveTypeCode.Int16 => "System.Int16",
+            PrimitiveTypeCode.UInt16 => "System.UInt16",
+            PrimitiveTypeCode.Int32 => "System.Int32",
+            PrimitiveTypeCode.UInt32 => "System.UInt32",
+            PrimitiveTypeCode.Int64 => "System.Int64",
+            PrimitiveTypeCode.UInt64 => "System.UInt64",
+            PrimitiveTypeCode.Single => "System.Single",
+            PrimitiveTypeCode.Double => "System.Double",
+            PrimitiveTypeCode.String => "System.String",
+            PrimitiveTypeCode.Object => "System.Object",
+            PrimitiveTypeCode.Void => "System.Void",
+            PrimitiveTypeCode.IntPtr => "System.IntPtr",
+            PrimitiveTypeCode.UIntPtr => "System.UIntPtr",
+            _ => typeCode.ToString()
+        };
+
+        public string GetSZArrayType(string elementType) => elementType + "[]";
+
+        public string GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => GetTypeName(reader, handle);
+
+        public string GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => GetTypeName(reader, handle);
+
+        public string GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
     }
 
     private static string GetTypeName(MetadataReader metadata, EntityHandle handle) =>
