@@ -17,7 +17,7 @@ namespace S1Atlas.Extraction.Manifests;
 /// rows, and current artifact hashes agree may be returned as authoritative").
 /// Never mutates preference; it only reports a verdict.
 /// </summary>
-internal sealed class ValidatedExtractionIntegrityVerifier
+public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionIntegrityVerifier
 {
     private const string ReconstructedDirectoryName = "reconstructed";
     private const string LogsDirectoryName = "logs";
@@ -26,7 +26,7 @@ internal sealed class ValidatedExtractionIntegrityVerifier
     private readonly IFileHasher _fileHasher;
     private readonly IValidatedExtractionRepository? _repository;
 
-    public ValidatedExtractionIntegrityVerifier(
+    internal ValidatedExtractionIntegrityVerifier(
         ValidatedExtractionDocumentStore documentStore,
         IFileHasher fileHasher,
         IValidatedExtractionRepository? repository = null)

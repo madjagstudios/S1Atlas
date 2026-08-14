@@ -333,12 +333,136 @@ internal static class SqliteMigrations
         ON extraction_preference_events(build_id, selected_at_utc DESC);
         """;
 
+    private const string IndexingV6Sql = """
+        CREATE TABLE code_snapshots (
+            snapshot_id TEXT NOT NULL PRIMARY KEY,
+            codebase TEXT NOT NULL CHECK (codebase IN ('ScheduleI', 'S1Api', 'S1MApi')),
+            channel TEXT NOT NULL CHECK (channel IN ('Installed', 'Release', 'Preview')),
+            environment_snapshot_id TEXT NULL,
+            source_identity TEXT NOT NULL,
+            created_at_utc TEXT NOT NULL,
+            CHECK (codebase <> 'ScheduleI' OR channel = 'Installed'),
+            FOREIGN KEY (environment_snapshot_id)
+                REFERENCES environment_snapshots(snapshot_id)
+                ON DELETE SET NULL
+        );
+
+        CREATE INDEX ix_code_snapshots_lookup
+        ON code_snapshots(codebase, channel, created_at_utc DESC);
+
+        CREATE TABLE index_runs (
+            index_id TEXT NOT NULL PRIMARY KEY,
+            snapshot_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('Running', 'Completed', 'Failed')),
+            started_at_utc TEXT NOT NULL,
+            completed_at_utc TEXT NULL,
+            failure_message TEXT NULL,
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id)
+        );
+
+        CREATE INDEX ix_index_runs_completed
+        ON index_runs(snapshot_id, status, completed_at_utc DESC);
+
+        CREATE TABLE symbols (
+            symbol_id TEXT NOT NULL PRIMARY KEY,
+            snapshot_id TEXT NOT NULL,
+            canonical_key TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            qualified_name TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            is_best_effort INTEGER NOT NULL CHECK (is_best_effort IN (0, 1)),
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id)
+        );
+
+        CREATE UNIQUE INDEX ux_symbols_snapshot_key
+        ON symbols(snapshot_id, canonical_key);
+
+        CREATE TABLE source_files (
+            source_file_id TEXT NOT NULL PRIMARY KEY,
+            snapshot_id TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            byte_count INTEGER NOT NULL CHECK (byte_count >= 0),
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id)
+        );
+
+        CREATE UNIQUE INDEX ux_source_files_snapshot_path
+        ON source_files(snapshot_id, relative_path);
+
+        CREATE TABLE source_locations (
+            symbol_id TEXT NOT NULL PRIMARY KEY,
+            source_file_id TEXT NOT NULL,
+            start_line INTEGER NOT NULL CHECK (start_line > 0),
+            start_column INTEGER NOT NULL CHECK (start_column > 0),
+            end_line INTEGER NULL CHECK (end_line IS NULL OR end_line >= start_line),
+            end_column INTEGER NULL CHECK (end_column IS NULL OR end_column > 0),
+            FOREIGN KEY (symbol_id) REFERENCES symbols(symbol_id) ON DELETE CASCADE,
+            FOREIGN KEY (source_file_id) REFERENCES source_files(source_file_id)
+        );
+
+        CREATE TABLE symbol_fingerprints (
+            symbol_id TEXT NOT NULL,
+            fingerprint_kind TEXT NOT NULL,
+            fingerprint TEXT NOT NULL,
+            PRIMARY KEY (symbol_id, fingerprint_kind),
+            FOREIGN KEY (symbol_id) REFERENCES symbols(symbol_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE relationships (
+            relationship_id TEXT NOT NULL PRIMARY KEY,
+            snapshot_id TEXT NOT NULL,
+            source_symbol_id TEXT NOT NULL,
+            target_symbol_id TEXT NULL,
+            target_text TEXT NULL,
+            relationship_kind TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id),
+            FOREIGN KEY (source_symbol_id) REFERENCES symbols(symbol_id) ON DELETE CASCADE,
+            FOREIGN KEY (target_symbol_id) REFERENCES symbols(symbol_id)
+        );
+
+        CREATE INDEX ix_relationships_source_kind
+        ON relationships(source_symbol_id, relationship_kind);
+
+        CREATE INDEX ix_relationships_target_kind
+        ON relationships(target_symbol_id, relationship_kind);
+
+        CREATE TABLE upstream_repositories (
+            repository_id TEXT NOT NULL PRIMARY KEY,
+            codebase TEXT NOT NULL CHECK (codebase IN ('S1Api', 'S1MApi')),
+            owner TEXT NOT NULL,
+            name TEXT NOT NULL,
+            default_branch TEXT NULL,
+            UNIQUE (codebase, owner, name)
+        );
+
+        CREATE TABLE upstream_snapshots (
+            snapshot_id TEXT NOT NULL PRIMARY KEY,
+            repository_id TEXT NOT NULL,
+            commit_sha TEXT NOT NULL,
+            captured_at_utc TEXT NOT NULL,
+            status TEXT NOT NULL,
+            FOREIGN KEY (repository_id) REFERENCES upstream_repositories(repository_id),
+            UNIQUE (repository_id, commit_sha)
+        );
+
+        CREATE TABLE upstream_state (
+            repository_id TEXT NOT NULL PRIMARY KEY,
+            latest_snapshot_id TEXT NULL,
+            checked_at_utc TEXT NULL,
+            stale_after_utc TEXT NULL,
+            FOREIGN KEY (repository_id) REFERENCES upstream_repositories(repository_id),
+            FOREIGN KEY (latest_snapshot_id) REFERENCES upstream_snapshots(snapshot_id)
+        );
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
         new(2, "environment-observations-v2", EnvironmentObservationsV2Sql),
         new(3, "managed-tools-v3", ManagedToolsV3Sql),
         new(4, "extraction-attempts-v4", ExtractionAttemptsV4Sql),
-        new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql)
+        new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql),
+        new(6, "indexing-v6", IndexingV6Sql)
     ];
 }

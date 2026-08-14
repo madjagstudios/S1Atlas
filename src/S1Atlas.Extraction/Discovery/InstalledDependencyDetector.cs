@@ -1,4 +1,5 @@
 using System.Security;
+using System.Security.Cryptography;
 using S1Atlas.Core.Discovery;
 using S1Atlas.Core.Environment;
 
@@ -84,7 +85,8 @@ public sealed class InstalledDependencyDetector : IDependencyDetector
                     kind,
                     _versionReader.TryReadVersion(match),
                     match,
-                    IsInstalled: true);
+                    IsInstalled: true,
+                    BinarySha256: Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(match))).ToLowerInvariant());
             }
         }
 

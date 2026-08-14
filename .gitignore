@@ -21,6 +21,8 @@ worktrees/
 
 # S1Atlas generated data
 data/
+installed/
+upstream/
 *.db
 *.db-shm
 *.db-wal

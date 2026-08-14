@@ -2,6 +2,7 @@ using S1Atlas.Core.Discovery;
 using S1Atlas.Core.Environment;
 using S1Atlas.Extraction.Discovery;
 using Xunit;
+using System.Security.Cryptography;
 
 namespace S1Atlas.Extraction.Tests.Discovery;
 
@@ -25,6 +26,20 @@ public sealed class InstalledDependencyDetectorTests
         Assert.Contains(result, dependency => dependency.Kind == DependencyKind.S1Mapi);
         Assert.Contains(result, dependency => dependency.Kind == DependencyKind.MelonLoader);
         Assert.Contains(result, dependency => dependency.Kind == DependencyKind.Sideload);
+    }
+
+    [Fact]
+    public void Detect_RetainsExactInstalledBinaryHash()
+    {
+        using var fixture = DependencyFixture.Create();
+        var path = fixture.CreateFile("UserLibs", "S1API.dll");
+        File.WriteAllText(path, "installed-api");
+
+        var dependency = new InstalledDependencyDetector()
+            .Detect(fixture.Installation)
+            .Single(item => item.Kind == DependencyKind.S1Api);
+
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(), dependency.BinarySha256);
     }
 
     [Fact]
