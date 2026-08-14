@@ -94,6 +94,130 @@ public sealed class IndexQueryService
         return results.OrderBy(result => result.RelationshipId, StringComparer.Ordinal).ToArray();
     }
 
+    public Task<RelationshipQuerySetResult> RefsAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Refs, cancellationToken);
+
+    public Task<RelationshipQuerySetResult> CallersAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callers, cancellationToken);
+
+    public Task<RelationshipQuerySetResult> CalleesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callees, cancellationToken);
+
+    private async Task<RelationshipQuerySetResult> RelationshipSetAsync(
+        string selector,
+        IndexQueryOptions options,
+        RelationshipQueryMode mode,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+
+        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+        {
+            return new RelationshipQuerySetResult(
+                selection.Resolution,
+                [],
+                null,
+                mode == RelationshipQueryMode.Callers,
+                string.Empty);
+        }
+
+        var selected = selection.Selected.Value;
+        var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
+            selected.Run.IndexId,
+            selected.Symbol.SymbolId,
+            cancellationToken)
+            ?? throw new InvalidDataException("The resolved symbol disappeared from the completed index.");
+
+        IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges;
+        if (mode == RelationshipQueryMode.Refs)
+        {
+            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                cancellationToken);
+            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                cancellationToken);
+            selectedEdges = outgoing
+                .Select(edge => (edge, "Outgoing"))
+                .Concat(incoming.Select(edge => (edge, "Incoming")))
+                .GroupBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .ToArray();
+        }
+        else if (mode == RelationshipQueryMode.Callers)
+        {
+            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                cancellationToken);
+            selectedEdges = incoming
+                .Where(edge => IsCallLike(edge.Kind))
+                .Select(edge => (edge, "Incoming"))
+                .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .ToArray();
+        }
+        else
+        {
+            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                cancellationToken);
+            selectedEdges = outgoing
+                .Where(edge => IsCallLike(edge.Kind))
+                .Select(edge => (edge, "Outgoing"))
+                .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        var endpointIds = selectedEdges
+            .SelectMany(item => item.Edge.TargetSymbolId is null
+                ? new[] { item.Edge.SourceSymbolId }
+                : new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(
+            selected.Run.IndexId,
+            endpointIds,
+            cancellationToken);
+        var byId = endpointSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+
+        var relationships = selectedEdges
+            .Select(item => new RelationshipQueryResult(
+                item.Edge.RelationshipId,
+                item.Edge.Kind,
+                item.Edge.Evidence,
+                item.Direction,
+                Endpoint(item.Edge.SourceSymbolId, null, byId),
+                Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId)))
+            .ToArray();
+
+        BodyRecoveryStatus? bodyStatus = IsCallable(symbolRecord.Kind)
+            ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
+            : null;
+        var notice = mode == RelationshipQueryMode.Refs
+            ? string.Empty
+            : CompletenessNotice(bodyStatus, mode == RelationshipQueryMode.Callers);
+        return new RelationshipQuerySetResult(
+            selection.Resolution,
+            relationships,
+            bodyStatus,
+            mode == RelationshipQueryMode.Callers,
+            notice);
+    }
+
     public async Task<IReadOnlyList<SourceQueryResult>> SourceAsync(
         string query,
         IndexQueryOptions options,
@@ -134,52 +258,11 @@ public sealed class IndexQueryService
         if (_dataRoot is null)
             throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
 
-        var resolved = new List<(CodeChannel Channel, IndexRunRecord Run, SymbolQueryResult Symbol)>();
-        var ambiguous = new List<SymbolQueryResult>();
-        foreach (var channel in Channels(options))
-        {
-            var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
-            if (run is null) continue;
+        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new SourceSnippetResolutionResult(selection.Resolution, null);
 
-            var resolution = await _symbolResolver.ResolveAsync(
-                run.IndexId,
-                selector,
-                options.Codebase,
-                channel,
-                cancellationToken);
-            if (resolution.Status == SymbolResolutionStatus.Ambiguous)
-            {
-                ambiguous.AddRange(resolution.Candidates);
-                continue;
-            }
-            if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
-                resolved.Add((channel, run, resolution.Symbol));
-        }
-
-        if (ambiguous.Count > 0 || resolved.Count > 1)
-        {
-            var candidates = ambiguous
-                .Concat(resolved.Select(item => item.Symbol))
-                .GroupBy(candidate => candidate.SymbolId, StringComparer.Ordinal)
-                .Select(group => group.First())
-                .OrderBy(candidate => candidate.QualifiedName, StringComparer.Ordinal)
-                .ThenBy(candidate => candidate.Signature, StringComparer.Ordinal)
-                .ThenBy(candidate => candidate.Channel, StringComparer.Ordinal)
-                .ThenBy(candidate => candidate.SymbolId, StringComparer.Ordinal)
-                .ToArray();
-            return new SourceSnippetResolutionResult(
-                new SymbolResolutionResult(SymbolResolutionStatus.Ambiguous, null, candidates),
-                null);
-        }
-
-        if (resolved.Count == 0)
-        {
-            return new SourceSnippetResolutionResult(
-                new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, []),
-                null);
-        }
-
-        var selected = resolved[0];
+        var selected = selection.Selected.Value;
         var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
             selected.Run.IndexId,
             selected.Symbol.SymbolId,
@@ -192,9 +275,7 @@ public sealed class IndexQueryService
             .ThenBy(location => location.StartColumn)
             .ToArray();
         if (matchingLocations.Length == 0)
-            return new SourceSnippetResolutionResult(
-                new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-                null);
+            return new SourceSnippetResolutionResult(selection.Resolution, null);
         if (matchingLocations.Length > 1)
             throw new InvalidDataException("The completed index contains multiple source locations for the selected symbol.");
 
@@ -234,9 +315,100 @@ public sealed class IndexQueryService
             read.Text,
             bodyRecoveryStatus,
             options.Codebase + ":" + selected.Channel + ":generated");
-        return new SourceSnippetResolutionResult(
-            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-            snippet);
+        return new SourceSnippetResolutionResult(selection.Resolution, snippet);
+    }
+
+    private async Task<ChannelSelection> ResolveAcrossChannelsAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        var resolved = new List<SelectedSymbol>();
+        var ambiguous = new List<SymbolQueryResult>();
+        foreach (var channel in Channels(options))
+        {
+            var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
+            if (run is null) continue;
+
+            var resolution = await _symbolResolver.ResolveAsync(
+                run.IndexId,
+                selector,
+                options.Codebase,
+                channel,
+                cancellationToken);
+            if (resolution.Status == SymbolResolutionStatus.Ambiguous)
+            {
+                ambiguous.AddRange(resolution.Candidates);
+                continue;
+            }
+            if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
+                resolved.Add(new SelectedSymbol(channel, run, resolution.Symbol));
+        }
+
+        if (ambiguous.Count > 0 || resolved.Count > 1)
+        {
+            var candidates = ambiguous
+                .Concat(resolved.Select(item => item.Symbol))
+                .GroupBy(candidate => candidate.SymbolId, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(candidate => candidate.QualifiedName, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.Signature, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.Channel, StringComparer.Ordinal)
+                .ThenBy(candidate => candidate.SymbolId, StringComparer.Ordinal)
+                .ToArray();
+            return new ChannelSelection(
+                new SymbolResolutionResult(SymbolResolutionStatus.Ambiguous, null, candidates),
+                null);
+        }
+
+        if (resolved.Count == 0)
+            return new ChannelSelection(
+                new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, []),
+                null);
+
+        return new ChannelSelection(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, resolved[0].Symbol, []),
+            resolved[0]);
+    }
+
+    private static RelationshipEndpointQueryResult Endpoint(
+        string? symbolId,
+        string? rawText,
+        IReadOnlyDictionary<string, IndexSymbolRecord> byId)
+    {
+        if (symbolId is not null && byId.TryGetValue(symbolId, out var symbol))
+            return new RelationshipEndpointQueryResult(
+                symbol.SymbolId,
+                symbol.QualifiedName,
+                symbol.Signature,
+                null,
+                true);
+
+        return new RelationshipEndpointQueryResult(
+            symbolId,
+            null,
+            null,
+            rawText,
+            false);
+    }
+
+    private static bool IsCallLike(string kind) =>
+        string.Equals(kind, "Calls", StringComparison.Ordinal) ||
+        string.Equals(kind, "Constructs", StringComparison.Ordinal);
+
+    private static string CompletenessNotice(BodyRecoveryStatus? status, bool callers)
+    {
+        var bodyNotice = status switch
+        {
+            BodyRecoveryStatus.Recovered => "Atlas has affirmative recovered-body evidence.",
+            BodyRecoveryStatus.NoBodyByDesign => "No implementation body is expected for this declaration.",
+            BodyRecoveryStatus.StubOrUnavailable => "The body is stubbed or unavailable; zero call results are not definitive.",
+            BodyRecoveryStatus.Unknown => "Body recovery is unknown; zero call results are not definitive.",
+            null => "Call completeness is not applicable to a non-callable symbol."
+        };
+        return callers
+            ? bodyNotice + " Incoming callers are limited to call sites whose target resolved to the selected symbol."
+            : bodyNotice;
     }
 
     private static string ResolveIndexRoot(
@@ -311,4 +483,20 @@ public sealed class IndexQueryService
             return 4;
         return 5;
     }
+
+    private enum RelationshipQueryMode
+    {
+        Refs,
+        Callers,
+        Callees
+    }
+
+    private readonly record struct SelectedSymbol(
+        CodeChannel Channel,
+        IndexRunRecord Run,
+        SymbolQueryResult Symbol);
+
+    private readonly record struct ChannelSelection(
+        SymbolResolutionResult Resolution,
+        SelectedSymbol? Selected);
 }
