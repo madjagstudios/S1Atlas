@@ -1,0 +1,12 @@
+{
+  "s1api": {
+    "owner": "KaBooMa",
+    "name": "S1API",
+    "defaultBranch": "main"
+  },
+  "s1mapi": {
+    "owner": "ifBars",
+    "name": "S1MAPI",
+    "defaultBranch": "main"
+  }
+}
