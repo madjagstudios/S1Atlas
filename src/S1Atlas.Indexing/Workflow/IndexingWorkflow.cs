@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using ICSharpCode.Decompiler.CSharp;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Authority;
@@ -23,7 +24,8 @@ public sealed class IndexingWorkflow
 {
     public const int IndexSchemaVersion = 6;
     private const string DecompilerPackage = "ICSharpCode.Decompiler";
-    private const string DecompilerVersion = "10.1.1.8388";
+    private static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
+        ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
 
     private readonly string _dataRoot;
     private readonly IIndexRepository _repository;

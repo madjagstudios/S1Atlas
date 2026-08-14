@@ -105,12 +105,23 @@ public sealed class IndexQueryService
 
     private static int Rank(SymbolQueryResult result, string query)
     {
-        var name = result.QualifiedName[(result.QualifiedName.LastIndexOf('.') + 1)..];
+        var name = ExtractName(result.QualifiedName);
         if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) return 0;
         if (result.QualifiedName.Split('.').Any(segment => string.Equals(segment, query, StringComparison.OrdinalIgnoreCase))) return 1;
         if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 2;
         if (name.Contains(query, StringComparison.OrdinalIgnoreCase)) return 3;
         if (result.Signature.Contains(query, StringComparison.OrdinalIgnoreCase)) return 4;
         return 5;
+    }
+
+    private static string ExtractName(string qualifiedName)
+    {
+        var separator = qualifiedName.LastIndexOf("::", StringComparison.Ordinal);
+        if (separator < 0) return qualifiedName[(qualifiedName.LastIndexOf('.') + 1)..];
+        var member = qualifiedName[(separator + 2)..];
+        var end = member.IndexOfAny(['(', ':']);
+        if (end >= 0) member = member[..end];
+        var space = member.LastIndexOf(' ');
+        return space >= 0 ? member[(space + 1)..] : member;
     }
 }

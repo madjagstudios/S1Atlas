@@ -16,7 +16,7 @@ public sealed class GeneratedSourceWriter
         ArgumentException.ThrowIfNullOrWhiteSpace(stagingRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
         ArgumentNullException.ThrowIfNull(sourceText);
-        if (Path.IsPathRooted(relativePath) || relativePath.Contains("..", StringComparison.Ordinal))
+        if (Path.IsPathRooted(relativePath) || relativePath.Split(['/', '\\'], StringSplitOptions.None).Any(segment => string.IsNullOrEmpty(segment) || segment is "." or ".."))
             throw new ArgumentException("Source paths must be relative and contained.", nameof(relativePath));
 
         var fullPath = Path.GetFullPath(Path.Combine(stagingRoot, relativePath));
