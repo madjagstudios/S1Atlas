@@ -1,5 +1,6 @@
 using Xunit;
 using S1Atlas.Core.Extraction;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Tools;
 using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Decompilation;
@@ -14,13 +15,14 @@ public sealed class IndexingWorkflowTests
     public void Index_identity_is_deterministic_and_lower_hex()
     {
         var first = S1Atlas.Indexing.Workflow.IndexingWorkflow.CreateIndexId(
-            "extraction-1", "ICSharpCode.Decompiler", "10.1.1.8388", "default", 6);
+            "extraction-1", "ICSharpCode.Decompiler", "10.1.1.8388", "default", 8);
         var second = S1Atlas.Indexing.Workflow.IndexingWorkflow.CreateIndexId(
-            "extraction-1", "ICSharpCode.Decompiler", "10.1.1.8388", "default", 6);
+            "extraction-1", "ICSharpCode.Decompiler", "10.1.1.8388", "default", 8);
 
         Assert.Equal(first, second);
         Assert.Equal(64, first.Length);
         Assert.DoesNotContain(first, char.IsUpper);
+        Assert.Equal(8, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
     }
 
     [Fact]
@@ -62,6 +64,20 @@ public sealed class IndexingWorkflowTests
                 Assert.NotNull(location.EndColumn);
             });
             Assert.Contains(sourceLocations, location => location.StartColumn > 1);
+
+            var symbols = await repository.GetCompletedSymbolsAsync(first.IndexId, TestContext.Current.CancellationToken);
+            Assert.Equal(
+                BodyRecoveryStatus.Recovered,
+                Assert.Single(symbols, symbol => symbol.Signature.Contains("ArithmeticOnly", StringComparison.Ordinal)).BodyRecoveryStatus);
+            Assert.Equal(
+                BodyRecoveryStatus.StubOrUnavailable,
+                Assert.Single(symbols, symbol => symbol.Signature.Contains("ThrowStyleStub", StringComparison.Ordinal)).BodyRecoveryStatus);
+            Assert.Equal(
+                BodyRecoveryStatus.NoBodyByDesign,
+                Assert.Single(symbols, symbol => symbol.Signature.Contains("MissingBody", StringComparison.Ordinal)).BodyRecoveryStatus);
+            Assert.All(
+                symbols.Where(symbol => symbol.Kind is "Type" or "Field" or "Property" or "Event"),
+                symbol => Assert.Null(symbol.BodyRecoveryStatus));
 
             var forced = await workflow.RunScheduleOneAsync(buildId, true, TestContext.Current.CancellationToken);
             Assert.False(forced.Reused);
