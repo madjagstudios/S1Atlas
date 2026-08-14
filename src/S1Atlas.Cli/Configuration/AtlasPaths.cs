@@ -31,6 +31,21 @@ public sealed record AtlasPaths(string RootDirectory)
     public string GetBuildExtractionsDirectory(string buildId) =>
         Path.Combine(GetBuildDirectory(buildId), "extractions");
 
+    public string GetBuildIndexesDirectory(string buildId) =>
+        Path.Combine(GetBuildDirectory(buildId), "indexes");
+
+    public string GetBuildIndexDirectory(string buildId, string indexId) =>
+        Path.Combine(GetBuildIndexesDirectory(buildId), indexId);
+
+    public string GetInstalledApiIndexDirectory(
+        string codebase,
+        string binarySha256,
+        string indexId) =>
+        Path.Combine(RootDirectory, "installed", codebase, binarySha256, "indexes", indexId);
+
+    public string GetUpstreamSnapshotDirectory(string codebase, string commitSha) =>
+        Path.Combine(RootDirectory, "upstream", codebase, "commits", commitSha);
+
     public string GetValidatedExtractionDirectory(string buildId, string extractionId) =>
         Path.Combine(
             GetBuildExtractionsDirectory(buildId),
