@@ -68,13 +68,15 @@ public sealed class IndexingWorkflowTests
             var symbols = await repository.GetCompletedSymbolsAsync(first.IndexId, TestContext.Current.CancellationToken);
             Assert.Equal(
                 BodyRecoveryStatus.Recovered,
-                Assert.Single(symbols, symbol => symbol.Signature.Contains("ArithmeticOnly", StringComparison.Ordinal)).BodyRecoveryStatus);
+                Assert.Single(
+                    symbols,
+                    symbol => symbol.Signature.Contains("DerivedFixture::Overload(System.Int32)", StringComparison.Ordinal)).BodyRecoveryStatus);
             Assert.Equal(
                 BodyRecoveryStatus.StubOrUnavailable,
                 Assert.Single(symbols, symbol => symbol.Signature.Contains("ThrowStyleStub", StringComparison.Ordinal)).BodyRecoveryStatus);
             Assert.Equal(
                 BodyRecoveryStatus.NoBodyByDesign,
-                Assert.Single(symbols, symbol => symbol.Signature.Contains("MissingBody", StringComparison.Ordinal)).BodyRecoveryStatus);
+                Assert.Single(symbols, symbol => symbol.Signature.Contains("IFixtureContract::get_ContractValue", StringComparison.Ordinal)).BodyRecoveryStatus);
             Assert.All(
                 symbols.Where(symbol => symbol.Kind is "Type" or "Field" or "Property" or "Event"),
                 symbol => Assert.Null(symbol.BodyRecoveryStatus));
