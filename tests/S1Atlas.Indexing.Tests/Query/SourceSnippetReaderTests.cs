@@ -59,17 +59,18 @@ public sealed class SourceSnippetReaderTests : IAsyncDisposable
     }
 
     [Theory]
-    [InlineData(1, 2, 0, 2)]
-    [InlineData(5, 5, 2, 0)]
+    [InlineData(1, 2, 4, 0, 2)]
+    [InlineData(5, 5, 5, 2, 0)]
     public async Task ReadAsync_clips_context_at_file_boundaries(
         int startLine,
         int endLine,
+        int endColumn,
         int expectedBefore,
         int expectedAfter)
     {
         const string text = "one\ntwo\nthree\nfour\nfive";
         var path = await WriteAsync("clip-" + startLine + ".cs", text);
-        var location = new IndexSourceLocationRecord("symbol", "file", startLine, 1, endLine, 5);
+        var location = new IndexSourceLocationRecord("symbol", "file", startLine, 1, endLine, endColumn);
         var reader = new SourceSnippetReader();
 
         var result = await reader.ReadAsync(
