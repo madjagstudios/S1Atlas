@@ -18,6 +18,21 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
+    public void MigrationSeven_HasCommittedChecksum_AndEarlierMigrationsRemainPinned()
+    {
+        Assert.Equal(7, SqliteMigrations.All.Count);
+        Assert.Equal("d03021f97dfe3cd5e52305ae945258aa7fdbc8ccb086808a8255df7df0d10bb0", SqliteMigrations.All[6].Checksum);
+        Assert.Equal(
+            [
+                "90ee69e49a9763c6443b4db0b5b2752ff78292fb7a7f7e7b5d86fd22137fd92e",
+                "39cb7f3c2c6fa047e718b101da950ea39da03277a1763b1ba14d4abd79c519ae",
+                "c730f9db46ae1565f82df2cde3651f27e3c6f835d85f68b2e52f72fe36e8ebea",
+                "e735858f725c4c285edc82a6170d9fdb3f5161eb960f87f8cece165e416c899d"
+            ],
+            SqliteMigrations.All.Take(4).Select(migration => migration.Checksum));
+    }
+
+    [Fact]
     public async Task VersionSixDatabase_MigratesToSeven_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
