@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" />
+    <ProjectReference Include="..\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
+    <PackageReference Include="ICSharpCode.Decompiler" Version="10.1.1.8388" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" ExcludeAssets="analyzers;build;buildTransitive" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0" PrivateAssets="all" ExcludeAssets="all" />
+  </ItemGroup>
+  <Target Name="RemoveIncompatibleCodeAnalysisAnalyzers" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="$(NuGetPackageRoot)microsoft.codeanalysis.analyzers\5.3.0\analyzers\dotnet\cs\*.dll" />
+    </ItemGroup>
+  </Target>
+</Project>
