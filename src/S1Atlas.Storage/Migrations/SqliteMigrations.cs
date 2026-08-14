@@ -456,6 +456,15 @@ internal static class SqliteMigrations
         );
         """;
 
+    private const string BodyRecoveryV7Sql = """
+        ALTER TABLE symbols
+        ADD COLUMN body_recovery_status TEXT NULL
+        CHECK (
+            body_recovery_status IS NULL OR
+            body_recovery_status IN ('NoBodyByDesign', 'Recovered', 'StubOrUnavailable', 'Unknown')
+        );
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -463,6 +472,7 @@ internal static class SqliteMigrations
         new(3, "managed-tools-v3", ManagedToolsV3Sql),
         new(4, "extraction-attempts-v4", ExtractionAttemptsV4Sql),
         new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql),
-        new(6, "indexing-v6", IndexingV6Sql)
+        new(6, "indexing-v6", IndexingV6Sql),
+        new(7, "body-recovery-v7", BodyRecoveryV7Sql)
     ];
 }

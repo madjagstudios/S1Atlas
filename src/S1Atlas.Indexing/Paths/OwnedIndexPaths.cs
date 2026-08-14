@@ -77,6 +77,25 @@ public sealed record OwnedIndexPaths
         return new OwnedIndexPaths(root, codebase, finalRoot, finalRoot + ".staging", null);
     }
 
+    public static OwnedIndexPaths ForUpstreamIndex(
+        string dataRoot,
+        string codebase,
+        string commitSha,
+        string indexId)
+    {
+        var root = NormalizeRoot(dataRoot);
+        RequireCodebase(codebase);
+        RequireLowerHex40(commitSha, "commit SHA");
+        RequireLowerHex64(indexId, "index ID");
+        var commitRoot = ResolveContained(root, "upstream", codebase, "commits", commitSha);
+        EnsureSafeExistingPath(root, commitRoot, File.GetAttributes);
+        return CreateIndex(
+            root,
+            codebase,
+            ResolveContained(commitRoot, "indexes", indexId),
+            File.GetAttributes);
+    }
+
     private static OwnedIndexPaths CreateIndex(
         string root,
         string codebase,

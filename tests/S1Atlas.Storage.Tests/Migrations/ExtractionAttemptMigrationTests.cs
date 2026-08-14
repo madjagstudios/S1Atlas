@@ -36,7 +36,7 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], migrationVersions);
         Assert.True(await TableExistsAsync("extraction_attempts", cancellationToken));
         Assert.True(await TableExistsAsync("input_snapshots", cancellationToken));
         Assert.True(await TableExistsAsync("input_snapshot_files", cancellationToken));
@@ -50,6 +50,10 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             "extraction_attempts",
             "validation_source_extraction_id",
             cancellationToken));
+        Assert.True(await ColumnExistsAsync(
+            "symbols",
+            "body_recovery_status",
+            cancellationToken));
         Assert.Equal(
             "current-build",
             (await repository.GetCurrentSnapshotAsync(cancellationToken))!
@@ -59,13 +63,13 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             "test-version",
             "win-x64",
             cancellationToken));
-        Assert.Single(GetVersionSixBackups());
+        Assert.Single(GetVersionSevenBackups());
 
         await repository.InitializeAsync(cancellationToken);
 
         migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6], migrationVersions);
-        Assert.Single(GetVersionSixBackups());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], migrationVersions);
+        Assert.Single(GetVersionSevenBackups());
     }
 
     [Fact]
@@ -226,11 +230,11 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             cancellationToken);
     }
 
-    private string[] GetVersionSixBackups() =>
+    private string[] GetVersionSevenBackups() =>
         Directory.Exists(_backupDirectory)
             ? Directory.GetFiles(
                 _backupDirectory,
-                "atlas-before-schema-6-*.db",
+                "atlas-before-schema-7-*.db",
                 SearchOption.TopDirectoryOnly)
             : [];
 

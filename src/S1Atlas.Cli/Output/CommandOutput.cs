@@ -89,6 +89,15 @@ internal sealed class CommandOutput
         string code,
         string message,
         string? attemptId = null,
+        string? stage = null) =>
+        Failure<object?>(exitCode, code, message, null, attemptId, stage);
+
+    public int Failure<T>(
+        int exitCode,
+        string code,
+        string message,
+        T data,
+        string? attemptId = null,
         string? stage = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(exitCode);
@@ -97,12 +106,12 @@ internal sealed class CommandOutput
 
         if (IsJson)
         {
-            WriteJson(new CliEnvelope<object?>(
+            WriteJson(new CliEnvelope<T>(
                 SchemaVersion: 1,
                 Command: _commandName,
                 Success: false,
                 ExitCode: exitCode,
-                Data: null,
+                Data: data,
                 Error: new CliError(attemptId, stage, code, message)));
         }
         else

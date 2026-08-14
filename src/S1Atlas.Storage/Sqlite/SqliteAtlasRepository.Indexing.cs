@@ -154,8 +154,7 @@ public sealed partial class SqliteAtlasRepository
             WHERE run.status = 'Completed'
               AND snapshot.codebase = $codebase
               AND snapshot.channel = $channel
-              AND (($environment IS NULL AND snapshot.environment_snapshot_id IS NULL)
-                   OR snapshot.environment_snapshot_id = $environment)
+              AND ($environment IS NULL OR snapshot.environment_snapshot_id = $environment)
             ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
             LIMIT 1;
             """;
@@ -188,7 +187,8 @@ public sealed partial class SqliteAtlasRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
-                   symbol.qualified_name, symbol.signature, symbol.is_best_effort
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status
             FROM symbols AS symbol
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $id AND run.status = 'Completed'
@@ -196,6 +196,119 @@ public sealed partial class SqliteAtlasRepository
             """;
         command.Parameters.AddWithValue("$id", indexId);
         var result = new List<IndexSymbolRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadSymbol(reader));
+        return result;
+    }
+
+    public async Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(
+        string indexId,
+        string symbolId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status
+            FROM symbols AS symbol
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND symbol.symbol_id = $symbolId
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$symbolId", symbolId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadSymbol(reader) : null;
+    }
+
+    public async Task<int> CountCompletedSymbolMatchesAsync(
+        string indexId,
+        string query,
+        CancellationToken cancellationToken,
+        string? kind = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM symbols AS symbol
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND ($kind IS NULL OR symbol.kind = $kind)
+              AND (
+                  symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
+                  OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
+              );
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$contains", "%" + EscapeLikePattern(query) + "%");
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public async Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(
+        string indexId,
+        string query,
+        int limit,
+        CancellationToken cancellationToken,
+        string? kind = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The symbol search limit must be positive.");
+
+        var escaped = EscapeLikePattern(query);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status
+            FROM symbols AS symbol
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND ($kind IS NULL OR symbol.kind = $kind)
+              AND (
+                  symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
+                  OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
+              )
+            ORDER BY
+                CASE
+                    WHEN symbol.qualified_name = $query COLLATE NOCASE
+                      OR symbol.signature = $query COLLATE NOCASE THEN 0
+                    WHEN symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 1
+                    WHEN symbol.qualified_name LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 2
+                    WHEN symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE THEN 3
+                    ELSE 4
+                END,
+                symbol.qualified_name COLLATE BINARY,
+                symbol.signature COLLATE BINARY,
+                symbol.symbol_id COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$query", query);
+        command.Parameters.AddWithValue("$terminal", "%." + escaped);
+        command.Parameters.AddWithValue("$prefix", escaped + "%");
+        command.Parameters.AddWithValue("$contains", "%" + escaped + "%");
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var result = new List<IndexSymbolRecord>(Math.Min(limit, 256));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             result.Add(ReadSymbol(reader));
@@ -262,6 +375,11 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    private static string EscapeLikePattern(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+
     private static void AddSnapshotParameters(SqliteCommand command, CodeSnapshotRecord snapshot)
     {
         command.Parameters.AddWithValue("$id", snapshot.SnapshotId);
@@ -283,9 +401,17 @@ public sealed partial class SqliteAtlasRepository
 
     private static async Task InsertSymbolAsync(SqliteConnection connection, SqliteTransaction transaction, IndexSymbolRecord symbol, CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand(); command.Transaction = transaction;
-        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best);";
-        command.Parameters.AddWithValue("$id", symbol.SymbolId); command.Parameters.AddWithValue("$snapshot", symbol.SnapshotId); command.Parameters.AddWithValue("$key", symbol.CanonicalKey); command.Parameters.AddWithValue("$kind", symbol.Kind); command.Parameters.AddWithValue("$name", symbol.QualifiedName); command.Parameters.AddWithValue("$signature", symbol.Signature); command.Parameters.AddWithValue("$best", symbol.IsBestEffort ? 1 : 0);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort, body_recovery_status) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best,$bodyRecovery);";
+        command.Parameters.AddWithValue("$id", symbol.SymbolId);
+        command.Parameters.AddWithValue("$snapshot", symbol.SnapshotId);
+        command.Parameters.AddWithValue("$key", symbol.CanonicalKey);
+        command.Parameters.AddWithValue("$kind", symbol.Kind);
+        command.Parameters.AddWithValue("$name", symbol.QualifiedName);
+        command.Parameters.AddWithValue("$signature", symbol.Signature);
+        command.Parameters.AddWithValue("$best", symbol.IsBestEffort ? 1 : 0);
+        command.Parameters.AddWithValue("$bodyRecovery", symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -328,5 +454,13 @@ public sealed partial class SqliteAtlasRepository
         new(reader.GetString(0), reader.GetString(1), Enum.Parse<IndexRunStatus>(reader.GetString(2)), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 
     private static IndexSymbolRecord ReadSymbol(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0);
+        new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetInt64(6) != 0,
+            reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)));
 }

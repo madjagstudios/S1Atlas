@@ -20,11 +20,17 @@ internal static class IndexQueryCommandFactory
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
+        var limitOption = new Option<int>("--limit")
+        {
+            Description = "Maximum number of query results to return.",
+            DefaultValueFactory = _ => 50
+        };
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(name, "Query the normalized code index.");
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
+        command.Options.Add(limitOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -32,18 +38,47 @@ internal static class IndexQueryCommandFactory
             return CommandExecution.Run(
                 () =>
                 {
+                    var limit = parseResult.GetValue(limitOption);
+                    if (limit <= 0)
+                        return commandOutput.Failure(
+                            1,
+                            "InvalidLimit",
+                            "--limit must be greater than zero.");
+
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    var options = ParseOptions(parseResult.GetValue(codebaseOption), parseResult.GetValue(channelOption));
+                    var options = ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit);
                     var data = execute(parseResult.GetValue(queryArgument)!, options, cancellationToken).GetAwaiter().GetResult();
-                    return commandOutput.Success(data, writer =>
+                    if (data.Resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
                     {
-                        foreach (var symbol in data.Symbols)
-                            writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature}");
-                        foreach (var relationship in data.Relationships)
-                            writer.WriteLine($"{relationship.Kind} | {relationship.SourceSymbolId} -> {relationship.TargetSymbolId ?? relationship.TargetText}");
-                        foreach (var source in data.Sources)
-                            writer.WriteLine($"{source.RelativePath} | {source.Provenance}");
-                    });
+                        return commandOutput.Failure(
+                            1,
+                            "AmbiguousSymbol",
+                            "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
+                            new IndexQueryFailureData(ambiguous.Candidates));
+                    }
+
+                    if (data.Resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "NoCompletedIndex",
+                            "No completed index exists for the requested codebase and channel.",
+                            new IndexQueryFailureData([]));
+                    }
+
+                    if (data.Resolution is { Status: SymbolResolutionStatus.NotFound })
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "SymbolNotFound",
+                            "No indexed symbol matched the selector.",
+                            new IndexQueryFailureData([]));
+                    }
+
+                    return commandOutput.Success(data, writer => WriteHuman(data, writer));
                 },
                 commandOutput,
                 cancellationToken);
@@ -51,7 +86,47 @@ internal static class IndexQueryCommandFactory
         return command;
     }
 
-    public static IndexQueryOptions ParseOptions(string? codebase, string? channel)
+    private static void WriteHuman(IndexQueryOutput data, TextWriter writer)
+    {
+        if (data.TotalCount is int totalCount && data.ReturnedCount is int returnedCount)
+            writer.WriteLine($"Found {totalCount} matches. Showing {returnedCount}.");
+
+        foreach (var symbol in data.Symbols)
+            writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
+
+        foreach (var relationship in data.Relationships)
+        {
+            writer.WriteLine(
+                $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
+                $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(data.CompletenessNotice))
+            writer.WriteLine($"Notice: {data.CompletenessNotice}");
+
+        foreach (var source in data.Sources)
+            writer.WriteLine($"{source.RelativePath} | {source.Provenance}");
+    }
+
+    private static string FormatEndpoint(RelationshipEndpointQueryResult endpoint)
+    {
+        if (endpoint.Resolved)
+        {
+            var readable = endpoint.QualifiedName ?? endpoint.Signature ?? endpoint.SymbolId ?? "<unknown>";
+            var id = endpoint.SymbolId is null ? string.Empty : $" [{endpoint.SymbolId}]";
+            var signature = endpoint.Signature is null || string.Equals(endpoint.Signature, readable, StringComparison.Ordinal)
+                ? string.Empty
+                : $" | {endpoint.Signature}";
+            return readable + id + signature;
+        }
+
+        var raw = endpoint.RawText ?? "<unresolved>";
+        return endpoint.SymbolId is null
+            ? $"unresolved: {raw}"
+            : $"unresolved: {raw} [{endpoint.SymbolId}]";
+    }
+
+    public static IndexQueryOptions ParseOptions(string? codebase, string? channel, int limit = 50)
     {
         var parsedCodebase = (codebase ?? "schedule-i").ToLowerInvariant() switch
         {
@@ -61,13 +136,13 @@ internal static class IndexQueryCommandFactory
             _ => throw new ArgumentException("Codebase must be schedule-i, s1api, or s1mapi.", nameof(codebase))
         };
         var parsedChannel = (channel ?? "installed").ToLowerInvariant();
-        if (parsedChannel == "all") return new IndexQueryOptions(parsedCodebase, null, true);
+        if (parsedChannel == "all") return new IndexQueryOptions(parsedCodebase, null, true, limit);
         return new IndexQueryOptions(parsedCodebase, parsedChannel switch
         {
             "installed" => CodeChannel.Installed,
             "release" => CodeChannel.Release,
             "preview" => CodeChannel.Preview,
             _ => throw new ArgumentException("Channel must be installed, release, preview, or all.", nameof(channel))
-        });
+        }, false, limit);
     }
 }

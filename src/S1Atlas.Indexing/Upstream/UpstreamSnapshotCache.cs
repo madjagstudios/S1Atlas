@@ -44,6 +44,36 @@ public sealed class UpstreamSnapshotCache
     public bool Exists(CodebaseKind codebase, string commitSha) =>
         Directory.Exists(OwnedIndexPaths.ForUpstream(_dataRoot, ToSegment(codebase), commitSha).FinalRoot);
 
+    public async Task<IReadOnlyList<UpstreamFile>> ReadFilesAsync(
+        CodebaseKind codebase,
+        string commitSha,
+        CancellationToken cancellationToken)
+    {
+        var paths = OwnedIndexPaths.ForUpstream(_dataRoot, ToSegment(codebase), commitSha);
+        if (!Directory.Exists(paths.FinalRoot))
+            throw new FileNotFoundException("The requested upstream commit is not cached.", paths.FinalRoot);
+
+        var manifestPath = Path.Combine(paths.FinalRoot, "snapshot-manifest.json");
+        if (!File.Exists(manifestPath))
+            throw new InvalidDataException("The cached upstream commit has no complete manifest.");
+
+        await using var manifestStream = File.OpenRead(manifestPath);
+        var manifest = await JsonSerializer.DeserializeAsync<ManifestEntry[]>(
+            manifestStream,
+            cancellationToken: cancellationToken) ?? throw new InvalidDataException("The cached upstream manifest is empty.");
+        var files = new List<UpstreamFile>(manifest.Length);
+        foreach (var entry in manifest.OrderBy(item => item.RelativePath, StringComparer.Ordinal))
+        {
+            var fullPath = ResolveContainedFile(paths.FinalRoot, entry.RelativePath);
+            var content = await File.ReadAllBytesAsync(fullPath, cancellationToken);
+            var actualSha256 = Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
+            if (!string.Equals(actualSha256, entry.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"The cached upstream file hash did not validate for '{entry.RelativePath}'.");
+            files.Add(new UpstreamFile(entry.RelativePath, content, actualSha256));
+        }
+        return files;
+    }
+
     public IReadOnlyList<string> GetCachedCommits(CodebaseKind codebase)
     {
         var root = Path.Combine(_dataRoot, "upstream", ToSegment(codebase), "commits");
@@ -77,4 +107,6 @@ public sealed class UpstreamSnapshotCache
         CodebaseKind.S1MApi => "s1mapi",
         _ => throw new ArgumentException("Only API codebases have upstream snapshots.", nameof(codebase))
     };
+
+    private sealed record ManifestEntry(string RelativePath, string Sha256);
 }

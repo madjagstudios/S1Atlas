@@ -1,10 +1,12 @@
+using System.Collections.Immutable;
+using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
-using System.Collections.Immutable;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
+using UniversalAssemblyResolver = ICSharpCode.Decompiler.Metadata.UniversalAssemblyResolver;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Indexing.Decompilation;
@@ -13,6 +15,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
 {
     private static readonly OpCode[] OneByteOpCodes = CreateOneByteOpCodes();
     private static readonly OpCode[] TwoByteOpCodes = CreateTwoByteOpCodes();
+    private static readonly BodyRecoveryClassifier BodyClassifier = new();
 
     public Task<ManagedDecompilation> DecompileAsync(
         string assemblyPath,
@@ -27,7 +30,14 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             throw new FileNotFoundException("The managed assembly was not found.", fullPath);
         }
 
-        var source = new CSharpDecompiler(fullPath, new DecompilerSettings())
+        var resolver = new UniversalAssemblyResolver(
+            fullPath,
+            throwOnError: false,
+            targetFramework: ".NETCoreApp,Version=8.0",
+            runtimePack: "Microsoft.NETCore.App",
+            PEStreamOptions.Default,
+            MetadataReaderOptions.Default);
+        var source = new CSharpDecompiler(fullPath, resolver, new DecompilerSettings())
             .DecompileWholeModuleAsString();
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -126,29 +136,46 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 parameterTypes,
                 genericParameterCount);
             var hasBody = method.RelativeVirtualAddress != 0;
-            var references = hasBody
-                ? ReadReferences(metadata, peReader, method.RelativeVirtualAddress)
-                : [];
+            var bodyAnalysis = hasBody
+                ? ReadBodyAnalysis(metadata, peReader, method.RelativeVirtualAddress)
+                : BodyAnalysis.Empty;
+            var bodyFacts = new ManagedMethodBodyFacts(
+                hasBody,
+                IsNoBodyByDesign(method),
+                bodyAnalysis.IlByteCount,
+                bodyAnalysis.InstructionCount,
+                bodyAnalysis.References.Count,
+                bodyAnalysis.MatchesVerifiedStubPattern);
+            var bodyRecoveryStatus = BodyClassifier.Classify(bodyFacts);
+
             members.Add(new ManagedMemberFacts(
                 methodName,
                 kind,
                 signature,
                 hasBody,
-                references,
+                bodyAnalysis.References,
                 parameterTypes,
                 methodSignature.ReturnType,
-                GenericParameterCount: genericParameterCount));
+                GenericParameterCount: genericParameterCount,
+                BodyFacts: bodyFacts,
+                BodyRecoveryStatus: bodyRecoveryStatus));
         }
 
         return new ManagedTypeFacts(fullName, @namespace, name, baseType, interfaces, members);
     }
+
+    private static bool IsNoBodyByDesign(MethodDefinition method) =>
+        (method.Attributes & MethodAttributes.Abstract) != 0 ||
+        (method.Attributes & MethodAttributes.PinvokeImpl) != 0 ||
+        (method.ImplAttributes & MethodImplAttributes.Runtime) != 0 ||
+        (method.ImplAttributes & MethodImplAttributes.InternalCall) != 0;
 
     private static string CanonicalPropertySignature(string name, string valueType, IReadOnlyList<string> parameterTypes) =>
         parameterTypes.Count == 0
             ? CanonicalSignatureRenderer.RenderType(valueType) + " " + name
             : CanonicalSignatureRenderer.RenderType(valueType) + " " + name + "(" + string.Join(",", parameterTypes.Select(CanonicalSignatureRenderer.RenderType)) + ")";
 
-    private static IReadOnlyList<ManagedReferenceFact> ReadReferences(
+    private static BodyAnalysis ReadBodyAnalysis(
         MetadataReader metadata,
         PEReader peReader,
         int relativeVirtualAddress)
@@ -156,12 +183,14 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var body = peReader.GetMethodBody(relativeVirtualAddress);
         var il = body.GetILBytes() ?? [];
         var references = new List<ManagedReferenceFact>();
+        var opcodes = new List<OpCode>();
         var typeProvider = new MetadataTypeNameProvider();
         var offset = 0;
 
         while (offset < il.Length)
         {
             var opcode = ReadOpCode(il, ref offset);
+            opcodes.Add(opcode);
             var operandOffset = offset;
             switch (opcode.OperandType)
             {
@@ -191,7 +220,47 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             }
         }
 
-        return references;
+        return new BodyAnalysis(
+            il.Length,
+            opcodes.Count,
+            references,
+            MatchesVerifiedThrowStub(opcodes, references));
+    }
+
+    private static bool MatchesVerifiedThrowStub(
+        IReadOnlyList<OpCode> opcodes,
+        IReadOnlyList<ManagedReferenceFact> references)
+    {
+        if (opcodes.Count < 2 || opcodes[^1] != OpCodes.Throw)
+            return false;
+
+        if (opcodes.Count == 2 && opcodes[0] == OpCodes.Ldnull)
+            return true;
+
+        var exceptionConstructors = references.Count(reference =>
+            reference.Kind == ManagedReferenceKind.Constructs &&
+            reference.Target.Contains("Exception::.ctor", StringComparison.Ordinal));
+        if (exceptionConstructors != 1 || opcodes.Count(opcode => opcode == OpCodes.Newobj) != 1)
+            return false;
+
+        return opcodes.All(opcode =>
+            opcode == OpCodes.Nop ||
+            opcode == OpCodes.Ldstr ||
+            opcode == OpCodes.Ldnull ||
+            opcode == OpCodes.Ldc_I4 ||
+            opcode == OpCodes.Ldc_I4_S ||
+            opcode == OpCodes.Ldc_I4_M1 ||
+            opcode == OpCodes.Ldc_I4_0 ||
+            opcode == OpCodes.Ldc_I4_1 ||
+            opcode == OpCodes.Ldc_I4_2 ||
+            opcode == OpCodes.Ldc_I4_3 ||
+            opcode == OpCodes.Ldc_I4_4 ||
+            opcode == OpCodes.Ldc_I4_5 ||
+            opcode == OpCodes.Ldc_I4_6 ||
+            opcode == OpCodes.Ldc_I4_7 ||
+            opcode == OpCodes.Ldc_I4_8 ||
+            opcode == OpCodes.Newobj ||
+            opcode == OpCodes.Throw);
     }
 
     private static OpCode ReadOpCode(byte[] il, ref int offset)
@@ -210,10 +279,11 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         OperandType.InlineNone => 0,
         OperandType.ShortInlineI or OperandType.ShortInlineBrTarget or OperandType.ShortInlineVar => 1,
         OperandType.InlineVar => 2,
+        OperandType.ShortInlineR => 4,
         OperandType.InlineI or OperandType.InlineBrTarget or OperandType.InlineField or
-            OperandType.InlineI8 or OperandType.InlineMethod or OperandType.InlineSig or
-            OperandType.InlineString or OperandType.InlineTok or OperandType.InlineType =>
-            operandType == OperandType.InlineI8 ? 8 : 4,
+            OperandType.InlineMethod or OperandType.InlineSig or OperandType.InlineString or
+            OperandType.InlineTok or OperandType.InlineType => 4,
+        OperandType.InlineI8 or OperandType.InlineR => 8,
         OperandType.InlineSwitch => 4 + (BitConverter.ToInt32(il, offset) * 4),
         _ => throw new InvalidDataException($"Unsupported IL operand type '{operandType}'.")
     };
@@ -380,5 +450,14 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         }
 
         return result;
+    }
+
+    private sealed record BodyAnalysis(
+        int IlByteCount,
+        int InstructionCount,
+        IReadOnlyList<ManagedReferenceFact> References,
+        bool MatchesVerifiedStubPattern)
+    {
+        public static BodyAnalysis Empty { get; } = new(0, 0, [], false);
     }
 }

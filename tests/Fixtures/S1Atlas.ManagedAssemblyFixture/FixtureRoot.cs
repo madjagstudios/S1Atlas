@@ -13,7 +13,10 @@ public sealed class FixtureRoot
 
     public int Counter { get; set; }
 
-    public int GetValue() => Counter;
+    public int GetValue()
+    {
+        throw new NotSupportedException("Cpp2IL stub fixture");
+    }
 
     public void RaiseSignal() => Signal?.Invoke(this, EventArgs.Empty);
 }

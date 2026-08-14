@@ -54,4 +54,46 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.WritesField);
         Assert.Contains(body.References, reference => reference.Target.Contains("DerivedFixture::Overload", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task FixtureAssemblyProducesConservativeBodyRecoveryFactsWithoutAssemblyLoad()
+    {
+        var decompiler = new IlSpyManagedDecompiler();
+
+        var result = await decompiler.DecompileAsync(
+            typeof(FixtureRoot).Assembly.Location,
+            CancellationToken.None);
+
+        var fixtureBase = Assert.Single(result.Types, candidate => candidate.Name == "FixtureBase");
+        var arithmetic = Assert.Single(fixtureBase.Members, member => member.Name == "BaseMethod");
+        Assert.NotNull(arithmetic.BodyFacts);
+        Assert.True(arithmetic.BodyFacts.HasPhysicalBody);
+        Assert.False(arithmetic.BodyFacts.NoBodyByDesign);
+        Assert.False(arithmetic.BodyFacts.MatchesVerifiedStubPattern);
+        Assert.Equal(0, arithmetic.BodyFacts.RecoveredReferenceCount);
+        Assert.True(arithmetic.BodyFacts.InstructionCount >= 3);
+        Assert.Equal(BodyRecoveryStatus.Recovered, arithmetic.BodyRecoveryStatus);
+
+        var derived = Assert.Single(result.Types, candidate => candidate.Name == "DerivedFixture");
+        var trivial = Assert.Single(derived.Members, member => member.Name == "GenericMethod");
+        Assert.NotNull(trivial.BodyFacts);
+        Assert.True(trivial.BodyFacts.HasPhysicalBody);
+        Assert.Equal(BodyRecoveryStatus.Unknown, trivial.BodyRecoveryStatus);
+
+        var fixtureRoot = Assert.Single(result.Types, candidate => candidate.Name == "FixtureRoot");
+        var throwStub = Assert.Single(fixtureRoot.Members, member => member.Name == "GetValue");
+        Assert.NotNull(throwStub.BodyFacts);
+        Assert.True(throwStub.BodyFacts.HasPhysicalBody);
+        Assert.True(throwStub.BodyFacts.MatchesVerifiedStubPattern);
+        Assert.True(throwStub.BodyFacts.RecoveredReferenceCount > 0);
+        Assert.Contains(throwStub.References, reference => reference.Kind == ManagedReferenceKind.Constructs);
+        Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, throwStub.BodyRecoveryStatus);
+
+        var contract = Assert.Single(result.Types, candidate => candidate.Name == "IFixtureContract");
+        var missing = Assert.Single(contract.Members, member => member.Name == "get_ContractValue");
+        Assert.NotNull(missing.BodyFacts);
+        Assert.False(missing.BodyFacts.HasPhysicalBody);
+        Assert.True(missing.BodyFacts.NoBodyByDesign);
+        Assert.Equal(BodyRecoveryStatus.NoBodyByDesign, missing.BodyRecoveryStatus);
+    }
 }
