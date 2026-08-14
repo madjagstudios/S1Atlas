@@ -78,7 +78,7 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
             cancellationToken);
 
         var roundTripped = await _repository.GetCompletedSymbolsAsync("index-body", cancellationToken);
-        Assert.Equal(symbols, roundTripped);
+        Assert.Equal(symbols.OrderBy(symbol => symbol.CanonicalKey, StringComparer.Ordinal), roundTripped);
         Assert.Null(Assert.Single(roundTripped, symbol => symbol.SymbolId == "type").BodyRecoveryStatus);
     }
 
