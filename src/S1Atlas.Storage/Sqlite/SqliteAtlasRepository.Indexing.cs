@@ -188,7 +188,8 @@ public sealed partial class SqliteAtlasRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
-                   symbol.qualified_name, symbol.signature, symbol.is_best_effort
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status
             FROM symbols AS symbol
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $id AND run.status = 'Completed'
@@ -283,9 +284,17 @@ public sealed partial class SqliteAtlasRepository
 
     private static async Task InsertSymbolAsync(SqliteConnection connection, SqliteTransaction transaction, IndexSymbolRecord symbol, CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand(); command.Transaction = transaction;
-        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best);";
-        command.Parameters.AddWithValue("$id", symbol.SymbolId); command.Parameters.AddWithValue("$snapshot", symbol.SnapshotId); command.Parameters.AddWithValue("$key", symbol.CanonicalKey); command.Parameters.AddWithValue("$kind", symbol.Kind); command.Parameters.AddWithValue("$name", symbol.QualifiedName); command.Parameters.AddWithValue("$signature", symbol.Signature); command.Parameters.AddWithValue("$best", symbol.IsBestEffort ? 1 : 0);
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort, body_recovery_status) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best,$bodyRecovery);";
+        command.Parameters.AddWithValue("$id", symbol.SymbolId);
+        command.Parameters.AddWithValue("$snapshot", symbol.SnapshotId);
+        command.Parameters.AddWithValue("$key", symbol.CanonicalKey);
+        command.Parameters.AddWithValue("$kind", symbol.Kind);
+        command.Parameters.AddWithValue("$name", symbol.QualifiedName);
+        command.Parameters.AddWithValue("$signature", symbol.Signature);
+        command.Parameters.AddWithValue("$best", symbol.IsBestEffort ? 1 : 0);
+        command.Parameters.AddWithValue("$bodyRecovery", symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -328,5 +337,13 @@ public sealed partial class SqliteAtlasRepository
         new(reader.GetString(0), reader.GetString(1), Enum.Parse<IndexRunStatus>(reader.GetString(2)), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 
     private static IndexSymbolRecord ReadSymbol(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0);
+        new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.GetInt64(6) != 0,
+            reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)));
 }
