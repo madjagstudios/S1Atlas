@@ -110,11 +110,3 @@ public sealed record SourceSnippetQueryResult(
 public sealed record SourceSnippetResolutionResult(
     SymbolResolutionResult Resolution,
     SourceSnippetQueryResult? Snippet);
-
-public sealed record VerifiedSourceFileQueryResult(
-    SourceSnippetQueryResult Source,
-    byte[] Bytes);
-
-public sealed record VerifiedSourceFileResolutionResult(
-    SymbolResolutionResult Resolution,
-    VerifiedSourceFileQueryResult? File);
