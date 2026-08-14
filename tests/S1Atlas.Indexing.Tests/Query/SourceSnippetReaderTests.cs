@@ -22,7 +22,7 @@ public sealed class SourceSnippetReaderTests : IAsyncDisposable
     {
         const string text = "before\n    public void Run() { } trailing\nafter\n";
         var path = await WriteAsync("exact.cs", text);
-        var location = new IndexSourceLocationRecord("symbol", "file", 2, 5, 2, 25);
+        var location = new IndexSourceLocationRecord("symbol", "file", 2, 5, 2, 26);
         var reader = new SourceSnippetReader();
 
         var result = await reader.ReadAsync(
@@ -114,7 +114,7 @@ public sealed class SourceSnippetReaderTests : IAsyncDisposable
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => reader.ReadAsync(
             path,
             Sha256(text),
-            new IndexSourceLocationRecord("symbol", "file", 1, 1, 1, 5),
+            new IndexSourceLocationRecord("symbol", "file", 1, 1, 1, 6),
             -1,
             TestContext.Current.CancellationToken));
     }
@@ -142,7 +142,7 @@ public sealed class SourceSnippetReaderTests : IAsyncDisposable
         await Assert.ThrowsAsync<InvalidDataException>(() => reader.ReadAsync(
             path,
             new string('0', 64),
-            new IndexSourceLocationRecord("symbol", "file", 1, 1, 1, 5),
+            new IndexSourceLocationRecord("symbol", "file", 1, 1, 1, 6),
             0,
             TestContext.Current.CancellationToken));
     }
