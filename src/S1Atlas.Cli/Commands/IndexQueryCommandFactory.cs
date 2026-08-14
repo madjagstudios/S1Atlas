@@ -60,6 +60,15 @@ internal static class IndexQueryCommandFactory
                             new IndexQueryFailureData(ambiguous.Candidates));
                     }
 
+                    if (data.Resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "NoCompletedIndex",
+                            "No completed index exists for the requested codebase and channel.",
+                            new IndexQueryFailureData([]));
+                    }
+
                     if (data.Resolution is { Status: SymbolResolutionStatus.NotFound })
                     {
                         return commandOutput.Failure(
@@ -79,6 +88,9 @@ internal static class IndexQueryCommandFactory
 
     private static void WriteHuman(IndexQueryOutput data, TextWriter writer)
     {
+        if (data.TotalCount is int totalCount && data.ReturnedCount is int returnedCount)
+            writer.WriteLine($"Found {totalCount} matches. Showing {returnedCount}.");
+
         foreach (var symbol in data.Symbols)
             writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
 

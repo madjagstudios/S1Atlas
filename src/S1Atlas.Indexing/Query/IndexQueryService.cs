@@ -25,20 +25,24 @@ public sealed class IndexQueryService
     public async Task<SymbolSearchResult> SearchAsync(
         string query,
         IndexQueryOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SymbolKind? kind = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         if (options.Limit <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "The query result limit must be positive.");
 
         var totalCount = 0;
+        var completedIndexCount = 0;
         var candidates = new List<SymbolQueryResult>();
         foreach (var channel in Channels(options))
         {
             var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
             if (run is null) continue;
+            completedIndexCount++;
 
-            var count = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken);
+            var kindName = kind?.ToString();
+            var count = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName);
             totalCount += count;
             if (count == 0) continue;
 
@@ -46,7 +50,8 @@ public sealed class IndexQueryService
                 run.IndexId,
                 query,
                 options.Limit,
-                cancellationToken);
+                cancellationToken,
+                kindName);
             candidates.AddRange(symbols.Select(symbol =>
                 SymbolResolver.ToQueryResult(run.IndexId, options.Codebase, channel, symbol)));
         }
@@ -59,7 +64,11 @@ public sealed class IndexQueryService
             .ThenBy(result => result.SymbolId, StringComparer.Ordinal)
             .Take(options.Limit)
             .ToArray();
-        return new SymbolSearchResult(totalCount, results.Length, results);
+        return new SymbolSearchResult(
+            totalCount,
+            results.Length,
+            results,
+            completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null);
     }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
@@ -68,30 +77,7 @@ public sealed class IndexQueryService
         IndexQueryOptions options,
         CancellationToken cancellationToken)
     {
-        return (await SearchAsync(query, options, cancellationToken)).Results
-            .Where(result => string.Equals(result.Kind, kind.ToString(), StringComparison.Ordinal))
-            .ToArray();
-    }
-
-    public async Task<IReadOnlyList<RelationshipQueryResult>> RelationshipsAsync(
-        string query,
-        bool callers,
-        IndexQueryOptions options,
-        CancellationToken cancellationToken)
-    {
-        var results = new List<RelationshipQueryResult>();
-        foreach (var channel in Channels(options))
-        {
-            var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
-            if (run is null) continue;
-            var symbols = await _repository.GetCompletedSymbolsAsync(run.IndexId, cancellationToken);
-            var matching = symbols.Where(symbol => symbol.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase) || symbol.Signature.Contains(query, StringComparison.OrdinalIgnoreCase)).Select(symbol => symbol.SymbolId).ToHashSet(StringComparer.Ordinal);
-            var edges = await _repository.GetCompletedRelationshipsAsync(run.IndexId, cancellationToken);
-            results.AddRange(edges.Where(edge => callers
-                ? matching.Contains(edge.TargetSymbolId ?? string.Empty) || (edge.TargetText?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
-                : matching.Contains(edge.SourceSymbolId)).Select(edge => new RelationshipQueryResult(edge.RelationshipId, edge.Kind, edge.Evidence, edge.SourceSymbolId, edge.TargetSymbolId, edge.TargetText)));
-        }
-        return results.OrderBy(result => result.RelationshipId, StringComparer.Ordinal).ToArray();
+        return (await SearchAsync(query, options, cancellationToken, kind)).Results;
     }
 
     public Task<RelationshipQuerySetResult> RefsAsync(
@@ -218,34 +204,6 @@ public sealed class IndexQueryService
             notice);
     }
 
-    public async Task<IReadOnlyList<SourceQueryResult>> SourceAsync(
-        string query,
-        IndexQueryOptions options,
-        CancellationToken cancellationToken)
-    {
-        var results = new List<SourceQueryResult>();
-        foreach (var channel in Channels(options))
-        {
-            var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
-            if (run is null) continue;
-            var symbols = await _repository.GetCompletedSymbolsAsync(run.IndexId, cancellationToken);
-            if (!symbols.Any(symbol => symbol.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase) || symbol.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))) continue;
-            var files = await _repository.GetCompletedSourceFilesAsync(run.IndexId, cancellationToken);
-            var locations = await _repository.GetCompletedSourceLocationsAsync(run.IndexId, cancellationToken);
-            results.AddRange(files.Select(file => new SourceQueryResult(
-                run.IndexId,
-                file.RelativePath,
-                file.Sha256,
-                file.ByteCount,
-                options.Codebase + ":" + channel + ":generated",
-                locations
-                    .Where(location => location.SourceFileId == file.SourceFileId)
-                    .Select(location => new SourceLocationQueryResult(location.SymbolId, location.StartLine, location.StartColumn, location.EndLine, location.EndColumn))
-                    .ToArray())));
-        }
-        return results.OrderBy(result => result.RelativePath, StringComparer.Ordinal).ToArray();
-    }
-
     public async Task<SourceSnippetResolutionResult> SourceAsync(
         string selector,
         IndexQueryOptions options,
@@ -325,10 +283,12 @@ public sealed class IndexQueryService
     {
         var resolved = new List<SelectedSymbol>();
         var ambiguous = new List<SymbolQueryResult>();
+        var completedIndexCount = 0;
         foreach (var channel in Channels(options))
         {
             var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
             if (run is null) continue;
+            completedIndexCount++;
 
             var resolution = await _symbolResolver.ResolveAsync(
                 run.IndexId,
@@ -360,6 +320,11 @@ public sealed class IndexQueryService
                 new SymbolResolutionResult(SymbolResolutionStatus.Ambiguous, null, candidates),
                 null);
         }
+
+        if (completedIndexCount == 0)
+            return new ChannelSelection(
+                new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
+                null);
 
         if (resolved.Count == 0)
             return new ChannelSelection(

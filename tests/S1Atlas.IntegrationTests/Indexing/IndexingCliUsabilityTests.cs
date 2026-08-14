@@ -68,6 +68,27 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         Assert.Equal(string.Empty, error.ToString());
         Assert.Contains("Demo.Dealer000", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("dealer-000", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Found 1 matches. Showing 1.", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Relationship_query_reports_no_completed_index_distinctly()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["callers", "MissingType", "--codebase", "s1mapi", "--channel", "installed", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("NoCompletedIndex", document.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Theory]

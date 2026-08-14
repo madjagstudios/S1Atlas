@@ -20,7 +20,8 @@ public enum SymbolResolutionStatus
 {
     Resolved,
     NotFound,
-    Ambiguous
+    Ambiguous,
+    NoCompletedIndex
 }
 
 public sealed record SymbolResolutionResult(
@@ -31,7 +32,8 @@ public sealed record SymbolResolutionResult(
 public sealed record SymbolSearchResult(
     int TotalCount,
     int ReturnedCount,
-    IReadOnlyList<SymbolQueryResult> Results);
+    IReadOnlyList<SymbolQueryResult> Results,
+    SymbolResolutionStatus? ResolutionStatus = null);
 
 public sealed record RelationshipEndpointQueryResult(
     string? SymbolId,

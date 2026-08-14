@@ -95,6 +95,44 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Find_applies_kind_filter_before_the_bounded_limit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        await SeedChannelAsync(
+            CodeChannel.Release,
+            [
+                new IndexSymbolRecord(
+                    "method-widget",
+                    "snapshot-Release",
+                    "S1Api:Release:Method:Demo.Widget.Method()",
+                    "Method",
+                    "Demo.Widget.Method",
+                    "System.Void Demo.Widget::Method()",
+                    false),
+                new IndexSymbolRecord(
+                    "type-widget",
+                    "snapshot-Release",
+                    "S1Api:Release:Type:Demo.WidgetArchive",
+                    "Type",
+                    "Demo.WidgetArchive",
+                    "Demo.WidgetArchive",
+                    false)
+            ],
+            cancellationToken);
+        var service = new IndexQueryService(_repository);
+
+        var result = await service.FindAsync(
+            "Widget",
+            SymbolKind.Type,
+            new IndexQueryOptions(CodebaseKind.S1Api, CodeChannel.Release, Limit: 1),
+            cancellationToken);
+
+        var type = Assert.Single(result);
+        Assert.Equal("type-widget", type.SymbolId);
+    }
+
+    [Fact]
     public async Task Source_resolves_one_symbol_and_returns_hash_verified_exact_snippet_with_body_status()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

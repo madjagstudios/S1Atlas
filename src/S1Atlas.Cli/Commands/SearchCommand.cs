@@ -1,4 +1,5 @@
 using System.CommandLine;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Cli.Output;
@@ -16,6 +17,9 @@ internal static class SearchCommand
                 [],
                 [],
                 result.TotalCount,
-                result.ReturnedCount);
+                result.ReturnedCount,
+                result.ResolutionStatus is { } status
+                    ? new SymbolResolutionResult(status, null, [])
+                    : null);
         });
 }

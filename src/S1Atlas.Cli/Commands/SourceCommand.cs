@@ -122,6 +122,14 @@ internal static class SourceCommand
                 "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
                 new IndexQueryFailureData(resolution.Resolution.Candidates));
         }
+        if (resolution.Resolution.Status == SymbolResolutionStatus.NoCompletedIndex)
+        {
+            return commandOutput.Failure(
+                1,
+                "NoCompletedIndex",
+                "No completed index exists for the requested codebase and channel.",
+                new IndexQueryFailureData([]));
+        }
         if (resolution.Resolution.Status == SymbolResolutionStatus.NotFound)
         {
             return commandOutput.Failure(

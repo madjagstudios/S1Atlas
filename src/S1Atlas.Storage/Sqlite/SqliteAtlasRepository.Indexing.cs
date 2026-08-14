@@ -231,7 +231,8 @@ public sealed partial class SqliteAtlasRepository
     public async Task<int> CountCompletedSymbolMatchesAsync(
         string indexId,
         string query,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? kind = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -243,12 +244,14 @@ public sealed partial class SqliteAtlasRepository
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
+              AND ($kind IS NULL OR symbol.kind = $kind)
               AND (
                   symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
                   OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
               );
             """;
         command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
         command.Parameters.AddWithValue("$contains", "%" + EscapeLikePattern(query) + "%");
         return Convert.ToInt32(
             await command.ExecuteScalarAsync(cancellationToken),
@@ -259,7 +262,8 @@ public sealed partial class SqliteAtlasRepository
         string indexId,
         string query,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? kind = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -277,6 +281,7 @@ public sealed partial class SqliteAtlasRepository
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
+              AND ($kind IS NULL OR symbol.kind = $kind)
               AND (
                   symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
                   OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
@@ -296,6 +301,7 @@ public sealed partial class SqliteAtlasRepository
             LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
         command.Parameters.AddWithValue("$query", query);
         command.Parameters.AddWithValue("$terminal", "%." + escaped);
         command.Parameters.AddWithValue("$prefix", escaped + "%");
