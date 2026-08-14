@@ -30,19 +30,19 @@ public sealed class RoslynSourceIndexer
         switch (member)
         {
             case MethodDeclarationSyntax method:
-            {
-                var parameters = method.ParameterList.Parameters.Select(parameter => ParameterType(parameter)).ToArray();
-                var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, method.Identifier.Text, method.ReturnType.ToString(), parameters, method.TypeParameterList?.Parameters.Count ?? 0);
-                symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Method, qualifiedType + "::" + method.Identifier.Text, signature, true, null, Line(member)));
-                break;
-            }
+                {
+                    var parameters = method.ParameterList.Parameters.Select(parameter => ParameterType(parameter)).ToArray();
+                    var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, method.Identifier.Text, method.ReturnType.ToString(), parameters, method.TypeParameterList?.Parameters.Count ?? 0);
+                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Method, qualifiedType + "::" + method.Identifier.Text, signature, true, null, Line(member)));
+                    break;
+                }
             case ConstructorDeclarationSyntax constructor:
-            {
-                var parameters = constructor.ParameterList.Parameters.Select(ParameterType).ToArray();
-                var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, ".ctor", "void", parameters);
-                symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Constructor, qualifiedType + "::.ctor", signature, true, null, Line(member)));
-                break;
-            }
+                {
+                    var parameters = constructor.ParameterList.Parameters.Select(ParameterType).ToArray();
+                    var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, ".ctor", "void", parameters);
+                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Constructor, qualifiedType + "::.ctor", signature, true, null, Line(member)));
+                    break;
+                }
             case PropertyDeclarationSyntax property:
                 symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Property, qualifiedType + "::" + property.Identifier.Text, CanonicalSignatureRenderer.RenderType(property.Type.ToString()) + " " + property.Identifier.Text, true, null, Line(member)));
                 break;

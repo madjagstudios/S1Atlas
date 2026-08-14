@@ -137,25 +137,25 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             switch (opcode.OperandType)
             {
                 case OperandType.InlineMethod:
-                {
-                    var token = BitConverter.ToInt32(il, offset);
-                    offset += 4;
-                    references.Add(new ManagedReferenceFact(
-                        opcode == OpCodes.Newobj ? ManagedReferenceKind.Constructs : ManagedReferenceKind.Calls,
-                        GetMemberName(metadata, token)));
-                    break;
-                }
+                    {
+                        var token = BitConverter.ToInt32(il, offset);
+                        offset += 4;
+                        references.Add(new ManagedReferenceFact(
+                            opcode == OpCodes.Newobj ? ManagedReferenceKind.Constructs : ManagedReferenceKind.Calls,
+                            GetMemberName(metadata, token)));
+                        break;
+                    }
                 case OperandType.InlineField:
-                {
-                    var token = BitConverter.ToInt32(il, offset);
-                    offset += 4;
-                    references.Add(new ManagedReferenceFact(
-                        opcode is { } op && (op == OpCodes.Stfld || op == OpCodes.Stsfld)
-                            ? ManagedReferenceKind.WritesField
-                            : ManagedReferenceKind.ReadsField,
-                        GetMemberName(metadata, token)));
-                    break;
-                }
+                    {
+                        var token = BitConverter.ToInt32(il, offset);
+                        offset += 4;
+                        references.Add(new ManagedReferenceFact(
+                            opcode is { } op && (op == OpCodes.Stfld || op == OpCodes.Stsfld)
+                                ? ManagedReferenceKind.WritesField
+                                : ManagedReferenceKind.ReadsField,
+                            GetMemberName(metadata, token)));
+                        break;
+                    }
                 default:
                     offset = operandOffset + OperandSize(opcode.OperandType, il, operandOffset);
                     break;
