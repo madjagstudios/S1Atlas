@@ -69,3 +69,38 @@ input set, and this measurement did not modify or rerun extraction.
 The focused adapter tests and this live measurement passed. The result is sufficient to
 continue with normalized symbols and explicit relationship-quality handling; it is not a
 license to infer missing method relationships.
+
+## Full CLI indexing/query smoke
+
+The Phase 5 CLI smoke ran against the same existing preferred extraction without rerunning
+Cpp2IL:
+
+| Fact | Value |
+|---|---|
+| Tested commit | `2b5d7a6` |
+| Index ID | `6c42bf48b4adb82eb90ee497a1ec2eb0c4508de85edd0100b6d7f89a4facc1ab` |
+| Schedule I Installed symbols | 50,114 |
+| Generated source files | 1 |
+| Persisted relationships | 3,270 |
+| Repeated `index` invocation | reused the completed index |
+| Representative search/type/method/source commands | succeeded |
+| `refs`, `callers`, `callees` commands | succeeded; no matching edges for the sampled method |
+| Installed query channel | Schedule I / Installed only |
+
+The index command's first run reported `reused: false`; the repeated run reported
+`reused: true` with the same symbol, source, and relationship counts. The sampled type was
+`ScheduleOne.Economy.Dealer`, and the sampled method was `ScheduleOne.Economy.Dealer::Awake`.
+
+## Upstream network smoke
+
+The official upstream identities used for configuration are `KaBooMa/S1API` and
+`ifBars/S1MAPI`. An explicit manual sync fetched S1API commit
+`d9665e9bd95b76b033fb53d5c1698afa82fe53ac` and cached 162 C# files. Ordinary `upstream
+status` performed no network access and reported no selected cached commit. The first
+transport attempt returned GitHub HTTP 403; adding the required explicit User-Agent fixed
+the transport, and the retry completed successfully.
+
+No installed S1API/S1MAPI binary snapshot or Release/Preview repository provenance was
+available in the existing Atlas environment during this smoke, so those measurements remain
+unavailable rather than inferred. Cached upstream files and generated Schedule I source
+remain under ignored local runtime roots and are not tracked by Git.
