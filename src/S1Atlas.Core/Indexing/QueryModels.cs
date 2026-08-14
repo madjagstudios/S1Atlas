@@ -55,3 +55,20 @@ public sealed record SourceLocationQueryResult(
     int StartColumn,
     int? EndLine,
     int? EndColumn);
+
+public sealed record SourceSnippetQueryResult(
+    SymbolQueryResult Symbol,
+    string IndexId,
+    string RelativePath,
+    string Sha256,
+    long ByteCount,
+    SourceLocationQueryResult Location,
+    int ContextBefore,
+    int ContextAfter,
+    string Text,
+    BodyRecoveryStatus? BodyRecoveryStatus,
+    string Provenance);
+
+public sealed record SourceSnippetResolutionResult(
+    SymbolResolutionResult Resolution,
+    SourceSnippetQueryResult? Snippet);
