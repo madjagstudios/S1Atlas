@@ -20,8 +20,19 @@ internal static class UpstreamStatusCommand
             {
                 var codebase = ParseCodebase(parseResult.GetValue(codebaseOption));
                 var cache = new UpstreamSnapshotCache(dataRoot);
-                var data = new UpstreamStatusOutput(codebase.ToString(), false, "24:00:00", false, null, UpstreamMatchKind.Unmatched.ToString(), "No commit was selected for the cached status check.");
-                return commandOutput.Success(data, writer => writer.WriteLine($"{codebase}: no cached upstream commit selected (network not contacted)."));
+                var commit = cache.GetCachedCommits(codebase).FirstOrDefault();
+                var cached = commit is not null;
+                var data = new UpstreamStatusOutput(
+                    codebase.ToString(),
+                    false,
+                    "manual",
+                    cached,
+                    commit,
+                    cached ? UpstreamMatchKind.ExactSourceCommit.ToString() : UpstreamMatchKind.Unmatched.ToString(),
+                    cached ? "An exact upstream commit is cached locally; network was not contacted." : "No complete upstream snapshot is cached locally.");
+                return commandOutput.Success(data, writer => writer.WriteLine(cached
+                    ? $"{codebase}: cached upstream commit {commit} (network not contacted)."
+                    : $"{codebase}: no complete cached upstream commit (network not contacted)."));
             }, commandOutput, cancellationToken);
         });
         return command;

@@ -23,9 +23,7 @@ public sealed class UpstreamSnapshotCache
         {
             foreach (var file in snapshot.Files)
             {
-                if (Path.IsPathRooted(file.RelativePath) || file.RelativePath.Contains("..", StringComparison.Ordinal))
-                    throw new InvalidDataException("The upstream file path escaped the cache root.");
-                var fullPath = Path.Combine(paths.StagingRoot, file.RelativePath);
+                var fullPath = ResolveContainedFile(paths.StagingRoot, file.RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
                 await File.WriteAllBytesAsync(fullPath, file.Content, cancellationToken);
                 var actual = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(fullPath, cancellationToken))).ToLowerInvariant();
@@ -45,6 +43,33 @@ public sealed class UpstreamSnapshotCache
 
     public bool Exists(CodebaseKind codebase, string commitSha) =>
         Directory.Exists(OwnedIndexPaths.ForUpstream(_dataRoot, ToSegment(codebase), commitSha).FinalRoot);
+
+    public IReadOnlyList<string> GetCachedCommits(CodebaseKind codebase)
+    {
+        var root = Path.Combine(_dataRoot, "upstream", ToSegment(codebase), "commits");
+        if (!Directory.Exists(root)) return [];
+        return Directory.EnumerateDirectories(root)
+            .Select(Path.GetFileName)
+            .Where(name => name is { Length: 40 } && name.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f'))
+            .Where(name => File.Exists(Path.Combine(root, name!, "snapshot-manifest.json")))
+            .Select(name => name!)
+            .OrderByDescending(name => name, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static string ResolveContainedFile(string stagingRoot, string relativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+        if (Path.IsPathRooted(relativePath)) throw new InvalidDataException("The upstream file path escaped the cache root.");
+        var segments = relativePath.Split(['/', '\\'], StringSplitOptions.None);
+        if (segments.Any(segment => string.IsNullOrEmpty(segment) || segment is "." or ".."))
+            throw new InvalidDataException("The upstream file path escaped the cache root.");
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(stagingRoot));
+        var fullPath = Path.GetFullPath(Path.Combine(root, relativePath));
+        if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The upstream file path escaped the cache root.");
+        return fullPath;
+    }
 
     private static string ToSegment(CodebaseKind codebase) => codebase switch
     {
