@@ -7,10 +7,10 @@ using Xunit;
 namespace S1Atlas.Storage.Tests.Migrations;
 
 /// <summary>
-/// Phase 4 migration coverage: appending indexing-v6 after
-/// <c>validated-extractions-v5</c> must
-/// preserve every Phase 3 row, add exactly one backup on an existing v4 database,
-/// add none on a brand-new database, and leave migrations 1-4's committed checksums
+/// Phase 4 migration coverage remains valid as later migrations append: the
+/// validated-extractions migration must preserve every Phase 3 row, current
+/// initialization must add exactly one backup on an existing v4 database, add
+/// none on a brand-new database, and leave migrations 1-4's committed checksums
 /// byte-for-byte unchanged.
 /// </summary>
 public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
@@ -33,7 +33,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_V4Database_AddsValidatedExtractionTablesAndOneSchema6Backup()
+    public async Task MigrateAsync_V4Database_AddsValidatedExtractionTablesAndOneSchema7Backup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await CreateVersionFourDatabaseWithRealisticAttemptAsync(cancellationToken);
@@ -42,7 +42,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], migrationVersions);
         Assert.True(await TableExistsAsync("validated_extractions", cancellationToken));
         Assert.True(await TableExistsAsync("extraction_artifacts", cancellationToken));
         Assert.True(await TableExistsAsync("extraction_validation_results", cancellationToken));
@@ -53,11 +53,15 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
             "extraction_attempts",
             "validation_source_extraction_id",
             cancellationToken));
-        Assert.Single(GetSchemaSixBackups());
+        Assert.True(await ColumnExistsAsync(
+            "symbols",
+            "body_recovery_status",
+            cancellationToken));
+        Assert.Single(GetSchemaSevenBackups());
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesSixMigrationsWithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesSevenMigrationsWithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(_databasePath, _backupDirectory, _timeProvider);
@@ -65,7 +69,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         await runner.MigrateAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], migrationVersions);
         Assert.False(Directory.Exists(_backupDirectory));
     }
 
@@ -290,11 +294,11 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         return attempt;
     }
 
-    private string[] GetSchemaSixBackups() =>
+    private string[] GetSchemaSevenBackups() =>
         Directory.Exists(_backupDirectory)
             ? Directory.GetFiles(
                 _backupDirectory,
-                "atlas-before-schema-6-*.db",
+                "atlas-before-schema-7-*.db",
                 SearchOption.TopDirectoryOnly)
             : [];
 
