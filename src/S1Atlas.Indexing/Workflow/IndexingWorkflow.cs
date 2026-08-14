@@ -171,7 +171,13 @@ public sealed class IndexingWorkflow
             {
                 var key = SymbolIdentity.Create(symbol.Codebase, symbol.Channel, symbol.Kind, symbol.QualifiedName).CanonicalKey;
                 return symbolIds.TryGetValue(key, out var symbolId)
-                    ? new IndexSourceLocationRecord(symbolId, sourceFile.SourceFileId, symbol.SourceLine!.Value, 1)
+                    ? new IndexSourceLocationRecord(
+                        symbolId,
+                        sourceFile.SourceFileId,
+                        symbol.SourceLine!.Value,
+                        symbol.SourceColumn ?? 1,
+                        symbol.SourceEndLine,
+                        symbol.SourceEndColumn)
                     : null;
             })
             .Where(location => location is not null)
