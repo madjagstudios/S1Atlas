@@ -13,4 +13,7 @@ public sealed record NormalizedSymbol(
     string Signature,
     bool IsBestEffort = false,
     string? SourceFile = null,
-    int? SourceLine = null);
+    int? SourceLine = null,
+    int? SourceColumn = null,
+    int? SourceEndLine = null,
+    int? SourceEndColumn = null);
