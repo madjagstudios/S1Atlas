@@ -418,19 +418,9 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string indexId)
     {
-        if (codebase != CodebaseKind.ScheduleI || channel != CodeChannel.Installed)
-            throw new NotSupportedException("Integrity-checked source path resolution is not yet available for this codebase/channel.");
-
-        var buildsRoot = Path.Combine(dataRoot, "builds");
-        if (!Directory.Exists(buildsRoot))
-            throw new FileNotFoundException("The Atlas build index root was not found.", buildsRoot);
-
         var candidates = new List<string>();
-        foreach (var buildRoot in Directory.EnumerateDirectories(buildsRoot))
+        foreach (var candidate in EnumerateIndexRoots(dataRoot, codebase, channel, indexId))
         {
-            if ((File.GetAttributes(buildRoot) & FileAttributes.ReparsePoint) != 0)
-                continue;
-            var candidate = Path.Combine(buildRoot, "indexes", indexId);
             if (Directory.Exists(candidate) && (File.GetAttributes(candidate) & FileAttributes.ReparsePoint) == 0)
                 candidates.Add(Path.GetFullPath(candidate));
         }
@@ -441,6 +431,37 @@ public sealed class IndexQueryService
             0 => throw new FileNotFoundException("The completed Atlas index source root was not found."),
             _ => throw new InvalidDataException("Multiple Atlas-owned source roots matched the completed index identity.")
         };
+    }
+
+    private static IEnumerable<string> EnumerateIndexRoots(
+        string dataRoot,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string indexId)
+    {
+        if (codebase == CodebaseKind.ScheduleI && channel == CodeChannel.Installed)
+        {
+            var buildsRoot = Path.Combine(dataRoot, "builds");
+            if (!Directory.Exists(buildsRoot)) yield break;
+            foreach (var buildRoot in Directory.EnumerateDirectories(buildsRoot))
+            {
+                if ((File.GetAttributes(buildRoot) & FileAttributes.ReparsePoint) != 0) continue;
+                yield return Path.Combine(buildRoot, "indexes", indexId);
+            }
+            yield break;
+        }
+
+        if (codebase is not (CodebaseKind.S1Api or CodebaseKind.S1MApi))
+            throw new NotSupportedException("Integrity-checked source path resolution is not available for this codebase/channel.");
+        var segment = codebase == CodebaseKind.S1Api ? "s1api" : "s1mapi";
+        var root = channel == CodeChannel.Installed
+            ? Path.Combine(dataRoot, "installed", segment)
+            : channel is CodeChannel.Release or CodeChannel.Preview
+                ? Path.Combine(dataRoot, "upstream", segment, "commits")
+                : throw new NotSupportedException("Integrity-checked source path resolution is not available for this codebase/channel.");
+        if (!Directory.Exists(root)) yield break;
+        foreach (var child in Directory.EnumerateDirectories(root))
+            yield return Path.Combine(child, "indexes", indexId);
     }
 
     private static string ResolveContainedSourcePath(string indexRoot, string relativePath)

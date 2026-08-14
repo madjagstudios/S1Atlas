@@ -224,6 +224,95 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Source_selects_cached_release_and_preview_api_indexes_by_explicit_channel()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var commitSha = new string('f', 40);
+        await SeedCachedApiSourceIndexAsync(
+            CodeChannel.Release,
+            commitSha,
+            new string('1', 64),
+            "cached-source-target-release",
+            "src/Demo/CachedSourceTarget.cs",
+            """
+            namespace Demo;
+
+            public sealed class CachedSourceTarget
+            {
+                public void Run()
+                {
+                    ReleaseOnly();
+                }
+            }
+            """,
+            cancellationToken);
+        await SeedCachedApiSourceIndexAsync(
+            CodeChannel.Preview,
+            commitSha,
+            new string('2', 64),
+            "cached-source-target-preview",
+            "src/Demo/CachedSourceTarget.cs",
+            """
+            namespace Demo;
+
+            public sealed class CachedSourceTarget
+            {
+                public void Run()
+                {
+                    PreviewOnly();
+                }
+            }
+            """,
+            cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+
+        using var releaseOutput = new StringWriter();
+        using var releaseError = new StringWriter();
+        var releaseExit = application.Invoke(
+            ["source", "Demo.CachedSourceTarget.Run", "--codebase", "s1api", "--channel", "release"],
+            releaseOutput,
+            releaseError,
+            cancellationToken);
+
+        using var previewOutput = new StringWriter();
+        using var previewError = new StringWriter();
+        var previewExit = application.Invoke(
+            ["source", "Demo.CachedSourceTarget.Run", "--codebase", "s1api", "--channel", "preview"],
+            previewOutput,
+            previewError,
+            cancellationToken);
+
+        Assert.Equal(0, releaseExit);
+        Assert.Equal(0, previewExit);
+        Assert.Equal(string.Empty, releaseError.ToString());
+        Assert.Equal(string.Empty, previewError.ToString());
+        Assert.Contains("ReleaseOnly();", releaseOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("PreviewOnly();", releaseOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("PreviewOnly();", previewOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("ReleaseOnly();", previewOutput.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Index_rejects_schedule_i_release_channel_with_stable_error()
+    {
+        await SaveCurrentSnapshotAsync(TestContext.Current.CancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["index", "--codebase", "schedule-i", "--channel", "release", "--json"],
+            output,
+            error,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("InvalidCodebaseChannel", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Refs_human_output_contains_both_directions_enriched_ids_evidence_and_unresolved_text()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -457,6 +546,77 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
             indexId,
             new IndexWriteSet(symbols, [], [], [], relationships),
             "2026-08-14T18:23:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedCachedApiSourceIndexAsync(
+        CodeChannel channel,
+        string commitSha,
+        string indexId,
+        string symbolId,
+        string relativePath,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        var snapshotId = "snapshot-cli-cached-source-" + channel.ToString().ToLowerInvariant();
+        var normalizedSource = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var bytes = Encoding.UTF8.GetBytes(normalizedSource);
+        var sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        var indexRoot = Path.Combine(_dataRoot, "upstream", "s1api", "commits", commitSha, "indexes", indexId);
+        var sourcePath = Path.Combine(indexRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllBytesAsync(sourcePath, bytes, cancellationToken);
+
+        await repository.CreateCodeSnapshotAsync(
+            new CodeSnapshotRecord(
+                snapshotId,
+                CodebaseKind.S1Api,
+                channel,
+                commitSha,
+                "2026-08-14T18:30:00Z"),
+            cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, "2026-08-14T18:31:00Z"),
+            cancellationToken);
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(
+                [new IndexSymbolRecord(
+                    symbolId,
+                    snapshotId,
+                    "S1Api:" + channel + ":Method:Demo.CachedSourceTarget::Run()",
+                    "Method",
+                    "Demo.CachedSourceTarget.Run",
+                    "System.Void Demo.CachedSourceTarget::Run()",
+                    false,
+                    BodyRecoveryStatus.Recovered)],
+                [new IndexSourceFileRecord("cached-source-file-" + channel.ToString().ToLowerInvariant(), snapshotId, relativePath, sha256, bytes.LongLength)],
+                [new IndexSourceLocationRecord(symbolId, "cached-source-file-" + channel.ToString().ToLowerInvariant(), 1, 1, 9, 2)],
+                [],
+                []),
+            "2026-08-14T18:32:00Z",
+            cancellationToken);
+    }
+
+    private async Task SaveCurrentSnapshotAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        await repository.SaveSnapshotAsync(
+            new EnvironmentSnapshot(
+                2,
+                new GameBuild(
+                    new string('a', 64),
+                    new string('b', 64),
+                    new string('c', 64),
+                    DateTimeOffset.Parse("2026-08-14T18:29:00Z"),
+                    true),
+                new InstallationObservation("2022.3.62", "3164500", "fixture", _root, null, null),
+                [],
+                "0.1.0-test",
+                DateTimeOffset.Parse("2026-08-14T18:29:00Z")),
             cancellationToken);
     }
 

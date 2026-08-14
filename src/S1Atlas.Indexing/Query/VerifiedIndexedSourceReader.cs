@@ -20,19 +20,8 @@ public sealed class VerifiedIndexedSourceReader
         ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedSha256);
 
-        if (codebase != CodebaseKind.ScheduleI || channel != CodeChannel.Installed)
-            throw new NotSupportedException("Integrity-checked source path resolution is not yet available for this codebase/channel.");
-
         var root = Path.GetFullPath(dataRoot);
-        var buildsRoot = Path.Combine(root, "builds");
-        if (!Directory.Exists(buildsRoot))
-            throw new FileNotFoundException("The Atlas build index root was not found.", buildsRoot);
-
-        var candidates = Directory.EnumerateDirectories(buildsRoot)
-            .Select(buildRoot => Path.Combine(buildRoot, "indexes", indexId))
-            .Where(Directory.Exists)
-            .OrderBy(path => path, StringComparer.Ordinal)
-            .ToArray();
+        var candidates = EnumerateIndexRoots(root, codebase, channel, indexId);
         if (candidates.Length == 0)
             throw new FileNotFoundException("The completed Atlas index directory was not found.", indexId);
         if (candidates.Length > 1)
@@ -51,4 +40,44 @@ public sealed class VerifiedIndexedSourceReader
 
         return await _reader.ReadVerifiedBytesAsync(sourcePath, expectedSha256, cancellationToken);
     }
+
+    private static string[] EnumerateIndexRoots(
+        string root,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string indexId)
+    {
+        IEnumerable<string> candidates = codebase switch
+        {
+            CodebaseKind.ScheduleI when channel == CodeChannel.Installed =>
+                EnumerateChildren(Path.Combine(root, "builds"), "indexes", indexId),
+            CodebaseKind.S1Api or CodebaseKind.S1MApi when channel == CodeChannel.Installed =>
+                EnumerateNested(Path.Combine(root, "installed", ToSegment(codebase)), "indexes", indexId),
+            CodebaseKind.S1Api or CodebaseKind.S1MApi when channel is CodeChannel.Release or CodeChannel.Preview =>
+                EnumerateNested(Path.Combine(root, "upstream", ToSegment(codebase), "commits"), "indexes", indexId),
+            _ => throw new NotSupportedException("Integrity-checked source path resolution is not available for this codebase/channel.")
+        };
+        return candidates.Where(Directory.Exists).OrderBy(path => path, StringComparer.Ordinal).ToArray();
+    }
+
+    private static IEnumerable<string> EnumerateChildren(string root, string indexesSegment, string indexId)
+    {
+        if (!Directory.Exists(root)) yield break;
+        foreach (var child in Directory.EnumerateDirectories(root))
+            yield return Path.Combine(child, indexesSegment, indexId);
+    }
+
+    private static IEnumerable<string> EnumerateNested(string root, string indexesSegment, string indexId)
+    {
+        if (!Directory.Exists(root)) yield break;
+        foreach (var child in Directory.EnumerateDirectories(root))
+            yield return Path.Combine(child, indexesSegment, indexId);
+    }
+
+    private static string ToSegment(CodebaseKind codebase) => codebase switch
+    {
+        CodebaseKind.S1Api => "s1api",
+        CodebaseKind.S1MApi => "s1mapi",
+        _ => throw new ArgumentOutOfRangeException(nameof(codebase))
+    };
 }

@@ -14,6 +14,25 @@ public sealed class RoslynSourceIndexer
         if (codebase == CodebaseKind.ScheduleI && channel != CodeChannel.Installed)
             throw new ArgumentException("Schedule I source can only be indexed in the Installed channel.", nameof(channel));
         var root = CSharpSyntaxTree.ParseText(source).GetCompilationUnitRoot();
+        var direct = IndexParsed(root, codebase, channel, sourceFile);
+        var normalizedSource = NormalizeDecompilerIdentifiers(source);
+        if (string.Equals(normalizedSource, source, StringComparison.Ordinal))
+            return direct;
+
+        var recovered = IndexParsed(
+            CSharpSyntaxTree.ParseText(normalizedSource).GetCompilationUnitRoot(),
+            codebase,
+            channel,
+            sourceFile);
+        return recovered.Count > direct.Count ? recovered : direct;
+    }
+
+    private static IReadOnlyList<NormalizedSymbol> IndexParsed(
+        CompilationUnitSyntax root,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string sourceFile)
+    {
         var symbols = new List<NormalizedSymbol>();
         foreach (var type in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
         {
@@ -41,6 +60,13 @@ public sealed class RoslynSourceIndexer
         }
         return symbols.OrderBy(symbol => symbol.Signature, StringComparer.Ordinal).ThenBy(symbol => symbol.Kind).ToArray();
     }
+
+    private static string NormalizeDecompilerIdentifiers(string source) =>
+        source
+            .Replace('<', '_')
+            .Replace('>', '_')
+            .Replace('|', '_')
+            .Replace('-', '_');
 
     private static void AddMember(List<NormalizedSymbol> symbols, TypeDeclarationSyntax type, string qualifiedType, MemberDeclarationSyntax member, CodebaseKind codebase, CodeChannel channel, string sourceFile)
     {

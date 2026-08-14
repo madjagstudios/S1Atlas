@@ -279,6 +279,10 @@ public sealed class CliApplication
                 sqliteRepository,
                 integrityVerifier).ResolveAsync(buildId, ct),
             new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+        var apiIndexingWorkflow = new ApiIndexingWorkflow(
+            _paths.RootDirectory,
+            sqliteRepository,
+            new IlSpyManagedDecompiler());
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
 
         var root = new RootCommand(
@@ -322,6 +326,7 @@ public sealed class CliApplication
         root.Subcommands.Add(
             IndexCommand.Create(
                 indexingWorkflow,
+                apiIndexingWorkflow,
                 repository,
                 output,
                 error,

@@ -6,6 +6,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
+using UniversalAssemblyResolver = ICSharpCode.Decompiler.Metadata.UniversalAssemblyResolver;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Indexing.Decompilation;
@@ -29,7 +30,14 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             throw new FileNotFoundException("The managed assembly was not found.", fullPath);
         }
 
-        var source = new CSharpDecompiler(fullPath, new DecompilerSettings())
+        var resolver = new UniversalAssemblyResolver(
+            fullPath,
+            throwOnError: false,
+            targetFramework: ".NETCoreApp,Version=8.0",
+            runtimePack: "Microsoft.NETCore.App",
+            PEStreamOptions.Default,
+            MetadataReaderOptions.Default);
+        var source = new CSharpDecompiler(fullPath, resolver, new DecompilerSettings())
             .DecompileWholeModuleAsString();
         cancellationToken.ThrowIfCancellationRequested();
 

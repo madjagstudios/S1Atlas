@@ -79,4 +79,33 @@ public sealed class RoslynSourceIndexerTests
 
         Assert.DoesNotContain(symbols, symbol => string.IsNullOrWhiteSpace(symbol.QualifiedName));
     }
+
+    [Fact]
+    public void Recovers_outer_type_members_when_decompiler_generated_names_are_not_csharp_identifiers()
+    {
+        var source = """
+            namespace Demo
+            {
+                public class MotelRoom
+                {
+                    private sealed class <>c
+                    {
+                        public static readonly <>c <>9;
+                        internal bool <UpdateVariables>b__4_0(AdditiveDefinition x) { throw null; }
+                    }
+                    private bool NetworkInitialize___EarlyScheduleOne.Property.MotelRoom_Assembly-CSharp.dll_Excuted;
+                }
+                public class Worker
+                {
+                    public void Run() { }
+                }
+            }
+            """;
+
+        var symbols = new RoslynSourceIndexer().Index(source, CodebaseKind.S1Api, CodeChannel.Release);
+
+        var method = Assert.Single(symbols, symbol => symbol.QualifiedName == "Demo.Worker::Run():System.Void");
+        Assert.Equal(14, method.SourceLine);
+        Assert.Equal(9, method.SourceColumn);
+    }
 }

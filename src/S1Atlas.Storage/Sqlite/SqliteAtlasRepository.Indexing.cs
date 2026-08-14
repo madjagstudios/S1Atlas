@@ -154,8 +154,7 @@ public sealed partial class SqliteAtlasRepository
             WHERE run.status = 'Completed'
               AND snapshot.codebase = $codebase
               AND snapshot.channel = $channel
-              AND (($environment IS NULL AND snapshot.environment_snapshot_id IS NULL)
-                   OR snapshot.environment_snapshot_id = $environment)
+              AND ($environment IS NULL OR snapshot.environment_snapshot_id = $environment)
             ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
             LIMIT 1;
             """;

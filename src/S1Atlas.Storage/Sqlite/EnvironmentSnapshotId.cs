@@ -6,7 +6,7 @@ using S1Atlas.Core.Environment;
 
 namespace S1Atlas.Storage.Sqlite;
 
-internal static class EnvironmentSnapshotId
+public static class EnvironmentSnapshotId
 {
     public static string Create(EnvironmentSnapshot snapshot)
     {
