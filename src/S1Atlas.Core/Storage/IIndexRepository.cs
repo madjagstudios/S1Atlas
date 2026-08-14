@@ -32,7 +32,8 @@ public sealed record IndexSymbolRecord(
     string Kind,
     string QualifiedName,
     string Signature,
-    bool IsBestEffort);
+    bool IsBestEffort,
+    BodyRecoveryStatus? BodyRecoveryStatus = null);
 
 public sealed record IndexSourceFileRecord(
     string SourceFileId,
