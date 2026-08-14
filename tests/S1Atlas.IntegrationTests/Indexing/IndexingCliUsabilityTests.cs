@@ -1,5 +1,6 @@
 using System.Text.Json;
 using S1Atlas.Cli;
+using S1Atlas.Cli.Configuration;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Storage.Sqlite;
