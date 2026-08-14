@@ -1,6 +1,10 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using S1Atlas.Cli;
 using S1Atlas.Cli.Configuration;
+using S1Atlas.Core.Builds;
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Storage.Sqlite;
@@ -87,6 +91,136 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         Assert.Equal(string.Empty, error.ToString());
         using var document = JsonDocument.Parse(output.ToString());
         Assert.Equal("InvalidLimit", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Source_human_output_contains_focused_metadata_and_defaults_to_five_lines_context()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var source = CreateSmallSource();
+        var seeded = await SeedSourceIndexAsync(source, cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(["source", "source-target"], output, error, cancellationToken);
+
+        var text = output.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.Contains("source-target", text, StringComparison.Ordinal);
+        Assert.Contains("System.Void Demo.SourceTarget::Run()", text, StringComparison.Ordinal);
+        Assert.Contains("generated/Demo.SourceTarget.cs", text, StringComparison.Ordinal);
+        Assert.Contains(seeded.Sha256, text, StringComparison.Ordinal);
+        Assert.Contains("6:1-6:22", text, StringComparison.Ordinal);
+        Assert.Contains("Recovered", text, StringComparison.Ordinal);
+        Assert.Contains("line-1", text, StringComparison.Ordinal);
+        Assert.Contains("line-11", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Source_context_zero_returns_exact_recorded_span_and_negative_context_is_stable_error()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSourceIndexAsync(CreateSmallSource(), cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+
+        using var exactOutput = new StringWriter();
+        using var exactError = new StringWriter();
+        var exactExit = application.Invoke(
+            ["source", "source-target", "--context", "0"],
+            exactOutput,
+            exactError,
+            cancellationToken);
+
+        Assert.Equal(0, exactExit);
+        Assert.Equal(string.Empty, exactError.ToString());
+        Assert.Contains("public void Run() { }", exactOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("line-5", exactOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("line-7", exactOutput.ToString(), StringComparison.Ordinal);
+
+        using var invalidOutput = new StringWriter();
+        using var invalidError = new StringWriter();
+        var invalidExit = application.Invoke(
+            ["source", "source-target", "--context", "-1", "--json"],
+            invalidOutput,
+            invalidError,
+            cancellationToken);
+
+        Assert.Equal(1, invalidExit);
+        Assert.Equal(string.Empty, invalidError.ToString());
+        using var document = JsonDocument.Parse(invalidOutput.ToString());
+        Assert.Equal("InvalidContext", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Source_file_refuses_more_than_one_mib_on_stdout_without_output()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var largeSource = "public void Run() { }\n" + new string('x', 1_048_576);
+        await SeedSourceIndexAsync(largeSource, cancellationToken, startLine: 1, endColumn: 22);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--file", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("SourceTooLargeForTerminal", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Source_output_writes_hash_verified_full_file_outside_game_root()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var source = CreateSmallSource();
+        await SeedSourceIndexAsync(source, cancellationToken);
+        var destination = Path.Combine(_root, "exports", "Demo.SourceTarget.cs");
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--file", "--output", destination],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.True(File.Exists(destination));
+        Assert.Equal(source, await File.ReadAllTextAsync(destination, cancellationToken));
+    }
+
+    [Fact]
+    public async Task Source_output_under_detected_game_root_is_rejected_without_creating_file()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var gameRoot = Path.Combine(_root, "Schedule I");
+        Directory.CreateDirectory(gameRoot);
+        await SeedSourceIndexAsync(CreateSmallSource(), cancellationToken, installationRoot: gameRoot);
+        var destination = Path.Combine(gameRoot, "Exports", "Demo.SourceTarget.cs");
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--file", "--output", destination, "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.False(File.Exists(destination));
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("ReadOnlyGameInstallation", document.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -216,6 +350,78 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
             cancellationToken);
     }
 
+    private async Task<SeededSource> SeedSourceIndexAsync(
+        string source,
+        CancellationToken cancellationToken,
+        int startLine = 6,
+        int endColumn = 22,
+        string? installationRoot = null)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-source";
+        const string indexId = "index-cli-source";
+        const string relativePath = "generated/Demo.SourceTarget.cs";
+        var bytes = Encoding.UTF8.GetBytes(source);
+        var sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        var indexRoot = Path.Combine(_dataRoot, "builds", "build-source", "indexes", indexId);
+        var sourcePath = Path.Combine(indexRoot, "generated", "Demo.SourceTarget.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllBytesAsync(sourcePath, bytes, cancellationToken);
+
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-source",
+            "2026-08-14T18:24:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(
+                [new IndexSymbolRecord(
+                    "source-target",
+                    snapshotId,
+                    "ScheduleI:Installed:Method:Demo.SourceTarget::Run()",
+                    "Method",
+                    "Demo.SourceTarget.Run",
+                    "System.Void Demo.SourceTarget::Run()",
+                    false,
+                    BodyRecoveryStatus.Recovered)],
+                [new IndexSourceFileRecord("source-file", snapshotId, relativePath, sha256, bytes.LongLength)],
+                [new IndexSourceLocationRecord("source-target", "source-file", startLine, 1, startLine, endColumn)],
+                [],
+                []),
+            "2026-08-14T18:25:00Z",
+            cancellationToken);
+
+        if (installationRoot is not null)
+        {
+            var timestamp = DateTimeOffset.Parse("2026-08-14T18:26:00Z");
+            var fullRoot = Path.GetFullPath(installationRoot);
+            await repository.SaveSnapshotAsync(
+                new EnvironmentSnapshot(
+                    2,
+                    new GameBuild("build-source", "assembly-hash", "metadata-hash", timestamp, true),
+                    new InstallationObservation(
+                        "2022.3.62",
+                        "3164500",
+                        "test-build",
+                        fullRoot,
+                        Path.Combine(fullRoot, "GameAssembly.dll"),
+                        Path.Combine(fullRoot, "Schedule I_Data", "il2cpp_data", "Metadata", "global-metadata.dat")),
+                    [],
+                    "0.1.0-test",
+                    timestamp),
+                cancellationToken);
+        }
+
+        return new SeededSource(sha256);
+    }
+
     private async Task SeedRelationshipIndexAsync(CancellationToken cancellationToken)
     {
         var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
@@ -254,10 +460,27 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
             cancellationToken);
     }
 
+    private static string CreateSmallSource() => string.Join(
+        '\n',
+        "line-1",
+        "line-2",
+        "line-3",
+        "line-4",
+        "line-5",
+        "public void Run() { }",
+        "line-7",
+        "line-8",
+        "line-9",
+        "line-10",
+        "line-11",
+        "line-12");
+
     public ValueTask DisposeAsync()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
         return ValueTask.CompletedTask;
     }
+
+    private sealed record SeededSource(string Sha256);
 }
