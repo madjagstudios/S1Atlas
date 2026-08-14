@@ -11,18 +11,13 @@ public sealed record SourceSnippetReadResult(
 
 public sealed class SourceSnippetReader
 {
-    public async Task<SourceSnippetReadResult> ReadAsync(
+    public async Task<byte[]> ReadVerifiedBytesAsync(
         string absolutePath,
         string expectedSha256,
-        IndexSourceLocationRecord location,
-        int context,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(absolutePath);
         ArgumentException.ThrowIfNullOrWhiteSpace(expectedSha256);
-        ArgumentNullException.ThrowIfNull(location);
-        if (context < 0)
-            throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
 
         var fullPath = Path.GetFullPath(absolutePath);
         if (!File.Exists(fullPath))
@@ -34,6 +29,21 @@ public sealed class SourceSnippetReader
             throw new InvalidDataException(
                 $"The indexed source file hash does not match the recorded SHA-256 for '{fullPath}'.");
 
+        return bytes;
+    }
+
+    public async Task<SourceSnippetReadResult> ReadAsync(
+        string absolutePath,
+        string expectedSha256,
+        IndexSourceLocationRecord location,
+        int context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        if (context < 0)
+            throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
+
+        var bytes = await ReadVerifiedBytesAsync(absolutePath, expectedSha256, cancellationToken);
         var text = Encoding.UTF8.GetString(bytes)
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n');
