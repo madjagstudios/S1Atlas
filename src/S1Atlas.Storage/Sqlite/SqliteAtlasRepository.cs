@@ -11,7 +11,8 @@ public sealed partial class SqliteAtlasRepository :
     IAtlasRepository,
     IToolRepository,
     IExtractionRepository,
-    IValidatedExtractionRepository
+    IValidatedExtractionRepository,
+    IIndexRepository
 {
     private readonly string _databasePath;
     private readonly SqliteMigrationRunner _migrationRunner;
