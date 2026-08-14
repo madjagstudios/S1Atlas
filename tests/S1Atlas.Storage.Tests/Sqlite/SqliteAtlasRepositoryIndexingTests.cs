@@ -53,6 +53,35 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
         await _repository.FailIndexRunAsync("index-stale", "test cleanup", DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
     }
 
+    [Fact]
+    public async Task BodyRecoveryStatus_RoundTripsForCallableSymbols_AndRemainsNullForNonCallables()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord("snapshot-body", CodebaseKind.ScheduleI, CodeChannel.Installed, "extraction-body", "2026-08-14T00:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(new IndexRunRecord("index-body", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc), cancellationToken);
+
+        var symbols = new[]
+        {
+            new IndexSymbolRecord("type", snapshot.SnapshotId, "ScheduleI:Installed:Type:Demo.Widget", "Type", "Demo.Widget", "Demo.Widget", false, null),
+            new IndexSymbolRecord("no-body", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Abstract()", "Method", "Demo.Widget.Abstract", "System.Void Demo.Widget::Abstract()", false, BodyRecoveryStatus.NoBodyByDesign),
+            new IndexSymbolRecord("recovered", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Recovered()", "Method", "Demo.Widget.Recovered", "System.Void Demo.Widget::Recovered()", false, BodyRecoveryStatus.Recovered),
+            new IndexSymbolRecord("stub", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Stub()", "Method", "Demo.Widget.Stub", "System.Void Demo.Widget::Stub()", true, BodyRecoveryStatus.StubOrUnavailable),
+            new IndexSymbolRecord("unknown", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Unknown()", "Method", "Demo.Widget.Unknown", "System.Void Demo.Widget::Unknown()", false, BodyRecoveryStatus.Unknown)
+        };
+
+        await _repository.CompleteIndexRunAsync(
+            "index-body",
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T00:01:00Z",
+            cancellationToken);
+
+        var roundTripped = await _repository.GetCompletedSymbolsAsync("index-body", cancellationToken);
+        Assert.Equal(symbols, roundTripped);
+        Assert.Null(Assert.Single(roundTripped, symbol => symbol.SymbolId == "type").BodyRecoveryStatus);
+    }
+
     public ValueTask DisposeAsync()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
