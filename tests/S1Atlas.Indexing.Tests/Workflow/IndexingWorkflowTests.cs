@@ -73,7 +73,7 @@ public sealed class IndexingWorkflowTests
                     symbol => symbol.Signature.Contains("DerivedFixture::Overload(System.Int32)", StringComparison.Ordinal)).BodyRecoveryStatus);
             Assert.Equal(
                 BodyRecoveryStatus.StubOrUnavailable,
-                Assert.Single(symbols, symbol => symbol.Signature.Contains("ThrowStyleStub", StringComparison.Ordinal)).BodyRecoveryStatus);
+                Assert.Single(symbols, symbol => symbol.Signature.Contains("FixtureRoot::GetValue", StringComparison.Ordinal)).BodyRecoveryStatus);
             Assert.Equal(
                 BodyRecoveryStatus.NoBodyByDesign,
                 Assert.Single(symbols, symbol => symbol.Signature.Contains("IFixtureContract::get_ContractValue", StringComparison.Ordinal)).BodyRecoveryStatus);
