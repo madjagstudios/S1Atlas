@@ -279,7 +279,7 @@ public sealed class CliApplication
                 sqliteRepository,
                 integrityVerifier).ResolveAsync(buildId, ct),
             new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
-        var indexQueryService = new IndexQueryService(sqliteRepository);
+        var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
 
         var root = new RootCommand(
             "Local Schedule I developer-intelligence tools.");
@@ -329,7 +329,7 @@ public sealed class CliApplication
         root.Subcommands.Add(SearchCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(TypeCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(MethodCommand.Create(indexQueryService, repository, output, error, cancellationToken));
-        root.Subcommands.Add(SourceCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(SourceCommand.Create(indexQueryService, repository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, repository, output, error, cancellationToken));
