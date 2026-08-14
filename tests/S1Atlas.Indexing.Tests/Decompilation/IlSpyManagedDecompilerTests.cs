@@ -82,7 +82,8 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.True(trivial.BodyFacts.HasPhysicalBody);
         Assert.Equal(BodyRecoveryStatus.Unknown, trivial.BodyRecoveryStatus);
 
-        var throwStub = Assert.Single(derived.Members, member => member.Name == "ThrowStyleStub");
+        var fixtureRoot = Assert.Single(result.Types, candidate => candidate.Name == "FixtureRoot");
+        var throwStub = Assert.Single(fixtureRoot.Members, member => member.Name == "GetValue");
         Assert.NotNull(throwStub.BodyFacts);
         Assert.True(throwStub.BodyFacts.HasPhysicalBody);
         Assert.True(throwStub.BodyFacts.MatchesVerifiedStubPattern);
