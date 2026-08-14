@@ -168,7 +168,8 @@ internal static class SourceCommand
         {
             var destinationPath = Path.GetFullPath(destination);
             var current = repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult();
-            if (current is not null && IsEqualToOrDescendantOf(destinationPath, current.Installation.InstallationRoot))
+            if (current?.Installation.InstallationRoot is string installationRoot &&
+                IsEqualToOrDescendantOf(destinationPath, installationRoot))
             {
                 return commandOutput.Failure(
                     1,
