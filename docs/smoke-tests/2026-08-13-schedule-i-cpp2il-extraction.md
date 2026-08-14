@@ -36,8 +36,9 @@ probes (`help`, `output-formats`) succeeded, so the run used the exact reviewed 
 ## Real extraction runs
 
 All `extract`/`extractions` commands ran fully offline. Every process-backed run
-re-verified the live inputs before and after execution; none reported
-`InputChangedDuringExtraction`, so the game inputs were stable across the smoke.
+re-verified the authoritative extraction inputs before and after execution; none
+reported `InputChangedDuringExtraction`, so `GameAssembly.dll` and
+`global-metadata.dat` remained stable across the smoke.
 
 ### Baseline
 
@@ -101,36 +102,42 @@ the primary Phase 5 replay-certification path, proven on real data.
 The normal run reused the original preferred extraction with no process and no
 validation, confirming that neither retry disturbed the preferred output.
 
-## Key finding: Cpp2IL is non-deterministic
+## Key finding: equivalent runs produced byte-divergent output
 
 The baseline, live retry, and archived replay share one recipe
 (`d3f4e552…`) yet produced three different extraction IDs
 (`1950abaf…`, `41027a02…`, `1df0ee4e…`). Because an extraction ID is
 `recipe ID + artifact-manifest digest` over `(normalized path, byte size, SHA-256)`,
-different IDs mean the reconstructed assembly **bytes** differ between runs. The live
-retry and the archived replay used byte-identical input (the archive was copied from
-that same live run) yet still diverged, so the variance is intrinsic to the tool —
-consistent with Cpp2IL emitting a fresh random module version ID (MVID) into each
-reconstructed assembly.
+the different IDs prove that reconstructed assembly bytes differed between runs. The
+live retry and archived replay used byte-identical authoritative inputs, so stock
+Cpp2IL was not byte-reproducible under the conditions observed in this smoke.
 
-**Consequence for the milestone:** byte-identical "identical-output deduplication"
-cannot be demonstrated with stock Cpp2IL on this build, because byte-identical output
-is impossible when every run randomizes module GUIDs. This is a property of the
-IL2CPP reconstruction domain, not of S1Atlas.
+Fresh module version IDs (MVIDs) are a plausible and likely contributor, but this
+smoke did not normalize the assemblies or compare every metadata record and method
+body. It therefore does not establish that MVIDs were the only difference, and it
+does not establish byte-level or behavioral equivalence among the outputs.
 
-**What is proven instead, and matters more:** the reproducibility safety net behaved
-exactly as designed for divergent output. Each divergent same-recipe run was marked
-`ValidWithWarnings`, was **not** auto-preferred, and left the operator's preferred
-extraction untouched and reusable. The divergent extractions differ only in
-non-functional metadata (MVIDs); their validated type/method/field/property/event
-counts satisfy the same policy, so they are semantically equivalent to the baseline.
-The meaningful change-detection signal in this system is the validation policy's
-statistical comparison (managed bytes and definition counts), not byte identity.
+Exact identical-output deduplication could not be demonstrated in the observed real
+runs. This is accepted as a review-approved Phase 5 limitation rather than hidden by
+rewriting or normalizing the reconstructed artifacts. Raw artifact hashes remain the
+authoritative provenance and integrity identity.
 
-The milestone criterion "live retry proves same-output deduplication" is therefore
-retired in favor of the accurate guarantee: **a same-recipe re-run that diverges is
-preserved as a distinct `ValidWithWarnings` extraction, is never auto-preferred, and
-never disturbs the current preferred output.**
+What the smoke did prove is the designed safety behavior: each divergent same-recipe
+run was preserved as a distinct `ValidWithWarnings` extraction, was not automatically
+preferred, and left the current preferred extraction untouched and reusable. Each
+output passed structural validation, but that result is not proof that method bodies
+or eventual decompiled source are identical.
+
+The accurate Phase 5 guarantee is:
+
+> A same-recipe re-run that produces different bytes is preserved as a distinct,
+> warning-bearing extraction, is never automatically preferred, and never silently
+> replaces the trusted preferred output.
+
+The next ILSpy/source-index milestone should retain raw SHA-256 identity for exact
+provenance while adding separate comparison signals, potentially including normalized
+metadata fingerprints that exclude reviewed volatile fields, per-assembly structural
+fingerprints, and per-symbol or method-body fingerprints.
 
 ## Cleanup on the real root
 
@@ -147,29 +154,39 @@ Apply behavior on disposable synthetic data is covered by the automated
 | All tests 0 failures / 0 skips | met (805) |
 | Real live `--retry` validated | met |
 | Real archived-only `--retry` certified snapshot | met (`replay_verified = 1`) |
-| Identical output deduplicated | **not applicable** — Cpp2IL non-determinism (see finding); re-characterized as divergent-output preservation |
+| Identical output deduplicated | not demonstrated — review-approved limitation; divergent-output preservation proved instead |
 | Normal extract process-free no-op | met |
 | Preferred extraction remains integrity verified | met (reused authoritatively) |
-| Game inputs unchanged during extraction | met (no `InputChangedDuringExtraction`) |
+| Authoritative extraction inputs unchanged | met (pre/post hashes passed) |
+| Full installation inventory comparison | not captured — review-approved limitation |
 | Cleanup preview safe; apply proven on disposable data | met |
 | Repository hygiene / privacy gates pass | met |
 | No proprietary / generated files tracked | met |
 
-## Limitations of this run
+## Review-approved limitations
 
 - Per-run wall-clock durations were not separately recorded; the JSON envelope carries
   no timing field.
-- A standalone before/after full game-file inventory digest was not captured; input
-  immutability rests on the pipeline's own pre/post input re-hashing, which passed.
-- The smoke created two throwaway non-preferred `ValidWithWarnings` extractions
-  (`41027a02…`, `1df0ee4e…`); cleanup never removes validated extractions, so they
-  persist until pruned manually.
+- A standalone before/after full game-file inventory digest was not captured. The
+  pipeline proved that the authoritative extraction inputs remained unchanged, but
+  this does not establish that every other file in the installation was unchanged.
+  Another Cpp2IL run is not required solely to recreate this missing observation.
+- Exact same-recipe byte deduplication was not demonstrated because the observed runs
+  produced different artifact bytes. The system's warning, non-preference, and
+  preservation behavior was demonstrated instead.
+- The smoke created two non-preferred `ValidWithWarnings` extractions
+  (`41027a02…`, `1df0ee4e…`); cleanup deliberately never removes validated
+  extractions, so they remain as historical evidence until a separately designed
+  validated-extraction deletion feature exists.
 
 ## Next milestone
 
-Phase 5 closes the validated Cpp2IL extraction milestone. The next design cycle adds
-ILSpy decompilation, normalized source/symbol metadata, and initial
-search/type/method/source commands over the preferred, integrity-verified extraction —
-always through the full integrity-verifying API. A separate, reviewed change could
-later normalize Cpp2IL MVIDs to make byte-level reproducibility achievable, but it is
-not required for search and is out of scope here.
+Phase 5 closes the validated Cpp2IL extraction milestone with the review-approved
+limitations above recorded explicitly. The next design cycle adds ILSpy decompilation,
+normalized source/symbol metadata, and initial search/type/method/source commands over
+the preferred, integrity-verified extraction — always through the full
+integrity-verifying API.
+
+Raw artifact SHA-256 identity remains the source of truth for provenance and exact
+integrity. Any future normalized metadata or source fingerprints will be separate
+comparison layers designed and reviewed in that next milestone.
