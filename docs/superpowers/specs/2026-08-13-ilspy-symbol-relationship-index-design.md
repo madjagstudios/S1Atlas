@@ -8,9 +8,15 @@
 
 ## 1. Purpose
 
-This milestone turns the trusted extraction pipeline into the first genuinely searchable S1Atlas knowledge layer.
+This milestone turns the trusted extraction pipeline into the first searchable S1Atlas knowledge layer.
 
-At completion, a human developer or coding agent should be able to ask S1Atlas where a Schedule I, S1API, or S1MAPI symbol is defined, inspect readable source, see what it contains, see useful relationships such as inheritance and callers/callees where recoverable, and distinguish what is installed now from what exists only in an upstream release or unreleased preview.
+At completion, S1Atlas should let a human developer or coding agent:
+
+- find Schedule I, S1API, and S1MAPI symbols;
+- inspect readable source;
+- inspect practical relationships such as inheritance, references, callers, and callees where recoverable;
+- distinguish current installed truth from upstream Release and Preview code;
+- prepare for S1API/S1MAPI updates without confusing unreleased code with what is installed now.
 
 The milestone indexes three codebases:
 
@@ -20,176 +26,186 @@ S1API
 S1MAPI
 ```
 
-It does not yet build the HTML portal, MCP server, agent skill, full build-diff product, or semantic/vector search.
+It does **not** yet deliver the HTML portal, MCP server, agent skill, full build-diff product, or semantic/vector search.
 
-## 2. Design Priorities
+## 2. Anti-Overengineering Rule
 
 The implementation must favor useful answers over architectural completeness.
 
-The governing rule is:
-
 > Build only what directly helps Atlas answer useful Schedule I / S1API / S1MAPI questions in this milestone.
 
-This means:
+Use:
 
 - one normalized symbol model;
 - one SQLite database;
-- generated or cached source files on disk, metadata in SQLite;
-- one pinned ILSpy decompiler adapter;
-- Roslyn only for safe parsing of upstream C# source;
-- no graph database;
-- no arbitrary upstream repository builds;
-- no background service;
-- no speculative relationship inference;
-- no generalized plugin framework for decompilers, languages, or source providers;
-- no duplicate extraction-style trust subsystem when the existing extraction authority is sufficient.
+- generated/cached source on disk, metadata in SQLite;
+- one pinned ILSpy adapter;
+- Roslyn only where upstream C# parsing needs it;
+- one simple relationship table/model;
+- existing extraction authority rather than a second extraction-style trust framework.
+
+Do not add:
+
+```text
+graph database
+general plugin/decompiler framework
+arbitrary upstream repository builds
+background service or scheduled polling
+semantic/vector search
+AI explanations
+numerical confidence scoring
+advanced control-flow analysis
+perfect MSBuild evaluation
+portal
+MCP
+agent skill
+full diff UX
+```
 
 ## 3. Scope
 
-### 3.1 Included
-
-This milestone delivers:
+### Included
 
 ```text
-ILSpy-based decompilation of the preferred validated Schedule I extraction
-readable generated C# source preserved under the Atlas data root
-normalized assemblies, namespaces, types, methods, constructors, fields, properties,
-events, parameters, and generic parameters
+ILSpy decompilation of preferred validated Schedule I output
+readable generated C# stored locally
+assemblies / namespaces / types / methods / constructors
+fields / properties / events / parameters / generic parameters
 source files and source locations
-stable snapshot-scoped symbol identities
-useful declaration, structural, method-body, and source fingerprints
-inheritance and interface relationships
-common type-reference relationships
-recoverable calls, constructor calls, and field reads/writes
-search/type/method/source/refs/callers/callees CLI commands
-installed S1API indexing
-installed S1MAPI indexing
-GitHub source snapshots for S1API and S1MAPI
-Installed / Release / Preview channels
+canonical symbol identities
+practical fingerprints
+inheritance and interfaces
+common type references
+recoverable calls / constructors / field reads-writes
+search / type / method / source / refs / callers / callees
+installed S1API and S1MAPI indexing
+S1API/S1MAPI GitHub Release and Preview snapshots
 manual upstream sync by default
-optional on-use upstream auto-checking
-upstream status command
+optional on-use upstream auto-check
+upstream status
 human and JSON output
-real Schedule I + S1API + S1MAPI smoke validation
+real Schedule I + API smoke validation
 ```
 
-### 3.2 Explicitly Deferred
-
-This milestone does not deliver:
+### Deferred
 
 ```text
-HTML portal
-MCP server
-agent skill
-semantic/vector search
-AI-generated explanations
-full build-diff UX
-automatic mod compatibility prediction
-automatic Harmony patch generation
+portal / MCP / agent skill
+semantic search
+full build-diff product
+automatic compatibility prediction
+automatic patch generation
+background polling
 advanced control-flow analysis
-perfect MSBuild/project evaluation
-building or executing upstream repositories
-background GitHub polling or scheduled jobs
-arbitrary-language indexing
-normalized rewriting of reconstructed assemblies
+normalized binary rewriting
 sophisticated rename detection
-numeric relationship-confidence scoring
-a graph database
 validated-extraction deletion
 ```
 
-## 4. Trust and Authority Model
+## 4. Authority Model
 
-S1Atlas must keep current installed truth separate from upstream update intelligence.
+### 4.1 Schedule I Authority Is a Mandatory Three-Step Resolution
 
-### 4.1 Schedule I
+A preferred-extraction pointer is **not** sufficient authority by itself.
 
-Schedule I indexing may consume only the currently preferred validated extraction for the selected build.
-
-Before indexing begins, Atlas performs a fresh existing Phase 4/5 integrity verification of that extraction. A Phase 3 candidate, failed output, retained output, non-preferred divergent retry, database row without matching filesystem evidence, or otherwise unverified extraction cannot feed the index.
-
-The index records:
+Every Schedule I index operation must resolve authority through this exact sequence:
 
 ```text
-game build ID
-preferred extraction ID
-raw extraction artifact hashes
-decompiler identity/version/settings
-index identity
+1. IValidatedExtractionRepository.GetPreferredExtractionAsync(buildId)
+2. IValidatedExtractionRepository.GetValidatedExtractionAsync(extractionId)
+3. ValidatedExtractionIntegrityVerifier.VerifyAsync(...)
 ```
 
-The existing extraction authority remains the source of truth. Indexing does not redefine extraction identity or preference.
+Only after all three succeed may the extraction feed ILSpy.
+
+Implementation must centralize this sequence behind one narrow indexing authority resolver so callers cannot accidentally stop after step 1. Do not create a broad new trust framework; one resolver is enough.
+
+The following can never feed the Schedule I symbol index:
+
+```text
+ExtractionAttemptStatus.ProcessCompleted candidate
+Failed/Canceled/Abandoned attempt output
+retained-output
+non-preferred divergent validated extraction used as implicit current truth
+preferred pointer whose validated row is missing
+validated row whose filesystem/manifests/hashes fail integrity verification
+```
+
+If the existing preferred extraction is cleared because of `PolicyInvalidated` or `IntegrityInvalidated`, the previously completed Schedule I index becomes stale and must not be presented as current truth.
 
 ### 4.2 Installed S1API and S1MAPI
 
-The locally installed binary is authoritative for what a mod can actually use in the current environment.
+The locally installed binary is authoritative for what the current mod environment can actually use.
 
 Installed API snapshots record:
 
 ```text
-codebase
-installed binary path
+persisted environment snapshot identity
+binary path
 binary SHA-256
-observed assembly/version metadata
+assembly/version metadata
 captured-at time
-matching upstream source provenance when available
+optional matched GitHub source provenance
 ```
 
-GitHub source may enrich an installed API snapshot with readable original source, comments, and locations, but it does not override facts observed in the installed binary.
+GitHub source may enrich installed API symbols with original source/comments/locations, but binary facts win when source and binary disagree.
 
-If the installed binary and matched source disagree, Atlas preserves the mismatch and keeps binary facts authoritative.
+### 4.3 Upstream Release and Preview
 
-### 4.3 Upstream S1API and S1MAPI
-
-Each API may have two additional channels:
+S1API and S1MAPI may additionally have:
 
 ```text
-Release
-Preview
+Release  = latest indexed official release/tag
+Preview  = latest indexed configured development branch, normally main
 ```
 
-`Release` represents the latest indexed official release/tag.
+These are intentionally new scope for this milestone and were explicitly approved during design discussion.
 
-`Preview` represents the latest indexed commit of the configured default development branch, normally `main`, and is always labeled unreleased/preview.
+They remain **non-authoritative update intelligence** and can never masquerade as Installed.
 
-Neither channel may masquerade as installed/current truth.
+## 5. Code Snapshots and Channels
 
-## 5. Code Snapshot Model
+Every symbol, relationship, source file, and fingerprint belongs to one immutable code snapshot.
 
-Every symbol, source file, relationship, and fingerprint belongs to one immutable `CodeSnapshot`.
-
-Representative fields:
+Representative facts:
 
 ```text
 code_snapshot_id
 codebase                 ScheduleI | S1API | S1MAPI
 channel                  Installed | Release | Preview
+environment_snapshot_id?  # Installed channel only
 captured_at_utc
 
-# Schedule I / installed provenance
 game_build_id?
 extraction_id?
 binary_sha256?
 binary_version?
 
-# upstream provenance
 repository?
 commit_sha?
 tag?
 release_version?
 default_branch?
 
-source_match             ExactCommit | ExactBinaryHash | ExactTag | VersionMatched |
-                         Unmatched | NotApplicable
+source_match             ExactCommit | ExactBinaryHash | ExactTag |
+                         VersionMatched | Unmatched | NotApplicable
 ```
 
-The exact schema may use normalized supporting tables where that makes queries clearer, but the public domain model should remain simple.
+Channel validity is constrained:
 
-A code snapshot is immutable after successful indexing. A new game extraction, installed API binary, release commit, or preview commit creates or selects another snapshot; it does not edit the historical snapshot in place.
+```text
+ScheduleI -> Installed only
+S1API     -> Installed | Release | Preview
+S1MAPI    -> Installed | Release | Preview
+```
 
-## 6. Channels and Default Query Semantics
+A `ScheduleI / Preview` snapshot is invalid.
 
-Normal queries default to what is actually installed and usable now:
+Installed Schedule I, S1API, and S1MAPI snapshots may resolve cross-codebase relationships only when they share the same persisted environment snapshot identity.
+
+## 6. Default Query Semantics
+
+Normal queries search only what is installed/current:
 
 ```text
 Schedule I / Installed
@@ -197,183 +213,139 @@ S1API / Installed
 S1MAPI / Installed
 ```
 
-A normal query does not silently mix future release or preview code into current results.
-
 Example:
 
 ```text
 s1atlas search Dealer
 ```
 
-searches current installed truth.
-
-Users may explicitly request upstream channels:
+Release/Preview must be explicitly selected:
 
 ```text
 s1atlas search Dealer --channel release
 s1atlas search Dealer --channel preview
 s1atlas search Dealer --channel all
-
-s1atlas search Dealer --codebase schedule-i
-s1atlas search Dealer --codebase s1api
-s1atlas search Dealer --codebase s1mapi
-
 s1atlas search Dealer --codebase s1api --channel preview
 ```
 
-When upstream data is shown, human and JSON output must preserve the channel and provenance so agents cannot confuse unreleased code with installed API availability.
+Human and JSON output always include codebase/channel provenance when non-installed data is shown.
 
 ## 7. ILSpy Integration
 
-### 7.1 Approach
+S1Atlas uses a pinned stable `ICSharpCode.Decompiler` package behind one S1Atlas-owned adapter.
 
-S1Atlas uses the `ICSharpCode.Decompiler` library directly behind an S1Atlas-owned adapter.
+The adapter:
 
-The package version is pinned to an exact reviewed stable release compatible with the .NET 8 S1Atlas solution. The selected version and relevant decompiler settings become index provenance. Upgrades are explicit reviewed changes rather than floating dependencies.
+- consumes only verified authoritative binary inputs;
+- generates readable C#;
+- exposes metadata/type/method facts needed for indexing;
+- does not leak ILSpy-specific types into Core/Storage/CLI;
+- does not use `Assembly.Load` or `AssemblyLoadContext` on reconstructed game assemblies.
 
-The adapter isolates ILSpy-specific types from Core, Storage, CLI, and future MCP/Docs layers.
+Generated source is for humans and source locations. Binary relationships should come from metadata/recovered IL where available, not from scraping formatted C#.
 
-Representative boundary:
+`ILSpyX` is not required in this milestone if doing so would force an unnecessary runtime upgrade.
 
-```text
-S1Atlas-owned IDecompilerAdapter
-        ↓
-ICSharpCode.Decompiler implementation
-```
+## 8. On-Disk Artifact Layout
 
-S1Atlas does not require ILSpyX or a .NET runtime upgrade solely for analyzer conveniences in this milestone.
-
-### 7.2 Why Embedded Library Instead of `ilspycmd`
-
-An embedded adapter gives Atlas direct access to metadata/type-system and recovered method information while also generating C# source. An external console process would make source generation easy but would force Atlas to reconstruct semantic relationships by parsing console-generated text.
-
-Generated C# is a human/source artifact. Relationship facts should come from resolved metadata or recovered method structures whenever possible, not from scraping formatted source text.
-
-### 7.3 Assembly Safety
-
-Reconstructed Schedule I assemblies are data inputs. Atlas must not execute them or load them into the runtime through `Assembly.Load`/`AssemblyLoadContext` merely to inspect them.
-
-The decompiler adapter uses ILSpy metadata/decompiler facilities for analysis.
-
-## 8. Generated Source
-
-Readable Schedule I source is written outside SQLite beneath the Atlas data root.
-
-Representative layout:
+### Schedule I
 
 ```text
 %LOCALAPPDATA%\S1Atlas\
   builds\<build-id>\
     indexes\<index-id>\
-      source\
-        schedule-i\
-          ...
+      source\schedule-i\...
       index-manifest.json
       complete.marker
 ```
 
-Exact folder names may be adjusted during implementation to follow existing `AtlasPaths` conventions.
+### Installed APIs
 
-SQLite stores source metadata and locations rather than complete source text blobs.
-
-Each generated source file records:
+Installed API indexes are not game-build-owned and therefore have their own binary-hash roots:
 
 ```text
-source_file_id
-code_snapshot_id
-origin = GeneratedDecompilation
-relative_path
-sha256
-language = CSharp
+%LOCALAPPDATA%\S1Atlas\
+  installed\
+    s1api\<binary-sha256>\indexes\<index-id>\source\...
+    s1mapi\<binary-sha256>\indexes\<index-id>\source\...
 ```
 
-Generated source is local proprietary-derived content and remains excluded from Git and CI artifacts.
-
-## 9. Upstream GitHub Source Model
-
-### 9.1 Immutable Commit Cache
-
-S1API and S1MAPI upstream source is cached by exact Git commit SHA.
-
-Representative layout:
+### Upstream source cache
 
 ```text
-upstream\
-  s1api\
-    commits\<sha>\source\...
-  s1mapi\
-    commits\<sha>\source\...
+%LOCALAPPDATA%\S1Atlas\
+  upstream\
+    s1api\commits\<commit-sha>\source\...
+    s1mapi\commits\<commit-sha>\source\...
 ```
 
-A commit snapshot records repository identity, commit SHA, branch/tag/release labels, retrieval time, and a file manifest with hashes.
+`complete.marker` is intentionally runtime-only and remains covered by the repository hygiene never-track rule.
 
-If Release and Preview happen to point to the same commit, Atlas stores one immutable commit snapshot and lets both channel records reference it.
+SQLite stores metadata and source locations rather than whole source blobs.
 
-### 9.2 Upstream Repositories Are Untrusted Input
+## 9. Upstream GitHub Source
 
-Atlas may read source but does not automatically execute it.
+### 9.1 Trust Model
 
-Upstream ingestion must not run:
+Upstream source is untrusted enrichment input.
+
+Atlas may fetch repository metadata/source, but must not automatically:
 
 ```text
-dotnet build
-MSBuild
-repository scripts
-source generators
-repository tests
-arbitrary package restore
-arbitrary executable content
+run dotnet build
+run MSBuild project evaluation
+restore arbitrary packages
+execute repository scripts
+execute source generators
+run repository tests
+execute downloaded binaries
 ```
 
-Project and solution files may be parsed as data where useful. Atlas does not promise perfect MSBuild conditional evaluation.
+### 9.2 Commit SHA Semantics
+
+A cached upstream snapshot is keyed by the exact commit SHA reported by GitHub and Atlas hashes every cached file itself.
+
+Unless implementation explicitly uses Git object transport and independently verifies object hashes, Atlas does **not** claim independent cryptographic verification of Git's commit/tree object graph. The provenance claim is:
+
+```text
+GitHub reported commit <sha>
+Atlas fetched source for that snapshot
+Atlas independently SHA-256 hashed the cached file bytes
+```
+
+That trust level is acceptable because Release/Preview are non-authoritative enrichment.
 
 ### 9.3 Source Parsing
 
-Roslyn is used only as needed to parse C# source safely.
+Roslyn parses upstream C# without building the repository.
 
-For upstream Release/Preview source, Atlas aims to recover:
+A lightweight in-memory `CSharpCompilation` may be used when it materially improves symbol/type binding, but it must be constructed only from cached source plus explicitly trusted framework/reference assemblies. It must not evaluate project files, restore packages, or execute repository code.
 
-```text
-declarations
-namespaces/types/members
-comments/documentation where useful
-written attributes
-simple type references
-syntactically evident calls and accesses when they can be bound safely to the local snapshot
-source locations
-```
+If semantic binding is unavailable, source relationships remain unresolved textual evidence rather than guessed targets.
 
-Atlas does not need to construct a perfect compilable solution for Release/Preview indexing.
+## 10. Matching Installed APIs to GitHub Source
 
-When a target cannot be confidently resolved, the relationship remains unresolved with textual target evidence rather than being guessed.
-
-## 10. Matching Installed API Binaries to GitHub Source
-
-Installed source matching is conservative, strongest evidence first:
+Strongest evidence wins:
 
 ```text
-1. exact embedded/source commit metadata when available
-2. exact produced binary/package hash mapped to an upstream commit/release
+1. exact embedded/source commit metadata
+2. exact binary/package hash mapped to upstream provenance
 3. exact reviewed tag/release association
 4. semantic version/tag match
 5. unmatched
 ```
 
-The recorded `source_match` tells users and agents how strong the association is.
+A version match is useful but not cryptographic proof.
 
-A version-only match is useful enrichment but is not represented as cryptographic proof.
+Binary facts remain authoritative.
 
-## 11. Upstream Network Policy
+## 11. Network Policy
 
-This is a public-tool design. S1Atlas must not surprise users with background network activity.
+S1Atlas is intended to become a public tool, so network behavior must be explicit.
 
-### 11.1 Default
+### Default
 
-Automatic GitHub checks are disabled by default.
-
-Normal commands use installed data and whatever upstream snapshots are already cached.
-
-Explicit sync commands perform network access:
+No automatic GitHub traffic.
 
 ```text
 s1atlas upstream sync
@@ -381,60 +353,36 @@ s1atlas upstream sync s1api
 s1atlas upstream sync s1mapi
 ```
 
-### 11.2 Optional Auto-Check
+perform explicit network access.
 
-Users may opt into on-use automatic refresh:
+### Optional Auto-Check
+
+Users may opt in:
 
 ```text
 upstream.autoCheck = true
 upstream.checkInterval = 24h
 ```
 
-The exact configuration storage format will follow existing S1Atlas configuration conventions.
+Auto-check happens only while Atlas is already running a relevant command and the freshness interval has expired.
 
-Auto-check means only:
+It does not create a daemon, scheduled task, service, startup process, timer, or continuous poller.
 
-- when Atlas is already executing a relevant scan/index/upstream operation;
-- if the last successful/attempted check is older than the configured interval;
-- perform a lightweight upstream metadata check;
-- fetch immutable new snapshots only when upstream refs changed.
+GitHub failure never breaks cached/local queries.
 
-It does **not** mean:
-
-```text
-background daemon
-scheduled task
-service
-startup process
-six-hour timer
-continuous polling
-```
-
-If GitHub is unavailable, Atlas keeps using cached/local data and reports upstream freshness truthfully.
-
-### 11.3 Status
+### Status
 
 ```text
 s1atlas upstream status
 ```
 
-shows for each API:
-
-```text
-installed version/hash
-installed-source match state
-latest cached release/tag + commit
-latest cached preview branch + commit
-last checked time
-whether auto-check is enabled
-whether cached upstream information may be stale
-```
+shows installed version/hash, source-match state, cached release/preview commits, last-check time, stale state, and auto-check configuration.
 
 ## 12. Normalized Symbol Model
 
-One normalized model serves Schedule I, S1API, and S1MAPI.
+One symbol model serves all codebases.
 
-Symbol kinds:
+Kinds:
 
 ```text
 Assembly
@@ -449,7 +397,7 @@ Parameter
 GenericParameter
 ```
 
-Common symbol facts include:
+Common fields include:
 
 ```text
 symbol_instance_id
@@ -474,77 +422,89 @@ metadata_token?
 source_location_id?
 ```
 
-Not every field applies to every symbol kind. The storage schema should favor a simple central `symbols` representation plus only the supporting tables that materially improve correctness or querying.
+Use one central symbols table unless focused implementation tests show a concrete reason to split it.
 
-Do not create a large table-per-symbol-kind hierarchy unless implementation demonstrates a concrete need.
+## 13. Canonical Symbol Identity
 
-## 13. Symbol Identity
+### 13.1 Shared Renderer Is Mandatory
 
-### 13.1 Snapshot-Scoped Identity
+ILSpy metadata and Roslyn source must not each invent their own signature strings.
 
-`symbol_instance_id` identifies one exact logical symbol inside one exact `CodeSnapshot`.
+Both frontends feed a shared S1Atlas normalized type/signature model into one canonical-signature renderer.
 
-Conceptually:
-
-```text
-hash(code_snapshot_id + canonical_symbol_key)
-```
-
-### 13.2 Canonical Key
-
-The canonical key includes enough normalized signature detail to uniquely identify overloads and generic/member shapes inside a snapshot.
-
-Examples:
+The renderer defines one representation for:
 
 ```text
-ScheduleOne.Economy.Dealer
-ScheduleOne.Economy.Dealer::AddProduct(Product,int)
-ScheduleOne.Economy.Dealer::_inventory
+CLR built-in types
+namespace qualification
+nested types
+generic arity and generic arguments
+arrays and ranks
+pointer types
+nullable annotations where semantically known
+ref / out / in modifiers
+tuples
+constructors
+method overload parameters
 ```
 
-Constructors, ref/out/in parameters, arrays, nested types, generic arity, and overload-significant details must be represented deterministically.
+Example goal:
+
+```text
+System.Int32, not sometimes "int" and sometimes "System.Int32"
+```
+
+`symbol_instance_id` is conceptually:
+
+```text
+hash(code_snapshot_id + canonical_key)
+```
+
+### 13.2 Upstream Resolution Limit
+
+Source-only Release/Preview parsing cannot always resolve a type to the same semantic identity as metadata-derived installed binaries.
+
+When required type identities are unresolved:
+
+- the source symbol is still indexable;
+- its source-local key remains deterministic within that snapshot;
+- Atlas must not claim byte-identical cross-frontend canonical identity;
+- cross-channel "same symbol" comparison uses only keys whose normalized type references are sufficiently resolved.
+
+This avoids false equivalence while keeping upstream browsing useful.
 
 ### 13.3 Lineage Key
 
-A coarser lineage key may be recorded to help later diffing, for example:
+A coarser lineage key such as:
 
 ```text
 ScheduleOne.Economy.Dealer::AddProduct
 ```
 
-Lineage is comparison assistance only. It is not authoritative identity and does not need sophisticated rename detection in this milestone.
+may support later diffing, but is not authoritative identity and does not require sophisticated rename detection now.
 
-## 14. Source Locations
+## 14. Source Files and Locations
 
-A source location points at an Atlas-owned generated source file or immutable cached upstream source file.
-
-Representative facts:
+Each source file records:
 
 ```text
 source_file_id
-start_line
-start_column
-end_line
-end_column
+code_snapshot_id
+origin                  GeneratedDecompilation | GitHubSource
+relative_path
+sha256
+language
 ```
 
-Origins:
+Locations record line/column ranges.
 
-```text
-GeneratedDecompilation
-GitHubSource
-```
-
-The `source` command must include provenance in human and JSON output.
-
-For example:
+`s1atlas source` includes provenance, e.g.:
 
 ```text
 Schedule I — Installed
 Build: <build-id>
 Extraction: <extraction-id>
-Decompiler: <pinned version>
-Source: generated decompilation
+Decompiler: <version>
 ```
 
 or:
@@ -552,14 +512,11 @@ or:
 ```text
 S1API — Preview / Unreleased
 Commit: <sha>
-Source: cached GitHub snapshot
 ```
 
 ## 15. Relationship Model
 
-Relationships are stored separately from symbols in one simple relationship model.
-
-Representative fields:
+Use one simple relationship model:
 
 ```text
 relationship_id
@@ -573,7 +530,7 @@ resolved
 source_location_id?
 ```
 
-Initial relationship kinds are deliberately limited to useful mod-development questions:
+Initial kinds:
 
 ```text
 Inherits
@@ -589,7 +546,7 @@ ReadsField
 WritesField
 ```
 
-Initial evidence kinds:
+Evidence:
 
 ```text
 Metadata
@@ -597,90 +554,86 @@ RecoveredIL
 UpstreamSource
 ```
 
-No numerical confidence model is required.
+No numerical confidence score.
 
-A relationship is either resolved to an indexed target or remains unresolved with textual target evidence. Atlas must not invent a target to improve coverage statistics.
+Resolved targets must be exact. Unresolved targets retain textual evidence.
 
-## 16. Cross-Codebase Relationships
+Preview/Release symbols must not silently bind to Installed symbols because names happen to match.
 
-Installed Schedule I, S1API, and S1MAPI snapshots may resolve relationships to one another when the target identity is unambiguous and the participating snapshots represent the same current environment.
+## 16. Fingerprints
 
-Upstream Release/Preview relationships remain within their explicit source snapshot/channel unless a relationship to an external installed dependency is represented as unresolved textual evidence.
+Raw artifact SHA-256 remains the exact provenance/integrity identity.
 
-Atlas must not silently bind a Preview symbol to an Installed symbol merely because names happen to match.
-
-## 17. Fingerprints
-
-Raw extraction/package hashes remain authoritative provenance. Normalized fingerprints are additional comparison signals, not replacement identity.
-
-Useful layers:
+Normalized comparison layers may include:
 
 ```text
-RawArtifact
 Declaration
 Structural
 MethodBody
 Source
 ```
 
-### RawArtifact
+### Stability Goal
 
-Existing SHA-256 of exact binary/source artifact bytes.
+Declaration/Structural/MethodBody fingerprints should be stable across re-extractions when the only differences are volatile/non-semantic metadata such as MVIDs.
 
-### Declaration
+They must deliberately exclude reviewed volatile fields that do not represent the normalized declaration or behavior being fingerprinted.
 
-Normalized symbol signature.
+This is a **goal to measure**, not an assumption.
 
-### Structural
+If Cpp2IL also changes member ordering, names, recovered body structure, or other meaningful/unstable content, normalized fingerprints may still differ. Atlas reports that rather than forcing equality.
 
-Normalized member/type shape useful for detecting declaration changes.
+### Required Real Measurement
 
-### MethodBody
+The first implementation capability smoke should compare normalized fingerprints across the already-existing same-recipe divergent validated Schedule I outputs created during Phase 5, where available locally.
 
-A deterministic normalized representation of recovered method behavior where ILSpy exposes enough information to compute one reliably.
-
-If useful recovered behavior is unavailable, the fingerprint is absent rather than guessed.
-
-### Source
-
-Normalized generated/upstream C# source for human-oriented source comparison.
-
-The Phase 5 Cpp2IL nondeterminism finding is handled by keeping raw identity exact while using normalized fingerprints only as separate signals.
-
-## 18. Index Lifecycle
-
-Indexing deliberately reuses the existing extraction trust boundary rather than creating another multi-phase promotion framework.
-
-High-level lifecycle:
+That measurement should report:
 
 ```text
-trusted code snapshot input
-        ↓
-index attempt
-        ↓
-decompile / parse
-        ↓
-write generated source to temporary Atlas-owned location
-        ↓
-write symbols/relationships in a SQLite transaction
-        ↓
-validate basic integrity
-        ↓
-promote source directory and mark index complete
+raw artifact equality rate
+normalized declaration fingerprint equality rate
+normalized structural fingerprint equality rate
+method-body fingerprint availability/equality rate
+source fingerprint equality rate
 ```
 
-If an index attempt fails, it never becomes queryable and the previous completed index remains usable.
+No new Cpp2IL run is required solely to perform this comparison if the existing validated outputs remain available.
 
-A changed preferred Schedule I extraction, installed API binary hash, or upstream commit makes only the affected snapshot stale/new. Atlas does not reindex unrelated snapshots without reason.
+## 17. Index Lifecycle
 
-## 19. Minimal Persistence Groups
+Keep indexing simple:
 
-The design should start with approximately these logical persistence groups:
+```text
+trusted input
+   ↓
+index attempt
+   ↓
+decompile / parse
+   ↓
+write source to Atlas-owned staging
+   ↓
+write symbols/relationships inside SQLite transaction
+   ↓
+validate basic referential/source integrity
+   ↓
+promote source + mark index complete
+```
+
+A failed attempt never becomes queryable and never replaces the previous completed index.
+
+No separate preference policy, validation-policy engine, promotion journal family, or quarantine framework is added unless a real failure mode proves it necessary.
+
+## 18. Persistence
+
+Append **migration 6** only. Migrations 1–5 remain byte-for-byte unchanged.
+
+Start with the minimum logical groups needed:
 
 ```text
 code_snapshots
 index_runs
-assemblies / namespaces / symbols / parameters as needed
+symbols
+parameters                  # only if materially cleaner than symbols-only
 source_files
 source_locations
 relationships
@@ -690,386 +643,323 @@ upstream_snapshots
 upstream_state
 ```
 
-These are logical groups, not a requirement to create exactly one table per line.
+The implementation must validate against the **shipped code/schema**, not an older design document description.
 
-The implementation should prefer the smallest schema that preserves constraints and supports the required queries.
+## 19. Index Validation
 
-One central symbols table and one relationships table are preferred unless focused tests demonstrate that a different split materially simplifies correctness.
-
-## 20. Index Validation
-
-A candidate index becomes queryable only after basic validation succeeds.
-
-Required checks include:
+A completed index requires:
 
 ### Authority
 
 ```text
-Schedule I input is the preferred validated extraction
-preferred extraction still passes full integrity verification
-installed API binary hashes still match the indexed observation
-cached upstream commit/file manifest still matches its immutable snapshot
+Schedule I preferred pointer resolves
+validated extraction row exists
+fresh ValidatedExtractionIntegrityVerifier result is Valid
+installed API binary hashes still match the same environment observation
+cached upstream file hashes still match Atlas cache manifests
+channel/codebase combination is valid
 ```
 
 ### Source
 
 ```text
-all generated/cached source paths remain under Atlas-owned roots
-no reparse-point/path traversal
-recorded source hashes match
-recorded source locations resolve within their source files
+paths stay under Atlas-owned roots
+no reparse/path traversal
+source hashes match
+source locations stay within files
 ```
 
 ### Symbols
 
 ```text
-all symbols belong to a known code snapshot
-parent/declaring symbol references resolve
-canonical keys are unique where uniqueness is required
-parameter ordinals are valid
-assembly/namespace ownership is internally consistent
+snapshot ownership valid
+parent/declaring references resolve
+canonical keys unique where required
+parameter ordinals valid
 ```
 
 ### Relationships
 
 ```text
-all source symbol IDs exist
-resolved target IDs exist
-resolved targets belong to an allowed snapshot relationship context
-unresolved relationships retain textual evidence
+source symbols exist
+resolved targets exist
+cross-snapshot target context is allowed
+unresolved edges retain target text
 ```
 
-### Counts
+Expected installed snapshots must contain useful nonzero types/methods.
 
-Expected installed codebases should contain nonzero types and methods. Major unexplained collapses are reported and may block promotion when they indicate an obviously unusable index.
+Do not add a configurable validation-policy engine in this milestone.
 
-This milestone does not add a generalized configurable validation-policy engine unless implementation discovers a concrete requirement for one.
+## 20. CLI
 
-## 21. Query and CLI Surface
-
-### 21.1 Index
+### Index
 
 ```text
 s1atlas index
 s1atlas index --force
 ```
 
-Normal index behavior:
+`index`:
 
-1. resolve the preferred validated Schedule I extraction;
-2. verify it;
-3. index Schedule I if the exact required index is missing/stale;
-4. index installed S1API/S1MAPI when present;
-5. attach/use cached verified upstream source where appropriate;
-6. index cached Release/Preview commits when needed;
-7. perform no GitHub traffic unless the user explicitly synced or opted into on-use auto-checking.
+1. resolves current environment;
+2. resolves and freshly verifies Schedule I authority through the mandatory three-step sequence;
+3. indexes Schedule I when needed;
+4. indexes installed S1API/S1MAPI when present;
+5. indexes already-cached Release/Preview snapshots when needed;
+6. performs no GitHub traffic unless explicitly synced or auto-check was enabled.
 
-`--force` rebuilds from the same trusted inputs; it never bypasses extraction integrity or preference rules.
+`--force` rebuilds the same trusted inputs; it does not bypass authority checks.
 
-### 21.2 Search
+### Search and Symbol Commands
 
 ```text
 s1atlas search <query> [--codebase ...] [--channel ...] [--json]
-```
-
-Ranking should remain simple and deterministic:
-
-```text
-exact symbol name
-exact qualified-name segment
-prefix
-substring
-canonical signature
-namespace
-```
-
-No embeddings are required.
-
-### 21.3 Type
-
-```text
 s1atlas type <symbol> [--codebase ...] [--channel ...] [--json]
-```
-
-Returns type provenance, declaration, base/interface relationships, fields, properties, events, methods, and source location.
-
-### 21.4 Method
-
-```text
 s1atlas method <symbol> [--codebase ...] [--channel ...] [--json]
-```
-
-Returns method provenance, signature, parameters, source location, fingerprints where available, and relationship summaries.
-
-Ambiguous method names return candidates rather than guessing.
-
-### 21.5 Source
-
-```text
 s1atlas source <symbol> [--codebase ...] [--channel ...] [--json]
 ```
 
-Returns the relevant source slice and provenance.
+Search ranking stays simple: exact name, qualified segment, prefix, substring, canonical signature, namespace.
 
-### 21.6 Relationships
+Ambiguous symbol names return candidates rather than guessing.
+
+### Relationship Commands
 
 ```text
-s1atlas refs <symbol> [--json]
-s1atlas callers <symbol> [--json]
-s1atlas callees <symbol> [--json]
+s1atlas refs <symbol> [--codebase ...] [--channel ...] [--json]
+s1atlas callers <symbol> [--codebase ...] [--channel ...] [--json]
+s1atlas callees <symbol> [--codebase ...] [--channel ...] [--json]
 ```
 
-`refs` groups useful structural/type/behavioral relationships.
+The same codebase/channel disambiguation applies to relationship queries.
 
-`callers` and `callees` include evidence type and unresolved status where applicable.
-
-## 22. Missing or Incomplete Recovered Behavior
-
-Cpp2IL/ILSpy may not recover equally useful method bodies for every Schedule I method.
-
-S1Atlas must measure and report this instead of assuming completeness.
-
-If a method has no useful recoverable body:
+### Upstream
 
 ```text
-its declaration remains searchable
-its generated source may still exist
+s1atlas upstream status
+s1atlas upstream sync
+s1atlas upstream sync s1api
+s1atlas upstream sync s1mapi
+```
+
+## 21. Missing Recovered Behavior
+
+Cpp2IL/ILSpy may not recover useful method bodies for every method.
+
+If a body is not useful:
+
+```text
+declaration remains searchable
 metadata relationships remain available
 behavioral relationships may be absent
 method-body fingerprint may be absent
 ```
 
-No inferred caller/callee edges are invented to fill gaps.
+Atlas reports coverage rather than inventing caller/callee edges.
 
-A real capability smoke in the first implementation phase should quantify how many representative methods expose useful recoverable behavior before later relationship work is considered complete.
-
-## 23. Installed API Missing State
-
-S1API and S1MAPI are independently optional installed dependencies.
-
-If one is not installed:
-
-- current/Installed queries report it as unavailable;
-- Schedule I and the other installed API remain indexable;
-- cached Release/Preview upstream snapshots may still be browsed when the user explicitly selects those channels;
-- Atlas never implies that an upstream-only API is locally available.
-
-## 24. Failure Behavior
-
-Failures are fail-closed but simple.
-
-Examples:
+## 22. Failure Behavior
 
 ```text
-preferred extraction fails integrity -> Schedule I indexing stops; prior complete index remains
-ILSpy cannot decompile a required assembly -> new index fails; prior complete index remains
-source file/hash changes during indexing -> new index fails
-upstream GitHub unavailable -> cached/local indexing continues; status reports stale/unavailable
-Release/Preview source contains unresolved dependency -> preserve unresolved relationship; do not fail entire snapshot solely for that
-SQLite transaction fails -> no completed index is exposed
+preferred extraction integrity failure
+  -> Schedule I reindex stops; prior complete index remains historical, not current
+
+ILSpy required-source failure
+  -> new index fails; prior completed index stays usable where still authoritative
+
+GitHub unavailable
+  -> cached/local queries continue; upstream status reports stale/unavailable
+
+upstream unresolved dependency
+  -> unresolved relationship retained; snapshot need not fail solely for that
+
+SQLite failure
+  -> no completed index exposed
 ```
 
-Normal human output does not expose raw stack traces.
+Normal human output contains no raw stack traces.
 
-## 25. Repository and Privacy Rules
+## 23. Privacy and Repository Hygiene
 
-Schedule I reconstructed assemblies and generated decompiled C# remain local proprietary-derived artifacts and must never enter Git or CI artifacts.
+Schedule I reconstructed assemblies and generated C# remain local and must never enter Git or CI artifacts.
 
-The existing repository hygiene gate is extended only as needed for new index/source output paths.
+Installed API decompilation and upstream runtime caches are also runtime data, not vendored project source.
 
-Public S1API/S1MAPI source snapshots are still runtime/cache data and are not vendored wholesale into the S1Atlas repository by normal indexing.
+Extend the existing hygiene gate only for the new runtime path/file patterns actually introduced.
 
-Tests use source-built fixtures or small authored test source, not proprietary Schedule I files.
+## 24. Testing
 
-## 26. Testing Strategy
-
-### 26.1 Unit Tests
-
-Cover S1Atlas-owned behavior:
+### Unit
 
 ```text
-snapshot/channel rules
-canonical symbol keys
+channel/codebase validity
+canonical type/signature renderer
 symbol IDs
 fingerprints
 search ranking
-relationship resolution rules
+relationship resolution
 Installed/Release/Preview isolation
-upstream freshness/config logic
-source path safety
-validation rules
+environment grouping
+upstream freshness logic
+path safety
 ```
 
-### 26.2 Integration Tests
+### Integration
 
-Use fixture assemblies and authored C# repositories/snapshots to verify:
+Use source-built fixture assemblies and authored C# source snapshots to verify:
 
 ```text
-ILSpy decompilation adapter
+ILSpy adapter
+Roslyn source frontend
+shared canonical renderer
 source generation
-symbol normalization
-SQLite persistence
-query commands
+SQLite migration 6/persistence
+query CLI
 relationship indexing
-source locations
-upstream cache and manual sync seams
+upstream cache seams
 no-build/no-execution upstream ingestion
-failed index preserves prior completed index
+failed index preserves completed index
 ```
 
-CI does not require the real Schedule I installation and does not need network access.
+CI remains network-free and uses no Schedule I files.
 
-### 26.3 Real Smoke
-
-On the operator's Windows machine:
+### Real Windows Smoke
 
 ```text
-index preferred Schedule I extraction
-index installed S1API when present
-index installed S1MAPI when present
-sync/index S1API/S1MAPI Release and Preview snapshots
-run representative search/type/method/source/refs/callers/callees queries
-inspect representative game systems and API surfaces
-verify source locations resolve
-measure relationship/body recovery coverage
-prove Preview/Release cannot masquerade as Installed
+index preferred verified Schedule I extraction
+index installed S1API/S1MAPI when present
+sync/index Release and Preview snapshots
+run representative queries
+verify source locations
+measure method-body/caller coverage
+measure normalized fingerprint stability across existing divergent same-recipe outputs
+prove Release/Preview cannot masquerade as Installed
 prove game files remain untouched
 prove no generated/proprietary output is tracked
 ```
 
-If an installed dependency is absent in the reference environment, that absence is recorded; upstream indexing for it may still be tested separately.
+## 25. Implementation Sequence
 
-## 27. Implementation Sequence
+This is one milestone with five internal implementation phases.
 
-This is one milestone with five implementation phases, not five separate product destinations.
-
-### Phase 1 — Index Authority and ILSpy Capability
-
-Deliver:
+### Phase 1 — Authority + ILSpy Capability
 
 ```text
-pinned ICSharpCode.Decompiler dependency
-ILSpy adapter boundary
-preferred-extraction authority check
+central preferred-verified extraction resolver
+pinned ICSharpCode.Decompiler
 safe generated-source layout
 fixture tests
-real Schedule I decompilation capability smoke
-measurement of recoverable method-body usefulness
+real decompilation capability smoke
+method-body recovery measurement
+fingerprint stability measurement on existing divergent outputs
 ```
 
-### Phase 2 — Normalized Symbols and Persistence
-
-Deliver:
+### Phase 2 — Symbols + Persistence
 
 ```text
-code snapshots
-index runs
-assemblies/namespaces/symbols/parameters
+migration 6
+code snapshots/index runs
+shared canonical type/signature renderer
+symbols/parameters
 source files/locations
-canonical IDs
 fingerprints
-atomic completed-index behavior
+completed-index lifecycle
 ```
 
-### Phase 3 — Relationships and Query CLI
-
-Deliver:
+### Phase 3 — Relationships + Query CLI
 
 ```text
 inheritance/interfaces
 type references
-calls/constructs/field reads/writes where recoverable
+calls/constructs/field reads/writes
 search/type/method/source/refs/callers/callees
-human + JSON output
+human + JSON
 ```
 
 ### Phase 4 — S1API/S1MAPI Upstream Intelligence
 
-Deliver:
-
 ```text
-installed API indexing
-configured upstream repositories
-immutable commit cache
-Installed/Release/Preview channel handling
+installed API indexing and environment grouping
+installed artifact roots
+GitHub commit cache
+Release/Preview separation
 conservative installed-source matching
-upstream status
-upstream sync
+upstream status/sync
 manual network default
-optional on-use 24h auto-check configuration
+optional on-use 24h auto-check
 ```
 
-### Phase 5 — Real Smoke and Hardening
-
-Deliver:
+### Phase 5 — Real Smoke + Hardening
 
 ```text
-real indexing of Schedule I and available installed APIs
-real Release/Preview source indexing
+real Schedule I/API indexing
+real upstream indexing
 representative query proof
-relationship/body recovery report
-privacy/hygiene checks
-final docs and QA
+coverage/fingerprint report
+privacy/hygiene
+final docs/QA
 ```
 
-## 28. Definition of Done
-
-The milestone is complete when all applicable items are true:
+## 26. Definition of Done
 
 ```text
-[ ] Schedule I consumes only the preferred integrity-verified extraction
-[ ] pinned ILSpy engine produces useful readable source from the real extraction
-[ ] generated source is local, hashed, and linked to symbols
-[ ] assemblies/namespaces/types/methods/constructors/fields/properties/events/parameters indexed
-[ ] canonical symbol identities are deterministic inside a snapshot
-[ ] useful declaration/structural/source/method-body fingerprints exist where evidence supports them
-[ ] inheritance and interface relationships indexed
-[ ] common type-reference relationships indexed
-[ ] recoverable caller/callee relationships indexed without guessing
-[ ] search/type/method/source/refs/callers/callees work in human and JSON forms
-[ ] installed S1API indexed when present
-[ ] installed S1MAPI indexed when present
-[ ] matching GitHub source attached conservatively when available
-[ ] latest cached Release and Preview channels remain distinct from Installed
-[ ] upstream sync is explicit network behavior by default
-[ ] optional auto-check runs only during use and never in the background
-[ ] GitHub failure never breaks cached/local queries
-[ ] failed indexing never replaces a completed index
-[ ] real smoke demonstrates useful symbols, source, and relationships
-[ ] limitations in recovered method bodies/relationships are measured and documented
-[ ] Schedule I installation remains read-only
-[ ] no proprietary/generated Schedule I content enters Git or CI artifacts
+[ ] Schedule I authority always uses preferred pointer -> validated row -> fresh integrity proof
+[ ] ProcessCompleted/failed/retained/non-authoritative output cannot feed the game index
+[ ] pinned ILSpy produces useful source from the real preferred extraction
+[ ] installed S1API/S1MAPI binaries indexed when present
+[ ] installed snapshots share environment identity for cross-codebase binding
+[ ] ScheduleI channel is Installed-only
+[ ] assemblies/namespaces/types/methods/fields/properties/events/parameters searchable
+[ ] shared canonical renderer used by ILSpy and Roslyn frontends
+[ ] unresolved source-only identities do not claim false cross-channel equivalence
+[ ] source locations resolve
+[ ] practical inheritance/type/caller/callee/field relationships indexed without guessing
+[ ] refs/callers/callees accept codebase/channel disambiguation
+[ ] raw artifact hashes remain exact authority
+[ ] normalized fingerprint stability measured across existing divergent real outputs
+[ ] Release and Preview remain distinct from Installed
+[ ] GitHub sync is explicit by default
+[ ] optional auto-check runs only during use, never in background
+[ ] GitHub failure does not break cached/local queries
+[ ] failed indexing does not replace a completed index
+[ ] migrations 1-5 unchanged; migration 6 only
+[ ] real smoke documents recovered-body/relationship limitations
+[ ] game files remain read-only
+[ ] no proprietary/generated Schedule I output enters Git/CI
 [ ] build/tests/format/hygiene pass
 ```
 
-## 29. Hard Invariants
+## 27. Hard Invariants
 
 ```text
-A Phase 3 candidate can never feed the symbol index.
-A non-preferred Schedule I extraction can never silently become the default indexed game truth.
+An ExtractionAttemptStatus.ProcessCompleted candidate cannot feed the symbol index.
+A preferred-extraction pointer is not authority until the validated row and integrity proof succeed.
+A non-preferred extraction cannot silently become current indexed Schedule I truth.
 A failed index is never queryable as complete.
-Preview or Release code can never masquerade as Installed code.
-Installed API binary facts take precedence over unmatched/mismatched GitHub source.
-Unresolved relationships remain unresolved rather than guessed.
-Generated C# is not used as the sole evidence for binary caller/callee relationships when metadata/IL evidence is available.
-Raw artifact hashes remain authoritative provenance; normalized fingerprints do not replace them.
-Upstream repositories are never automatically built or executed during indexing.
-Automatic GitHub checking is opt-in and never runs as a background process.
-Normal queries default to current Installed truth.
-Schedule I game files remain read-only.
+Schedule I has no Release/Preview channel.
+Preview/Release cannot masquerade as Installed.
+Installed API binary facts beat mismatched/unverified source enrichment.
+Installed cross-codebase binding requires the same environment snapshot identity.
+Both frontends use one canonical-signature renderer.
+Unresolved source semantics remain unresolved rather than guessed.
+Raw hashes remain authoritative; normalized fingerprints are comparison signals only.
+Upstream repositories are never automatically built or executed.
+Automatic GitHub checking is opt-in and never background polling.
+Normal queries default to Installed truth.
+Schedule I files remain read-only.
 ```
 
-## 30. Follow-On Work
+## 28. Follow-On Work
 
-After this milestone, the indexed data can support independent later work such as:
+After this milestone, the same query/index layer can support:
 
 ```text
-build and API diffing
-static HTML exploration portal
-plain-English/C# learning context
-S1API/S1MAPI update-impact views
-read-only MCP server
+build/API diffing
+static HTML portal
+plain-English and C# learning context
+API update-impact views
+read-only MCP
 S1Atlas agent skill
 ```
 
-Those follow-on features must consume the same normalized query layer rather than creating separate facts.
+Those later features should consume this shared index rather than inventing separate facts.
