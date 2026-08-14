@@ -12,28 +12,44 @@ public sealed class IndexQueryService
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     }
 
-    public async Task<IReadOnlyList<SymbolQueryResult>> SearchAsync(
+    public async Task<SymbolSearchResult> SearchAsync(
         string query,
         IndexQueryOptions options,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
-        var results = new List<SymbolQueryResult>();
+        if (options.Limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "The query result limit must be positive.");
+
+        var totalCount = 0;
+        var candidates = new List<SymbolQueryResult>();
         foreach (var channel in Channels(options))
         {
             var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
             if (run is null) continue;
-            var symbols = await _repository.GetCompletedSymbolsAsync(run.IndexId, cancellationToken);
-            results.AddRange(symbols.Select(symbol => new SymbolQueryResult(run.IndexId, options.Codebase.ToString(), channel.ToString(), symbol.SymbolId, symbol.Kind, symbol.QualifiedName, symbol.Signature, symbol.IsBestEffort)));
+
+            var count = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken);
+            totalCount += count;
+            if (count == 0) continue;
+
+            var symbols = await _repository.SearchCompletedSymbolsAsync(
+                run.IndexId,
+                query,
+                options.Limit,
+                cancellationToken);
+            candidates.AddRange(symbols.Select(symbol =>
+                SymbolResolver.ToQueryResult(run.IndexId, options.Codebase, channel, symbol)));
         }
 
-        return results
-            .Where(result => result.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase) || result.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))
+        var results = candidates
             .OrderBy(result => Rank(result, query))
             .ThenBy(result => result.QualifiedName, StringComparer.Ordinal)
             .ThenBy(result => result.Signature, StringComparer.Ordinal)
             .ThenBy(result => result.Channel, StringComparer.Ordinal)
+            .ThenBy(result => result.SymbolId, StringComparer.Ordinal)
+            .Take(options.Limit)
             .ToArray();
+        return new SymbolSearchResult(totalCount, results.Length, results);
     }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
@@ -42,7 +58,7 @@ public sealed class IndexQueryService
         IndexQueryOptions options,
         CancellationToken cancellationToken)
     {
-        return (await SearchAsync(query, options, cancellationToken))
+        return (await SearchAsync(query, options, cancellationToken)).Results
             .Where(result => string.Equals(result.Kind, kind.ToString(), StringComparison.Ordinal))
             .ToArray();
     }
@@ -105,23 +121,17 @@ public sealed class IndexQueryService
 
     private static int Rank(SymbolQueryResult result, string query)
     {
-        var name = ExtractName(result.QualifiedName);
-        if (string.Equals(name, query, StringComparison.OrdinalIgnoreCase)) return 0;
-        if (result.QualifiedName.Split('.').Any(segment => string.Equals(segment, query, StringComparison.OrdinalIgnoreCase))) return 1;
-        if (name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 2;
-        if (name.Contains(query, StringComparison.OrdinalIgnoreCase)) return 3;
-        if (result.Signature.Contains(query, StringComparison.OrdinalIgnoreCase)) return 4;
+        if (string.Equals(result.QualifiedName, query, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.Signature, query, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (result.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase))
+            return 1;
+        if (result.QualifiedName.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            return 2;
+        if (result.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            return 3;
+        if (result.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))
+            return 4;
         return 5;
-    }
-
-    private static string ExtractName(string qualifiedName)
-    {
-        var separator = qualifiedName.LastIndexOf("::", StringComparison.Ordinal);
-        if (separator < 0) return qualifiedName[(qualifiedName.LastIndexOf('.') + 1)..];
-        var member = qualifiedName[(separator + 2)..];
-        var end = member.IndexOfAny(['(', ':']);
-        if (end >= 0) member = member[..end];
-        var space = member.LastIndexOf(' ');
-        return space >= 0 ? member[(space + 1)..] : member;
     }
 }
