@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Storage\S1Atlas.Storage.csproj" />
     <ProjectReference Include="..\Fixtures\S1Atlas.ManagedAssemblyFixture\S1Atlas.ManagedAssemblyFixture.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
