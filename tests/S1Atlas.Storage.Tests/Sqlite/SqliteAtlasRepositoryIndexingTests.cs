@@ -221,10 +221,10 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
             symbols.Add(new IndexSymbolRecord(
                 "bulk-" + suffix,
                 snapshot.SnapshotId,
-                "ScheduleI:Installed:Type:Demo.DealerMatch" + suffix,
+                "ScheduleI:Installed:Type:Zzz.DealerMatch" + suffix,
                 "Type",
-                "Demo.DealerMatch" + suffix,
-                "Demo.DealerMatch" + suffix,
+                "Zzz.DealerMatch" + suffix,
+                "Zzz.DealerMatch" + suffix,
                 false));
         }
 
