@@ -22,9 +22,27 @@ public sealed record ManagedMemberFacts(
     IReadOnlyList<string>? ParameterTypes = null,
     string? ReturnType = null,
     string? ValueType = null,
-    int GenericParameterCount = 0)
+    int GenericParameterCount = 0,
+    ManagedMethodBodyFacts? BodyFacts = null,
+    BodyRecoveryStatus? BodyRecoveryStatus = null)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
+}
+
+public sealed record ManagedMethodBodyFacts(
+    bool HasPhysicalBody,
+    bool NoBodyByDesign,
+    int IlByteCount,
+    int InstructionCount,
+    int RecoveredReferenceCount,
+    bool MatchesVerifiedStubPattern);
+
+public enum BodyRecoveryStatus
+{
+    NoBodyByDesign,
+    Recovered,
+    StubOrUnavailable,
+    Unknown
 }
 
 public enum ManagedMemberKind
