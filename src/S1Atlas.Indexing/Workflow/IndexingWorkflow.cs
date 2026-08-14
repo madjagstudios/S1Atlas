@@ -22,7 +22,7 @@ public sealed record IndexingWorkflowResult(
 
 public sealed class IndexingWorkflow
 {
-    public const int IndexSchemaVersion = 7;
+    public const int IndexSchemaVersion = 8;
     private const string DecompilerPackage = "ICSharpCode.Decompiler";
     private static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
@@ -147,7 +147,10 @@ public sealed class IndexingWorkflow
                 var memberName = ManagedMemberIdentity.Render(type.FullName, member);
                 var kind = member.Kind.ToString();
                 var key = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, Enum.Parse<SymbolKind>(kind), memberName).CanonicalKey;
-                symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + key), snapshotId, key, kind, memberName, member.Signature, false));
+                var bodyRecoveryStatus = member.Kind is ManagedMemberKind.Constructor or ManagedMemberKind.Method
+                    ? member.BodyRecoveryStatus
+                    : null;
+                symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + key), snapshotId, key, kind, memberName, member.Signature, false, bodyRecoveryStatus));
             }
         }
         return symbols
