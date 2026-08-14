@@ -333,6 +333,7 @@ public sealed class CliApplication
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
 
         return root.Parse(args).Invoke(new InvocationConfiguration
         {
