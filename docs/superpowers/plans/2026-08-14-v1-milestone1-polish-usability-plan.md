@@ -42,7 +42,7 @@
 - Modify `src/S1Atlas.Indexing/Decompilation/IlSpyManagedDecompiler.cs` — collect metadata/body facts and classify recovery conservatively.
 - Create `src/S1Atlas.Indexing/Decompilation/BodyRecoveryClassifier.cs` — pure, fixture-testable body classification; no UI wording or confidence scoring.
 - Modify `src/S1Atlas.Indexing/Source/RoslynSourceIndexer.cs` — capture real Roslyn start/end positions.
-- Modify `src/S1Atlas.Indexing/Workflow/IndexingWorkflow.cs` — persist complete source spans and body-recovery status; bump **index schema version** from 7 to 8 so old completed indexes are not silently reused as if they contain the new facts.
+- Modify `src/S1Atlas.Indexing/Workflow/IndexingWorkflow.cs` — persist complete source spans and body-recovery status; bump index recipe/schema identity so old completed indexes are not silently reused as if they contain the new facts.
 - Create `src/S1Atlas.Indexing/Query/SymbolResolver.cs` — deterministic single-symbol resolution and ambiguity reporting.
 - Create `src/S1Atlas.Indexing/Query/SourceSnippetReader.cs` — hash-verified bounded source reads and snippet extraction.
 - Modify `src/S1Atlas.Indexing/Query/IndexQueryService.cs` — bounded search, focused source, refs/callers/callees semantics, endpoint enrichment, availability status.
@@ -183,7 +183,7 @@ public enum BodyRecoveryStatus
 }
 ```
 
-`IndexSymbolRecord` ends with `BodyRecoveryStatus? BodyRecoveryStatus = null`. Non-method symbols use `null`. New method/constructor rows always persist one of the four values. Legacy rows migrated from database migration 6 remain SQL `NULL` and are surfaced by the query layer as `Unknown`.
+`IndexSymbolRecord` ends with `BodyRecoveryStatus? BodyRecoveryStatus = null`. Non-method symbols use `null`. New method/constructor rows always persist one of the four values. Legacy rows migrated from database migration 6 remain SQL `NULL` and are surfaced by the query layer as `Unknown` for callable symbols.
 
 Add only the method facts required for classification, such as:
 
