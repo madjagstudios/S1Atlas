@@ -23,6 +23,56 @@ public sealed class RoslynSourceIndexerTests
     }
 
     [Fact]
+    public void Captures_precise_multiline_method_source_span()
+    {
+        var source = """
+            namespace Demo;
+            public class Worker
+            {
+                public int Add(int x)
+                {
+                    return x + 1;
+                }
+            }
+            """;
+
+        var method = Assert.Single(
+            new RoslynSourceIndexer().Index(source, CodebaseKind.S1Api, CodeChannel.Release),
+            symbol => symbol.Kind == SymbolKind.Method);
+
+        Assert.Equal(4, method.SourceLine);
+        Assert.Equal(5, method.SourceColumn);
+        Assert.Equal(7, method.SourceEndLine);
+        Assert.Equal(6, method.SourceEndColumn);
+    }
+
+    [Fact]
+    public void Captures_precise_type_and_single_line_member_source_spans()
+    {
+        var source = """
+            namespace Demo;
+            public class Worker
+            {
+                public int Value { get; set; }
+            }
+            """;
+
+        var symbols = new RoslynSourceIndexer().Index(source, CodebaseKind.S1Api, CodeChannel.Release);
+        var type = Assert.Single(symbols, symbol => symbol.Kind == SymbolKind.Type);
+        var property = Assert.Single(symbols, symbol => symbol.Kind == SymbolKind.Property);
+
+        Assert.Equal(2, type.SourceLine);
+        Assert.Equal(1, type.SourceColumn);
+        Assert.Equal(5, type.SourceEndLine);
+        Assert.Equal(2, type.SourceEndColumn);
+
+        Assert.Equal(4, property.SourceLine);
+        Assert.Equal(5, property.SourceColumn);
+        Assert.Equal(4, property.SourceEndLine);
+        Assert.Equal(35, property.SourceEndColumn);
+    }
+
+    [Fact]
     public void Skips_parser_recovery_type_nodes_without_identifiers()
     {
         var symbols = new RoslynSourceIndexer().Index("namespace Demo { public class Outer { private sealed class } }", CodebaseKind.S1Api, CodeChannel.Release);
