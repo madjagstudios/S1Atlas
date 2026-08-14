@@ -22,7 +22,7 @@ public sealed class RoslynSourceIndexer
             if (string.IsNullOrWhiteSpace(qualifiedType) || qualifiedType.Contains("..", StringComparison.Ordinal)) continue;
             try
             {
-                symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Type, qualifiedType, CanonicalSignatureRenderer.RenderType(qualifiedType), true, sourceFile, type.GetLocation().GetLineSpan().StartLinePosition.Line + 1));
+                symbols.Add(CreateSymbol(codebase, channel, NormalizedSymbolKind.Type, qualifiedType, CanonicalSignatureRenderer.RenderType(qualifiedType), sourceFile, type));
             }
             catch (ArgumentException exception) when (exception.ParamName == "text")
             {
@@ -51,7 +51,7 @@ public sealed class RoslynSourceIndexer
                     if (string.IsNullOrWhiteSpace(method.Identifier.Text)) break;
                     var parameters = method.ParameterList.Parameters.Select(parameter => ParameterType(parameter)).ToArray();
                     var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, method.Identifier.Text, method.ReturnType.ToString(), parameters, method.TypeParameterList?.Parameters.Count ?? 0);
-                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Method, signature, signature, true, sourceFile, Line(member)));
+                    symbols.Add(CreateSymbol(codebase, channel, NormalizedSymbolKind.Method, signature, signature, sourceFile, member));
                     break;
                 }
             case ConstructorDeclarationSyntax constructor:
@@ -59,21 +59,21 @@ public sealed class RoslynSourceIndexer
                     if (string.IsNullOrWhiteSpace(constructor.Identifier.Text)) break;
                     var parameters = constructor.ParameterList.Parameters.Select(ParameterType).ToArray();
                     var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, ".ctor", "void", parameters);
-                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Constructor, signature, signature, true, sourceFile, Line(member)));
+                    symbols.Add(CreateSymbol(codebase, channel, NormalizedSymbolKind.Constructor, signature, signature, sourceFile, member));
                     break;
                 }
             case PropertyDeclarationSyntax property:
                 {
                     if (string.IsNullOrWhiteSpace(property.Identifier.Text)) break;
                     var signature = CanonicalSignatureRenderer.RenderType(property.Type.ToString()) + " " + property.Identifier.Text;
-                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Property, qualifiedType + "::" + signature, signature, true, sourceFile, Line(member)));
+                    symbols.Add(CreateSymbol(codebase, channel, NormalizedSymbolKind.Property, qualifiedType + "::" + signature, signature, sourceFile, member));
                     break;
                 }
             case EventDeclarationSyntax @event:
                 {
                     if (string.IsNullOrWhiteSpace(@event.Identifier.Text)) break;
                     var signature = CanonicalSignatureRenderer.RenderType(@event.Type.ToString()) + " " + @event.Identifier.Text;
-                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Event, qualifiedType + "::" + signature, signature, true, sourceFile, Line(member)));
+                    symbols.Add(CreateSymbol(codebase, channel, NormalizedSymbolKind.Event, qualifiedType + "::" + signature, signature, sourceFile, member));
                     break;
                 }
             case FieldDeclarationSyntax field:
@@ -81,10 +81,34 @@ public sealed class RoslynSourceIndexer
                 {
                     if (string.IsNullOrWhiteSpace(variable.Identifier.Text)) continue;
                     var signature = CanonicalSignatureRenderer.RenderType(field.Declaration.Type.ToString()) + " " + variable.Identifier.Text;
-                    symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Field, qualifiedType + "::" + signature, signature, true, sourceFile, Line(member)));
+                    symbols.Add(CreateSymbol(codebase, channel, NormalizedSymbolKind.Field, qualifiedType + "::" + signature, signature, sourceFile, member));
                 }
                 break;
         }
+    }
+
+    private static NormalizedSymbol CreateSymbol(
+        CodebaseKind codebase,
+        CodeChannel channel,
+        NormalizedSymbolKind kind,
+        string qualifiedName,
+        string signature,
+        string sourceFile,
+        SyntaxNode node)
+    {
+        var span = node.GetLocation().GetLineSpan();
+        return new NormalizedSymbol(
+            codebase,
+            channel,
+            kind,
+            qualifiedName,
+            signature,
+            true,
+            sourceFile,
+            span.StartLinePosition.Line + 1,
+            span.StartLinePosition.Character + 1,
+            span.EndLinePosition.Line + 1,
+            span.EndLinePosition.Character + 1);
     }
 
     private static string QualifiedName(TypeDeclarationSyntax type)
@@ -100,6 +124,4 @@ public sealed class RoslynSourceIndexer
         var prefix = parameter.Modifiers.Any(SyntaxKind.RefKeyword) ? "ref " : parameter.Modifiers.Any(SyntaxKind.InKeyword) ? "in " : parameter.Modifiers.Any(SyntaxKind.OutKeyword) ? "out " : string.Empty;
         return prefix + (parameter.Type?.ToString() ?? "object");
     }
-
-    private static int Line(MemberDeclarationSyntax member) => member.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
 }
