@@ -114,7 +114,7 @@ public sealed class SymbolResolverTests : IAsyncDisposable
         Assert.Equal(SymbolResolutionStatus.Ambiguous, result.Status);
         Assert.Null(result.Symbol);
         Assert.Equal(
-            [fixture.DealerA.SymbolId, fixture.DealerB.SymbolId],
+            new[] { fixture.DealerA.SymbolId, fixture.DealerB.SymbolId }.Order(StringComparer.Ordinal),
             result.Candidates.Select(candidate => candidate.SymbolId).Order(StringComparer.Ordinal));
     }
 
