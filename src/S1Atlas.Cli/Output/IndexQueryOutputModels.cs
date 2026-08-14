@@ -7,7 +7,14 @@ internal sealed record IndexQueryOutput(
     IReadOnlyList<RelationshipQueryResult> Relationships,
     IReadOnlyList<SourceQueryResult> Sources,
     int? TotalCount = null,
-    int? ReturnedCount = null)
+    int? ReturnedCount = null,
+    SymbolResolutionResult? Resolution = null,
+    BodyRecoveryStatus? BodyRecoveryStatus = null,
+    bool? CallerCompletenessBoundedByTargetResolution = null,
+    string? CompletenessNotice = null)
 {
     public IReadOnlyList<SymbolQueryResult> Results => Symbols;
 }
+
+internal sealed record IndexQueryFailureData(
+    IReadOnlyList<SymbolQueryResult> Candidates);
