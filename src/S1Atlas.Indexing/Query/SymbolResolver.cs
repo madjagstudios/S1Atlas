@@ -27,9 +27,10 @@ public sealed class SymbolResolver
         if (byId is not null)
             return Resolved(ToQueryResult(indexId, codebase, channel, byId));
 
+        var searchQuery = SearchQueryForSelector(selector, codebase, channel);
         var records = await _repository.SearchCompletedSymbolsAsync(
             indexId,
-            selector,
+            searchQuery,
             CandidateLimit,
             cancellationToken);
         if (records.Count == 0)
@@ -59,9 +60,9 @@ public sealed class SymbolResolver
         if (exactQualifiedName.Length > 1)
             return Ambiguous(indexId, codebase, channel, exactQualifiedName);
 
-        var bestRank = Rank(records[0], selector);
+        var bestRank = Rank(records[0], searchQuery);
         var best = records
-            .TakeWhile(record => Rank(record, selector) == bestRank)
+            .TakeWhile(record => Rank(record, searchQuery) == bestRank)
             .ToArray();
         return best.Length == 1
             ? Resolved(ToQueryResult(indexId, codebase, channel, best[0]))
@@ -82,6 +83,21 @@ public sealed class SymbolResolver
         if (record.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))
             return 4;
         return 5;
+    }
+
+    private static string SearchQueryForSelector(
+        string selector,
+        CodebaseKind codebase,
+        CodeChannel channel)
+    {
+        var prefix = codebase + ":" + channel + ":";
+        if (!selector.StartsWith(prefix, StringComparison.Ordinal))
+            return selector;
+
+        var kindSeparator = selector.IndexOf(':', prefix.Length);
+        return kindSeparator >= 0 && kindSeparator + 1 < selector.Length
+            ? selector[(kindSeparator + 1)..]
+            : selector;
     }
 
     private static SymbolResolutionResult Resolved(SymbolQueryResult symbol) =>
