@@ -54,4 +54,45 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.WritesField);
         Assert.Contains(body.References, reference => reference.Target.Contains("DerivedFixture::Overload", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task FixtureAssemblyProducesConservativeBodyRecoveryFactsWithoutAssemblyLoad()
+    {
+        var decompiler = new IlSpyManagedDecompiler();
+
+        var result = await decompiler.DecompileAsync(
+            typeof(FixtureRoot).Assembly.Location,
+            CancellationToken.None);
+
+        var derived = Assert.Single(result.Types, candidate => candidate.Name == "DerivedFixture");
+
+        var arithmetic = Assert.Single(derived.Members, member => member.Name == "ArithmeticOnly");
+        Assert.NotNull(arithmetic.BodyFacts);
+        Assert.True(arithmetic.BodyFacts.HasPhysicalBody);
+        Assert.False(arithmetic.BodyFacts.NoBodyByDesign);
+        Assert.False(arithmetic.BodyFacts.MatchesVerifiedStubPattern);
+        Assert.Equal(0, arithmetic.BodyFacts.RecoveredReferenceCount);
+        Assert.True(arithmetic.BodyFacts.InstructionCount >= 3);
+        Assert.Equal(BodyRecoveryStatus.Recovered, arithmetic.BodyRecoveryStatus);
+
+        var trivial = Assert.Single(derived.Members, member => member.Name == "TrivialZero");
+        Assert.NotNull(trivial.BodyFacts);
+        Assert.True(trivial.BodyFacts.HasPhysicalBody);
+        Assert.Equal(BodyRecoveryStatus.Unknown, trivial.BodyRecoveryStatus);
+
+        var throwStub = Assert.Single(derived.Members, member => member.Name == "ThrowStyleStub");
+        Assert.NotNull(throwStub.BodyFacts);
+        Assert.True(throwStub.BodyFacts.HasPhysicalBody);
+        Assert.True(throwStub.BodyFacts.MatchesVerifiedStubPattern);
+        Assert.True(throwStub.BodyFacts.RecoveredReferenceCount > 0);
+        Assert.Contains(throwStub.References, reference => reference.Kind == ManagedReferenceKind.Constructs);
+        Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, throwStub.BodyRecoveryStatus);
+
+        var abstractType = Assert.Single(result.Types, candidate => candidate.Name == "AbstractFixture");
+        var missing = Assert.Single(abstractType.Members, member => member.Name == "MissingBody");
+        Assert.NotNull(missing.BodyFacts);
+        Assert.False(missing.BodyFacts.HasPhysicalBody);
+        Assert.True(missing.BodyFacts.NoBodyByDesign);
+        Assert.Equal(BodyRecoveryStatus.NoBodyByDesign, missing.BodyRecoveryStatus);
+    }
 }
