@@ -82,6 +82,160 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
         Assert.Null(Assert.Single(roundTripped, symbol => symbol.SymbolId == "type").BodyRecoveryStatus);
     }
 
+    [Fact]
+    public async Task Completed_symbol_lookup_is_exact_and_scoped_to_the_requested_index()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var expected = await SeedSearchIndexAsync(cancellationToken);
+
+        var found = await _repository.GetCompletedSymbolByIdAsync(
+            "index-search",
+            expected.SymbolId,
+            cancellationToken);
+
+        Assert.Equal(expected, found);
+        Assert.Null(await _repository.GetCompletedSymbolByIdAsync(
+            "missing-index",
+            expected.SymbolId,
+            cancellationToken));
+        Assert.Null(await _repository.GetCompletedSymbolByIdAsync(
+            "index-search",
+            "missing-symbol",
+            cancellationToken));
+    }
+
+    [Fact]
+    public async Task Completed_symbol_search_counts_exactly_ranks_deterministically_and_applies_limit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSearchIndexAsync(cancellationToken);
+
+        var count = await _repository.CountCompletedSymbolMatchesAsync(
+            "index-search",
+            "dealer",
+            cancellationToken);
+        var page = await _repository.SearchCompletedSymbolsAsync(
+            "index-search",
+            "dealer",
+            50,
+            cancellationToken);
+
+        Assert.Equal(106, count);
+        Assert.Equal(50, page.Count);
+        Assert.Equal("exact", page[0].SymbolId);
+        Assert.Equal("terminal", page[1].SymbolId);
+        Assert.Equal("prefix", page[2].SymbolId);
+        Assert.Equal("substring-a", page[3].SymbolId);
+        Assert.Equal("substring-b", page[4].SymbolId);
+        Assert.DoesNotContain(page, symbol => symbol.SymbolId == "signature-only");
+    }
+
+    [Fact]
+    public async Task Completed_symbol_search_rejects_nonpositive_limits()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSearchIndexAsync(cancellationToken);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _repository.SearchCompletedSymbolsAsync(
+                "index-search",
+                "dealer",
+                0,
+                cancellationToken));
+    }
+
+    private async Task<IndexSymbolRecord> SeedSearchIndexAsync(CancellationToken cancellationToken)
+    {
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord(
+            "snapshot-search",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "extraction-search",
+            "2026-08-14T01:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(
+                "index-search",
+                snapshot.SnapshotId,
+                IndexRunStatus.Running,
+                snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var exact = new IndexSymbolRecord(
+            "exact",
+            snapshot.SnapshotId,
+            "ScheduleI:Installed:Type:Dealer",
+            "Type",
+            "Dealer",
+            "Dealer",
+            false);
+        var symbols = new List<IndexSymbolRecord>
+        {
+            exact,
+            new(
+                "terminal",
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Type:Demo.Dealer",
+                "Type",
+                "Demo.Dealer",
+                "Demo.Dealer",
+                false),
+            new(
+                "prefix",
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Type:DealerService",
+                "Type",
+                "DealerService",
+                "DealerService",
+                false),
+            new(
+                "substring-b",
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Type:Demo.SuperDealerBeta",
+                "Type",
+                "Demo.SuperDealerBeta",
+                "Demo.SuperDealerBeta",
+                false),
+            new(
+                "substring-a",
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Type:Demo.SuperDealerAlpha",
+                "Type",
+                "Demo.SuperDealerAlpha",
+                "Demo.SuperDealerAlpha",
+                false),
+            new(
+                "signature-only",
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Method:Demo.Widget::Run()",
+                "Method",
+                "Demo.Widget.Run",
+                "System.Void Demo.Widget::Dealer()",
+                false)
+        };
+
+        for (var index = 0; index < 100; index++)
+        {
+            var suffix = index.ToString("D3", System.Globalization.CultureInfo.InvariantCulture);
+            symbols.Add(new IndexSymbolRecord(
+                "bulk-" + suffix,
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Type:Demo.DealerMatch" + suffix,
+                "Type",
+                "Demo.DealerMatch" + suffix,
+                "Demo.DealerMatch" + suffix,
+                false));
+        }
+
+        await _repository.CompleteIndexRunAsync(
+            "index-search",
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T01:01:00Z",
+            cancellationToken);
+        return exact;
+    }
+
     public ValueTask DisposeAsync()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
