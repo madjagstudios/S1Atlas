@@ -166,6 +166,20 @@ public sealed partial class SqliteAtlasRepository
         return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
     }
 
+    public async Task<IndexRunRecord?> GetCompletedIndexAsync(string indexId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT index_id, snapshot_id, status, started_at_utc, completed_at_utc, failure_message
+            FROM index_runs
+            WHERE index_id = $id AND status = 'Completed';
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
+    }
+
     public async Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsAsync(
         string indexId,
         CancellationToken cancellationToken)

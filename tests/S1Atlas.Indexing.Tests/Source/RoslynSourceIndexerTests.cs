@@ -21,4 +21,12 @@ public sealed class RoslynSourceIndexerTests
         Assert.Equal("source.cs", method.SourceFile);
         Assert.All(symbols, symbol => Assert.True(symbol.IsBestEffort));
     }
+
+    [Fact]
+    public void Skips_parser_recovery_type_nodes_without_identifiers()
+    {
+        var symbols = new RoslynSourceIndexer().Index("namespace Demo { public class Outer { private sealed class } }", CodebaseKind.S1Api, CodeChannel.Release);
+
+        Assert.DoesNotContain(symbols, symbol => string.IsNullOrWhiteSpace(symbol.QualifiedName));
+    }
 }

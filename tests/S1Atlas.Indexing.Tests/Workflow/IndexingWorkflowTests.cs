@@ -55,6 +55,11 @@ public sealed class IndexingWorkflowTests
             Assert.True(File.Exists(OwnedIndexPaths.ForScheduleOne(root, buildId, first.IndexId).CompleteMarkerPath));
             Assert.True(first.SymbolCount > 0);
             Assert.NotEmpty(await repository.GetCompletedSourceLocationsAsync(first.IndexId, TestContext.Current.CancellationToken));
+
+            var forced = await workflow.RunScheduleOneAsync(buildId, true, TestContext.Current.CancellationToken);
+            Assert.False(forced.Reused);
+            Assert.NotEqual(first.IndexId, forced.IndexId);
+            Assert.NotEqual(first.SnapshotId, forced.SnapshotId);
         }
         finally
         {

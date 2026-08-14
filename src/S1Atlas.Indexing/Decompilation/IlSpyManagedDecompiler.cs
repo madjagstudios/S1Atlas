@@ -55,7 +55,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var definition = metadata.GetTypeDefinition(typeHandle);
         var name = metadata.GetString(definition.Name);
         var @namespace = metadata.GetString(definition.Namespace);
-        var fullName = string.IsNullOrEmpty(@namespace) ? name : @namespace + "." + name;
+        var fullName = GetTypeName(metadata, typeHandle);
         var baseType = definition.BaseType.IsNil ? null : GetTypeName(metadata, definition.BaseType);
         var interfaces = definition.GetInterfaceImplementations()
             .Select(handle => GetTypeName(metadata, metadata.GetInterfaceImplementation(handle).Interface))
@@ -338,6 +338,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
     {
         var definition = metadata.GetTypeDefinition(handle);
         var name = metadata.GetString(definition.Name);
+        if (!definition.GetDeclaringType().IsNil)
+            return GetTypeName(metadata, definition.GetDeclaringType()) + "+" + name;
         var @namespace = metadata.GetString(definition.Namespace);
         return string.IsNullOrEmpty(@namespace) ? name : @namespace + "." + name;
     }
@@ -346,6 +348,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
     {
         var reference = metadata.GetTypeReference(handle);
         var name = metadata.GetString(reference.Name);
+        if (reference.ResolutionScope.Kind is HandleKind.TypeReference or HandleKind.TypeDefinition)
+            return GetTypeName(metadata, (EntityHandle)reference.ResolutionScope) + "+" + name;
         var @namespace = metadata.GetString(reference.Namespace);
         return string.IsNullOrEmpty(@namespace) ? name : @namespace + "." + name;
     }

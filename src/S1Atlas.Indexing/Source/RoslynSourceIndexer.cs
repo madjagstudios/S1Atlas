@@ -17,10 +17,27 @@ public sealed class RoslynSourceIndexer
         var symbols = new List<NormalizedSymbol>();
         foreach (var type in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
         {
+            if (string.IsNullOrWhiteSpace(type.Identifier.Text)) continue;
             var qualifiedType = QualifiedName(type);
-            symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Type, qualifiedType, CanonicalSignatureRenderer.RenderType(qualifiedType), true, sourceFile, type.GetLocation().GetLineSpan().StartLinePosition.Line + 1));
+            if (string.IsNullOrWhiteSpace(qualifiedType) || qualifiedType.Contains("..", StringComparison.Ordinal)) continue;
+            try
+            {
+                symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Type, qualifiedType, CanonicalSignatureRenderer.RenderType(qualifiedType), true, sourceFile, type.GetLocation().GetLineSpan().StartLinePosition.Line + 1));
+            }
+            catch (ArgumentException exception) when (exception.ParamName == "text")
+            {
+                continue;
+            }
             foreach (var member in type.Members)
-                AddMember(symbols, type, qualifiedType, member, codebase, channel, sourceFile);
+            {
+                try
+                {
+                    AddMember(symbols, type, qualifiedType, member, codebase, channel, sourceFile);
+                }
+                catch (ArgumentException exception) when (exception.ParamName == "text")
+                {
+                }
+            }
         }
         return symbols.OrderBy(symbol => symbol.Signature, StringComparer.Ordinal).ThenBy(symbol => symbol.Kind).ToArray();
     }
@@ -31,6 +48,7 @@ public sealed class RoslynSourceIndexer
         {
             case MethodDeclarationSyntax method:
                 {
+                    if (string.IsNullOrWhiteSpace(method.Identifier.Text)) break;
                     var parameters = method.ParameterList.Parameters.Select(parameter => ParameterType(parameter)).ToArray();
                     var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, method.Identifier.Text, method.ReturnType.ToString(), parameters, method.TypeParameterList?.Parameters.Count ?? 0);
                     symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Method, signature, signature, true, sourceFile, Line(member)));
@@ -38,6 +56,7 @@ public sealed class RoslynSourceIndexer
                 }
             case ConstructorDeclarationSyntax constructor:
                 {
+                    if (string.IsNullOrWhiteSpace(constructor.Identifier.Text)) break;
                     var parameters = constructor.ParameterList.Parameters.Select(ParameterType).ToArray();
                     var signature = CanonicalSignatureRenderer.RenderMethod(qualifiedType, ".ctor", "void", parameters);
                     symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Constructor, signature, signature, true, sourceFile, Line(member)));
@@ -45,12 +64,14 @@ public sealed class RoslynSourceIndexer
                 }
             case PropertyDeclarationSyntax property:
                 {
+                    if (string.IsNullOrWhiteSpace(property.Identifier.Text)) break;
                     var signature = CanonicalSignatureRenderer.RenderType(property.Type.ToString()) + " " + property.Identifier.Text;
                     symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Property, qualifiedType + "::" + signature, signature, true, sourceFile, Line(member)));
                     break;
                 }
             case EventDeclarationSyntax @event:
                 {
+                    if (string.IsNullOrWhiteSpace(@event.Identifier.Text)) break;
                     var signature = CanonicalSignatureRenderer.RenderType(@event.Type.ToString()) + " " + @event.Identifier.Text;
                     symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Event, qualifiedType + "::" + signature, signature, true, sourceFile, Line(member)));
                     break;
@@ -58,6 +79,7 @@ public sealed class RoslynSourceIndexer
             case FieldDeclarationSyntax field:
                 foreach (var variable in field.Declaration.Variables)
                 {
+                    if (string.IsNullOrWhiteSpace(variable.Identifier.Text)) continue;
                     var signature = CanonicalSignatureRenderer.RenderType(field.Declaration.Type.ToString()) + " " + variable.Identifier.Text;
                     symbols.Add(new NormalizedSymbol(codebase, channel, NormalizedSymbolKind.Field, qualifiedType + "::" + signature, signature, true, sourceFile, Line(member)));
                 }
@@ -68,7 +90,7 @@ public sealed class RoslynSourceIndexer
     private static string QualifiedName(TypeDeclarationSyntax type)
     {
         var parts = new List<string> { type.Identifier.Text };
-        foreach (var parent in type.Ancestors().OfType<TypeDeclarationSyntax>().Reverse()) parts.Insert(0, parent.Identifier.Text);
+        foreach (var parent in type.Ancestors().OfType<TypeDeclarationSyntax>().Reverse().Where(parent => !string.IsNullOrWhiteSpace(parent.Identifier.Text))) parts.Insert(0, parent.Identifier.Text);
         foreach (var @namespace in type.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().Reverse()) parts.Insert(0, @namespace.Name.ToString());
         return string.Join('.', parts);
     }

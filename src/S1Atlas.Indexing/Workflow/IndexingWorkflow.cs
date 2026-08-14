@@ -22,7 +22,7 @@ public sealed record IndexingWorkflowResult(
 
 public sealed class IndexingWorkflow
 {
-    public const int IndexSchemaVersion = 6;
+    public const int IndexSchemaVersion = 7;
     private const string DecompilerPackage = "ICSharpCode.Decompiler";
     private static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
@@ -67,7 +67,7 @@ public sealed class IndexingWorkflow
             DecompilerVersion,
             force ? "default:forced:" + Guid.NewGuid().ToString("N") : "default",
             IndexSchemaVersion);
-        var snapshotId = "schedule-i:" + authority.Extraction.ExtractionId;
+        var snapshotId = "schedule-i:" + authority.Extraction.ExtractionId + ":" + indexId;
 
         var existingSnapshot = await _repository.GetCodeSnapshotAsync(snapshotId, cancellationToken);
         if (existingSnapshot is null)
@@ -79,8 +79,8 @@ public sealed class IndexingWorkflow
 
         if (!force)
         {
-            var existing = await _repository.GetLatestCompletedIndexAsync(CodebaseKind.ScheduleI, CodeChannel.Installed, null, cancellationToken);
-            if (existing?.IndexId == indexId)
+            var existing = await _repository.GetCompletedIndexAsync(indexId, cancellationToken);
+            if (existing is not null)
             {
                 var symbols = await _repository.GetCompletedSymbolsAsync(indexId, cancellationToken);
                 var relationships = await _repository.GetCompletedRelationshipsAsync(indexId, cancellationToken);
@@ -141,13 +141,13 @@ public sealed class IndexingWorkflow
         foreach (var type in decompilation.Types)
         {
             var typeKey = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Type, type.FullName).CanonicalKey;
-            symbols.Add(new IndexSymbolRecord(HashId(typeKey), snapshotId, typeKey, "Type", type.FullName, type.FullName, false));
+            symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + typeKey), snapshotId, typeKey, "Type", type.FullName, type.FullName, false));
             foreach (var member in type.Members)
             {
                 var memberName = ManagedMemberIdentity.Render(type.FullName, member);
                 var kind = member.Kind.ToString();
                 var key = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, Enum.Parse<SymbolKind>(kind), memberName).CanonicalKey;
-                symbols.Add(new IndexSymbolRecord(HashId(key), snapshotId, key, kind, memberName, member.Signature, false));
+                symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + key), snapshotId, key, kind, memberName, member.Signature, false));
             }
         }
         return symbols
@@ -176,7 +176,8 @@ public sealed class IndexingWorkflow
             })
             .Where(location => location is not null)
             .Cast<IndexSourceLocationRecord>()
-            .DistinctBy(location => (location.SymbolId, location.StartLine, location.StartColumn))
+            .GroupBy(location => location.SymbolId, StringComparer.Ordinal)
+            .Select(group => group.OrderBy(location => location.StartLine).ThenBy(location => location.StartColumn).First())
             .OrderBy(location => location.StartLine)
             .ThenBy(location => location.StartColumn)
             .ThenBy(location => location.SymbolId, StringComparer.Ordinal)
@@ -234,7 +235,7 @@ public sealed class IndexingWorkflow
         return facts
             .Where(fact => symbolIds.ContainsKey(fact.SourceKey))
             .Select(fact => new IndexRelationshipRecord(
-                HashId(fact.SourceKey + "\n" + fact.Kind + "\n" + fact.TargetText),
+                HashId(snapshotId + "\n" + fact.SourceKey + "\n" + fact.Kind + "\n" + fact.TargetText),
                 snapshotId,
                 symbolIds[fact.SourceKey],
                 fact.TargetKey is not null && symbolIds.TryGetValue(fact.TargetKey, out var targetSymbolId) ? targetSymbolId : null,

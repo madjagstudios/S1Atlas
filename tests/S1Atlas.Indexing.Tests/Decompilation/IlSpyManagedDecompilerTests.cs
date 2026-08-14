@@ -20,6 +20,7 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.Contains("interface IFixtureContract", result.SourceText, StringComparison.Ordinal);
         Assert.Contains("class GenericContainer<T>", result.SourceText, StringComparison.Ordinal);
         Assert.Contains("GenericMethod", result.SourceText, StringComparison.Ordinal);
+        Assert.Equal(result.Types.Count, result.Types.Select(candidate => candidate.FullName).Distinct(StringComparer.Ordinal).Count());
 
         var type = Assert.Single(result.Types, candidate => candidate.Name == "DerivedFixture");
         Assert.Equal("S1Atlas.ManagedAssemblyFixture.FixtureBase", type.BaseType);
