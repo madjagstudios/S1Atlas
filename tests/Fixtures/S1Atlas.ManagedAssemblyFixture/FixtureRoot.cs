@@ -13,7 +13,10 @@ public sealed class FixtureRoot
 
     public int Counter { get; set; }
 
-    public int GetValue() => Counter;
+    public int GetValue()
+    {
+        throw new NotSupportedException("Cpp2IL stub fixture");
+    }
 
     public void RaiseSignal() => Signal?.Invoke(this, EventArgs.Empty);
 }
@@ -59,11 +62,6 @@ public sealed class DerivedFixture : FixtureBase, IFixtureContract
     public string Overload(string value) => value + PublicField;
 
     public T GenericMethod<T>(T value) => value;
-
-    public int ThrowStyleStub()
-    {
-        throw new NotSupportedException("Cpp2IL stub fixture");
-    }
 
     public DerivedFixture BuildAndTouch(int value)
     {
