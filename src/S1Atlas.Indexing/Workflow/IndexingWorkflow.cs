@@ -104,7 +104,10 @@ public sealed class IndexingWorkflow
             var symbols = BuildSymbols(decompilation, snapshotId);
             var sourceSymbols = _sourceIndexer.Index(decompilation.SourceText, CodebaseKind.ScheduleI, CodeChannel.Installed, sourceFile.RelativePath);
             var sourceLocations = BuildSourceLocations(sourceSymbols, symbols, sourceFile);
-            var fingerprints = _fingerprints.Create(symbols, BuildMethodEvidence(decompilation, symbols));
+            var fingerprints = _fingerprints.Create(
+                symbols,
+                BuildMethodEvidence(decompilation, symbols),
+                BuildSourceEvidence(sourceSymbols, symbols, decompilation.SourceText));
             var relationships = BuildRelationships(decompilation, symbols, snapshotId);
 
             var writtenPath = Path.Combine(paths.StagingRoot, sourceFile.RelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -195,6 +198,28 @@ public sealed class IndexingWorkflow
             })
             .Where(item => item.symbolId is not null && item.Evidence.Count > 0)
             .ToDictionary(item => item.symbolId!, item => item.Evidence, StringComparer.Ordinal);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> BuildSourceEvidence(
+        IReadOnlyList<NormalizedSymbol> sourceSymbols,
+        IReadOnlyList<IndexSymbolRecord> symbols,
+        string sourceText)
+    {
+        var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var lines = sourceText.Split('\n');
+        return sourceSymbols
+            .Where(symbol => symbol.SourceLine is not null)
+            .Select(symbol =>
+            {
+                var key = SymbolIdentity.Create(symbol.Codebase, symbol.Channel, symbol.Kind, symbol.QualifiedName).CanonicalKey;
+                var line = lines[Math.Clamp(symbol.SourceLine!.Value - 1, 0, Math.Max(0, lines.Length - 1))].TrimEnd('\r');
+                return symbolIds.TryGetValue(key, out var symbolId)
+                    ? (symbolId, Evidence: (IReadOnlyList<string>)[line])
+                    : (null, Evidence: (IReadOnlyList<string>)[]);
+            })
+            .Where(item => item.symbolId is not null && item.Evidence.Count > 0)
+            .GroupBy(item => item.symbolId!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<string>)group.SelectMany(item => item.Evidence).ToArray(), StringComparer.Ordinal);
     }
 
     private IReadOnlyList<IndexRelationshipRecord> BuildRelationships(

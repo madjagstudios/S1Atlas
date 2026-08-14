@@ -40,6 +40,23 @@ public sealed class RelationshipExtractor
                 };
                 var memberName = ManagedMemberIdentity.Render(type.FullName, member);
                 var memberKey = SymbolIdentity.Create(codebase, channel, memberKind, memberName).CanonicalKey;
+                if (!string.IsNullOrWhiteSpace(member.ValueType))
+                {
+                    var relationshipKind = member.Kind switch
+                    {
+                        ManagedMemberKind.Field => RelationshipKind.FieldType,
+                        ManagedMemberKind.Property => RelationshipKind.PropertyType,
+                        ManagedMemberKind.Event => RelationshipKind.EventType,
+                        _ => (RelationshipKind?)null
+                    };
+                    if (relationshipKind is not null)
+                        result.Add(Metadata(memberKey, relationshipKind.Value, CanonicalSignatureRenderer.RenderType(member.ValueType), knownTypes));
+                }
+                foreach (var parameterType in member.ParameterTypesOrEmpty)
+                    result.Add(Metadata(memberKey, RelationshipKind.ParameterType, CanonicalSignatureRenderer.RenderType(parameterType), knownTypes));
+                if (!string.IsNullOrWhiteSpace(member.ReturnType) &&
+                    !string.Equals(CanonicalSignatureRenderer.RenderType(member.ReturnType), "System.Void", StringComparison.Ordinal))
+                    result.Add(Metadata(memberKey, RelationshipKind.ReturnType, CanonicalSignatureRenderer.RenderType(member.ReturnType), knownTypes));
                 foreach (var reference in member.References)
                 {
                     var kind = reference.Kind switch
