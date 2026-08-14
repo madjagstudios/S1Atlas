@@ -131,6 +131,62 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Completed_symbol_search_stays_bounded_with_thousands_of_matches()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord(
+            "snapshot-large-search",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "extraction-large-search",
+            "2026-08-14T02:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(
+                "index-large-search",
+                snapshot.SnapshotId,
+                IndexRunStatus.Running,
+                snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = Enumerable.Range(0, 2000)
+            .Select(index =>
+            {
+                var suffix = index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+                return new IndexSymbolRecord(
+                    "large-" + suffix,
+                    snapshot.SnapshotId,
+                    "ScheduleI:Installed:Type:Bulk.Dealer" + suffix,
+                    "Type",
+                    "Bulk.Dealer" + suffix,
+                    "Bulk.Dealer" + suffix,
+                    false);
+            })
+            .ToArray();
+        await _repository.CompleteIndexRunAsync(
+            "index-large-search",
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T02:01:00Z",
+            cancellationToken);
+
+        var count = await _repository.CountCompletedSymbolMatchesAsync(
+            "index-large-search",
+            "dealer",
+            cancellationToken);
+        var page = await _repository.SearchCompletedSymbolsAsync(
+            "index-large-search",
+            "dealer",
+            37,
+            cancellationToken);
+
+        Assert.Equal(2000, count);
+        Assert.Equal(37, page.Count);
+        Assert.Equal("large-0000", page[0].SymbolId);
+        Assert.Equal("large-0036", page[^1].SymbolId);
+    }
+
+    [Fact]
     public async Task Completed_symbol_search_rejects_nonpositive_limits()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
