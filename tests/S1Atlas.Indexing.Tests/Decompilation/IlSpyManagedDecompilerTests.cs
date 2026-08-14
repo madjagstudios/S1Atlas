@@ -64,11 +64,8 @@ public sealed class IlSpyManagedDecompilerTests
             typeof(FixtureRoot).Assembly.Location,
             CancellationToken.None);
 
-        var derived = Assert.Single(result.Types, candidate => candidate.Name == "DerivedFixture");
-
-        var arithmetic = Assert.Single(
-            derived.Members,
-            member => member.Name == "Overload" && member.Signature.Contains("System.Int32", StringComparison.Ordinal));
+        var fixtureBase = Assert.Single(result.Types, candidate => candidate.Name == "FixtureBase");
+        var arithmetic = Assert.Single(fixtureBase.Members, member => member.Name == "BaseMethod");
         Assert.NotNull(arithmetic.BodyFacts);
         Assert.True(arithmetic.BodyFacts.HasPhysicalBody);
         Assert.False(arithmetic.BodyFacts.NoBodyByDesign);
@@ -77,6 +74,7 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.True(arithmetic.BodyFacts.InstructionCount >= 3);
         Assert.Equal(BodyRecoveryStatus.Recovered, arithmetic.BodyRecoveryStatus);
 
+        var derived = Assert.Single(result.Types, candidate => candidate.Name == "DerivedFixture");
         var trivial = Assert.Single(derived.Members, member => member.Name == "GenericMethod");
         Assert.NotNull(trivial.BodyFacts);
         Assert.True(trivial.BodyFacts.HasPhysicalBody);
