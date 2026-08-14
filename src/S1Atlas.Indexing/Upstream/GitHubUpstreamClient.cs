@@ -11,6 +11,8 @@ public sealed class GitHubUpstreamClient : IUpstreamClient
     public GitHubUpstreamClient(HttpClient httpClient)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
+            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("S1Atlas/0.1");
     }
 
     public async Task<UpstreamSnapshot> FetchAsync(UpstreamRepositoryConfiguration repository, string commitSha, CancellationToken cancellationToken)

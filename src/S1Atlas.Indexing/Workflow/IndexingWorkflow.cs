@@ -80,7 +80,9 @@ public sealed class IndexingWorkflow
             if (existing?.IndexId == indexId)
             {
                 var symbols = await _repository.GetCompletedSymbolsAsync(indexId, cancellationToken);
-                return new IndexingWorkflowResult(indexId, snapshotId, true, symbols.Count, 0, 0, []);
+                var relationships = await _repository.GetCompletedRelationshipsAsync(indexId, cancellationToken);
+                var sourceFiles = await _repository.GetCompletedSourceFilesAsync(indexId, cancellationToken);
+                return new IndexingWorkflowResult(indexId, snapshotId, true, symbols.Count, sourceFiles.Count, relationships.Count, []);
             }
         }
 
