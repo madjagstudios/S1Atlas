@@ -176,6 +176,45 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
+                   relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence
+            FROM relationships AS relationship
+            INNER JOIN index_runs AS run ON run.snapshot_id = relationship.snapshot_id
+            WHERE run.index_id = $id AND run.status = 'Completed'
+            ORDER BY relationship.relationship_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        var result = new List<IndexRelationshipRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new IndexRelationshipRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6)));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT file.source_file_id, file.snapshot_id, file.relative_path, file.sha256, file.byte_count
+            FROM source_files AS file
+            INNER JOIN index_runs AS run ON run.snapshot_id = file.snapshot_id
+            WHERE run.index_id = $id AND run.status = 'Completed'
+            ORDER BY file.relative_path COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        var result = new List<IndexSourceFileRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new IndexSourceFileRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4)));
+        return result;
+    }
+
     private static void AddSnapshotParameters(SqliteCommand command, CodeSnapshotRecord snapshot)
     {
         command.Parameters.AddWithValue("$id", snapshot.SnapshotId);

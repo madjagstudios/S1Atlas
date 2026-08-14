@@ -22,6 +22,7 @@ using S1Atlas.Storage.Sqlite;
 using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.Workflow;
+using S1Atlas.Indexing.Query;
 
 namespace S1Atlas.Cli;
 
@@ -278,6 +279,7 @@ public sealed class CliApplication
                 sqliteRepository,
                 integrityVerifier).ResolveAsync(buildId, ct),
             new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+        var indexQueryService = new IndexQueryService(sqliteRepository);
 
         var root = new RootCommand(
             "Local Schedule I developer-intelligence tools.");
@@ -324,6 +326,13 @@ public sealed class CliApplication
                 output,
                 error,
                 cancellationToken));
+        root.Subcommands.Add(SearchCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(TypeCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(MethodCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(SourceCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(RefsCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(CallersCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(CalleesCommand.Create(indexQueryService, repository, output, error, cancellationToken));
 
         return root.Parse(args).Invoke(new InvocationConfiguration
         {
