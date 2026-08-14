@@ -6,6 +6,7 @@ using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Fingerprints;
 using S1Atlas.Indexing.Paths;
 using S1Atlas.Indexing.Source;
+using S1Atlas.Indexing.Relationships;
 
 namespace S1Atlas.Indexing.Workflow;
 
@@ -30,6 +31,7 @@ public sealed class IndexingWorkflow
     private readonly ScheduleOneIndexSource _source;
     private readonly GeneratedSourceWriter _sourceWriter = new();
     private readonly SymbolFingerprintService _fingerprints = new();
+    private readonly RelationshipExtractor _relationships = new();
 
     public IndexingWorkflow(
         string dataRoot,
@@ -95,6 +97,7 @@ public sealed class IndexingWorkflow
             var sourceFile = await _sourceWriter.WriteAsync(paths.StagingRoot, "Assembly-CSharp.cs", decompilation.SourceText, snapshotId, cancellationToken);
             var symbols = BuildSymbols(decompilation, snapshotId);
             var fingerprints = _fingerprints.Create(symbols);
+            var relationships = BuildRelationships(decompilation, symbols, snapshotId);
 
             var writtenPath = Path.Combine(paths.StagingRoot, sourceFile.RelativePath.Replace('/', Path.DirectorySeparatorChar));
             var writtenHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(writtenPath, cancellationToken))).ToLowerInvariant();
@@ -103,9 +106,9 @@ public sealed class IndexingWorkflow
 
             if (Directory.Exists(paths.FinalRoot)) Directory.Delete(paths.FinalRoot, recursive: true);
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
-            await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [sourceFile], [], fingerprints, []), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
+            await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [sourceFile], [], fingerprints, relationships), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
             await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, cancellationToken);
-            return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, 1, 0, []);
+            return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, 1, relationships.Count, []);
         }
         catch (Exception exception)
         {
@@ -138,4 +141,27 @@ public sealed class IndexingWorkflow
     }
 
     private static string HashId(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private IReadOnlyList<IndexRelationshipRecord> BuildRelationships(
+        ManagedDecompilation decompilation,
+        IReadOnlyList<IndexSymbolRecord> symbols,
+        string snapshotId)
+    {
+        var facts = _relationships.Extract(decompilation, CodebaseKind.ScheduleI, CodeChannel.Installed);
+        var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol.SymbolId, StringComparer.Ordinal);
+        return facts
+            .Where(fact => symbolIds.ContainsKey(fact.SourceKey))
+            .Select(fact => new IndexRelationshipRecord(
+                HashId(fact.SourceKey + "\n" + fact.Kind + "\n" + fact.TargetText),
+                snapshotId,
+                symbolIds[fact.SourceKey],
+                fact.TargetKey,
+                fact.TargetText,
+                fact.Kind.ToString(),
+                fact.Evidence.ToString()))
+            .GroupBy(relationship => relationship.RelationshipId, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(relationship => relationship.RelationshipId, StringComparer.Ordinal)
+            .ToArray();
+    }
 }
