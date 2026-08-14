@@ -190,10 +190,10 @@ public sealed class SymbolResolverTests : IAsyncDisposable
             "Demo.ExactWidgetHelper",
             "Demo.ExactWidgetHelper");
         var uniqueText = Symbol(
-            "S1Api:Release:Type:Demo.InventoryService",
+            "S1Api:Release:Type:InventoryService",
             "Type",
-            "Demo.InventoryService",
-            "Demo.InventoryService");
+            "InventoryService",
+            "InventoryService");
         var lowerText = Symbol(
             "S1Api:Release:Type:Demo.SuperInventoryArchive",
             "Type",
