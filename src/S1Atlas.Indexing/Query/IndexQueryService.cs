@@ -219,7 +219,7 @@ public sealed class IndexQueryService
             locationRecord.StartColumn,
             locationRecord.EndLine,
             locationRecord.EndColumn);
-        var bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
+        BodyRecoveryStatus? bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         var snippet = new SourceSnippetQueryResult(
