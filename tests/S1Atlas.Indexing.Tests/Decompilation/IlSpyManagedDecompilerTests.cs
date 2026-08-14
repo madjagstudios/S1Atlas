@@ -66,7 +66,9 @@ public sealed class IlSpyManagedDecompilerTests
 
         var derived = Assert.Single(result.Types, candidate => candidate.Name == "DerivedFixture");
 
-        var arithmetic = Assert.Single(derived.Members, member => member.Name == "ArithmeticOnly");
+        var arithmetic = Assert.Single(
+            derived.Members,
+            member => member.Name == "Overload" && member.Signature.Contains("System.Int32", StringComparison.Ordinal));
         Assert.NotNull(arithmetic.BodyFacts);
         Assert.True(arithmetic.BodyFacts.HasPhysicalBody);
         Assert.False(arithmetic.BodyFacts.NoBodyByDesign);
@@ -75,7 +77,7 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.True(arithmetic.BodyFacts.InstructionCount >= 3);
         Assert.Equal(BodyRecoveryStatus.Recovered, arithmetic.BodyRecoveryStatus);
 
-        var trivial = Assert.Single(derived.Members, member => member.Name == "TrivialZero");
+        var trivial = Assert.Single(derived.Members, member => member.Name == "GenericMethod");
         Assert.NotNull(trivial.BodyFacts);
         Assert.True(trivial.BodyFacts.HasPhysicalBody);
         Assert.Equal(BodyRecoveryStatus.Unknown, trivial.BodyRecoveryStatus);
@@ -88,8 +90,8 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.Contains(throwStub.References, reference => reference.Kind == ManagedReferenceKind.Constructs);
         Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, throwStub.BodyRecoveryStatus);
 
-        var abstractType = Assert.Single(result.Types, candidate => candidate.Name == "AbstractFixture");
-        var missing = Assert.Single(abstractType.Members, member => member.Name == "MissingBody");
+        var contract = Assert.Single(result.Types, candidate => candidate.Name == "IFixtureContract");
+        var missing = Assert.Single(contract.Members, member => member.Name == "get_ContractValue");
         Assert.NotNull(missing.BodyFacts);
         Assert.False(missing.BodyFacts.HasPhysicalBody);
         Assert.True(missing.BodyFacts.NoBodyByDesign);
