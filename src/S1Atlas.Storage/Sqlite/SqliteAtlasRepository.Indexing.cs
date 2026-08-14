@@ -6,6 +6,8 @@ namespace S1Atlas.Storage.Sqlite;
 
 public sealed partial class SqliteAtlasRepository
 {
+    private static readonly TimeSpan StaleIndexRunAfter = TimeSpan.FromHours(1);
+
     public async Task CreateCodeSnapshotAsync(
         CodeSnapshotRecord snapshot,
         CancellationToken cancellationToken)
@@ -50,12 +52,22 @@ public sealed partial class SqliteAtlasRepository
         await using var command = connection.CreateCommand();
         command.CommandText = """
             INSERT INTO index_runs(index_id, snapshot_id, status, started_at_utc)
-            VALUES ($id, $snapshot, 'Running', $started);
+            VALUES ($id, $snapshot, 'Running', $started)
+            ON CONFLICT(index_id) DO UPDATE SET
+                snapshot_id = excluded.snapshot_id,
+                status = 'Running',
+                started_at_utc = excluded.started_at_utc,
+                completed_at_utc = NULL,
+                failure_message = NULL
+            WHERE index_runs.status = 'Failed'
+               OR (index_runs.status = 'Running' AND index_runs.started_at_utc < $stale);
             """;
         command.Parameters.AddWithValue("$id", run.IndexId);
         command.Parameters.AddWithValue("$snapshot", run.SnapshotId);
         command.Parameters.AddWithValue("$started", run.StartedAtUtc);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        command.Parameters.AddWithValue("$stale", DateTimeOffset.UtcNow.Subtract(StaleIndexRunAfter).ToString("O"));
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException($"Index run '{run.IndexId}' is already completed or actively running.");
     }
 
     public async Task CompleteIndexRunAsync(
@@ -212,6 +224,27 @@ public sealed partial class SqliteAtlasRepository
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             result.Add(new IndexSourceFileRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4)));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT location.symbol_id, location.source_file_id, location.start_line, location.start_column,
+                   location.end_line, location.end_column
+            FROM source_locations AS location
+            INNER JOIN symbols AS symbol ON symbol.symbol_id = location.symbol_id
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $id AND run.status = 'Completed'
+            ORDER BY location.source_file_id COLLATE BINARY, location.start_line, location.start_column, location.symbol_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        var result = new List<IndexSourceLocationRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new IndexSourceLocationRecord(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.IsDBNull(4) ? null : reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5)));
         return result;
     }
 

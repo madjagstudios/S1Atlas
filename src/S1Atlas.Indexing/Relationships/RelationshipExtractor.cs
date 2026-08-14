@@ -17,7 +17,8 @@ public sealed class RelationshipExtractor
         var knownMembers = decompilation.Types
             .SelectMany(type => type.Members.Select(member =>
                 (Name: ManagedMemberIdentity.Render(type.FullName, member), Kind: ToSymbolKind(member.Kind))))
-            .ToDictionary(item => item.Name, item => SymbolIdentity.Create(codebase, channel, item.Kind, item.Name).CanonicalKey, StringComparer.Ordinal);
+            .GroupBy(item => item.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => SymbolIdentity.Create(codebase, channel, group.First().Kind, group.Key).CanonicalKey, StringComparer.Ordinal);
         foreach (var type in decompilation.Types)
         {
             var source = SymbolIdentity.Create(codebase, channel, SymbolKind.Type, type.FullName).CanonicalKey;

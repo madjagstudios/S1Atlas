@@ -28,4 +28,12 @@ public sealed record SourceQueryResult(
     string RelativePath,
     string Sha256,
     long ByteCount,
-    string Provenance);
+    string Provenance,
+    IReadOnlyList<SourceLocationQueryResult> Locations);
+
+public sealed record SourceLocationQueryResult(
+    string SymbolId,
+    int StartLine,
+    int StartColumn,
+    int? EndLine,
+    int? EndColumn);

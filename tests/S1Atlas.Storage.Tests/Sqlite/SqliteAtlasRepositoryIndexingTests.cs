@@ -30,12 +30,27 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
 
         await _repository.StartIndexRunAsync(new IndexRunRecord("index-2", snapshot.SnapshotId, IndexRunStatus.Running, "2026-08-13T00:02:00Z"), cancellationToken);
         await _repository.FailIndexRunAsync("index-2", "staging failed", "2026-08-13T00:03:00Z", cancellationToken);
+        await _repository.StartIndexRunAsync(new IndexRunRecord("index-2", snapshot.SnapshotId, IndexRunStatus.Running, "2026-08-13T00:04:00Z"), cancellationToken);
+        await _repository.FailIndexRunAsync("index-2", "retry failed", "2026-08-13T00:05:00Z", cancellationToken);
 
         var latest = await _repository.GetLatestCompletedIndexAsync(CodebaseKind.ScheduleI, CodeChannel.Installed, null, cancellationToken);
         Assert.NotNull(latest);
         Assert.Equal("index-1", latest.IndexId);
         Assert.Single(await _repository.GetCompletedSymbolsAsync("index-1", cancellationToken));
         Assert.Empty(await _repository.GetCompletedSymbolsAsync("index-2", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Stale_running_candidate_can_be_restarted_with_the_same_identity()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord("snapshot-stale", CodebaseKind.ScheduleI, CodeChannel.Installed, "extraction-stale", "2020-01-01T00:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(new IndexRunRecord("index-stale", snapshot.SnapshotId, IndexRunStatus.Running, "2020-01-01T00:00:00Z"), cancellationToken);
+
+        await _repository.StartIndexRunAsync(new IndexRunRecord("index-stale", snapshot.SnapshotId, IndexRunStatus.Running, DateTimeOffset.UtcNow.ToString("O")), cancellationToken);
+        await _repository.FailIndexRunAsync("index-stale", "test cleanup", DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
     }
 
     public ValueTask DisposeAsync()

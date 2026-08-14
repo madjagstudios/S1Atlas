@@ -81,7 +81,17 @@ public sealed class IndexQueryService
             var symbols = await _repository.GetCompletedSymbolsAsync(run.IndexId, cancellationToken);
             if (!symbols.Any(symbol => symbol.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase) || symbol.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))) continue;
             var files = await _repository.GetCompletedSourceFilesAsync(run.IndexId, cancellationToken);
-            results.AddRange(files.Select(file => new SourceQueryResult(run.IndexId, file.RelativePath, file.Sha256, file.ByteCount, options.Codebase + ":" + channel + ":generated")));
+            var locations = await _repository.GetCompletedSourceLocationsAsync(run.IndexId, cancellationToken);
+            results.AddRange(files.Select(file => new SourceQueryResult(
+                run.IndexId,
+                file.RelativePath,
+                file.Sha256,
+                file.ByteCount,
+                options.Codebase + ":" + channel + ":generated",
+                locations
+                    .Where(location => location.SourceFileId == file.SourceFileId)
+                    .Select(location => new SourceLocationQueryResult(location.SymbolId, location.StartLine, location.StartColumn, location.EndLine, location.EndColumn))
+                    .ToArray())));
         }
         return results.OrderBy(result => result.RelativePath, StringComparer.Ordinal).ToArray();
     }

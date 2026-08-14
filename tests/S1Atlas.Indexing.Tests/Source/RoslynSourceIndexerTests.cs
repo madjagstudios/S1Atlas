@@ -17,6 +17,8 @@ public sealed class RoslynSourceIndexerTests
         Assert.Equal(
             CanonicalSignatureRenderer.RenderMethod("Demo.Widget", "Run", "void", ["System.Int32"]),
             method.Signature);
+        Assert.Equal(method.Signature, method.QualifiedName);
+        Assert.Equal("source.cs", method.SourceFile);
         Assert.All(symbols, symbol => Assert.True(symbol.IsBestEffort));
     }
 }

@@ -30,6 +30,7 @@ public sealed class IndexingWorkflow
     private readonly Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> _authorityResolver;
     private readonly ScheduleOneIndexSource _source;
     private readonly GeneratedSourceWriter _sourceWriter = new();
+    private readonly RoslynSourceIndexer _sourceIndexer = new();
     private readonly SymbolFingerprintService _fingerprints = new();
     private readonly RelationshipExtractor _relationships = new();
 
@@ -89,16 +90,21 @@ public sealed class IndexingWorkflow
         var paths = OwnedIndexPaths.ForScheduleOne(_dataRoot, buildId, indexId);
         Directory.CreateDirectory(paths.StagingRoot);
         var run = new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, DateTimeOffset.UtcNow.ToString("O"));
-        await _repository.StartIndexRunAsync(run, cancellationToken);
+        var runStarted = false;
+        var databaseCompleted = false;
         try
         {
+            await _repository.StartIndexRunAsync(run, cancellationToken);
+            runStarted = true;
             var decompilation = await _source.ReadAsync(authority, cancellationToken);
             var finalAuthority = await _authorityResolver(buildId, cancellationToken);
             if (finalAuthority is null || finalAuthority.Extraction.ExtractionId != authority.Extraction.ExtractionId)
                 throw new InvalidOperationException("The preferred extraction changed during indexing.");
             var sourceFile = await _sourceWriter.WriteAsync(paths.StagingRoot, "Assembly-CSharp.cs", decompilation.SourceText, snapshotId, cancellationToken);
             var symbols = BuildSymbols(decompilation, snapshotId);
-            var fingerprints = _fingerprints.Create(symbols);
+            var sourceSymbols = _sourceIndexer.Index(decompilation.SourceText, CodebaseKind.ScheduleI, CodeChannel.Installed, sourceFile.RelativePath);
+            var sourceLocations = BuildSourceLocations(sourceSymbols, symbols, sourceFile);
+            var fingerprints = _fingerprints.Create(symbols, BuildMethodEvidence(decompilation, symbols));
             var relationships = BuildRelationships(decompilation, symbols, snapshotId);
 
             var writtenPath = Path.Combine(paths.StagingRoot, sourceFile.RelativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -106,15 +112,19 @@ public sealed class IndexingWorkflow
             if (!string.Equals(writtenHash, sourceFile.Sha256, StringComparison.Ordinal))
                 throw new InvalidDataException("Generated source hash validation failed.");
 
+            await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [sourceFile], sourceLocations, fingerprints, relationships), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
+            databaseCompleted = true;
             if (Directory.Exists(paths.FinalRoot)) Directory.Delete(paths.FinalRoot, recursive: true);
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
-            await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [sourceFile], [], fingerprints, relationships), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
             await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, cancellationToken);
             return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, 1, relationships.Count, []);
         }
         catch (Exception exception)
         {
-            try { await _repository.FailIndexRunAsync(indexId, exception.Message, DateTimeOffset.UtcNow.ToString("O"), CancellationToken.None); } catch { }
+            if (runStarted && !databaseCompleted)
+            {
+                try { await _repository.FailIndexRunAsync(indexId, exception.Message, DateTimeOffset.UtcNow.ToString("O"), CancellationToken.None); } catch { }
+            }
             if (Directory.Exists(paths.StagingRoot)) Directory.Delete(paths.StagingRoot, recursive: true);
             throw;
         }
@@ -144,6 +154,49 @@ public sealed class IndexingWorkflow
 
     private static string HashId(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
+    private static IReadOnlyList<IndexSourceLocationRecord> BuildSourceLocations(
+        IReadOnlyList<NormalizedSymbol> sourceSymbols,
+        IReadOnlyList<IndexSymbolRecord> symbols,
+        IndexSourceFileRecord sourceFile)
+    {
+        var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol.SymbolId, StringComparer.Ordinal);
+        return sourceSymbols
+            .Where(symbol => symbol.SourceLine is not null)
+            .Select(symbol =>
+            {
+                var key = SymbolIdentity.Create(symbol.Codebase, symbol.Channel, symbol.Kind, symbol.QualifiedName).CanonicalKey;
+                return symbolIds.TryGetValue(key, out var symbolId)
+                    ? new IndexSourceLocationRecord(symbolId, sourceFile.SourceFileId, symbol.SourceLine!.Value, 1)
+                    : null;
+            })
+            .Where(location => location is not null)
+            .Cast<IndexSourceLocationRecord>()
+            .DistinctBy(location => (location.SymbolId, location.StartLine, location.StartColumn))
+            .OrderBy(location => location.StartLine)
+            .ThenBy(location => location.StartColumn)
+            .ThenBy(location => location.SymbolId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> BuildMethodEvidence(
+        ManagedDecompilation decompilation,
+        IReadOnlyList<IndexSymbolRecord> symbols)
+    {
+        var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol.SymbolId, StringComparer.Ordinal);
+        return decompilation.Types
+            .SelectMany(type => type.Members.Select(member => (type, member)))
+            .Where(item => item.member.Kind is ManagedMemberKind.Constructor or ManagedMemberKind.Method && item.member.HasBody)
+            .Select(item =>
+            {
+                var key = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, ToSymbolKind(item.member.Kind), ManagedMemberIdentity.Render(item.type.FullName, item.member)).CanonicalKey;
+                return symbolIds.TryGetValue(key, out var symbolId)
+                    ? (symbolId, Evidence: (IReadOnlyList<string>)item.member.References.Select(reference => reference.Kind + ":" + reference.Target).ToArray())
+                    : (null, Evidence: (IReadOnlyList<string>)[]);
+            })
+            .Where(item => item.symbolId is not null && item.Evidence.Count > 0)
+            .ToDictionary(item => item.symbolId!, item => item.Evidence, StringComparer.Ordinal);
+    }
+
     private IReadOnlyList<IndexRelationshipRecord> BuildRelationships(
         ManagedDecompilation decompilation,
         IReadOnlyList<IndexSymbolRecord> symbols,
@@ -157,7 +210,7 @@ public sealed class IndexingWorkflow
                 HashId(fact.SourceKey + "\n" + fact.Kind + "\n" + fact.TargetText),
                 snapshotId,
                 symbolIds[fact.SourceKey],
-                fact.TargetKey,
+                fact.TargetKey is not null && symbolIds.TryGetValue(fact.TargetKey, out var targetSymbolId) ? targetSymbolId : null,
                 fact.TargetText,
                 fact.Kind.ToString(),
                 fact.Evidence.ToString()))
@@ -166,4 +219,14 @@ public sealed class IndexingWorkflow
             .OrderBy(relationship => relationship.RelationshipId, StringComparer.Ordinal)
             .ToArray();
     }
+
+    private static SymbolKind ToSymbolKind(ManagedMemberKind kind) => kind switch
+    {
+        ManagedMemberKind.Constructor => SymbolKind.Constructor,
+        ManagedMemberKind.Method => SymbolKind.Method,
+        ManagedMemberKind.Field => SymbolKind.Field,
+        ManagedMemberKind.Property => SymbolKind.Property,
+        ManagedMemberKind.Event => SymbolKind.Event,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
 }
