@@ -8,5 +8,16 @@ namespace S1Atlas.Cli.Commands;
 internal static class CallersCommand
 {
     public static Command Create(IndexQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
-        IndexQueryCommandFactory.Create("callers", service, repository, output, error, cancellationToken, async (query, options, ct) => new IndexQueryOutput([], await service.RelationshipsAsync(query, true, options, ct), []));
+        IndexQueryCommandFactory.Create("callers", service, repository, output, error, cancellationToken, async (query, options, ct) =>
+        {
+            var result = await service.CallersAsync(query, options, ct);
+            return new IndexQueryOutput(
+                [],
+                result.Relationships,
+                [],
+                Resolution: result.Resolution,
+                BodyRecoveryStatus: result.BodyRecoveryStatus,
+                CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
+                CompletenessNotice: result.CompletenessNotice);
+        });
 }
