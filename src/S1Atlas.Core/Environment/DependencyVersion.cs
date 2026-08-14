@@ -4,4 +4,5 @@ public sealed record DependencyVersion(
     DependencyKind Kind,
     string? Version,
     string? Path,
-    bool IsInstalled);
+    bool IsInstalled,
+    string? BinarySha256 = null);
