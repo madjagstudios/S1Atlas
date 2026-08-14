@@ -33,13 +33,51 @@ public sealed record SymbolSearchResult(
     int ReturnedCount,
     IReadOnlyList<SymbolQueryResult> Results);
 
+public sealed record RelationshipEndpointQueryResult(
+    string? SymbolId,
+    string? QualifiedName,
+    string? Signature,
+    string? RawText,
+    bool Resolved);
+
 public sealed record RelationshipQueryResult(
     string RelationshipId,
     string Kind,
     string Evidence,
-    string SourceSymbolId,
-    string? TargetSymbolId,
-    string? TargetText);
+    string Direction,
+    RelationshipEndpointQueryResult Source,
+    RelationshipEndpointQueryResult Target)
+{
+    public RelationshipQueryResult(
+        string relationshipId,
+        string kind,
+        string evidence,
+        string sourceSymbolId,
+        string? targetSymbolId,
+        string? targetText)
+        : this(
+            relationshipId,
+            kind,
+            evidence,
+            string.Empty,
+            new RelationshipEndpointQueryResult(sourceSymbolId, null, null, null, true),
+            targetSymbolId is null
+                ? new RelationshipEndpointQueryResult(null, null, null, targetText, false)
+                : new RelationshipEndpointQueryResult(targetSymbolId, null, null, targetText, true))
+    {
+    }
+
+    public string SourceSymbolId => Source.SymbolId ?? string.Empty;
+    public string? TargetSymbolId => Target.SymbolId;
+    public string? TargetText => Target.RawText;
+}
+
+public sealed record RelationshipQuerySetResult(
+    SymbolResolutionResult Resolution,
+    IReadOnlyList<RelationshipQueryResult> Relationships,
+    BodyRecoveryStatus? BodyRecoveryStatus,
+    bool CallerCompletenessBoundedByTargetResolution,
+    string CompletenessNotice);
 
 public sealed record SourceQueryResult(
     string IndexId,
