@@ -89,6 +89,95 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         Assert.Equal("InvalidLimit", document.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
+    [Fact]
+    public async Task Refs_human_output_contains_both_directions_enriched_ids_evidence_and_unresolved_text()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "target"],
+            output,
+            error,
+            cancellationToken);
+
+        var text = output.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.Contains("edge-in", text, StringComparison.Ordinal);
+        Assert.Contains("Calls", text, StringComparison.Ordinal);
+        Assert.Contains("call-site", text, StringComparison.Ordinal);
+        Assert.Contains("Demo.Caller.Run", text, StringComparison.Ordinal);
+        Assert.Contains("caller", text, StringComparison.Ordinal);
+        Assert.Contains("Demo.Target.Run", text, StringComparison.Ordinal);
+        Assert.Contains("target", text, StringComparison.Ordinal);
+        Assert.Contains("edge-unresolved", text, StringComparison.Ordinal);
+        Assert.Contains("External.Api::Ping()", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Callers_and_callees_have_distinct_call_like_semantics()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+
+        using var callersOutput = new StringWriter();
+        using var callersError = new StringWriter();
+        var callersExit = application.Invoke(
+            ["callers", "target"],
+            callersOutput,
+            callersError,
+            cancellationToken);
+
+        using var calleesOutput = new StringWriter();
+        using var calleesError = new StringWriter();
+        var calleesExit = application.Invoke(
+            ["callees", "target"],
+            calleesOutput,
+            calleesError,
+            cancellationToken);
+
+        Assert.Equal(0, callersExit);
+        Assert.Equal(0, calleesExit);
+        Assert.Equal(string.Empty, callersError.ToString());
+        Assert.Equal(string.Empty, calleesError.ToString());
+        Assert.Contains("edge-in", callersOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("edge-out", callersOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("edge-out", calleesOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("edge-unresolved", calleesOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("edge-in", calleesOutput.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Relationship_ambiguity_is_nonzero_and_returns_structured_candidates()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "service", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.Equal("AmbiguousSymbol", root.GetProperty("error").GetProperty("code").GetString());
+        var candidates = root.GetProperty("data").GetProperty("candidates");
+        Assert.Equal(2, candidates.GetArrayLength());
+        Assert.Contains(candidates.EnumerateArray(), item => item.GetProperty("symbolId").GetString() == "service-a");
+        Assert.Contains(candidates.EnumerateArray(), item => item.GetProperty("symbolId").GetString() == "service-b");
+    }
+
     private async Task SeedSearchIndexAsync(CancellationToken cancellationToken)
     {
         var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
@@ -124,6 +213,44 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
             indexId,
             new IndexWriteSet(symbols, [], [], [], []),
             "2026-08-14T18:21:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedRelationshipIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-relationships";
+        const string indexId = "index-cli-relationships";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-relationships",
+            "2026-08-14T18:22:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = new[]
+        {
+            new IndexSymbolRecord("target", snapshotId, "ScheduleI:Installed:Method:Demo.Target::Run()", "Method", "Demo.Target.Run", "System.Void Demo.Target::Run()", false, BodyRecoveryStatus.Recovered),
+            new IndexSymbolRecord("caller", snapshotId, "ScheduleI:Installed:Method:Demo.Caller::Run()", "Method", "Demo.Caller.Run", "System.Void Demo.Caller::Run()", false, BodyRecoveryStatus.Recovered),
+            new IndexSymbolRecord("callee", snapshotId, "ScheduleI:Installed:Constructor:Demo.Callee::.ctor()", "Constructor", "Demo.Callee..ctor", "System.Void Demo.Callee::.ctor()", false, BodyRecoveryStatus.Recovered),
+            new IndexSymbolRecord("service-a", snapshotId, "ScheduleI:Installed:Type:Alpha.Service", "Type", "Alpha.Service", "Alpha.Service", false),
+            new IndexSymbolRecord("service-b", snapshotId, "ScheduleI:Installed:Type:Beta.Service", "Type", "Beta.Service", "Beta.Service", false)
+        };
+        var relationships = new[]
+        {
+            new IndexRelationshipRecord("edge-in", snapshotId, "caller", "target", null, "Calls", "call-site"),
+            new IndexRelationshipRecord("edge-out", snapshotId, "target", "callee", null, "Constructs", "new-site"),
+            new IndexRelationshipRecord("edge-unresolved", snapshotId, "target", null, "External.Api::Ping()", "Calls", "unresolved-call")
+        };
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], relationships),
+            "2026-08-14T18:23:00Z",
             cancellationToken);
     }
 
