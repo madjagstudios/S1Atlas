@@ -404,7 +404,8 @@ public sealed class IndexQueryService
             BodyRecoveryStatus.NoBodyByDesign => "No implementation body is expected for this declaration.",
             BodyRecoveryStatus.StubOrUnavailable => "The body is stubbed or unavailable; zero call results are not definitive.",
             BodyRecoveryStatus.Unknown => "Body recovery is unknown; zero call results are not definitive.",
-            null => "Call completeness is not applicable to a non-callable symbol."
+            null => "Call completeness is not applicable to a non-callable symbol.",
+            _ => "Body recovery status is unrecognized; zero call results are not definitive."
         };
         return callers
             ? bodyNotice + " Incoming callers are limited to call sites whose target resolved to the selected symbol."
