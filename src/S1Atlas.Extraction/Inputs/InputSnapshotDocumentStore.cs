@@ -26,6 +26,18 @@ internal sealed class InputSnapshotDocumentStore
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
+    /// <summary>
+    /// The contained Cpp2IL root for an archived snapshot: the immutable
+    /// <c>game-root</c> directory beneath the snapshot document root. Snapshot inputs
+    /// (for example <c>GameAssembly.dll</c>) live below this, never directly below the
+    /// snapshot document root.
+    /// </summary>
+    public static string GetGameRoot(string snapshotRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshotRoot);
+        return Path.Combine(Path.GetFullPath(snapshotRoot), GameRootDirectoryName);
+    }
+
     public async Task WriteAsync(
         string stagingRoot,
         InputSnapshot snapshot,

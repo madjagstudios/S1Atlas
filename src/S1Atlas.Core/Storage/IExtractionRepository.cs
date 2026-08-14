@@ -33,6 +33,17 @@ public interface IExtractionRepository
         InputSnapshot snapshot,
         CancellationToken cancellationToken);
 
+    Task<InputSnapshot?> GetInputSnapshotAsync(
+        string inputSnapshotId,
+        CancellationToken cancellationToken);
+
+    Task MarkInputSnapshotReplayVerifiedAsync(
+        string inputSnapshotId,
+        string expectedBuildId,
+        string expectedManifestDigest,
+        DateTimeOffset verifiedAtUtc,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<InputSnapshot>> ListReplayVerifiedInputSnapshotsAsync(
         string buildId,
         CancellationToken cancellationToken);

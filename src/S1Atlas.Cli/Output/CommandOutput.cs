@@ -55,6 +55,35 @@ internal sealed class CommandOutput
         return 0;
     }
 
+    /// <summary>
+    /// Writes a successful-shaped data result but with an explicit exit code. Used when
+    /// an operation produced valid data yet must still exit non-zero (for example a
+    /// cleanup apply that left blocked or failed items). The JSON envelope's exit code
+    /// matches the returned process exit code.
+    /// </summary>
+    public int Complete<T>(int exitCode, T data, Action<TextWriter> writeHuman)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(exitCode);
+        ArgumentNullException.ThrowIfNull(writeHuman);
+
+        if (IsJson)
+        {
+            WriteJson(new CliEnvelope<T>(
+                SchemaVersion: 1,
+                Command: _commandName,
+                Success: exitCode == 0,
+                ExitCode: exitCode,
+                Data: data,
+                Error: null));
+        }
+        else
+        {
+            writeHuman(_standardOutput);
+        }
+
+        return exitCode;
+    }
+
     public int Failure(
         int exitCode,
         string code,

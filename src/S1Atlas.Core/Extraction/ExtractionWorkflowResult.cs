@@ -14,7 +14,10 @@ public sealed record ExtractionWorkflowResult(
     bool ValidationWasRun,
     bool ReusedExistingExtraction,
     bool IsPreferred,
-    bool IsAuthoritative);
+    bool IsAuthoritative,
+    ExtractionInputSource? InputSource = null,
+    string? InputSnapshotId = null,
+    bool InputSnapshotReplayVerified = false);
 
 public sealed record ValidationPersistence(
     ExtractionAttempt Attempt,

@@ -38,6 +38,8 @@ internal sealed class ValidatedExtractionWorkflow
     private readonly ExtractionValidationService _validationService;
     private readonly Func<PreparedExtractionContext, ExtractionOptions, CancellationToken,
         Task<ExtractionOperationResult>> _runPreparedProcessAsync;
+    private readonly Func<string, string, string, DateTimeOffset, CancellationToken, Task>
+        _markInputSnapshotReplayVerifiedAsync;
     private readonly TimeProvider _timeProvider;
 
     public ValidatedExtractionWorkflow(
@@ -51,6 +53,8 @@ internal sealed class ValidatedExtractionWorkflow
         ExtractionValidationService validationService,
         Func<PreparedExtractionContext, ExtractionOptions, CancellationToken,
             Task<ExtractionOperationResult>> runPreparedProcessAsync,
+        Func<string, string, string, DateTimeOffset, CancellationToken, Task>
+            markInputSnapshotReplayVerifiedAsync,
         TimeProvider? timeProvider = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
@@ -64,6 +68,8 @@ internal sealed class ValidatedExtractionWorkflow
         _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
         _runPreparedProcessAsync = runPreparedProcessAsync
             ?? throw new ArgumentNullException(nameof(runPreparedProcessAsync));
+        _markInputSnapshotReplayVerifiedAsync = markInputSnapshotReplayVerifiedAsync
+            ?? throw new ArgumentNullException(nameof(markInputSnapshotReplayVerifiedAsync));
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -115,8 +121,71 @@ internal sealed class ValidatedExtractionWorkflow
         // --retry, or nothing above satisfies the request: run the Phase 3 prepared Cpp2IL
         // process and validate/promote the candidate it returns.
         var processResult = await _runPreparedProcessAsync(context, options, cancellationToken);
-        return await _validationService.ValidateAndPromoteCandidateAsync(
+        var result = await _validationService.ValidateAndPromoteCandidateAsync(
             processResult.Attempt, context, processWasRun: true, cancellationToken);
+        result = result with
+        {
+            InputSource = processResult.InputSource,
+            InputSnapshotId = processResult.InputSnapshotId
+        };
+
+        return await CertifyArchivedReplayIfAuthoritativeAsync(
+            result, processResult, context, cancellationToken);
+    }
+
+    /// <summary>
+    /// Certifies the input snapshot replay-verified only after Cpp2IL ran from that exact
+    /// archived snapshot and Phase 4 returned an authoritative validated extraction. No
+    /// no-op, revalidation, existing-candidate, live, or non-authoritative result reaches
+    /// here. Certification uses the process attempt's pre-input manifest digest and is
+    /// idempotent; if the certification commit fails the authoritative extraction is
+    /// preserved and the failure is surfaced as an operational error.
+    /// </summary>
+    private async Task<ExtractionWorkflowResult> CertifyArchivedReplayIfAuthoritativeAsync(
+        ExtractionWorkflowResult result,
+        ExtractionOperationResult processResult,
+        PreparedExtractionContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!result.IsAuthoritative ||
+            processResult.InputSource != ExtractionInputSource.ArchivedSnapshot ||
+            processResult.InputSnapshotId is not { } snapshotId)
+        {
+            return result;
+        }
+
+        var preInputDigest = processResult.Attempt.PreInputManifestDigest
+            ?? throw new ExtractionOperationException(
+                ExtractionFailureStage.DatabasePromotion,
+                ExtractionFailureCode.DatabasePromotionFailed,
+                "The archived process attempt has no pre-input manifest digest to certify.",
+                result.AttemptId);
+
+        try
+        {
+            await _markInputSnapshotReplayVerifiedAsync(
+                snapshotId,
+                context.Build.BuildId,
+                preInputDigest,
+                _timeProvider.GetUtcNow().ToUniversalTime(),
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ExtractionOperationException(
+                ExtractionFailureStage.DatabasePromotion,
+                ExtractionFailureCode.DatabasePromotionFailed,
+                $"The authoritative archived extraction was preserved but its input " +
+                $"snapshot '{snapshotId}' could not be certified replay-verified.",
+                result.AttemptId,
+                exception);
+        }
+
+        return result with { InputSnapshotReplayVerified = true };
     }
 
     private async Task<ValidatedExtraction> SelectRecipeOutputAsync(

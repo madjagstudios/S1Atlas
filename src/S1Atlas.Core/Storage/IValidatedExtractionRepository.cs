@@ -67,4 +67,10 @@ public interface IValidatedExtractionRepository
         ExtractionPreferenceReason reason,
         DateTimeOffset occurredAtUtc,
         CancellationToken cancellationToken);
+
+    Task DeleteCleanupEligibleAttemptAsync(
+        string attemptId,
+        ExtractionAttemptStatus expectedStatus,
+        DateTimeOffset expectedCompletedAtUtc,
+        CancellationToken cancellationToken);
 }

@@ -398,6 +398,97 @@ public sealed partial class SqliteAtlasRepository
         }
     }
 
+    public async Task<InputSnapshot?> GetInputSnapshotAsync(
+        string inputSnapshotId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputSnapshotId);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        return await GetInputSnapshotAsync(
+            connection,
+            transaction: null,
+            inputSnapshotId,
+            cancellationToken);
+    }
+
+    public async Task MarkInputSnapshotReplayVerifiedAsync(
+        string inputSnapshotId,
+        string expectedBuildId,
+        string expectedManifestDigest,
+        DateTimeOffset verifiedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(inputSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedBuildId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedManifestDigest);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var transaction =
+            (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var header = await ReadInputSnapshotHeaderByIdAsync(
+                connection,
+                transaction,
+                inputSnapshotId,
+                cancellationToken) ?? throw new InvalidOperationException(
+                    $"Input snapshot '{inputSnapshotId}' does not exist to certify.");
+            if (!string.Equals(header.BuildId, expectedBuildId, StringComparison.Ordinal) ||
+                !string.Equals(
+                    header.ManifestDigest,
+                    expectedManifestDigest,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Input snapshot '{inputSnapshotId}' does not match the expected " +
+                    "build or manifest digest for replay certification.");
+            }
+
+            // Idempotent: an already-certified snapshot preserves its first
+            // certification timestamp and is never downgraded.
+            if (!header.ReplayVerified)
+            {
+                await using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = """
+                    UPDATE input_snapshots
+                    SET replay_verified = 1,
+                        replay_verified_at_utc = $verifiedAtUtc
+                    WHERE input_snapshot_id = $inputSnapshotId
+                      AND build_id = $buildId
+                      AND manifest_digest = $manifestDigest
+                      AND replay_verified = 0;
+                    """;
+                command.Parameters.AddWithValue(
+                    "$verifiedAtUtc",
+                    FormatTimestamp(verifiedAtUtc));
+                command.Parameters.AddWithValue("$inputSnapshotId", inputSnapshotId);
+                command.Parameters.AddWithValue("$buildId", expectedBuildId);
+                command.Parameters.AddWithValue("$manifestDigest", expectedManifestDigest);
+                if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Input snapshot '{inputSnapshotId}' replay certification " +
+                        "affected no row.");
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public async Task<IReadOnlyList<InputSnapshot>> ListReplayVerifiedInputSnapshotsAsync(
         string buildId,
         CancellationToken cancellationToken)
@@ -751,33 +842,15 @@ public sealed partial class SqliteAtlasRepository
 
     private static async Task<InputSnapshot?> GetInputSnapshotAsync(
         SqliteConnection connection,
-        SqliteTransaction transaction,
+        SqliteTransaction? transaction,
         string inputSnapshotId,
         CancellationToken cancellationToken)
     {
-        InputSnapshotHeader? header;
-        await using (var command = connection.CreateCommand())
-        {
-            command.Transaction = transaction;
-            command.CommandText = """
-                SELECT
-                    input_snapshot_id,
-                    build_id,
-                    root_path,
-                    manifest_digest,
-                    created_at_utc,
-                    replay_verified,
-                    replay_verified_at_utc
-                FROM input_snapshots
-                WHERE input_snapshot_id = $inputSnapshotId;
-                """;
-            command.Parameters.AddWithValue("$inputSnapshotId", inputSnapshotId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            header = await reader.ReadAsync(cancellationToken)
-                ? ReadInputSnapshotHeader(reader)
-                : null;
-        }
-
+        var header = await ReadInputSnapshotHeaderByIdAsync(
+            connection,
+            transaction,
+            inputSnapshotId,
+            cancellationToken);
         return header is null
             ? null
             : await MaterializeInputSnapshotAsync(
@@ -785,6 +858,33 @@ public sealed partial class SqliteAtlasRepository
                 transaction,
                 header,
                 cancellationToken);
+    }
+
+    private static async Task<InputSnapshotHeader?> ReadInputSnapshotHeaderByIdAsync(
+        SqliteConnection connection,
+        SqliteTransaction? transaction,
+        string inputSnapshotId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT
+                input_snapshot_id,
+                build_id,
+                root_path,
+                manifest_digest,
+                created_at_utc,
+                replay_verified,
+                replay_verified_at_utc
+            FROM input_snapshots
+            WHERE input_snapshot_id = $inputSnapshotId;
+            """;
+        command.Parameters.AddWithValue("$inputSnapshotId", inputSnapshotId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? ReadInputSnapshotHeader(reader)
+            : null;
     }
 
     private static InputSnapshotHeader ReadInputSnapshotHeader(
@@ -841,6 +941,12 @@ public sealed partial class SqliteAtlasRepository
             new InputManifest(files));
     }
 
+    /// <summary>
+    /// Compares only the immutable snapshot facts. Replay certification
+    /// (<see cref="InputSnapshot.ReplayVerified"/> and its timestamp) is deliberately
+    /// excluded so recreating identical snapshot bytes is an idempotent no-op that can
+    /// never conflict with or downgrade an already-certified row.
+    /// </summary>
     private static bool HasSamePersistedSnapshotFacts(
         InputSnapshot existing,
         InputSnapshot candidate)
@@ -855,9 +961,7 @@ public sealed partial class SqliteAtlasRepository
                 existing.ManifestDigest,
                 candidate.ManifestDigest,
                 StringComparison.Ordinal) ||
-            existing.CreatedAtUtc != candidate.CreatedAtUtc ||
-            existing.ReplayVerified != candidate.ReplayVerified ||
-            existing.ReplayVerifiedAtUtc != candidate.ReplayVerifiedAtUtc)
+            existing.CreatedAtUtc != candidate.CreatedAtUtc)
         {
             return false;
         }

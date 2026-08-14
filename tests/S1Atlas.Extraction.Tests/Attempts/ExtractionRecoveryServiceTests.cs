@@ -395,5 +395,7 @@ public sealed class ExtractionRecoveryServiceTests : IDisposable
         public Task CreateAttemptAsync(ExtractionAttempt attempt, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task SaveInputSnapshotAsync(InputSnapshot snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<InputSnapshot>> ListReplayVerifiedInputSnapshotsAsync(string buildId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<InputSnapshot?> GetInputSnapshotAsync(string inputSnapshotId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task MarkInputSnapshotReplayVerifiedAsync(string inputSnapshotId, string expectedBuildId, string expectedManifestDigest, DateTimeOffset verifiedAtUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

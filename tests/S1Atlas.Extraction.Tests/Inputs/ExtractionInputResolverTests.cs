@@ -12,6 +12,8 @@ namespace S1Atlas.Extraction.Tests.Inputs;
 
 public sealed class ExtractionInputResolverTests
 {
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
     [Fact]
     public async Task SelectBuildAsync_WithoutBuildId_UsesCurrentBuild()
     {
@@ -19,9 +21,7 @@ public sealed class ExtractionInputResolverTests
         var repository = new FakeRepository { CurrentBuild = fixture.Build };
         var resolver = CreateResolver(repository, []);
 
-        var selected = await resolver.SelectBuildAsync(
-            requestedBuildId: null,
-            TestContext.Current.CancellationToken);
+        var selected = await resolver.SelectBuildAsync(requestedBuildId: null, Ct);
 
         Assert.Equal(fixture.Build, selected);
         Assert.Equal(0, repository.SaveSnapshotCallCount);
@@ -40,9 +40,7 @@ public sealed class ExtractionInputResolverTests
         };
         var resolver = CreateResolver(repository, []);
 
-        var selected = await resolver.SelectBuildAsync(
-            historicalBuild.BuildId,
-            TestContext.Current.CancellationToken);
+        var selected = await resolver.SelectBuildAsync(historicalBuild.BuildId, Ct);
 
         Assert.Equal(historicalBuild, selected);
         Assert.Equal(current.Build, repository.CurrentBuild);
@@ -52,13 +50,10 @@ public sealed class ExtractionInputResolverTests
     [Fact]
     public async Task SelectBuildAsync_WhenRequestedBuildIsUnknown_ReportsBuildNotFound()
     {
-        var repository = new FakeRepository();
-        var resolver = CreateResolver(repository, []);
+        var resolver = CreateResolver(new FakeRepository(), []);
 
         var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
-            () => resolver.SelectBuildAsync(
-                "unknown-build",
-                TestContext.Current.CancellationToken));
+            () => resolver.SelectBuildAsync("unknown-build", Ct));
 
         Assert.Equal(ExtractionFailureCode.BuildNotFound, exception.Code);
     }
@@ -66,13 +61,10 @@ public sealed class ExtractionInputResolverTests
     [Fact]
     public async Task SelectBuildAsync_WhenNoCurrentSnapshot_ReportsBuildNotFound()
     {
-        var repository = new FakeRepository();
-        var resolver = CreateResolver(repository, []);
+        var resolver = CreateResolver(new FakeRepository(), []);
 
         var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
-            () => resolver.SelectBuildAsync(
-                requestedBuildId: null,
-                TestContext.Current.CancellationToken));
+            () => resolver.SelectBuildAsync(requestedBuildId: null, Ct));
 
         Assert.Equal(ExtractionFailureCode.BuildNotFound, exception.Code);
     }
@@ -86,14 +78,15 @@ public sealed class ExtractionInputResolverTests
         using var archivedInput = InputTestFixture.Create();
         var repository = new FakeRepository();
         repository.Observations.Add(CreateObservation("stored", storedInput, 1));
-        repository.Snapshots.Add(await CreateSnapshotAsync("archive", archivedInput));
+        await CreateSnapshotAsync(repository, archivedInput, replayVerified: true);
         var resolver = CreateResolver(repository, [steamInput.RootPath]);
 
         var result = await resolver.ResolveAsync(
             explicitInput.Build,
             explicitInput.RootPath,
+            explicitInputSnapshotId: null,
             InputTestFixture.Profile,
-            TestContext.Current.CancellationToken);
+            Ct);
 
         Assert.Equal(Path.GetFullPath(explicitInput.RootPath), result.GameRoot);
         Assert.Equal(ExtractionInputSource.Live, result.Source);
@@ -110,10 +103,7 @@ public sealed class ExtractionInputResolverTests
 
         var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
             () => resolver.ResolveAsync(
-                storedInput.Build,
-                missing,
-                InputTestFixture.Profile,
-                TestContext.Current.CancellationToken));
+                storedInput.Build, missing, null, InputTestFixture.Profile, Ct));
 
         Assert.Equal(ExtractionFailureCode.LiveInputNotFound, exception.Code);
     }
@@ -130,10 +120,7 @@ public sealed class ExtractionInputResolverTests
 
         var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
             () => resolver.ResolveAsync(
-                storedInput.Build,
-                explicitInput.RootPath,
-                InputTestFixture.Profile,
-                TestContext.Current.CancellationToken));
+                storedInput.Build, explicitInput.RootPath, null, InputTestFixture.Profile, Ct));
 
         Assert.Equal(ExtractionFailureCode.BuildInputMismatch, exception.Code);
     }
@@ -149,10 +136,7 @@ public sealed class ExtractionInputResolverTests
         var resolver = CreateResolver(repository, []);
 
         var result = await resolver.ResolveAsync(
-            newer.Build,
-            explicitGamePath: null,
-            InputTestFixture.Profile,
-            TestContext.Current.CancellationToken);
+            newer.Build, null, null, InputTestFixture.Profile, Ct);
 
         Assert.Equal(Path.GetFullPath(newer.RootPath), result.GameRoot);
     }
@@ -168,10 +152,7 @@ public sealed class ExtractionInputResolverTests
         var resolver = CreateResolver(repository, [steam.RootPath]);
 
         var result = await resolver.ResolveAsync(
-            steam.Build,
-            explicitGamePath: null,
-            InputTestFixture.Profile,
-            TestContext.Current.CancellationToken);
+            steam.Build, null, null, InputTestFixture.Profile, Ct);
 
         Assert.Equal(Path.GetFullPath(steam.RootPath), result.GameRoot);
     }
@@ -182,62 +163,120 @@ public sealed class ExtractionInputResolverTests
         using var older = InputTestFixture.Create();
         using var newer = InputTestFixture.Create();
         var repository = new FakeRepository();
-        repository.Snapshots.Add(await CreateSnapshotAsync("older", older, 1));
-        repository.Snapshots.Add(await CreateSnapshotAsync("newer", newer, 2));
+        await CreateSnapshotAsync(repository, older, replayVerified: true, hour: 1);
+        var newerSnapshot = await CreateSnapshotAsync(
+            repository, newer, replayVerified: true, hour: 2);
         var resolver = CreateResolver(repository, []);
 
         var result = await resolver.ResolveAsync(
-            newer.Build,
-            explicitGamePath: null,
-            InputTestFixture.Profile,
-            TestContext.Current.CancellationToken);
+            newer.Build, null, null, InputTestFixture.Profile, Ct);
 
         Assert.Equal(ExtractionInputSource.ArchivedSnapshot, result.Source);
-        Assert.Equal("newer", result.InputSnapshotId);
-        Assert.Equal(Path.GetFullPath(newer.RootPath), result.GameRoot);
+        Assert.Equal(newerSnapshot.InputSnapshotId, result.InputSnapshotId);
+        Assert.Equal(
+            InputSnapshotDocumentStore.GetGameRoot(newerSnapshot.RootPath),
+            result.GameRoot);
     }
 
     [Fact]
-    public async Task ResolveAsync_WhenArchiveManifestIsInvalid_RejectsArchive()
+    public async Task ResolveAsync_ArchivedGameAssemblyLivesBelowGameRoot_NotSnapshotRoot()
     {
         using var archived = InputTestFixture.Create();
-        var snapshot = await CreateSnapshotAsync("invalid", archived);
         var repository = new FakeRepository();
-        repository.Snapshots.Add(snapshot with { ManifestDigest = new string('0', 64) });
+        var snapshot = await CreateSnapshotAsync(repository, archived, replayVerified: true);
+        var resolver = CreateResolver(repository, []);
+
+        var result = await resolver.ResolveAsync(
+            archived.Build, null, null, InputTestFixture.Profile, Ct);
+
+        var gameRoot = InputSnapshotDocumentStore.GetGameRoot(snapshot.RootPath);
+        Assert.Equal(gameRoot, result.GameRoot);
+        Assert.Equal(Path.Combine(gameRoot, "GameAssembly.dll"), result.GameAssemblyPath);
+        Assert.True(File.Exists(result.GameAssemblyPath));
+        // The assembly is never directly below the snapshot document root.
+        Assert.False(File.Exists(Path.Combine(snapshot.RootPath, "GameAssembly.dll")));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenReplayVerifiedArchiveBytesTampered_RejectsArchive()
+    {
+        using var archived = InputTestFixture.Create();
+        var repository = new FakeRepository();
+        var snapshot = await CreateSnapshotAsync(repository, archived, replayVerified: true);
+        // Tamper the archived bytes under game-root after certification.
+        var tampered = Path.Combine(
+            InputSnapshotDocumentStore.GetGameRoot(snapshot.RootPath), "GameAssembly.dll");
+        await File.WriteAllBytesAsync(tampered, [0x00, 0x00], Ct);
         var resolver = CreateResolver(repository, []);
 
         var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
-            () => resolver.ResolveAsync(
-                archived.Build,
-                explicitGamePath: null,
-                InputTestFixture.Profile,
-                TestContext.Current.CancellationToken));
+            () => resolver.ResolveAsync(archived.Build, null, null, InputTestFixture.Profile, Ct));
 
         Assert.Equal(ExtractionFailureCode.ArchivedInputInvalid, exception.Code);
     }
 
     [Fact]
-    public async Task ResolveAsync_DeduplicatesNormalizedCandidatePathsBeforeHashing()
+    public async Task ResolveAsync_ImplicitResolution_IgnoresUnverifiedSnapshots()
     {
-        using var input = InputTestFixture.Create();
-        File.WriteAllBytes(input.GameAssemblyPath, [0xff]);
+        using var archived = InputTestFixture.Create();
         var repository = new FakeRepository();
-        repository.Observations.Add(CreateObservation("stored", input, 1));
-        var hasher = new RecordingHasher();
-        var resolver = CreateResolver(
-            repository,
-            [input.RootPath.ToUpperInvariant()],
-            hasher);
+        // Only an unverified snapshot exists and no live input.
+        await CreateSnapshotAsync(repository, archived, replayVerified: false);
+        var resolver = CreateResolver(repository, []);
 
-        await Assert.ThrowsAsync<ExtractionOperationException>(
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
+            () => resolver.ResolveAsync(archived.Build, null, null, InputTestFixture.Profile, Ct));
+
+        Assert.Equal(ExtractionFailureCode.LiveInputNotFound, exception.Code);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ExplicitSnapshot_UnknownId_ReportsArchivedInvalidWithoutLiveFallback()
+    {
+        using var steam = InputTestFixture.Create();
+        var repository = new FakeRepository();
+        // A perfectly good live candidate exists but must never be used.
+        var resolver = CreateResolver(repository, [steam.RootPath]);
+
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
             () => resolver.ResolveAsync(
-                input.Build,
-                explicitGamePath: null,
-                InputTestFixture.Profile,
-                TestContext.Current.CancellationToken));
+                steam.Build, null, new string('a', 64), InputTestFixture.Profile, Ct));
 
-        Assert.Equal(1, hasher.Paths.Count(path =>
-            path.EndsWith("GameAssembly.dll", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(ExtractionFailureCode.ArchivedInputInvalid, exception.Code);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ExplicitSnapshot_DifferentBuild_Rejects()
+    {
+        using var archived = InputTestFixture.Create();
+        var repository = new FakeRepository();
+        var snapshot = await CreateSnapshotAsync(repository, archived, replayVerified: false);
+        var otherBuild = archived.Build with { BuildId = "other-build" };
+        var resolver = CreateResolver(repository, []);
+
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
+            () => resolver.ResolveAsync(
+                otherBuild, null, snapshot.InputSnapshotId, InputTestFixture.Profile, Ct));
+
+        Assert.Equal(ExtractionFailureCode.ArchivedInputInvalid, exception.Code);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ExplicitSnapshot_UnverifiedIntact_IsAllowedForCertification()
+    {
+        using var archived = InputTestFixture.Create();
+        var repository = new FakeRepository();
+        var snapshot = await CreateSnapshotAsync(repository, archived, replayVerified: false);
+        var resolver = CreateResolver(repository, []);
+
+        var result = await resolver.ResolveAsync(
+            archived.Build, null, snapshot.InputSnapshotId, InputTestFixture.Profile, Ct);
+
+        Assert.Equal(ExtractionInputSource.ArchivedSnapshot, result.Source);
+        Assert.Equal(snapshot.InputSnapshotId, result.InputSnapshotId);
+        Assert.Equal(
+            InputSnapshotDocumentStore.GetGameRoot(snapshot.RootPath),
+            result.GameRoot);
     }
 
     [Fact]
@@ -247,11 +286,7 @@ public sealed class ExtractionInputResolverTests
         var resolver = CreateResolver(new FakeRepository(), []);
 
         var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
-            () => resolver.ResolveAsync(
-                input.Build,
-                explicitGamePath: null,
-                InputTestFixture.Profile,
-                TestContext.Current.CancellationToken));
+            () => resolver.ResolveAsync(input.Build, null, null, InputTestFixture.Profile, Ct));
 
         Assert.Equal(ExtractionFailureCode.LiveInputNotFound, exception.Code);
         Assert.Contains("scan", exception.Message, StringComparison.OrdinalIgnoreCase);
@@ -265,8 +300,10 @@ public sealed class ExtractionInputResolverTests
     {
         var locator = new WindowsScheduleOneLocator(
             new FakeWindowsCandidateSource(steamCandidates));
-        var verifier = new LiveInputVerifier(hasher ?? new Sha256FileHasher());
-        return new ExtractionInputResolver(repository, repository, locator, verifier);
+        var effectiveHasher = hasher ?? new Sha256FileHasher();
+        var verifier = new LiveInputVerifier(effectiveHasher);
+        return new ExtractionInputResolver(
+            repository, repository, locator, verifier, effectiveHasher);
     }
 
     private static InstallationObservationRecord CreateObservation(
@@ -281,54 +318,60 @@ public sealed class ExtractionInputResolverTests
             fixture.GameAssemblyPath,
             fixture.MetadataPath);
 
+    /// <summary>
+    /// Builds a real on-disk input snapshot (manifest, marker, and a contained
+    /// <c>game-root</c> tree) backed by <paramref name="repository"/>, then optionally
+    /// certifies its stored record replay-verified.
+    /// </summary>
     private static async Task<InputSnapshot> CreateSnapshotAsync(
-        string id,
+        FakeRepository repository,
         InputTestFixture fixture,
+        bool replayVerified,
         int hour = 1)
     {
-        var verifier = new LiveInputVerifier(new Sha256FileHasher());
-        var manifest = await verifier.CaptureAsync(
-            new ResolvedExtractionInput(
-                ExtractionInputSource.ArchivedSnapshot,
-                fixture.RootPath,
-                fixture.GameAssemblyPath,
-                fixture.MetadataPath,
-                fixture.ExecutablePath,
-                fixture.UnityVersionPath,
-                id),
-            fixture.Build,
-            InputTestFixture.Profile,
-            TestContext.Current.CancellationToken);
-        return new InputSnapshot(
-            id,
-            fixture.Build.BuildId,
+        var inputsRoot = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-resolver-snapshots",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(inputsRoot);
+        var service = new InputSnapshotService(
+            inputsRoot,
+            Path.Combine(inputsRoot, ".staging"),
+            new Sha256FileHasher(),
+            new FixedTimeProvider(new DateTimeOffset(2026, 8, 12, hour, 0, 0, TimeSpan.Zero)),
+            repository);
+        var input = new ResolvedExtractionInput(
+            ExtractionInputSource.Live,
             fixture.RootPath,
-            InputManifestFingerprint.Create(manifest),
-            new DateTimeOffset(2026, 8, 12, hour, 0, 0, TimeSpan.Zero),
-            ReplayVerified: true,
-            ReplayVerifiedAtUtc: new DateTimeOffset(2026, 8, 12, hour, 1, 0, TimeSpan.Zero),
-            manifest);
+            fixture.GameAssemblyPath,
+            fixture.MetadataPath,
+            fixture.ExecutablePath,
+            fixture.UnityVersionPath,
+            InputSnapshotId: null);
+
+        var snapshot = await service.CreateAsync(input, fixture.Build, InputTestFixture.Profile, Ct);
+        if (replayVerified)
+        {
+            snapshot = snapshot with
+            {
+                ReplayVerified = true,
+                ReplayVerifiedAtUtc = snapshot.CreatedAtUtc.AddMinutes(1)
+            };
+            repository.Replace(snapshot);
+        }
+
+        return snapshot;
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private sealed class FakeWindowsCandidateSource(IReadOnlyList<string> candidates)
         : IWindowsScheduleOneCandidateSource
     {
         public IReadOnlyList<string> GetCandidatePaths() => candidates;
-    }
-
-    private sealed class RecordingHasher : IFileHasher
-    {
-        private readonly Sha256FileHasher _inner = new();
-
-        public List<string> Paths { get; } = [];
-
-        public Task<string> ComputeSha256Async(
-            string path,
-            CancellationToken cancellationToken)
-        {
-            Paths.Add(path);
-            return _inner.ComputeSha256Async(path, cancellationToken);
-        }
     }
 
     private sealed class FakeRepository : IAtlasRepository, IExtractionRepository
@@ -338,6 +381,13 @@ public sealed class ExtractionInputResolverTests
         public List<InstallationObservationRecord> Observations { get; } = [];
         public List<InputSnapshot> Snapshots { get; } = [];
         public int SaveSnapshotCallCount { get; private set; }
+
+        public void Replace(InputSnapshot snapshot)
+        {
+            Snapshots.RemoveAll(item => string.Equals(
+                item.InputSnapshotId, snapshot.InputSnapshotId, StringComparison.Ordinal));
+            Snapshots.Add(snapshot);
+        }
 
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -406,6 +456,26 @@ public sealed class ExtractionInputResolverTests
 
         public Task SaveInputSnapshotAsync(
             InputSnapshot snapshot,
+            CancellationToken cancellationToken)
+        {
+            Replace(snapshot);
+            return Task.CompletedTask;
+        }
+
+        public Task<InputSnapshot?> GetInputSnapshotAsync(
+            string inputSnapshotId,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Snapshots.FirstOrDefault(item =>
+                string.Equals(
+                    item.InputSnapshotId,
+                    inputSnapshotId,
+                    StringComparison.Ordinal)));
+
+        public Task MarkInputSnapshotReplayVerifiedAsync(
+            string inputSnapshotId,
+            string expectedBuildId,
+            string expectedManifestDigest,
+            DateTimeOffset verifiedAtUtc,
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }

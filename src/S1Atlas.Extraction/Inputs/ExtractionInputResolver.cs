@@ -1,5 +1,6 @@
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Extraction;
+using S1Atlas.Core.Hashing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Discovery;
 
@@ -11,12 +12,15 @@ internal sealed class ExtractionInputResolver
     private readonly IExtractionRepository _extractionRepository;
     private readonly WindowsScheduleOneLocator _windowsLocator;
     private readonly LiveInputVerifier _verifier;
+    private readonly IFileHasher _fileHasher;
+    private readonly InputSnapshotDocumentStore _documentStore = new();
 
     public ExtractionInputResolver(
         IAtlasRepository atlasRepository,
         IExtractionRepository extractionRepository,
         WindowsScheduleOneLocator windowsLocator,
-        LiveInputVerifier verifier)
+        LiveInputVerifier verifier,
+        IFileHasher fileHasher)
     {
         _atlasRepository = atlasRepository ??
             throw new ArgumentNullException(nameof(atlasRepository));
@@ -25,6 +29,7 @@ internal sealed class ExtractionInputResolver
         _windowsLocator = windowsLocator ??
             throw new ArgumentNullException(nameof(windowsLocator));
         _verifier = verifier ?? throw new ArgumentNullException(nameof(verifier));
+        _fileHasher = fileHasher ?? throw new ArgumentNullException(nameof(fileHasher));
     }
 
     public async Task<GameBuild> SelectBuildAsync(
@@ -60,12 +65,30 @@ internal sealed class ExtractionInputResolver
     public async Task<ResolvedExtractionInput> ResolveAsync(
         GameBuild build,
         string? explicitGamePath,
+        string? explicitInputSnapshotId,
         ExtractionProfile profile,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(build);
         ArgumentNullException.ThrowIfNull(profile);
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (!string.IsNullOrWhiteSpace(explicitInputSnapshotId))
+        {
+            if (!string.IsNullOrWhiteSpace(explicitGamePath))
+            {
+                throw new ExtractionOperationException(
+                    ExtractionFailureStage.InputResolution,
+                    ExtractionFailureCode.ArchivedInputInvalid,
+                    "An explicit input snapshot cannot be combined with a live game path.");
+            }
+
+            return await ResolveExplicitArchivedAsync(
+                build,
+                explicitInputSnapshotId,
+                profile,
+                cancellationToken);
+        }
 
         if (!string.IsNullOrWhiteSpace(explicitGamePath))
         {
@@ -128,26 +151,23 @@ internal sealed class ExtractionInputResolver
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var normalizedRoot = NormalizePath(snapshot.RootPath);
-                if (!seenRoots.Add(normalizedRoot))
+                var gameRoot = InputSnapshotDocumentStore.GetGameRoot(snapshot.RootPath);
+                if (!seenRoots.Add(NormalizePath(snapshot.RootPath)))
                 {
                     continue;
                 }
 
-                var input = CreateInput(
-                    normalizedRoot,
-                    ExtractionInputSource.ArchivedSnapshot,
-                    snapshot.InputSnapshotId,
-                    profile,
-                    explicitCandidate: false);
+                // Implicit historical resolution consumes only replay-verified snapshots.
                 ValidateStoredSnapshot(snapshot, build);
-                var currentManifest = await _verifier.CaptureAsync(
-                    input,
-                    build,
-                    profile,
+                var verified = await _documentStore.TryReadVerifiedAsync(
+                    snapshot.RootPath,
+                    build.BuildId,
+                    snapshot.InputSnapshotId,
+                    _fileHasher,
                     cancellationToken);
-                if (!string.Equals(
-                        InputManifestFingerprint.Create(currentManifest),
+                if (verified is null ||
+                    !string.Equals(
+                        verified.ManifestDigest,
                         snapshot.ManifestDigest,
                         StringComparison.Ordinal))
                 {
@@ -155,7 +175,12 @@ internal sealed class ExtractionInputResolver
                         "Archived input bytes no longer match the verified manifest.");
                 }
 
-                return input;
+                return CreateInput(
+                    gameRoot,
+                    ExtractionInputSource.ArchivedSnapshot,
+                    snapshot.InputSnapshotId,
+                    profile,
+                    explicitCandidate: false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -182,6 +207,95 @@ internal sealed class ExtractionInputResolver
             ExtractionFailureCode.LiveInputNotFound,
             "No matching local or archived game input was found. Run 's1atlas scan' to refresh installation observations.");
     }
+
+    /// <summary>
+    /// Resolves exactly one stored snapshot for an explicit archived-only run. It never
+    /// falls back to live input and may select an unverified snapshot solely so an
+    /// authoritative replay can certify it. The Cpp2IL root is the snapshot's contained
+    /// <c>game-root</c>, never the snapshot document root.
+    /// </summary>
+    private async Task<ResolvedExtractionInput> ResolveExplicitArchivedAsync(
+        GameBuild build,
+        string explicitInputSnapshotId,
+        ExtractionProfile profile,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = await _extractionRepository.GetInputSnapshotAsync(
+            explicitInputSnapshotId,
+            cancellationToken);
+        if (snapshot is null)
+        {
+            throw ArchivedInvalid(
+                $"Input snapshot '{explicitInputSnapshotId}' does not exist.");
+        }
+
+        if (!string.Equals(snapshot.BuildId, build.BuildId, StringComparison.Ordinal))
+        {
+            throw ArchivedInvalid(
+                $"Input snapshot '{explicitInputSnapshotId}' belongs to a different build.");
+        }
+
+        InputSnapshot? verified;
+        try
+        {
+            verified = await _documentStore.TryReadVerifiedAsync(
+                snapshot.RootPath,
+                build.BuildId,
+                snapshot.InputSnapshotId,
+                _fileHasher,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            throw ArchivedInvalid(
+                $"Input snapshot '{explicitInputSnapshotId}' could not be verified.",
+                exception);
+        }
+
+        if (verified is null ||
+            !string.Equals(
+                verified.ManifestDigest,
+                snapshot.ManifestDigest,
+                StringComparison.Ordinal))
+        {
+            throw ArchivedInvalid(
+                $"Input snapshot '{explicitInputSnapshotId}' failed strict byte verification.");
+        }
+
+        RequireBuildInputHashes(verified.Manifest, build, explicitInputSnapshotId);
+
+        return CreateInput(
+            InputSnapshotDocumentStore.GetGameRoot(snapshot.RootPath),
+            ExtractionInputSource.ArchivedSnapshot,
+            snapshot.InputSnapshotId,
+            profile,
+            explicitCandidate: true);
+    }
+
+    private static void RequireBuildInputHashes(
+        InputManifest manifest,
+        GameBuild build,
+        string snapshotId)
+    {
+        var assembly = manifest.Entries.SingleOrDefault(entry => entry.Role == "gameAssembly");
+        var metadata = manifest.Entries.SingleOrDefault(entry => entry.Role == "globalMetadata");
+        if (assembly?.Sha256 != build.GameAssemblySha256 ||
+            metadata?.Sha256 != build.MetadataSha256)
+        {
+            throw ArchivedInvalid(
+                $"Input snapshot '{snapshotId}' does not match the selected build.");
+        }
+    }
+
+    private static ExtractionOperationException ArchivedInvalid(
+        string message,
+        Exception? innerException = null) =>
+        new(
+            ExtractionFailureStage.InputResolution,
+            ExtractionFailureCode.ArchivedInputInvalid,
+            message,
+            innerException: innerException);
 
     private async Task<ResolvedExtractionInput?> TryResolveImplicitLiveAsync(
         string? candidateRoot,

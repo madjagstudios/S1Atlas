@@ -16,7 +16,8 @@ public sealed record ExtractionOptions(
     string ProfileId,
     bool Retry,
     bool SnapshotInputs,
-    bool KeepFailedArtifacts);
+    bool KeepFailedArtifacts,
+    string? InputSnapshotId = null);
 
 public sealed record ExtractionOperationResult(
     ExtractionAttempt Attempt,
@@ -51,6 +52,7 @@ internal sealed class ExtractionOrchestratorDependencies
     { get; init; }
     public required Func<
         GameBuild,
+        string?,
         string?,
         ExtractionProfile,
         CancellationToken,
@@ -310,6 +312,7 @@ public sealed class ExtractionOrchestrator
             input = await _dependencies.ResolveInputAsync(
                 build,
                 options.GamePath,
+                options.InputSnapshotId,
                 profile.Profile,
                 cancellationToken);
             var recipeId = ExtractionRecipeId.Create(new ExtractionRecipe(

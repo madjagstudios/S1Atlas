@@ -525,5 +525,10 @@ public sealed class ValidatedExtractionIntegrityVerifierTests : IDisposable
             string buildId, string expectedExtractionId, ExtractionPreferenceReason reason,
             DateTimeOffset occurredAtUtc, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task DeleteCleanupEligibleAttemptAsync(
+            string attemptId, ExtractionAttemptStatus expectedStatus,
+            DateTimeOffset expectedCompletedAtUtc, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }
