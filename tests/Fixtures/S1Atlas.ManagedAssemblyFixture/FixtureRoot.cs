@@ -23,11 +23,6 @@ public interface IFixtureContract
     int ContractValue { get; }
 }
 
-public abstract class AbstractFixture
-{
-    public abstract int MissingBody(int value);
-}
-
 public class FixtureBase
 {
     protected int BaseField;
@@ -64,14 +59,6 @@ public sealed class DerivedFixture : FixtureBase, IFixtureContract
     public string Overload(string value) => value + PublicField;
 
     public T GenericMethod<T>(T value) => value;
-
-    public int ArithmeticOnly(int value)
-    {
-        var doubled = value * 2;
-        return doubled + 1;
-    }
-
-    public int TrivialZero() => 0;
 
     public int ThrowStyleStub()
     {
