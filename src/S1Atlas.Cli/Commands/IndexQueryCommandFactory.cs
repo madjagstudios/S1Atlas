@@ -51,20 +51,67 @@ internal static class IndexQueryCommandFactory
                         parseResult.GetValue(channelOption),
                         limit);
                     var data = execute(parseResult.GetValue(queryArgument)!, options, cancellationToken).GetAwaiter().GetResult();
-                    return commandOutput.Success(data, writer =>
+                    if (data.Resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
                     {
-                        foreach (var symbol in data.Symbols)
-                            writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
-                        foreach (var relationship in data.Relationships)
-                            writer.WriteLine($"{relationship.Kind} | {relationship.Source.SymbolId} -> {relationship.Target.SymbolId ?? relationship.Target.RawText}");
-                        foreach (var source in data.Sources)
-                            writer.WriteLine($"{source.RelativePath} | {source.Provenance}");
-                    });
+                        return commandOutput.Failure(
+                            1,
+                            "AmbiguousSymbol",
+                            "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
+                            new IndexQueryFailureData(ambiguous.Candidates));
+                    }
+
+                    if (data.Resolution is { Status: SymbolResolutionStatus.NotFound })
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "SymbolNotFound",
+                            "No indexed symbol matched the selector.",
+                            new IndexQueryFailureData([]));
+                    }
+
+                    return commandOutput.Success(data, writer => WriteHuman(data, writer));
                 },
                 commandOutput,
                 cancellationToken);
         });
         return command;
+    }
+
+    private static void WriteHuman(IndexQueryOutput data, TextWriter writer)
+    {
+        foreach (var symbol in data.Symbols)
+            writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
+
+        foreach (var relationship in data.Relationships)
+        {
+            writer.WriteLine(
+                $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
+                $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(data.CompletenessNotice))
+            writer.WriteLine($"Notice: {data.CompletenessNotice}");
+
+        foreach (var source in data.Sources)
+            writer.WriteLine($"{source.RelativePath} | {source.Provenance}");
+    }
+
+    private static string FormatEndpoint(RelationshipEndpointQueryResult endpoint)
+    {
+        if (endpoint.Resolved)
+        {
+            var readable = endpoint.QualifiedName ?? endpoint.Signature ?? endpoint.SymbolId ?? "<unknown>";
+            var id = endpoint.SymbolId is null ? string.Empty : $" [{endpoint.SymbolId}]";
+            var signature = endpoint.Signature is null || string.Equals(endpoint.Signature, readable, StringComparison.Ordinal)
+                ? string.Empty
+                : $" | {endpoint.Signature}";
+            return readable + id + signature;
+        }
+
+        var raw = endpoint.RawText ?? "<unresolved>";
+        return endpoint.SymbolId is null
+            ? $"unresolved: {raw}"
+            : $"unresolved: {raw} [{endpoint.SymbolId}]";
     }
 
     public static IndexQueryOptions ParseOptions(string? codebase, string? channel, int limit = 50)
