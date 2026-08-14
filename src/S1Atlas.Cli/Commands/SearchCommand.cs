@@ -11,6 +11,11 @@ internal static class SearchCommand
         IndexQueryCommandFactory.Create("search", service, repository, output, error, cancellationToken, async (query, options, ct) =>
         {
             var result = await service.SearchAsync(query, options, ct);
-            return new IndexQueryOutput(result.Results, [], []);
+            return new IndexQueryOutput(
+                result.Results,
+                [],
+                [],
+                result.TotalCount,
+                result.ReturnedCount);
         });
 }
