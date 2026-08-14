@@ -19,6 +19,9 @@ using S1Atlas.Extraction.Promotion;
 using S1Atlas.Extraction.Tools;
 using S1Atlas.Extraction.Validation;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.Indexing.Authority;
+using S1Atlas.Indexing.Decompilation;
+using S1Atlas.Indexing.Workflow;
 
 namespace S1Atlas.Cli;
 
@@ -267,6 +270,14 @@ public sealed class CliApplication
             sqliteRepository,
             new CleanupTreeInspector(),
             cleanupDeleter.DeleteAsync);
+        var indexingWorkflow = new IndexingWorkflow(
+            _paths.RootDirectory,
+            sqliteRepository,
+            (buildId, ct) => new PreferredVerifiedExtractionResolver(
+                _paths.RootDirectory,
+                sqliteRepository,
+                integrityVerifier).ResolveAsync(buildId, ct),
+            new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
 
         var root = new RootCommand(
             "Local Schedule I developer-intelligence tools.");
@@ -302,6 +313,13 @@ public sealed class CliApplication
             ExtractionsCommand.Create(
                 historyService,
                 cleanupService,
+                repository,
+                output,
+                error,
+                cancellationToken));
+        root.Subcommands.Add(
+            IndexCommand.Create(
+                indexingWorkflow,
                 repository,
                 output,
                 error,
