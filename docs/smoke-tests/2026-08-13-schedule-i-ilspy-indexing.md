@@ -1,15 +1,15 @@
 # Schedule I ILSpy Indexing Smoke — 2026-08-13
 
-This smoke measured the pinned ILSpy adapter against the preferred, integrity-verified
-Schedule I extraction and one existing divergent validated output. It records aggregate
-results only; no reconstructed source, DLLs, local runtime data, or proprietary bytes are
-committed.
+This smoke measured the pinned ILSpy adapter and typed relationship index against the
+preferred, integrity-verified Schedule I extraction and one existing divergent validated
+output. It records aggregate results only; no reconstructed source, DLLs, local runtime
+data, or proprietary bytes are committed.
 
 ## Environment
 
 | Fact | Value |
 |---|---|
-| Branch / tested commit | `feature/cpp2il-phase5-hardening-replay-finalization` @ `a6c6a84` |
+| Branch / tested commit | `feature/cpp2il-phase5-hardening-replay-finalization` @ `aeb8d9c` |
 | OS | Windows 11 |
 | Toolchain | .NET 8 SDK, Release configuration |
 | Content-derived build ID | `6fbd38f8401afa2241a1322afd4b8a8eadc99aa1f1c660ece253da7859d54bdc` |
@@ -28,11 +28,12 @@ readable whole-module C# text. Aggregate adapter output:
 | Types | 3,564 |
 | Members | 48,727 |
 | Members with recoverable bodies | 26,423 |
-| Extracted relationship facts | 0 |
+| Canonical symbols persisted | 52,291 |
+| Extracted and persisted relationship facts | 50,028 |
 
-The zero relationship-fact result is recorded as an adapter limitation for this
-reconstructed sample, not treated as evidence that relationships are absent. The indexing
-implementation must not invent fallback relationships from declarations alone.
+Metadata inheritance, interface, and typed member relationships are emitted when their
+targets can be bound to indexed symbols. Recovered IL contributes conservative call and
+field edges; the reconstructed sample does not provide complete body semantics.
 
 ## Divergent-output measurement
 
@@ -45,12 +46,27 @@ text and the same aggregate declaration/body counts:
 | Types | 3,564 | 3,564 |
 | Members | 48,727 | 48,727 |
 | Members with recoverable bodies | 26,423 | 26,423 |
-| Extracted relationship facts | 0 | 0 |
+| Canonical symbols persisted | 52,291 | 52,291 |
+| Extracted and persisted relationship facts | 50,028 | 50,028 |
 
 The raw `Assembly-CSharp.dll` hashes differed (`9abdfc53…67803e4d` versus
 `1bc776c3…11934b77`), while the measured structural counts matched. This supports using
 normalized declarations and structural facts for a later stability comparison, but does
 not establish semantic equivalence.
+
+## Fingerprint stability measurement
+
+The preferred and divergent indexes each contained 52,291 canonical symbols, with
+52,291 common canonical identities. Comparing normalized evidence for those common
+symbols produced:
+
+| Fingerprint layer | Common symbols | Equal | Equality rate |
+|---|---:|---:|---:|
+| Declaration | 52,291 | 52,291 | 100% |
+| Structural | 52,291 | 52,291 | 100% |
+| Method body | 26,423 | 26,423 | 100% |
+
+These are normalized metadata/evidence comparisons, not proof of semantic equivalence.
 
 ## Integrity and mutation checks
 
@@ -73,30 +89,36 @@ license to infer missing method relationships.
 ## Full CLI indexing/query smoke
 
 The Phase 5 CLI smoke ran against the same existing preferred extraction without rerunning
-Cpp2IL:
+Cpp2IL, at commit `aeb8d9c`:
 
 | Fact | Value |
 |---|---|
-| Tested commit | `2b5d7a6` |
-| Index ID | `6c42bf48b4adb82eb90ee497a1ec2eb0c4508de85edd0100b6d7f89a4facc1ab` |
-| Schedule I Installed symbols | 50,114 |
+| Index ID | `bbc5418ef2c91664bac697ee039af017a3165cd6625382033463122da36309f5` |
+| Schedule I Installed symbols | 52,291 |
 | Generated source files | 1 |
-| Persisted relationships | 3,270 |
+| Persisted relationships | 50,028 |
+| Source locations returned for `Dealer` | 4,219 |
+| Metadata relationships returned for `refs Dealer` | 412 |
 | Repeated `index` invocation | reused the completed index |
 | Representative search/type/method/source commands | succeeded |
 | `refs`, `callers`, `callees` commands | succeeded; no matching edges for the sampled method |
 | Installed query channel | Schedule I / Installed only |
 
 The index command's first run reported `reused: false`; the repeated run reported
-`reused: true` with the same symbol, source, and relationship counts. The sampled type was
-`ScheduleOne.Economy.Dealer`, and the sampled method was `ScheduleOne.Economy.Dealer::Awake`.
+`reused: true` with the same symbol, source, and relationship counts. A forced rebuild
+created a distinct index and snapshot. The sampled type was `ScheduleOne.Economy.Dealer`,
+and the sampled method was `ScheduleOne.Economy.Dealer::Awake`. Search and source lookup
+returned canonical methods and source locations. `refs`, `callers`, and `callees` for the
+sampled method had no matching body edges; this is a limitation of the Cpp2IL-reconstructed
+input, while metadata relationships remain queryable.
 
 ## Upstream network smoke
 
 The official upstream identities used for configuration are `KaBooMa/S1API` and
 `ifBars/S1MAPI`. An explicit manual sync fetched S1API commit
 `d9665e9bd95b76b033fb53d5c1698afa82fe53ac` and cached 162 C# files. Ordinary `upstream
-status` performed no network access and reported no selected cached commit. The first
+status` performed no network access and reported the cached commit and exact source match.
+The first
 transport attempt returned GitHub HTTP 403; adding the required explicit User-Agent fixed
 the transport, and the retry completed successfully.
 
