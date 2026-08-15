@@ -54,20 +54,11 @@ internal static class IndexCommand
                         }
                         catch (InvalidDataException exception)
                         {
-                            var code = exception.Message.Contains("Unity", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("container", StringComparison.OrdinalIgnoreCase)
-                                ? "UnsupportedContainer"
-                                : "SceneInputIntegrityFailure";
-                            return commandOutput.Failure(1, code, exception.Message);
+                            return commandOutput.Failure(1, "SceneInputIntegrityFailure", exception.Message);
                         }
-                        catch (InvalidOperationException exception) when (
-                            exception.Message.Contains("Unsupported", StringComparison.OrdinalIgnoreCase) ||
-                            exception.Message.Contains("container", StringComparison.OrdinalIgnoreCase) ||
-                            exception.Message.Contains("SceneInput", StringComparison.OrdinalIgnoreCase))
+                        catch (SceneIndexFailureException exception)
                         {
-                            var code = exception.Message.Contains("Unsupported", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("container", StringComparison.OrdinalIgnoreCase)
-                                ? "UnsupportedContainer"
-                                : "SceneInputIntegrityFailure";
-                            return commandOutput.Failure(1, code, exception.Message);
+                            return commandOutput.Failure(1, exception.Status.ToString(), exception.Message);
                         }
                         var sceneData = new SceneIndexOutput(
                             sceneResult.SceneSnapshotId,

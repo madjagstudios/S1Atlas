@@ -290,7 +290,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT game_object_id, scene_id, container_id, local_file_id, name, active, layer, tag, recovery_status
+            SELECT game_object.game_object_id, game_object.scene_id, game_object.container_id, game_object.local_file_id, game_object.name, game_object.active, game_object.layer, game_object.tag, game_object.recovery_status
             FROM game_objects AS game_object INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND game_object.game_object_id = $id;
             """;

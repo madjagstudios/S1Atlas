@@ -131,6 +131,22 @@ internal sealed class CommandOutput
         return exitCode;
     }
 
+    public int FailureWithData<T>(string code, string message, T data, Action<TextWriter> writeHuman)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code); ArgumentException.ThrowIfNullOrWhiteSpace(message); ArgumentNullException.ThrowIfNull(writeHuman);
+        if (IsJson)
+        {
+            WriteJson(new CliEnvelope<T>(1, _commandName, false, 1, data, new CliError(null, null, code, message)));
+        }
+        else
+        {
+            writeHuman(_standardOutput);
+            _standardError.WriteLine(message);
+            _standardError.WriteLine($"Code:    {code}");
+        }
+        return 1;
+    }
+
     public static Option<bool> CreateJsonOption() => new("--json")
     {
         Description = "Write one machine-readable JSON result."

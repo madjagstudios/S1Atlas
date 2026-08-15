@@ -236,8 +236,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         var repository = CreateRepository(replayVerified: true);
         var workflow = CreateWorkflow(repository, Authority(), unityVersion: "2022.3.61f1");
 
-        await Assert.ThrowsAsync<InvalidDataException>(() =>
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.UnsupportedContainer, failure.Status);
 
         Assert.Equal(0, repository.ParserCalls);
     }
@@ -248,8 +250,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         var repository = CreateRepository(replayVerified: true);
         var workflow = CreateWorkflow(repository, Authority(), unityVersion: "2022.3.620f1");
 
-        await Assert.ThrowsAsync<InvalidDataException>(() =>
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.UnsupportedContainer, failure.Status);
 
         Assert.Equal(0, repository.ParserCalls);
     }

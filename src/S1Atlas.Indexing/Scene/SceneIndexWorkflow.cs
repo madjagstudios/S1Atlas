@@ -112,10 +112,18 @@ public sealed class SceneIndexWorkflow
         var environment = await RequireEnvironmentAsync(buildId, cancellationToken);
         var code = await RequireCodeIndexAsync(authority, cancellationToken);
         var declarations = SelectSceneContainers(environment.Installation.InstallationRoot!);
-        var verifiedInput = await _inputVerifier.CaptureAsync(
-            environment.Installation.InstallationRoot!,
-            declarations,
-            cancellationToken);
+        VerifiedSceneInput verifiedInput;
+        try
+        {
+            verifiedInput = await _inputVerifier.CaptureAsync(
+                environment.Installation.InstallationRoot!,
+                declarations,
+                cancellationToken);
+        }
+        catch (IOException exception)
+        {
+            throw new SceneIndexFailureException(SceneQueryStatus.SceneInputIntegrityFailure, exception.Message, exception);
+        }
         RequireSupportedUnityVersion(verifiedInput.Containers);
         var parserVersion = force ? _parserVersion + ":forced:" + Guid.NewGuid().ToString("N") : _parserVersion;
         var sceneSnapshotId = SceneSnapshotIdentity.Create(
@@ -340,7 +348,7 @@ public sealed class SceneIndexWorkflow
     private static void RequireSupportedUnityVersion(IReadOnlyList<VerifiedSceneContainer> containers)
     {
         if (containers.Any(container => !SupportedUnityVersionPattern.IsMatch(container.UnityVersion)))
-            throw new InvalidDataException("Scene inputs must target Unity 2022.3.62.");
+            throw new SceneIndexFailureException(SceneQueryStatus.UnsupportedContainer, "Scene inputs must target Unity 2022.3.62.");
     }
 
     private static void RequireParserFacts(
