@@ -65,6 +65,12 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
             ValidateWriteSetOwnership(sceneSnapshotId, writeSet);
             await ValidateSameBuildAuthoritiesAsync(connection, transaction, sceneSnapshotId, cancellationToken);
+            await ValidateResolvedComponentAuthoritiesAsync(
+                connection,
+                transaction,
+                snapshot,
+                writeSet.Components,
+                cancellationToken);
 
             foreach (var container in writeSet.Containers)
                 await InsertContainerAsync(connection, transaction, container, cancellationToken);
@@ -395,11 +401,16 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             SELECT CASE WHEN scene.build_id = extraction.build_id
                               AND scene.build_id = input.build_id
                               AND scene.build_id = environment.build_id
+                              AND input.replay_verified = 1
+                              AND extraction_attempt.input_snapshot_id = scene.input_snapshot_id
+                              AND code_snapshot.codebase = 'ScheduleI'
+                              AND code_snapshot.channel = 'Installed'
                               AND index_run.snapshot_id = scene.code_snapshot_id
                               AND index_run.status = 'Completed'
                          THEN 1 ELSE 0 END
             FROM scene_snapshots AS scene
             INNER JOIN validated_extractions AS extraction ON extraction.extraction_id = scene.extraction_id
+            INNER JOIN extraction_attempts AS extraction_attempt ON extraction_attempt.attempt_id = extraction.source_attempt_id
             INNER JOIN input_snapshots AS input ON input.input_snapshot_id = scene.input_snapshot_id
             INNER JOIN code_snapshots AS code_snapshot ON code_snapshot.snapshot_id = scene.code_snapshot_id
             INNER JOIN environment_snapshots AS environment ON environment.snapshot_id = code_snapshot.environment_snapshot_id
@@ -409,7 +420,44 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         command.Parameters.AddWithValue("$id", sceneSnapshotId);
         var valid = Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture) == 1;
         if (!valid)
-            throw new InvalidOperationException("Scene snapshot authorities must belong to the same build and code snapshot.");
+            throw new InvalidOperationException("Scene snapshot authorities must use the replay-verified input of the same-build validated extraction and completed Schedule I index.");
+    }
+
+    private static async Task ValidateResolvedComponentAuthoritiesAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        SceneSnapshotRecord snapshot,
+        IReadOnlyList<SceneComponentRecord> components,
+        CancellationToken cancellationToken)
+    {
+        foreach (var component in components.Where(component => component.TypeResolutionStatus == SceneResolutionStatus.Resolved))
+        {
+            if (component.ResolvedTypeSymbolId is null || component.ResolvedCodeIndexId is null ||
+                !string.Equals(component.ResolvedCodeIndexId, snapshot.CodeIndexId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Resolved scene components must identify the snapshot's completed code index and a type symbol.");
+            }
+
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                SELECT COUNT(*)
+                FROM symbols AS symbol
+                INNER JOIN code_snapshots AS code_snapshot ON code_snapshot.snapshot_id = symbol.snapshot_id
+                WHERE symbol.symbol_id = $symbol
+                  AND symbol.snapshot_id = $codeSnapshot
+                  AND symbol.kind = 'Type'
+                  AND symbol.canonical_key LIKE 'ScheduleI:Installed:Type:%'
+                  AND code_snapshot.codebase = 'ScheduleI'
+                  AND code_snapshot.channel = 'Installed';
+                """;
+            command.Parameters.AddWithValue("$symbol", component.ResolvedTypeSymbolId);
+            command.Parameters.AddWithValue("$codeSnapshot", snapshot.CodeSnapshotId);
+            if (Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture) != 1)
+            {
+                throw new InvalidOperationException("Resolved scene component type symbols must belong to the snapshot's Schedule I code snapshot.");
+            }
+        }
     }
 
     private static async Task<SceneSnapshotRecord?> GetRunningSceneSnapshotAsync(SqliteConnection connection, SqliteTransaction transaction, string id, CancellationToken cancellationToken)
