@@ -50,6 +50,21 @@ public sealed class SceneQueryServiceTests
     }
 
     [Fact]
+    public async Task Ambiguous_scene_candidates_include_verified_container_facts()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Documents = [Document("scene-a", "Arena"), Document("scene-b", "Arena")];
+        repository.Containers = [new SceneContainerRecord("container-a", "snapshot-a", "Schedule I_Data/level0", "Assets", "2022.3.62", 22, 10, new string('b', 64), "sidecar.json")];
+
+        var result = await new SceneQueryService(repository).SceneAsync(new SceneQueryRequest("snapshot-a", "Arena"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.AmbiguousScene, result.Status);
+        Assert.Equal(2, result.Candidates.Count);
+        Assert.Equal("Schedule I_Data/level0", Assert.Single(result.Containers!).RelativePath);
+    }
+
+    [Fact]
     public async Task Scenes_reports_no_completed_scene_index_without_a_snapshot()
     {
         var result = await new SceneQueryService(new QueryRepository()).ScenesAsync(

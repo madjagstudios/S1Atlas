@@ -42,7 +42,7 @@ public sealed class SceneQueryService
 
         var selection = await _selector.ResolveSceneAsync(snapshot.Snapshot.SceneSnapshotId, request.Selector, request.Kind, cancellationToken);
         if (selection.Selected is null)
-            return new SceneDocumentQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
+            return new SceneDocumentQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>(), await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, selection.Candidates.Select(row => row.ContainerId), cancellationToken));
 
         var scene = selection.Selected;
         var children = request.IncludeChildren
@@ -64,7 +64,7 @@ public sealed class SceneQueryService
             return new GameObjectQueryResult(snapshot.Status, null, null, [], Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
         var selection = await _selector.ResolveGameObjectAsync(snapshot.Snapshot.SceneSnapshotId, request.Selector, cancellationToken);
         if (selection.Selected is null)
-            return new GameObjectQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
+            return new GameObjectQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>(), await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, selection.Candidates.Select(row => row.ContainerId), cancellationToken));
 
         var gameObject = selection.Selected;
         var children = request.IncludeChildren
@@ -89,7 +89,7 @@ public sealed class SceneQueryService
             return new ComponentQueryResult(snapshot.Status, null, null, [], Empty<SceneReferenceRecord>());
         var selection = await _selector.ResolveComponentAsync(snapshot.Snapshot.SceneSnapshotId, request.Selector, cancellationToken);
         if (selection.Selected is null)
-            return new ComponentQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneReferenceRecord>());
+            return new ComponentQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneReferenceRecord>(), await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, selection.Candidates.Select(row => row.ContainerId), cancellationToken));
         var component = selection.Selected;
         var references = request.IncludeReferences
             ? await _repository.ListReferencesAsync(new ReferenceListQueryOptions(snapshot.Snapshot.SceneSnapshotId, SourceComponentId: component.ComponentId, Limit: request.Limit), cancellationToken)

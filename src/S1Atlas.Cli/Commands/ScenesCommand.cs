@@ -22,6 +22,7 @@ internal static class ScenesCommand
             var outputData = new SceneListOutput(data.Status, data.Snapshot, data.Page.TotalCount, data.Page.ReturnedCount, data.Page.Rows, data.Containers);
             return SceneCommandSupport.Write(new CommandOutput("scenes", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer =>
             {
+                if (outputData.Snapshot is not null) writer.WriteLine($"Snapshot: {outputData.Snapshot.SceneSnapshotId} | build {outputData.Snapshot.BuildId} | parser {outputData.Snapshot.ParserId} {outputData.Snapshot.ParserVersion} | recovery {outputData.Snapshot.RecoveryStatus}");
                 writer.WriteLine($"Found {outputData.TotalCount} scenes. Showing {outputData.ReturnedCount}.");
                 foreach (var scene in outputData.Scenes) writer.WriteLine($"{scene.Kind} | {scene.Name} | {scene.SceneId} | local {scene.SourceLocalFileId} | {SceneCommandSupport.ContainerText(scene.ContainerId, outputData.Containers)} | {scene.RecoveryStatus}");
             });

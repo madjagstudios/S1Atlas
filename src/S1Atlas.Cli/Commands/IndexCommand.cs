@@ -59,6 +59,16 @@ internal static class IndexCommand
                                 : "SceneInputIntegrityFailure";
                             return commandOutput.Failure(1, code, exception.Message);
                         }
+                        catch (InvalidOperationException exception) when (
+                            exception.Message.Contains("Unsupported", StringComparison.OrdinalIgnoreCase) ||
+                            exception.Message.Contains("container", StringComparison.OrdinalIgnoreCase) ||
+                            exception.Message.Contains("SceneInput", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var code = exception.Message.Contains("Unsupported", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("container", StringComparison.OrdinalIgnoreCase)
+                                ? "UnsupportedContainer"
+                                : "SceneInputIntegrityFailure";
+                            return commandOutput.Failure(1, code, exception.Message);
+                        }
                         var sceneData = new SceneIndexOutput(
                             sceneResult.SceneSnapshotId,
                             sceneBuildId,
@@ -70,7 +80,7 @@ internal static class IndexCommand
                             sceneResult.ReferenceCount,
                             sceneResult.RecoveryCounts ?? new Dictionary<string, int>(),
                             sceneResult.Warnings ?? []);
-                        return commandOutput.Success(sceneData, writer => writer.WriteLine($"scene {sceneData.SceneSnapshotId} | build {sceneData.BuildId} | parser {sceneData.ParserId} {sceneData.ParserVersion} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}"));
+                        return commandOutput.Success(sceneData, writer => { writer.WriteLine($"scene {sceneData.SceneSnapshotId} | build {sceneData.BuildId} | parser {sceneData.ParserId} {sceneData.ParserVersion} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}"); writer.WriteLine("Recovery: " + string.Join(", ", sceneData.RecoveryCounts.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "=" + item.Value))); foreach (var warning in sceneData.Warnings) writer.WriteLine("Warning: " + warning); });
                     }
                     var requestedCodebase = parseResult.GetValue(codebaseOption);
                     var requestedChannel = parseResult.GetValue(channelOption);

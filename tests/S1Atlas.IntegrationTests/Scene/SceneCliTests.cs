@@ -1,4 +1,6 @@
 using S1Atlas.Cli;
+using S1Atlas.Storage.Sqlite;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Scene;
@@ -64,6 +66,38 @@ public sealed class SceneCliTests : IAsyncDisposable
         Assert.Equal(1, exit);
         Assert.Contains("InvalidLimit", output.ToString(), StringComparison.Ordinal);
         Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
+    public async Task Scenes_success_renders_verified_container_facts_and_counts_in_human_and_json_modes()
+    {
+        await SeedPublishedSceneAsync();
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var humanOutput = new StringWriter(); using var humanError = new StringWriter();
+        using var jsonOutput = new StringWriter(); using var jsonError = new StringWriter();
+
+        var humanExit = application.Invoke(["scenes", "--snapshot", "snapshot-a"], humanOutput, humanError, TestContext.Current.CancellationToken);
+        var jsonExit = application.Invoke(["scenes", "--snapshot", "snapshot-a", "--json"], jsonOutput, jsonError, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, humanExit); Assert.Equal(0, jsonExit);
+        Assert.Contains("Found 1 scenes. Showing 1.", humanOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Schedule I_Data/level0", humanOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains(new string('b', 64), humanOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("sidecar.json", humanOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("scene-a", jsonOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Schedule I_Data/level0", jsonOutput.ToString(), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, humanError.ToString()); Assert.Equal(string.Empty, jsonError.ToString());
+    }
+
+    private async Task SeedPublishedSceneAsync()
+    {
+        var repository = new SqliteAtlasRepository(Path.Combine(_dataDirectory, "atlas.db"));
+        await repository.InitializeAsync(TestContext.Current.CancellationToken);
+        await using var connection = new SqliteConnection($"Data Source={Path.Combine(_dataDirectory, "atlas.db")}");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA foreign_keys = OFF; INSERT INTO scene_snapshots(scene_snapshot_id, build_id, extraction_id, input_snapshot_id, code_snapshot_id, code_index_id, parser_id, parser_version, container_manifest_digest, status, recovery_status, started_at_utc, completed_at_utc, published_at_utc) VALUES ('snapshot-a','build-a','extraction-a','input-a','code-a','index-a','parser','1','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','Completed','FullyRecovered','2026-08-15T00:00:00Z','2026-08-15T00:01:00Z','2026-08-15T00:02:00Z'); INSERT INTO scene_containers(container_id,scene_snapshot_id,relative_path,container_kind,unity_version,serialized_file_version,byte_count,sha256,sidecar_manifest) VALUES ('container-a','snapshot-a','Schedule I_Data/level0','Assets','2022.3.62',22,10,'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','sidecar.json'); INSERT INTO scenes(scene_id,scene_snapshot_id,container_id,kind,name,source_local_file_id,object_count,root_count,recovery_status) VALUES ('scene-a','snapshot-a','container-a','Scene','Arena',1,1,1,'FullyRecovered');";
+        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
     }
 
     public ValueTask DisposeAsync()
