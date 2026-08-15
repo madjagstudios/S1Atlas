@@ -465,6 +465,170 @@ internal static class SqliteMigrations
         );
         """;
 
+    private const string SceneIntelligenceV8Sql = """
+        CREATE TABLE scene_snapshots (
+            scene_snapshot_id TEXT NOT NULL PRIMARY KEY,
+            build_id TEXT NOT NULL,
+            extraction_id TEXT NOT NULL,
+            input_snapshot_id TEXT NOT NULL,
+            code_snapshot_id TEXT NOT NULL,
+            code_index_id TEXT NOT NULL,
+            parser_id TEXT NOT NULL,
+            parser_version TEXT NOT NULL,
+            container_manifest_digest TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('Running', 'Completed', 'Failed')),
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            started_at_utc TEXT NOT NULL,
+            completed_at_utc TEXT NULL,
+            failure_code TEXT NULL,
+            failure_message TEXT NULL,
+            FOREIGN KEY (build_id) REFERENCES builds(build_id),
+            FOREIGN KEY (extraction_id) REFERENCES validated_extractions(extraction_id),
+            FOREIGN KEY (input_snapshot_id) REFERENCES input_snapshots(input_snapshot_id),
+            FOREIGN KEY (code_snapshot_id) REFERENCES code_snapshots(snapshot_id),
+            FOREIGN KEY (code_index_id) REFERENCES index_runs(index_id)
+        );
+
+        CREATE INDEX ix_scene_snapshots_build_status_completed
+        ON scene_snapshots(build_id, status, completed_at_utc);
+
+        CREATE TABLE scene_containers (
+            container_id TEXT NOT NULL PRIMARY KEY,
+            scene_snapshot_id TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            container_kind TEXT NOT NULL,
+            unity_version TEXT NOT NULL,
+            serialized_file_version INTEGER NOT NULL CHECK (serialized_file_version >= 0),
+            byte_count INTEGER NOT NULL CHECK (byte_count >= 0),
+            sha256 TEXT NOT NULL,
+            sidecar_manifest TEXT NOT NULL,
+            FOREIGN KEY (scene_snapshot_id) REFERENCES scene_snapshots(scene_snapshot_id)
+        );
+
+        CREATE INDEX ix_scene_containers_snapshot_path
+        ON scene_containers(scene_snapshot_id, relative_path);
+
+        CREATE TABLE scenes (
+            scene_id TEXT NOT NULL PRIMARY KEY,
+            scene_snapshot_id TEXT NOT NULL,
+            container_id TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('Scene', 'Prefab')),
+            name TEXT NOT NULL,
+            source_local_file_id INTEGER NULL,
+            object_count INTEGER NOT NULL CHECK (object_count >= 0),
+            root_count INTEGER NOT NULL CHECK (root_count >= 0),
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            FOREIGN KEY (scene_snapshot_id) REFERENCES scene_snapshots(scene_snapshot_id),
+            FOREIGN KEY (container_id) REFERENCES scene_containers(container_id)
+        );
+
+        CREATE INDEX ix_scenes_snapshot_kind_name
+        ON scenes(scene_snapshot_id, kind, name);
+
+        CREATE TABLE game_objects (
+            game_object_id TEXT NOT NULL PRIMARY KEY,
+            scene_id TEXT NOT NULL,
+            scene_snapshot_id TEXT NOT NULL,
+            container_id TEXT NOT NULL,
+            local_file_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            active INTEGER NULL CHECK (active IS NULL OR active IN (0, 1)),
+            layer INTEGER NULL,
+            tag TEXT NULL,
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            FOREIGN KEY (scene_id) REFERENCES scenes(scene_id),
+            FOREIGN KEY (scene_snapshot_id) REFERENCES scene_snapshots(scene_snapshot_id),
+            FOREIGN KEY (container_id) REFERENCES scene_containers(container_id)
+        );
+
+        CREATE INDEX ix_game_objects_scene_name
+        ON game_objects(scene_id, name);
+        CREATE INDEX ix_game_objects_snapshot_name
+        ON game_objects(scene_snapshot_id, name);
+        CREATE UNIQUE INDEX ux_game_objects_snapshot_container_local_file
+        ON game_objects(scene_snapshot_id, container_id, local_file_id);
+
+        CREATE TABLE transforms (
+            game_object_id TEXT NOT NULL PRIMARY KEY,
+            parent_game_object_id TEXT NULL,
+            sibling_index INTEGER NULL CHECK (sibling_index IS NULL OR sibling_index >= 0),
+            position_x REAL NULL,
+            position_y REAL NULL,
+            position_z REAL NULL,
+            rotation_x REAL NULL,
+            rotation_y REAL NULL,
+            rotation_z REAL NULL,
+            rotation_w REAL NULL,
+            scale_x REAL NULL,
+            scale_y REAL NULL,
+            scale_z REAL NULL,
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            FOREIGN KEY (game_object_id) REFERENCES game_objects(game_object_id),
+            FOREIGN KEY (parent_game_object_id) REFERENCES game_objects(game_object_id)
+        );
+
+        CREATE INDEX ix_transforms_parent_game_object
+        ON transforms(parent_game_object_id);
+
+        CREATE TABLE components (
+            component_id TEXT NOT NULL PRIMARY KEY,
+            game_object_id TEXT NOT NULL,
+            container_id TEXT NOT NULL,
+            local_file_id INTEGER NOT NULL,
+            unity_class_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            script_assembly TEXT NULL,
+            script_namespace TEXT NULL,
+            script_class TEXT NULL,
+            resolved_type_symbol_id TEXT NULL,
+            resolved_code_index_id TEXT NULL,
+            type_resolution_status TEXT NOT NULL CHECK (type_resolution_status IN ('Resolved', 'UnresolvedText', 'Ambiguous', 'NotIndexed', 'Unavailable')),
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            FOREIGN KEY (game_object_id) REFERENCES game_objects(game_object_id),
+            FOREIGN KEY (container_id) REFERENCES scene_containers(container_id),
+            FOREIGN KEY (resolved_type_symbol_id) REFERENCES symbols(symbol_id),
+            FOREIGN KEY (resolved_code_index_id) REFERENCES index_runs(index_id)
+        );
+
+        CREATE INDEX ix_components_game_object_kind
+        ON components(game_object_id, kind);
+        CREATE INDEX ix_components_resolved_type_symbol
+        ON components(resolved_type_symbol_id);
+
+        CREATE TABLE serialized_refs (
+            reference_id TEXT NOT NULL PRIMARY KEY,
+            scene_snapshot_id TEXT NOT NULL,
+            source_component_id TEXT NULL,
+            field_path TEXT NULL,
+            declared_type TEXT NULL,
+            source_container_id TEXT NOT NULL,
+            source_local_file_id INTEGER NOT NULL,
+            target_container_id TEXT NULL,
+            target_local_file_id INTEGER NULL,
+            target_game_object_id TEXT NULL,
+            target_component_id TEXT NULL,
+            target_symbol_id TEXT NULL,
+            target_text TEXT NULL,
+            resolution_status TEXT NOT NULL CHECK (resolution_status IN ('Resolved', 'UnresolvedText', 'Ambiguous', 'NotIndexed', 'Unavailable')),
+            evidence TEXT NOT NULL,
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            FOREIGN KEY (scene_snapshot_id) REFERENCES scene_snapshots(scene_snapshot_id),
+            FOREIGN KEY (source_component_id) REFERENCES components(component_id),
+            FOREIGN KEY (source_container_id) REFERENCES scene_containers(container_id),
+            FOREIGN KEY (target_container_id) REFERENCES scene_containers(container_id),
+            FOREIGN KEY (target_game_object_id) REFERENCES game_objects(game_object_id),
+            FOREIGN KEY (target_component_id) REFERENCES components(component_id),
+            FOREIGN KEY (target_symbol_id) REFERENCES symbols(symbol_id)
+        );
+
+        CREATE INDEX ix_serialized_refs_source_field_path
+        ON serialized_refs(source_component_id, field_path);
+        CREATE INDEX ix_serialized_refs_target_game_object
+        ON serialized_refs(target_game_object_id);
+        CREATE INDEX ix_serialized_refs_target_symbol
+        ON serialized_refs(target_symbol_id);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -473,6 +637,7 @@ internal static class SqliteMigrations
         new(4, "extraction-attempts-v4", ExtractionAttemptsV4Sql),
         new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql),
         new(6, "indexing-v6", IndexingV6Sql),
-        new(7, "body-recovery-v7", BodyRecoveryV7Sql)
+        new(7, "body-recovery-v7", BodyRecoveryV7Sql),
+        new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql)
     ];
 }
