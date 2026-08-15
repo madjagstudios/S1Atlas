@@ -156,4 +156,25 @@ public sealed class SceneModelTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new ComponentListQueryOptions("snapshot-id", Limit: limit));
         Assert.Throws<ArgumentOutOfRangeException>(() => new ReferenceListQueryOptions("snapshot-id", Limit: limit));
     }
+
+    [Fact]
+    public void Scene_page_result_rejects_counts_that_do_not_describe_its_rows()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ScenePageResult<string>(-1, 0, []));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ScenePageResult<string>(0, -1, []));
+        Assert.Throws<ArgumentException>(() => new ScenePageResult<string>(3, 1, []));
+        Assert.Throws<ArgumentException>(() => new ScenePageResult<string>(1, 2, ["first", "second"]));
+    }
+
+    [Fact]
+    public void Scene_page_result_rejects_null_rows_and_preserves_exact_page_counts()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ScenePageResult<string>(0, 0, null!));
+
+        var result = new ScenePageResult<string>(3, 2, ["first", "second"]);
+
+        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(2, result.ReturnedCount);
+        Assert.Equal(["first", "second"], result.Rows);
+    }
 }
