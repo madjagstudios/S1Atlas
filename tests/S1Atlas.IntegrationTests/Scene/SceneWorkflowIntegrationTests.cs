@@ -128,6 +128,105 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Absent_reviewed_custom_schema_stays_graph_only_without_invented_fields_or_payloads()
+    {
+        const string opaqueCustomValue = "opaque-unreviewed-custom-value";
+        var setup = await CreateSetupWithoutReviewedCustomSchemaAsync();
+
+        var result = await setup.Workflow.RunScheduleOneAsync(
+            _buildId,
+            force: false,
+            TestContext.Current.CancellationToken);
+
+        var components = await setup.Repository.ListComponentsAsync(
+            new ComponentListQueryOptions(result.SceneSnapshotId, Limit: 50),
+            TestContext.Current.CancellationToken);
+        var behaviours = components.Rows
+            .Where(component => component.Kind == "MonoBehaviour")
+            .ToArray();
+        Assert.Equal(2, behaviours.Length);
+        Assert.All(behaviours, component =>
+        {
+            Assert.Equal(SceneRecoveryStatus.GraphOnly, component.RecoveryStatus);
+            Assert.Equal(SceneResolutionStatus.Resolved, component.TypeResolutionStatus);
+            Assert.Equal(_symbolId, component.ResolvedTypeSymbolId);
+        });
+
+        var references = await setup.Repository.ListReferencesAsync(
+            new ReferenceListQueryOptions(result.SceneSnapshotId, Limit: 100),
+            TestContext.Current.CancellationToken);
+        var behaviourIds = behaviours
+            .Select(component => component.ComponentId)
+            .ToHashSet(StringComparer.Ordinal);
+        var behaviourReferences = references.Rows
+            .Where(reference => reference.SourceComponentId is not null &&
+                behaviourIds.Contains(reference.SourceComponentId))
+            .ToArray();
+        Assert.Equal(2, behaviourReferences.Count(reference => reference.FieldPath == "m_GameObject"));
+        Assert.Equal(2, behaviourReferences.Count(reference => reference.FieldPath == "m_Script"));
+        Assert.All(behaviours, component =>
+        {
+            Assert.Contains(behaviourReferences, reference =>
+                reference.SourceComponentId == component.ComponentId &&
+                reference.FieldPath == "m_GameObject" &&
+                reference.TargetGameObjectId == component.GameObjectId &&
+                reference.ResolutionStatus == SceneResolutionStatus.Resolved);
+            Assert.Contains(behaviourReferences, reference =>
+                reference.SourceComponentId == component.ComponentId &&
+                reference.FieldPath == "m_Script" &&
+                reference.TargetSymbolId == _symbolId &&
+                reference.ResolutionStatus == SceneResolutionStatus.Resolved);
+        });
+        Assert.DoesNotContain(behaviourReferences, reference =>
+            reference.FieldPath is "m_LocalTarget" or "m_ExternalTarget" or "m_MissingTarget");
+
+        Assert.Equal(0, await ScalarAsync<long>(
+            setup.DatabasePath,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'serialized_fields';"));
+        Assert.Equal(0, await ScalarAsync<long>(
+            setup.DatabasePath,
+            "SELECT COUNT(*) FROM pragma_table_info('components') WHERE lower(name) IN ('field', 'value', 'payload', 'blob');"));
+        var databaseText = Encoding.UTF8.GetString(ReadSharedBytes(setup.DatabasePath));
+        Assert.DoesNotContain(opaqueCustomValue, databaseText, StringComparison.Ordinal);
+        Assert.DoesNotContain("m_LocalTarget", databaseText, StringComparison.Ordinal);
+        Assert.DoesNotContain("m_ExternalTarget", databaseText, StringComparison.Ordinal);
+        Assert.DoesNotContain("m_MissingTarget", databaseText, StringComparison.Ordinal);
+
+        var network = new RejectingNetworkHandler();
+        var processExtractor = new RejectingProcessExtractor();
+        var application = new CliApplication(
+            setup.DataRoot,
+            "0.1.0-test",
+            Path.Combine(_root, "configuration"),
+            () => new HttpClient(network, disposeHandler: false),
+            processExtractorFactory: () => processExtractor);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var exitCode = application.Invoke(
+            ["component", behaviours[0].ComponentId, "--refs", "--code", "--json"],
+            output,
+            error,
+            TestContext.Current.CancellationToken);
+
+        Assert.True(exitCode == 0, output.ToString() + error);
+        Assert.Equal(string.Empty, error.ToString());
+        using var json = JsonDocument.Parse(output.ToString());
+        Assert.Equal(
+            (int)SceneRecoveryStatus.GraphOnly,
+            json.RootElement
+                .GetProperty("data")
+                .GetProperty("component")
+                .GetProperty("recoveryStatus")
+                .GetInt32());
+        Assert.DoesNotContain(opaqueCustomValue, output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("m_LocalTarget", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("m_ExternalTarget", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("m_MissingTarget", output.ToString(), StringComparison.Ordinal);
+        Assert.Equal(0, network.RequestCount);
+        Assert.Equal(0, processExtractor.CallCount);
+    }
+
+    [Fact]
     public async Task Migration_8_completion_rolls_back_all_graph_rows_when_a_late_insert_fails()
     {
         var setup = await CreateSetupAsync();
@@ -198,12 +297,19 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             TestContext.Current.CancellationToken));
     }
 
-    private async Task<Setup> CreateSetupAsync()
+    private Task<Setup> CreateSetupAsync() =>
+        CreateSetupAsync(IntegrationSerializedFileFixture.Create);
+
+    private Task<Setup> CreateSetupWithoutReviewedCustomSchemaAsync() =>
+        CreateSetupAsync(IntegrationSerializedFileFixture.CreateWithoutReviewedCustomSchema);
+
+    private async Task<Setup> CreateSetupAsync(
+        Func<string, IntegrationSerializedFileFixture> createFixture)
     {
         var installRoot = Path.Combine(_root, "install");
         var dataRoot = Path.Combine(_root, "atlas-data");
         var databasePath = Path.Combine(dataRoot, "atlas.db");
-        _fixture = IntegrationSerializedFileFixture.Create(installRoot);
+        _fixture = createFixture(installRoot);
         var repository = new SqliteAtlasRepository(databasePath);
         await repository.InitializeAsync(TestContext.Current.CancellationToken);
         var environment = new EnvironmentSnapshot(
@@ -301,6 +407,18 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant(),
             StringComparer.Ordinal);
 
+    private static byte[] ReadSharedBytes(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        var bytes = new byte[stream.Length];
+        stream.ReadExactly(bytes);
+        return bytes;
+    }
+
     private static async Task<T> ScalarAsync<T>(
         string databasePath,
         string sql,
@@ -353,10 +471,19 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
         public IReadOnlyList<string> SerializedFilePaths { get; }
 
         public static IntegrationSerializedFileFixture Create(string installRoot)
+            => Create(installRoot, includeReviewedCustomSchema: true);
+
+        public static IntegrationSerializedFileFixture CreateWithoutReviewedCustomSchema(
+            string installRoot)
+            => Create(installRoot, includeReviewedCustomSchema: false);
+
+        private static IntegrationSerializedFileFixture Create(
+            string installRoot,
+            bool includeReviewedCustomSchema)
         {
             var dataRoot = Path.Combine(installRoot, "Schedule I_Data");
             Directory.CreateDirectory(dataRoot);
-            var bytes = CreateBytes();
+            var bytes = CreateBytes(includeReviewedCustomSchema);
             var paths = new[]
             {
                 Path.Combine(dataRoot, "level0"),
@@ -367,13 +494,13 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             return new IntegrationSerializedFileFixture(installRoot, paths);
         }
 
-        private static byte[] CreateBytes()
+        private static byte[] CreateBytes(bool includeReviewedCustomSchema)
         {
             var types = new[]
             {
                 GameObjectType(),
                 TransformType(),
-                MonoBehaviourType(),
+                MonoBehaviourType(includeReviewedCustomSchema),
                 MonoScriptType(),
                 BuiltInComponentType(),
                 BuildSettingsType()
@@ -387,7 +514,7 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
                     3,
                     true)),
                 new FixtureObject(102, 1, TransformPayload(101, [106], 0, 0)),
-                new FixtureObject(103, 2, MonoBehaviourPayload()),
+                new FixtureObject(103, 2, MonoBehaviourPayload(includeReviewedCustomSchema)),
                 new FixtureObject(104, 3, MonoScriptPayload()),
                 new FixtureObject(105, 0, GameObjectPayload(
                     "Fixture Child",
@@ -503,19 +630,26 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             Node(1, "int", "m_RootOrder")
         ]);
 
-        private static FixtureType MonoBehaviourType() => new(114,
-        [
-            Node(0, "MonoBehaviour", "Base"),
-            .. PPtrNodes(1, "PPtr<GameObject>", "m_GameObject"),
-            Node(1, "UInt8", "m_Enabled", aligned: true),
-            .. PPtrNodes(1, "PPtr<MonoScript>", "m_Script"),
-            Node(1, "string", "m_Name"),
-            Node(2, "Array", "Array", isArray: true),
-            Node(3, "int", "size"), Node(3, "char", "data"),
-            .. PPtrNodes(1, "PPtr<GameObject>", "m_LocalTarget"),
-            .. PPtrNodes(1, "PPtr<GameObject>", "m_ExternalTarget"),
-            .. PPtrNodes(1, "PPtr<GameObject>", "m_MissingTarget")
-        ], 0);
+        private static FixtureType MonoBehaviourType(bool includeReviewedCustomSchema)
+        {
+            List<FixtureNode> nodes =
+            [
+                Node(0, "MonoBehaviour", "Base"),
+                .. PPtrNodes(1, "PPtr<GameObject>", "m_GameObject"),
+                Node(1, "UInt8", "m_Enabled", aligned: true),
+                .. PPtrNodes(1, "PPtr<MonoScript>", "m_Script"),
+                Node(1, "string", "m_Name"),
+                Node(2, "Array", "Array", isArray: true),
+                Node(3, "int", "size"), Node(3, "char", "data")
+            ];
+            if (includeReviewedCustomSchema)
+            {
+                nodes.AddRange(PPtrNodes(1, "PPtr<GameObject>", "m_LocalTarget"));
+                nodes.AddRange(PPtrNodes(1, "PPtr<GameObject>", "m_ExternalTarget"));
+                nodes.AddRange(PPtrNodes(1, "PPtr<GameObject>", "m_MissingTarget"));
+            }
+            return new FixtureType(114, nodes.ToArray(), 0);
+        }
 
         private static FixtureType MonoScriptType() => new(115,
         [
@@ -592,16 +726,23 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             writer.Write(rootOrder);
         });
 
-        private static byte[] MonoBehaviourPayload() => Payload(writer =>
+        private static byte[] MonoBehaviourPayload(bool includeReviewedCustomSchema) => Payload(writer =>
         {
             WritePPtr(writer, PPtr(0, 101));
             writer.Write((byte)1);
             Align(writer, 4);
             WritePPtr(writer, PPtr(0, 104));
             WriteString(writer, "Fixture Component");
-            WritePPtr(writer, PPtr(0, 101));
-            WritePPtr(writer, PPtr(1, 101));
-            WritePPtr(writer, PPtr(2, 999));
+            if (includeReviewedCustomSchema)
+            {
+                WritePPtr(writer, PPtr(0, 101));
+                WritePPtr(writer, PPtr(1, 101));
+                WritePPtr(writer, PPtr(2, 999));
+            }
+            else
+            {
+                writer.Write(Encoding.UTF8.GetBytes("opaque-unreviewed-custom-value"));
+            }
         });
 
         private static byte[] MonoScriptPayload() => Payload(writer =>
