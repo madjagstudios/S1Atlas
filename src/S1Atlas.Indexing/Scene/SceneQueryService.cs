@@ -161,7 +161,8 @@ public enum SceneQueryStatus
     PreferredExtractionChanged,
     ReplayVerifiedInputChanged,
     CodeIndexChanged,
-    NoVerifiedSceneContainers
+    NoVerifiedSceneContainers,
+    SceneIndexInProgress
 }
 
 public sealed record SceneListRequest(string? BuildId = null, string? SceneSnapshotId = null, SceneDocumentKind? Kind = null, string? Query = null, int Limit = SceneQueryService.DefaultLimit);

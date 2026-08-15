@@ -17,8 +17,10 @@ public sealed class OwnedScenePathsTests
         Assert.Equal($"C:\\atlas\\builds\\{BuildId}\\scene-indexes\\{SceneSnapshotId}", paths.FinalRoot);
         Assert.Equal(paths.FinalRoot + ".staging", paths.StagingRoot);
         Assert.Equal(Path.Combine(paths.FinalRoot, "complete.marker"), paths.CompleteMarkerPath);
+        Assert.Equal(paths.FinalRoot + ".lock", paths.LockPath);
         Assert.StartsWith(DataRoot + Path.DirectorySeparatorChar, paths.FinalRoot, StringComparison.OrdinalIgnoreCase);
         Assert.StartsWith(DataRoot + Path.DirectorySeparatorChar, paths.StagingRoot, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(DataRoot + Path.DirectorySeparatorChar, paths.LockPath, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

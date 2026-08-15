@@ -341,6 +341,56 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         Assert.True(File.Exists(paths.CompleteMarkerPath));
     }
 
+    [Fact]
+    public async Task Create_failure_does_not_delete_final_artifact_created_after_reuse_check()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        repository.BeforeCompletedSnapshotLookup = sceneSnapshotId =>
+        {
+            var paths = OwnedScenePaths.ForScheduleOne(_root, _buildId, sceneSnapshotId);
+            Directory.CreateDirectory(paths.FinalRoot);
+            File.WriteAllText(Path.Combine(paths.FinalRoot, "published.marker"), "published");
+        };
+        repository.CreateException = new InvalidOperationException("published scene snapshot is immutable");
+        var workflow = CreateWorkflow(repository, Authority());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        var sceneSnapshotId = repository.LastCheckedSnapshotId!;
+        var paths = OwnedScenePaths.ForScheduleOne(_root, _buildId, sceneSnapshotId);
+        Assert.True(File.Exists(Path.Combine(paths.FinalRoot, "published.marker")));
+    }
+
+    [Fact]
+    public async Task Concurrent_deterministic_runs_are_serialized_before_reuse_check()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = CreateRepository(replayVerified: true);
+        repository.FirstCompletedLookupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        repository.ReleaseFirstCompletedLookup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        repository.SecondCompletedLookupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var workflow = CreateWorkflow(repository, Authority());
+
+        var first = Task.Run(() => workflow.RunScheduleOneAsync(_buildId, false, cancellationToken));
+        await repository.FirstCompletedLookupEntered.Task;
+        var second = Task.Run(() => workflow.RunScheduleOneAsync(_buildId, false, cancellationToken));
+
+        try
+        {
+            var observed = await Task.WhenAny(repository.SecondCompletedLookupEntered.Task, Task.Delay(TimeSpan.FromSeconds(1), cancellationToken));
+            Assert.NotSame(repository.SecondCompletedLookupEntered.Task, observed);
+        }
+        finally
+        {
+            repository.ReleaseFirstCompletedLookup.TrySetResult();
+        }
+
+        await first;
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() => second);
+        Assert.Contains("already", failure.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private SceneIndexWorkflow CreateWorkflow(
         WorkflowRepository repository,
         Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> authority,
@@ -473,14 +523,42 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public List<string> PublishedSnapshotIds { get; } = [];
         public SceneSnapshotRecord? CompletedSnapshot { get; private set; }
         public SceneWriteSet? CompletedWriteSet { get; private set; }
+        public string? LastCheckedSnapshotId { get; private set; }
+        public Action<string>? BeforeCompletedSnapshotLookup { get; set; }
+        public Exception? CreateException { get; set; }
+        public TaskCompletionSource? FirstCompletedLookupEntered { get; set; }
+        public TaskCompletionSource? ReleaseFirstCompletedLookup { get; set; }
+        public TaskCompletionSource? SecondCompletedLookupEntered { get; set; }
+        private int _completedSnapshotLookupCount;
 
         public Task<ExtractionAttempt?> GetAttemptAsync(string attemptId, CancellationToken cancellationToken) => Task.FromResult<ExtractionAttempt?>(Attempt);
         public Task<InputSnapshot?> GetInputSnapshotAsync(string inputSnapshotId, CancellationToken cancellationToken) => Task.FromResult<InputSnapshot?>(Input);
         public Task<EnvironmentSnapshot?> GetCurrentSnapshotAsync(CancellationToken cancellationToken) => Task.FromResult<EnvironmentSnapshot?>(Environment);
         public Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken) => Task.FromResult<IndexRunRecord?>(IndexRun);
         public Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken) => Task.FromResult<CodeSnapshotRecord?>(CodeSnapshot);
-        public Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken) => Task.FromResult(PublishedSnapshotIds.Contains(sceneSnapshotId) && CompletedSnapshot?.SceneSnapshotId == sceneSnapshotId ? CompletedSnapshot : null);
-        public Task CreateSceneSnapshotAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken) { CreatedSnapshots.Add(snapshot); return Task.CompletedTask; }
+        public Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken)
+        {
+            LastCheckedSnapshotId = sceneSnapshotId;
+            var lookup = Interlocked.Increment(ref _completedSnapshotLookupCount);
+            if (lookup == 1 && FirstCompletedLookupEntered is not null && ReleaseFirstCompletedLookup is not null)
+            {
+                FirstCompletedLookupEntered.TrySetResult();
+                ReleaseFirstCompletedLookup.Task.GetAwaiter().GetResult();
+            }
+            else if (lookup > 1 && SecondCompletedLookupEntered is not null)
+            {
+                SecondCompletedLookupEntered.TrySetResult();
+            }
+            BeforeCompletedSnapshotLookup?.Invoke(sceneSnapshotId);
+            return Task.FromResult(PublishedSnapshotIds.Contains(sceneSnapshotId) && CompletedSnapshot?.SceneSnapshotId == sceneSnapshotId ? CompletedSnapshot : null);
+        }
+        public Task CreateSceneSnapshotAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken)
+        {
+            if (CreateException is not null)
+                throw CreateException;
+            CreatedSnapshots.Add(snapshot);
+            return Task.CompletedTask;
+        }
         public Task StartSceneSnapshotAsync(string sceneSnapshotId, string startedAtUtc, CancellationToken cancellationToken)
         {
             if (ThrowOnStart) throw new InvalidOperationException("injected start failure");

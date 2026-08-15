@@ -2,18 +2,20 @@ namespace S1Atlas.Indexing.Paths;
 
 public sealed record OwnedScenePaths
 {
-    private OwnedScenePaths(string dataRoot, string finalRoot, string stagingRoot, string completeMarkerPath)
+    private OwnedScenePaths(string dataRoot, string finalRoot, string stagingRoot, string completeMarkerPath, string lockPath)
     {
         DataRoot = dataRoot;
         FinalRoot = finalRoot;
         StagingRoot = stagingRoot;
         CompleteMarkerPath = completeMarkerPath;
+        LockPath = lockPath;
     }
 
     public string DataRoot { get; }
     public string FinalRoot { get; }
     public string StagingRoot { get; }
     public string CompleteMarkerPath { get; }
+    public string LockPath { get; }
 
     public static OwnedScenePaths ForScheduleOne(string dataRoot, string buildId, string sceneSnapshotId) =>
         ForScheduleOne(dataRoot, buildId, sceneSnapshotId, File.GetAttributes);
@@ -29,9 +31,30 @@ public sealed record OwnedScenePaths
         RequireLowerHex64(sceneSnapshotId, "scene snapshot ID");
         var finalRoot = ResolveContained(root, "builds", buildId, "scene-indexes", sceneSnapshotId);
         var stagingRoot = finalRoot + ".staging";
+        var lockPath = finalRoot + ".lock";
         EnsureSafeExistingPath(root, finalRoot, getFileAttributes);
         EnsureSafeExistingPath(root, stagingRoot, getFileAttributes);
-        return new OwnedScenePaths(root, finalRoot, stagingRoot, Path.Combine(finalRoot, "complete.marker"));
+        EnsureSafeExistingPath(root, Path.GetDirectoryName(lockPath)!, getFileAttributes);
+        try
+        {
+            var attributes = getFileAttributes(lockPath);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException($"The scene index lock path '{lockPath}' is a reparse point.");
+            if ((attributes & FileAttributes.Directory) != 0)
+                throw new InvalidOperationException($"The scene index lock path '{lockPath}' is a directory.");
+        }
+        catch (FileNotFoundException)
+        {
+        }
+        catch (DirectoryNotFoundException)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"The scene index lock path '{lockPath}' could not be inspected.", exception);
+        }
+
+        return new OwnedScenePaths(root, finalRoot, stagingRoot, Path.Combine(finalRoot, "complete.marker"), lockPath);
     }
 
     private static string NormalizeRoot(string dataRoot)

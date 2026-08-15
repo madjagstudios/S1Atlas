@@ -140,6 +140,8 @@ public sealed class SceneIndexWorkflow
                 container.Sha256,
                 container.SidecarManifest)).ToArray());
 
+        var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
+        using var snapshotLock = SceneSnapshotLock.Acquire(paths.LockPath);
         if (!force)
         {
             var completed = await _sceneRepository.GetCompletedSceneSnapshotAsync(sceneSnapshotId, cancellationToken);
@@ -147,12 +149,6 @@ public sealed class SceneIndexWorkflow
                 return await ToResultAsync(completed, cancellationToken);
         }
 
-        var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
-        if (Directory.Exists(paths.FinalRoot))
-            DeleteOwnedFinal(buildId, sceneSnapshotId);
-
-        DeleteOwnedStaging(buildId, sceneSnapshotId);
-        Directory.CreateDirectory(paths.StagingRoot);
         var snapshot = new SceneSnapshotRecord(
             sceneSnapshotId,
             buildId,
@@ -173,6 +169,10 @@ public sealed class SceneIndexWorkflow
         {
             await _sceneRepository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
             snapshotCreated = true;
+            if (Directory.Exists(paths.FinalRoot))
+                DeleteOwnedFinal(buildId, sceneSnapshotId);
+            DeleteOwnedStaging(buildId, sceneSnapshotId);
+            Directory.CreateDirectory(paths.StagingRoot);
             await _sceneRepository.StartSceneSnapshotAsync(sceneSnapshotId, DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
 
             var parsed = await _parser.ParseAsync(verifiedInput.Containers, cancellationToken);

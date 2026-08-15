@@ -42,9 +42,29 @@ internal static class IndexCommand
                 () =>
                 {
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    if (parseResult.GetValue(sceneOption))
+                    var sceneIndexRequested = parseResult.GetValue(sceneOption);
+                    var requestedBuild = parseResult.GetValue(buildOption);
+                    var requestedCodebase = parseResult.GetValue(codebaseOption);
+                    var requestedChannel = parseResult.GetValue(channelOption);
+                    var requestedCommit = parseResult.GetValue(commitOption);
+                    if (sceneIndexRequested && (requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
                     {
-                        var sceneBuildId = parseResult.GetValue(buildOption) ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
+                        return commandOutput.Failure(
+                            1,
+                            "InvalidOptionCombination",
+                            "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.");
+                    }
+                    if (!sceneIndexRequested && requestedBuild is not null)
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "InvalidOptionCombination",
+                            "--build is valid only with --scene.");
+                    }
+
+                    if (sceneIndexRequested)
+                    {
+                        var sceneBuildId = requestedBuild ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
                         if (sceneBuildId is null)
                             return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.");
                         SceneIndexWorkflowResult sceneResult;
@@ -62,9 +82,6 @@ internal static class IndexCommand
                         }
                         return WriteSceneResult(commandOutput, sceneResult);
                     }
-                    var requestedCodebase = parseResult.GetValue(codebaseOption);
-                    var requestedChannel = parseResult.GetValue(channelOption);
-                    var requestedCommit = parseResult.GetValue(commitOption);
                     var snapshot = repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult();
                     IndexingWorkflowResult result;
                     string codebase;

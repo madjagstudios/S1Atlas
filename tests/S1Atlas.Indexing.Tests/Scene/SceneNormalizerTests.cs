@@ -133,6 +133,7 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         var prefab = Assert.Single(result.Documents, document => document.Kind == SceneDocumentKind.Prefab);
         Assert.Equal(9, prefab.SourceLocalFileId);
         Assert.Equal(0, prefab.ObjectCount);
+        Assert.Equal(SceneRecoveryStatus.StubOrUnavailable, prefab.RecoveryStatus);
         var ordinary = Assert.Single(result.Documents, document => document.Kind == SceneDocumentKind.Scene);
         Assert.Equal(ordinary.SceneId, Assert.Single(result.GameObjects).SceneId);
     }

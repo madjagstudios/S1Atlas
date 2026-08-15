@@ -413,7 +413,9 @@ public sealed class SceneNormalizer
                 prefab.Evidence.LocalFileId,
                 0,
                 0,
-                SceneRecoveryStatus.FullyRecovered));
+                prefab.Root is null
+                    ? SceneRecoveryStatus.StubOrUnavailable
+                    : SceneRecoveryStatus.FullyRecovered));
             if (prefab.Root is null || assignments.ContainsKey(prefab.Root.Value))
                 continue;
             foreach (var member in Descendants(prefab.Root.Value, children))
