@@ -47,7 +47,18 @@ internal static class IndexCommand
                         var sceneBuildId = parseResult.GetValue(buildOption) ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
                         if (sceneBuildId is null)
                             return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.");
-                        var sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, parseResult.GetValue(forceOption), cancellationToken).GetAwaiter().GetResult();
+                        SceneIndexWorkflowResult sceneResult;
+                        try
+                        {
+                            sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, parseResult.GetValue(forceOption), cancellationToken).GetAwaiter().GetResult();
+                        }
+                        catch (InvalidDataException exception)
+                        {
+                            var code = exception.Message.Contains("Unity", StringComparison.OrdinalIgnoreCase) || exception.Message.Contains("container", StringComparison.OrdinalIgnoreCase)
+                                ? "UnsupportedContainer"
+                                : "SceneInputIntegrityFailure";
+                            return commandOutput.Failure(1, code, exception.Message);
+                        }
                         var sceneData = new SceneIndexOutput(
                             sceneResult.SceneSnapshotId,
                             sceneBuildId,

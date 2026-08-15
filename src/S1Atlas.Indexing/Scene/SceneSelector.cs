@@ -24,9 +24,7 @@ public sealed class SceneSelector
         if (byId is not null && (kind is null || byId.Kind == kind))
             return SceneSelectionResult<SceneDocumentRecord>.Resolved(byId);
 
-        var page = await _repository.ListScenesAsync(
-            new SceneListQueryOptions(sceneSnapshotId, kind, selector, CandidateLimit), cancellationToken);
-        var matches = page.Rows.Where(row => string.Equals(row.Name, selector, StringComparison.Ordinal))
+        var matches = (await _repository.FindScenesByExactNameAsync(sceneSnapshotId, selector, kind, CandidateLimit, cancellationToken))
             .OrderBy(row => row.Name, StringComparer.Ordinal)
             .ThenBy(row => row.SceneId, StringComparer.Ordinal)
             .ToArray();
@@ -58,9 +56,7 @@ public sealed class SceneSelector
         var scene = await _repository.GetSceneAsync(sceneSnapshotId, sceneId, cancellationToken);
         if (scene is null) return SceneSelectionResult<SceneGameObjectRecord>.NotFound(SceneQueryStatus.GameObjectNotFound);
 
-        var page = await _repository.ListGameObjectsAsync(
-            new GameObjectListQueryOptions(sceneSnapshotId, scene.SceneId, Query: name, Limit: CandidateLimit), cancellationToken);
-        var matches = page.Rows.Where(row => string.Equals(row.Name, name, StringComparison.Ordinal))
+        var matches = (await _repository.FindGameObjectsByExactNameAsync(sceneSnapshotId, scene.SceneId, name, CandidateLimit, cancellationToken))
             .OrderBy(row => row.Name, StringComparer.Ordinal)
             .ThenBy(row => row.GameObjectId, StringComparer.Ordinal)
             .ToArray();
@@ -83,9 +79,7 @@ public sealed class SceneSelector
         var byId = await _repository.GetComponentAsync(sceneSnapshotId, selector, cancellationToken);
         if (byId is not null) return SceneSelectionResult<SceneComponentRecord>.Resolved(byId);
 
-        var page = await _repository.ListComponentsAsync(
-            new ComponentListQueryOptions(sceneSnapshotId, Query: selector, Limit: CandidateLimit), cancellationToken);
-        var matches = page.Rows.Where(row => string.Equals(row.Kind, selector, StringComparison.Ordinal))
+        var matches = (await _repository.FindComponentsByExactKindAsync(sceneSnapshotId, selector, CandidateLimit, cancellationToken))
             .OrderBy(row => row.Kind, StringComparer.Ordinal)
             .ThenBy(row => row.ComponentId, StringComparer.Ordinal)
             .ToArray();

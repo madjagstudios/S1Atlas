@@ -18,12 +18,11 @@ internal static class ComponentCommand
             if (result.GetValue(limit) <= 0) return new CommandOutput("component", result.GetValue(json), output, error).Failure(1, "InvalidLimit", "--limit must be greater than zero.");
             var data = service.ComponentAsync(new ComponentQueryRequest(null, result.GetValue(selector)!, result.GetValue(refs), result.GetValue(code), result.GetValue(limit)), cancellationToken).GetAwaiter().GetResult();
             SymbolQueryResult? codeSymbol = null;
-            if (result.GetValue(code) && data.Component?.ResolvedTypeSymbolId is string symbolId)
+            if (result.GetValue(code) && data.Component?.ResolvedTypeSymbolId is string symbolId && data.Component.ResolvedCodeIndexId is string indexId)
             {
-                var source = indexQueries.SourceAsync(symbolId, new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, result.GetValue(limit)), 0, cancellationToken).GetAwaiter().GetResult();
-                codeSymbol = source.Resolution.Symbol;
+                codeSymbol = indexQueries.GetExactSymbolAsync(indexId, symbolId, cancellationToken).GetAwaiter().GetResult();
             }
-            var outputData = new ComponentOutput(data.Status, data.Snapshot, data.Component, data.Candidates, data.References, codeSymbol);
+            var outputData = new ComponentOutput(data.Status, data.Snapshot, data.Component, data.Candidates, data.References, codeSymbol, data.Containers);
             return SceneCommandSupport.Write(new CommandOutput("component", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteComponent(outputData, writer));
         })); return command;
     }

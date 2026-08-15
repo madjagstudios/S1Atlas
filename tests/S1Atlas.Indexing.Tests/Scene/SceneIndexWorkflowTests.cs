@@ -286,6 +286,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         Assert.True(File.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, first.SceneSnapshotId).CompleteMarkerPath));
         Assert.Equal(1, first.ContainerCount);
         Assert.Equal(1, first.SceneCount);
+        Assert.Equal(first.SceneCount, reused.SceneCount);
+        Assert.Equal(first.GameObjectCount, reused.GameObjectCount);
+        Assert.Equal(first.ComponentCount, reused.ComponentCount);
+        Assert.Equal(first.ReferenceCount, reused.ReferenceCount);
     }
 
     private SceneIndexWorkflow CreateWorkflow(
@@ -419,6 +423,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public List<string> FailedSnapshotIds { get; } = [];
         public List<string> PublishedSnapshotIds { get; } = [];
         public SceneSnapshotRecord? CompletedSnapshot { get; private set; }
+        public SceneWriteSet? CompletedWriteSet { get; private set; }
 
         public Task<ExtractionAttempt?> GetAttemptAsync(string attemptId, CancellationToken cancellationToken) => Task.FromResult<ExtractionAttempt?>(Attempt);
         public Task<InputSnapshot?> GetInputSnapshotAsync(string inputSnapshotId, CancellationToken cancellationToken) => Task.FromResult<InputSnapshot?>(Input);
@@ -436,6 +441,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         {
             if (ThrowOnComplete) throw new InvalidOperationException("injected database rollback");
             CompletedSnapshot = writeSet.Snapshot with { Status = SceneSnapshotStatus.Completed, CompletedAtUtc = completedAtUtc };
+            CompletedWriteSet = writeSet;
             return Task.CompletedTask;
         }
         public Task FailSceneSnapshotAsync(string sceneSnapshotId, string failureCode, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) { FailedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
@@ -468,13 +474,17 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(PublishedSnapshotIds.Contains(CompletedSnapshot?.SceneSnapshotId ?? string.Empty) ? CompletedSnapshot : null);
-        public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SceneContainerRecord>> GetSceneContainersAsync(string sceneSnapshotId, IReadOnlyList<string> containerIds, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneContainerRecord>>([]);
+        public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneDocumentRecord>(CompletedWriteSet?.Documents.Count ?? 0, 0, []));
+        public Task<IReadOnlyList<SceneDocumentRecord>> FindScenesByExactNameAsync(string sceneSnapshotId, string name, SceneDocumentKind? kind, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneDocumentRecord?> GetSceneAsync(string sceneSnapshotId, string sceneId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneGameObjectRecord>(CompletedWriteSet?.GameObjects.Count ?? 0, 0, []));
+        public Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneGameObjectRecord?> GetGameObjectAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneComponentRecord>(CompletedWriteSet?.Components.Count ?? 0, 0, []));
+        public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactKindAsync(string sceneSnapshotId, string kind, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneReferenceRecord>(CompletedWriteSet?.References.Count ?? 0, 0, []));
         public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

@@ -136,7 +136,7 @@ public sealed class SceneIndexWorkflow
         {
             var completed = await _sceneRepository.GetCompletedSceneSnapshotAsync(sceneSnapshotId, cancellationToken);
             if (completed is not null)
-                return ToResult(completed, reused: true, null);
+                return await ToResultAsync(completed, cancellationToken);
         }
 
         var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
@@ -419,6 +419,15 @@ public sealed class SceneIndexWorkflow
             writeSet?.References.Count ?? 0,
             writeSet is null ? new Dictionary<string, int>() : RecoveryCounts(writeSet),
             []);
+
+    private async Task<SceneIndexWorkflowResult> ToResultAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken)
+    {
+        var scenes = await _sceneRepository.ListScenesAsync(new SceneListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
+        var objects = await _sceneRepository.ListGameObjectsAsync(new GameObjectListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
+        var components = await _sceneRepository.ListComponentsAsync(new ComponentListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
+        var references = await _sceneRepository.ListReferencesAsync(new ReferenceListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
+        return new SceneIndexWorkflowResult(snapshot.SceneSnapshotId, snapshot.CodeIndexId, true, 0, scenes.TotalCount, objects.TotalCount, 0, components.TotalCount, references.TotalCount, new Dictionary<string, int>(), []);
+    }
 
     private static IReadOnlyDictionary<string, int> RecoveryCounts(SceneWriteSet writeSet) =>
         writeSet.Documents.Select(row => row.RecoveryStatus)

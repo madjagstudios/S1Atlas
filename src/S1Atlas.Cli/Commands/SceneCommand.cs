@@ -15,7 +15,7 @@ internal static class SceneCommand
         {
             if (result.GetValue(limit) <= 0) return new CommandOutput("scene", result.GetValue(json), output, error).Failure(1, "InvalidLimit", "--limit must be greater than zero.");
             var data = service.SceneAsync(new SceneQueryRequest(null, result.GetValue(selector)!, null, result.GetValue(children), result.GetValue(components), result.GetValue(refs), result.GetValue(limit)), cancellationToken).GetAwaiter().GetResult();
-            var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References);
+            var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References, data.Containers);
             return SceneCommandSupport.Write(new CommandOutput("scene", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteScene(outputData, writer));
         })); return command;
     }

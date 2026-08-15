@@ -22,6 +22,16 @@ public sealed class IndexQueryService
         _symbolResolver = new SymbolResolver(_repository);
     }
 
+    public async Task<SymbolQueryResult?> GetExactSymbolAsync(string indexId, string symbolId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId); ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        var run = await _repository.GetCompletedIndexAsync(indexId, cancellationToken);
+        if (run is null) return null;
+        var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
+        var symbol = await _repository.GetCompletedSymbolByIdAsync(indexId, symbolId, cancellationToken);
+        return snapshot is null || symbol is null ? null : SymbolResolver.ToQueryResult(indexId, snapshot.Codebase, snapshot.Channel, symbol);
+    }
+
     public async Task<SymbolSearchResult> SearchAsync(
         string query,
         IndexQueryOptions options,

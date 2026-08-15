@@ -183,6 +183,16 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         return await reader.ReadAsync(cancellationToken) ? ReadSceneSnapshot(reader) : null;
     }
 
+    public async Task<IReadOnlyList<SceneContainerRecord>> GetSceneContainersAsync(string sceneSnapshotId, IReadOnlyList<string> containerIds, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId); ArgumentNullException.ThrowIfNull(containerIds);
+        var requested = containerIds.Distinct(StringComparer.Ordinal).ToArray(); if (requested.Length == 0) return [];
+        await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
+        var parameters = requested.Select((id, index) => { var name = "$id" + index; command.Parameters.AddWithValue(name, id); return name; }).ToArray();
+        command.CommandText = $"SELECT container.container_id, container.scene_snapshot_id, container.relative_path, container.container_kind, container.unity_version, container.serialized_file_version, container.byte_count, container.sha256, container.sidecar_manifest FROM scene_containers AS container INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = container.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND container.scene_snapshot_id = $snapshot AND container.container_id IN ({string.Join(',', parameters)}) ORDER BY container.container_id COLLATE BINARY;";
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); var rows = new List<SceneContainerRecord>(requested.Length); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadContainer(reader)); return rows;
+    }
+
     public async Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -230,6 +240,13 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         command.Parameters.AddWithValue("$id", sceneId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadDocument(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<SceneDocumentRecord>> FindScenesByExactNameAsync(string sceneSnapshotId, string name, SceneDocumentKind? kind, int limit, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT scene.scene_id, scene.scene_snapshot_id, scene.container_id, scene.kind, scene.name, scene.source_local_file_id, scene.object_count, scene.root_count, scene.recovery_status FROM scenes AS scene INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot AND scene.name = $name COLLATE BINARY AND ($kind IS NULL OR scene.kind = $kind) ORDER BY scene.scene_id COLLATE BINARY LIMIT $limit;";
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$name", name); command.Parameters.AddWithValue("$kind", (object?)kind?.ToString() ?? DBNull.Value); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneDocumentRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadDocument(reader)); return rows;
     }
 
     public async Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken)
@@ -281,6 +298,13 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         command.Parameters.AddWithValue("$id", gameObjectId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadGameObject(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT game_object_id, scene_id, container_id, local_file_id, name, active, layer, tag, recovery_status FROM game_objects AS item INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = item.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND item.scene_snapshot_id = $snapshot AND item.scene_id = $scene AND item.name = $name COLLATE BINARY ORDER BY item.game_object_id COLLATE BINARY LIMIT $limit;";
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$scene", sceneId); command.Parameters.AddWithValue("$name", name); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneGameObjectRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadGameObject(reader)); return rows;
     }
 
     public async Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken)
@@ -342,6 +366,13 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         command.Parameters.AddWithValue("$id", componentId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadComponent(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactKindAsync(string sceneSnapshotId, string kind, int limit, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT component.component_id, component.game_object_id, component.container_id, component.local_file_id, component.unity_class_id, component.kind, component.script_assembly, component.script_namespace, component.script_class, component.resolved_type_symbol_id, component.resolved_code_index_id, component.type_resolution_status, component.recovery_status FROM components AS component INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND component.kind = $kind COLLATE BINARY ORDER BY component.component_id COLLATE BINARY LIMIT $limit;";
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$kind", kind); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneComponentRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadComponent(reader)); return rows;
     }
 
     public async Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken)
@@ -594,6 +625,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
     private static string EscapeSceneLikePattern(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
 
     private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14));
+    private static SceneContainerRecord ReadContainer(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5), reader.GetInt64(6), reader.GetString(7), reader.GetString(8));
     private static SceneDocumentRecord ReadDocument(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), Enum.Parse<SceneDocumentKind>(reader.GetString(3)), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));
     private static SceneGameObjectRecord ReadGameObject(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5) != 0, reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetString(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));
     private static SceneComponentRecord ReadComponent(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetInt32(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8), reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetString(10), Enum.Parse<SceneResolutionStatus>(reader.GetString(11)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(12)));
