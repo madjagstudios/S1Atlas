@@ -480,6 +480,7 @@ internal static class SqliteMigrations
             recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
             started_at_utc TEXT NOT NULL,
             completed_at_utc TEXT NULL,
+            published_at_utc TEXT NULL,
             failure_code TEXT NULL,
             failure_message TEXT NULL,
             FOREIGN KEY (build_id) REFERENCES builds(build_id),
@@ -491,6 +492,9 @@ internal static class SqliteMigrations
 
         CREATE INDEX ix_scene_snapshots_build_status_completed
         ON scene_snapshots(build_id, status, completed_at_utc);
+
+        CREATE INDEX ix_scene_snapshots_publication
+        ON scene_snapshots(status, published_at_utc);
 
         CREATE TABLE scene_containers (
             container_id TEXT NOT NULL PRIMARY KEY,
@@ -629,14 +633,6 @@ internal static class SqliteMigrations
         ON serialized_refs(target_symbol_id);
         """;
 
-    private const string ScenePublicationV9Sql = """
-        ALTER TABLE scene_snapshots
-        ADD COLUMN published_at_utc TEXT NULL;
-
-        CREATE INDEX ix_scene_snapshots_publication
-        ON scene_snapshots(status, published_at_utc);
-        """;
-
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -646,7 +642,6 @@ internal static class SqliteMigrations
         new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql),
         new(6, "indexing-v6", IndexingV6Sql),
         new(7, "body-recovery-v7", BodyRecoveryV7Sql),
-        new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql),
-        new(9, "scene-publication-v9", ScenePublicationV9Sql)
+        new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql)
     ];
 }

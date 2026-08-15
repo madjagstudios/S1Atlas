@@ -243,6 +243,18 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Unity_version_with_supported_prefix_but_different_patch_is_rejected_before_parsing()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), unityVersion: "2022.3.620f1");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, repository.ParserCalls);
+    }
+
+    [Fact]
     public async Task Promoted_scene_index_contains_a_bounded_manifest_with_counts_and_hash()
     {
         var repository = CreateRepository(replayVerified: true);

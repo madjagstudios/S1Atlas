@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
@@ -34,6 +35,9 @@ public sealed class SceneIndexWorkflow
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
+    private static readonly Regex SupportedUnityVersionPattern = new(
+        "^2022\\.3\\.62(?:[a-z]+\\d+)?$",
+        RegexOptions.CultureInvariant);
 
     private readonly string _dataRoot;
     private readonly IIndexRepository _repository;
@@ -335,7 +339,7 @@ public sealed class SceneIndexWorkflow
 
     private static void RequireSupportedUnityVersion(IReadOnlyList<VerifiedSceneContainer> containers)
     {
-        if (containers.Any(container => !container.UnityVersion.StartsWith("2022.3.62", StringComparison.Ordinal)))
+        if (containers.Any(container => !SupportedUnityVersionPattern.IsMatch(container.UnityVersion)))
             throw new InvalidDataException("Scene inputs must target Unity 2022.3.62.");
     }
 

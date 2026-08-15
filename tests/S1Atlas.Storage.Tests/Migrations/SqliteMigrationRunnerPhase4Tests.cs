@@ -33,7 +33,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_V4Database_AddsValidatedExtractionTablesAndOneSchema9Backup()
+    public async Task MigrateAsync_V4Database_AddsValidatedExtractionTablesAndOneSchema8Backup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await CreateVersionFourDatabaseWithRealisticAttemptAsync(cancellationToken);
@@ -42,7 +42,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], migrationVersions);
         Assert.True(await TableExistsAsync("validated_extractions", cancellationToken));
         Assert.True(await TableExistsAsync("extraction_artifacts", cancellationToken));
         Assert.True(await TableExistsAsync("extraction_validation_results", cancellationToken));
@@ -57,11 +57,11 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
             "symbols",
             "body_recovery_status",
             cancellationToken));
-        Assert.Single(GetSchemaNineBackups());
+        Assert.Single(GetSchemaEightBackups());
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesNineMigrationsWithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesEightMigrationsWithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(_databasePath, _backupDirectory, _timeProvider);
@@ -69,7 +69,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         await runner.MigrateAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], migrationVersions);
         Assert.False(Directory.Exists(_backupDirectory));
     }
 
@@ -294,11 +294,11 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         return attempt;
     }
 
-    private string[] GetSchemaNineBackups() =>
+    private string[] GetSchemaEightBackups() =>
         Directory.Exists(_backupDirectory)
             ? Directory.GetFiles(
                 _backupDirectory,
-                "atlas-before-schema-9-*.db",
+                "atlas-before-schema-8-*.db",
                 SearchOption.TopDirectoryOnly)
             : [];
 

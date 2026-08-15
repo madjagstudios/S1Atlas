@@ -20,7 +20,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     [Fact]
     public void MigrationSeven_HasCommittedChecksum_AndEarlierMigrationsRemainPinned()
     {
-        Assert.Equal(9, SqliteMigrations.All.Count);
+        Assert.Equal(8, SqliteMigrations.All.Count);
         Assert.Equal("d03021f97dfe3cd5e52305ae945258aa7fdbc8ccb086808a8255df7df0d10bb0", SqliteMigrations.All[6].Checksum);
         Assert.Equal(
             [
@@ -33,7 +33,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task VersionSixDatabase_MigratesToNine_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
+    public async Task VersionSixDatabase_MigratesToEight_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var v6Migrations = SqliteMigrations.All.Take(6).ToArray();
@@ -55,7 +55,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
 
         await using var migrated = new SqliteConnection($"Data Source={_databasePath}");
         await migrated.OpenAsync(cancellationToken);
-        Assert.Equal(9L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
+        Assert.Equal(8L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1';", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1' AND body_recovery_status IS NULL;", cancellationToken));
 
@@ -75,7 +75,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
             await Assert.ThrowsAsync<SqliteException>(() => invalid.ExecuteNonQueryAsync(cancellationToken));
         }
 
-        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-9-*.db", SearchOption.TopDirectoryOnly));
+        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-8-*.db", SearchOption.TopDirectoryOnly));
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
