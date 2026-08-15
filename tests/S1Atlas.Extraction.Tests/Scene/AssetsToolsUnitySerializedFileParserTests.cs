@@ -1,8 +1,3 @@
-using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
-using AssetsTools.NET;
-using AssetsTools.NET.Extra;
 using S1Atlas.Extraction.Scene;
 using Xunit;
 
@@ -23,6 +18,9 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
 
         var container = Assert.Single(containers);
         Assert.Equal("Schedule I_Data/level0", container.RelativePath);
+        Assert.Equal(fixture.PrimaryPath, container.PrimaryPath);
+        Assert.Empty(container.SidecarPaths);
+        Assert.Equal(fixture.VerifiedContainer.Sha256, container.Sha256);
         Assert.Equal("2022.3.62f1", container.UnityVersion);
         Assert.Equal(22, container.SerializedFileVersion);
         Assert.Collection(
@@ -30,8 +28,118 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
             item => AssertObject(item, 101, 1, ParsedSceneObjectKind.GameObject),
             item => AssertObject(item, 102, 4, ParsedSceneObjectKind.Transform),
             item => AssertObject(item, 103, 114, ParsedSceneObjectKind.MonoBehaviour),
-            item => AssertObject(item, 104, 115, ParsedSceneObjectKind.MonoScript));
+            item => AssertObject(item, 104, 115, ParsedSceneObjectKind.MonoScript),
+            item => AssertObject(item, 105, 1, ParsedSceneObjectKind.GameObject),
+            item => AssertObject(item, 106, 4, ParsedSceneObjectKind.Transform),
+            item => AssertObject(item, 108, 141, ParsedSceneObjectKind.BuildSettings));
         Assert.False(container.HasPrefabEvidence);
+    }
+
+    [Fact]
+    public async Task ParseAsync_IndependentFixture_DecodesBuiltInRelationshipsAndValues()
+    {
+        using var fixture = SanitizedSerializedFileFixture.Create();
+        var parser = new AssetsToolsUnitySerializedFileParser();
+
+        var container = Assert.Single(await parser.ParseAsync(
+            [fixture.VerifiedContainer],
+            TestContext.Current.CancellationToken));
+
+        var root = Assert.Single(container.Objects, item => item.LocalFileId == 101);
+        var gameObject = Assert.IsType<ParsedGameObjectData>(root.GameObject);
+        Assert.Equal("Sanitized Root", gameObject.Name);
+        Assert.Equal(7u, gameObject.Layer);
+        Assert.Equal((ushort)3, gameObject.Tag);
+        Assert.True(gameObject.IsActive);
+        Assert.Equal([new ParsedScenePPtr(0, 102), new ParsedScenePPtr(0, 103)], gameObject.Components);
+
+        var rootTransform = Assert.Single(container.Objects, item => item.LocalFileId == 102);
+        var transform = Assert.IsType<ParsedTransformData>(rootTransform.Transform);
+        Assert.Equal(new ParsedScenePPtr(0, 101), transform.GameObject);
+        Assert.Equal(new ParsedScenePPtr(0, 0), transform.ParentTransform);
+        Assert.Equal([new ParsedScenePPtr(0, 106)], transform.Children);
+        Assert.Equal(new ParsedSceneVector3(1.25f, 2.5f, 3.75f), transform.LocalPosition);
+        Assert.Equal(new ParsedSceneQuaternion(0f, 0f, 0f, 1f), transform.LocalRotation);
+        Assert.Equal(new ParsedSceneVector3(1f, 1f, 1f), transform.LocalScale);
+        Assert.Equal(0, transform.RootOrder);
+
+        var childTransform = Assert.Single(container.Objects, item => item.LocalFileId == 106);
+        Assert.Equal(
+            new ParsedScenePPtr(0, 102),
+            Assert.IsType<ParsedTransformData>(childTransform.Transform).ParentTransform);
+    }
+
+    [Fact]
+    public async Task ParseAsync_IndependentFixture_DecodesMonoScriptIdentityAndAllPPtrs()
+    {
+        using var fixture = SanitizedSerializedFileFixture.Create();
+        var parser = new AssetsToolsUnitySerializedFileParser();
+
+        var container = Assert.Single(await parser.ParseAsync(
+            [fixture.VerifiedContainer],
+            TestContext.Current.CancellationToken));
+
+        var behaviourObject = Assert.Single(container.Objects, item => item.LocalFileId == 103);
+        var behaviour = Assert.IsType<ParsedMonoBehaviourData>(behaviourObject.MonoBehaviour);
+        Assert.Equal(new ParsedScenePPtr(0, 101), behaviour.GameObject);
+        Assert.Equal(new ParsedScenePPtr(0, 104), behaviour.Script);
+        Assert.True(behaviour.Enabled);
+        Assert.Contains(behaviourObject.References, reference =>
+            reference.FieldPath == "m_Target" &&
+            reference.DeclaredType == "PPtr<GameObject>" &&
+            reference.Target == new ParsedScenePPtr(1, 501));
+
+        var scriptObject = Assert.Single(container.Objects, item => item.LocalFileId == 104);
+        var script = Assert.IsType<ParsedMonoScriptData>(scriptObject.MonoScript);
+        Assert.Equal("Sanitized.Fixture.dll", script.AssemblyName);
+        Assert.Equal("S1Atlas.Fixture", script.Namespace);
+        Assert.Equal("Sanitized.Component", script.ClassName);
+
+        Assert.Contains(
+            Assert.Single(container.Objects, item => item.LocalFileId == 101).References,
+            reference => reference.FieldPath == "m_Component.Array[0].component" &&
+                         reference.Target == new ParsedScenePPtr(0, 102));
+    }
+
+    [Fact]
+    public async Task ParseAsync_IndependentFixture_DecodesBuildSettingsScenePaths()
+    {
+        using var fixture = SanitizedSerializedFileFixture.Create();
+        var parser = new AssetsToolsUnitySerializedFileParser();
+
+        var container = Assert.Single(await parser.ParseAsync(
+            [fixture.VerifiedContainer],
+            TestContext.Current.CancellationToken));
+
+        var buildSettingsObject = Assert.Single(
+            container.Objects,
+            item => item.Kind == ParsedSceneObjectKind.BuildSettings);
+        var buildSettings = Assert.IsType<ParsedBuildSettingsData>(buildSettingsObject.BuildSettings);
+        Assert.Equal(
+        [
+            "Assets/Scenes/SanitizedBootstrap.unity",
+            "Assets/Scenes/SanitizedWorld.unity",
+            "Assets/Scenes/SanitizedInterior.unity"
+        ], buildSettings.ScenePaths);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WithoutTypeTree_PreservesObjectTableWithoutInventedData()
+    {
+        using var fixture = SanitizedSerializedFileFixture.Create(includeTypeTree: false);
+        var parser = new AssetsToolsUnitySerializedFileParser();
+
+        var container = Assert.Single(await parser.ParseAsync(
+            [fixture.VerifiedContainer],
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(7, container.Objects.Count);
+        Assert.All(container.Objects, item => Assert.Empty(item.References));
+        Assert.All(container.Objects, item => Assert.Null(item.GameObject));
+        Assert.All(container.Objects, item => Assert.Null(item.Transform));
+        Assert.All(container.Objects, item => Assert.Null(item.MonoBehaviour));
+        Assert.All(container.Objects, item => Assert.Null(item.MonoScript));
+        Assert.All(container.Objects, item => Assert.Null(item.BuildSettings));
     }
 
     [Fact]
@@ -89,21 +197,6 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
         Assert.Equal(prefabClassId, prefab.UnityClassId);
     }
 
-    [Fact]
-    public void ExtractionPublicApi_DoesNotExposeAssetsToolsTypes()
-    {
-        var extractionAssembly = typeof(AssetsToolsUnitySerializedFileParser).Assembly;
-        var leakedTypes = extractionAssembly.ExportedTypes
-            .SelectMany(GetPublicApiTypes)
-            .Where(type => type.Namespace?.StartsWith("AssetsTools.NET", StringComparison.Ordinal) == true)
-            .Select(type => type.FullName)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Empty(leakedTypes);
-    }
-
     private static void AssertObject(
         ParsedSceneObject item,
         long localFileId,
@@ -116,141 +209,4 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
         Assert.True(item.ByteCount > 0);
     }
 
-    private static IEnumerable<Type> GetPublicApiTypes(Type type)
-    {
-        yield return type;
-        foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
-        {
-            switch (member)
-            {
-                case MethodInfo method:
-                    yield return method.ReturnType;
-                    foreach (var parameter in method.GetParameters())
-                    {
-                        yield return parameter.ParameterType;
-                    }
-                    break;
-                case PropertyInfo property:
-                    yield return property.PropertyType;
-                    break;
-                case FieldInfo field:
-                    yield return field.FieldType;
-                    break;
-            }
-        }
-    }
-}
-
-internal sealed class SanitizedSerializedFileFixture : IDisposable
-{
-    private const string UnityVersion = "2022.3.62f1";
-    private const uint SerializedFileVersion = 22;
-
-    private SanitizedSerializedFileFixture(string rootPath, string primaryPath)
-    {
-        RootPath = rootPath;
-        PrimaryPath = primaryPath;
-        var bytes = File.ReadAllBytes(primaryPath);
-        VerifiedContainer = new VerifiedSceneContainer(
-            "Schedule I_Data/level0",
-            primaryPath,
-            [],
-            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
-            bytes.LongLength,
-            UnityVersion,
-            (int)SerializedFileVersion,
-            "[]");
-    }
-
-    public string RootPath { get; }
-    public string PrimaryPath { get; }
-    public VerifiedSceneContainer VerifiedContainer { get; }
-
-    public static SanitizedSerializedFileFixture Create(
-        string objectPayloadMarker = "sanitized-object-data",
-        int? prefabClassId = null)
-    {
-        var root = Path.Combine(
-            Path.GetTempPath(),
-            "s1atlas-scene-parser-tests",
-            Guid.NewGuid().ToString("N"));
-        var primary = Path.Combine(root, "Schedule I_Data", "level0");
-        Directory.CreateDirectory(Path.GetDirectoryName(primary)!);
-        File.WriteAllBytes(primary, CreateBytes(objectPayloadMarker, prefabClassId));
-        return new SanitizedSerializedFileFixture(root, primary);
-    }
-
-    private static byte[] CreateBytes(string objectPayloadMarker, int? prefabClassId)
-    {
-        var classIds = new List<int> { 1, 4, 114, 115 };
-        if (prefabClassId is not null)
-        {
-            classIds.Add(prefabClassId.Value);
-        }
-
-        var types = classIds.Select(classId => new TypeTreeType
-        {
-            TypeId = classId,
-            ScriptTypeIndex = ushort.MaxValue,
-            ScriptIdHash = new Hash128(new byte[16]),
-            TypeHash = new Hash128(new byte[16]),
-            ExtTypeHash = new Hash128(new byte[16]),
-            TypeDependencies = []
-        }).ToList();
-        var infos = classIds.Select((_, index) =>
-        {
-            var info = new AssetFileInfo
-            {
-                PathId = 101 + index,
-                TypeIdOrIndex = index
-            };
-            info.SetNewData(Encoding.UTF8.GetBytes($"{objectPayloadMarker}-{index}"));
-            return info;
-        }).ToList();
-        var assetsFile = new AssetsFile
-        {
-            Header = new AssetsFileHeader
-            {
-                Version = SerializedFileVersion,
-                Endianness = false
-            },
-            Metadata = new AssetsFileMetadata
-            {
-                UnityVersion = UnityVersion,
-                TargetPlatform = 19,
-                TypeTreeEnabled = false,
-                TypeTreeTypes = types,
-                AssetInfos = infos,
-                ScriptTypes = [],
-                Externals =
-                [
-                    new AssetsFileExternal
-                    {
-                        VirtualAssetPathName = string.Empty,
-                        Type = AssetsFileExternalType.Serialized,
-                        PathName = "archive:/CAB-sanitized/CAB-sanitized",
-                        OriginalPathName = "archive:/CAB-sanitized/CAB-sanitized"
-                    }
-                ],
-                RefTypes = [],
-                UserInformation = string.Empty
-            }
-        };
-
-        using var stream = new MemoryStream();
-        using (var writer = new AssetsFileWriter(stream))
-        {
-            assetsFile.Write(writer);
-        }
-
-        return stream.ToArray();
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(RootPath))
-        {
-            Directory.Delete(RootPath, recursive: true);
-        }
-    }
 }

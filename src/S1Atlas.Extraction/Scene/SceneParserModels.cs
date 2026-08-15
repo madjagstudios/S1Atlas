@@ -41,15 +41,62 @@ public enum ParsedSceneObjectKind
     Transform,
     MonoBehaviour,
     MonoScript,
+    BuildSettings,
     PrefabEvidence
 }
+
+public readonly record struct ParsedScenePPtr(int FileId, long LocalFileId);
+
+public readonly record struct ParsedSceneVector3(float X, float Y, float Z);
+
+public readonly record struct ParsedSceneQuaternion(float X, float Y, float Z, float W);
+
+public sealed record ParsedSceneReference(
+    string FieldPath,
+    string DeclaredType,
+    ParsedScenePPtr Target);
+
+public sealed record ParsedGameObjectData(
+    string Name,
+    uint Layer,
+    ushort Tag,
+    bool IsActive,
+    IReadOnlyList<ParsedScenePPtr> Components);
+
+public sealed record ParsedTransformData(
+    ParsedScenePPtr GameObject,
+    ParsedScenePPtr ParentTransform,
+    IReadOnlyList<ParsedScenePPtr> Children,
+    ParsedSceneVector3 LocalPosition,
+    ParsedSceneQuaternion LocalRotation,
+    ParsedSceneVector3 LocalScale,
+    int RootOrder);
+
+public sealed record ParsedMonoBehaviourData(
+    ParsedScenePPtr GameObject,
+    ParsedScenePPtr Script,
+    bool Enabled);
+
+public sealed record ParsedMonoScriptData(
+    string AssemblyName,
+    string Namespace,
+    string ClassName);
+
+public sealed record ParsedBuildSettingsData(
+    IReadOnlyList<string> ScenePaths);
 
 public sealed record ParsedSceneObject(
     long LocalFileId,
     int UnityClassId,
     long ByteOffset,
     long ByteCount,
-    ParsedSceneObjectKind Kind);
+    ParsedSceneObjectKind Kind,
+    IReadOnlyList<ParsedSceneReference> References,
+    ParsedGameObjectData? GameObject,
+    ParsedTransformData? Transform,
+    ParsedMonoBehaviourData? MonoBehaviour,
+    ParsedMonoScriptData? MonoScript,
+    ParsedBuildSettingsData? BuildSettings);
 
 public sealed record ParsedSceneExternalReference(
     int FileId,
@@ -58,6 +105,9 @@ public sealed record ParsedSceneExternalReference(
 
 public sealed record ParsedSceneContainer(
     string RelativePath,
+    string PrimaryPath,
+    IReadOnlyList<string> SidecarPaths,
+    string Sha256,
     string UnityVersion,
     int SerializedFileVersion,
     IReadOnlyList<ParsedSceneObject> Objects,

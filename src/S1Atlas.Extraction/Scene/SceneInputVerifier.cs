@@ -9,6 +9,21 @@ namespace S1Atlas.Extraction.Scene;
 
 public sealed class SceneInputVerifier
 {
+    private static readonly HashSet<string> SupportedContainerPaths = new(
+        new[]
+        {
+            "Schedule I_Data/level0",
+            "Schedule I_Data/level1",
+            "Schedule I_Data/level2",
+            "Schedule I_Data/sharedassets0.assets",
+            "Schedule I_Data/sharedassets1.assets",
+            "Schedule I_Data/sharedassets2.assets",
+            "Schedule I_Data/resources.assets",
+            "Schedule I_Data/globalgamemanagers",
+            "Schedule I_Data/globalgamemanagers.assets"
+        },
+        StringComparer.Ordinal);
+
     private static readonly JsonSerializerOptions ManifestJsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -45,6 +60,7 @@ public sealed class SceneInputVerifier
                 root,
                 declaration.RelativePath,
                 paths);
+            RequireSupportedContainer(primaryRelativePath);
             var primaryPath = Path.GetFullPath(Path.Combine(root, primaryRelativePath));
             var primary = await CaptureFileAsync(
                 root,
@@ -62,6 +78,7 @@ public sealed class SceneInputVerifier
                     root,
                     sidecarRelativePath,
                     paths);
+                RequireMatchingSidecar(primaryRelativePath, canonicalRelativePath);
                 var sidecarPath = Path.GetFullPath(Path.Combine(root, canonicalRelativePath));
                 sidecars.Add(await CaptureFileAsync(
                     root,
@@ -323,6 +340,33 @@ public sealed class SceneInputVerifier
             exception is EndOfStreamException or OverflowException or UnauthorizedAccessException)
         {
             throw new InvalidDataException("The scene input is not a supported SerializedFile.", exception);
+        }
+    }
+
+    private static void RequireSupportedContainer(string relativePath)
+    {
+        if (!SupportedContainerPaths.Contains(relativePath))
+        {
+            throw new IOException(
+                $"Scene input '{relativePath}' is not a supported Schedule I container.");
+        }
+    }
+
+    private static void RequireMatchingSidecar(string primaryPath, string sidecarPath)
+    {
+        var matchesResS = string.Equals(
+            sidecarPath,
+            $"{primaryPath}.resS",
+            StringComparison.Ordinal);
+        var matchesResource = primaryPath.EndsWith(".assets", StringComparison.Ordinal) &&
+            string.Equals(
+                sidecarPath,
+                $"{primaryPath[..^".assets".Length]}.resource",
+                StringComparison.Ordinal);
+        if (!matchesResS && !matchesResource)
+        {
+            throw new IOException(
+                $"Scene sidecar '{sidecarPath}' does not match container '{primaryPath}'.");
         }
     }
 

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
 using System.Text.Json;
 using S1Atlas.Core.Hashing;
 using S1Atlas.Extraction.Hashing;
@@ -9,6 +10,30 @@ namespace S1Atlas.Extraction.Tests.Scene;
 
 public sealed class SceneInputVerifierTests
 {
+    [Theory]
+    [InlineData("Schedule I_Data/level0")]
+    [InlineData("Schedule I_Data/level1")]
+    [InlineData("Schedule I_Data/level2")]
+    [InlineData("Schedule I_Data/sharedassets0.assets")]
+    [InlineData("Schedule I_Data/sharedassets1.assets")]
+    [InlineData("Schedule I_Data/sharedassets2.assets")]
+    [InlineData("Schedule I_Data/resources.assets")]
+    [InlineData("Schedule I_Data/globalgamemanagers")]
+    [InlineData("Schedule I_Data/globalgamemanagers.assets")]
+    public async Task CaptureAsync_CanonicalContainer_IsAccepted(string relativePath)
+    {
+        using var fixture = SceneVerifierFixture.Create();
+        var primaryPath = CopyPrimaryTo(fixture, relativePath);
+        var verifier = new SceneInputVerifier(new Sha256FileHasher());
+
+        var verified = await verifier.CaptureAsync(
+            fixture.RootPath,
+            [new SceneContainerDeclaration(relativePath, [])],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(Path.GetFullPath(primaryPath), Assert.Single(verified.Containers).PrimaryPath);
+    }
+
     [Fact]
     public async Task CaptureAsync_MissingPrimaryFile_RejectsInput()
     {
@@ -37,28 +62,94 @@ public sealed class SceneInputVerifierTests
             TestContext.Current.CancellationToken));
     }
 
-    [Fact]
-    public async Task CaptureAsync_ReparsePointPrimary_RejectsInput()
+    [Theory]
+    [InlineData("Schedule I_Data/not-a-container")]
+    [InlineData("Schedule I_Data/level3")]
+    [InlineData("Other_Data/level0")]
+    public async Task CaptureAsync_UnsupportedPrimaryContainer_RejectsInput(string relativePath)
     {
         using var fixture = SceneVerifierFixture.Create();
-        var target = Path.Combine(fixture.RootPath, "target-level0");
-        File.Move(fixture.PrimaryPath, target);
-        try
-        {
-            File.CreateSymbolicLink(fixture.PrimaryPath, target);
-        }
-        catch (Exception exception) when (
-            exception is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
-        {
-            return;
-        }
-
         var verifier = new SceneInputVerifier(new Sha256FileHasher());
+        var declaration = new SceneContainerDeclaration(relativePath, []);
 
         await Assert.ThrowsAsync<IOException>(() => verifier.CaptureAsync(
             fixture.RootPath,
-            [fixture.Declaration],
+            [declaration],
             TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("Schedule I_Data/level1.resource")]
+    [InlineData("Schedule I_Data/level0.unrelated.resS")]
+    [InlineData("Schedule I_Data/sharedassets0.resource")]
+    public async Task CaptureAsync_MismatchedSidecar_RejectsInput(string sidecarRelativePath)
+    {
+        using var fixture = SceneVerifierFixture.Create();
+        var sidecarPath = Path.Combine(
+            fixture.RootPath,
+            sidecarRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(sidecarPath)!);
+        File.WriteAllBytes(sidecarPath, [0x50, 0x60]);
+        var verifier = new SceneInputVerifier(new Sha256FileHasher());
+        var declaration = new SceneContainerDeclaration(
+            "Schedule I_Data/level0",
+            [sidecarRelativePath]);
+
+        await Assert.ThrowsAsync<IOException>(() => verifier.CaptureAsync(
+            fixture.RootPath,
+            [declaration],
+            TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CaptureAsync_MatchingResourceSidecar_IsAccepted()
+    {
+        using var fixture = SceneVerifierFixture.Create();
+        const string primaryRelativePath = "Schedule I_Data/sharedassets0.assets";
+        const string sidecarRelativePath = "Schedule I_Data/sharedassets0.resource";
+        CopyPrimaryTo(fixture, primaryRelativePath);
+        var sidecarPath = Path.Combine(
+            fixture.RootPath,
+            sidecarRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        File.WriteAllBytes(sidecarPath, [0x70, 0x80]);
+        var verifier = new SceneInputVerifier(new Sha256FileHasher());
+
+        var verified = await verifier.CaptureAsync(
+            fixture.RootPath,
+            [new SceneContainerDeclaration(primaryRelativePath, [sidecarRelativePath])],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal([Path.GetFullPath(sidecarPath)], Assert.Single(verified.Containers).SidecarPaths);
+    }
+
+    [Fact]
+    public async Task CaptureAsync_ReparsePointPrimary_RejectsInput()
+    {
+        Assert.SkipUnless(
+            OperatingSystem.IsWindows(),
+            "Windows directory junction coverage is mandatory on supported Windows hosts.");
+        using var fixture = SceneVerifierFixture.Create();
+        var link = Path.GetDirectoryName(fixture.PrimaryPath)!;
+        var target = Path.Combine(fixture.RootPath, "junction-target");
+        Directory.Move(link, target);
+        CreateDirectoryJunction(link, target);
+
+        try
+        {
+            Assert.True(
+                (File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0,
+                "The test junction must be observable as a Windows reparse point.");
+            var verifier = new SceneInputVerifier(new Sha256FileHasher());
+
+            await Assert.ThrowsAsync<IOException>(() => verifier.CaptureAsync(
+                fixture.RootPath,
+                [fixture.Declaration],
+                TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            Directory.Delete(link);
+        }
     }
 
     [Fact]
@@ -134,6 +225,46 @@ public sealed class SceneInputVerifierTests
         bytes[^1] ^= 0xff;
         File.WriteAllBytes(path, bytes);
         File.SetLastWriteTimeUtc(path, lastWrite);
+    }
+
+    private static string CopyPrimaryTo(SceneVerifierFixture fixture, string relativePath)
+    {
+        var target = Path.Combine(
+            fixture.RootPath,
+            relativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!string.Equals(target, fixture.PrimaryPath, StringComparison.OrdinalIgnoreCase))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(fixture.PrimaryPath, target);
+        }
+
+        return target;
+    }
+
+    private static void CreateDirectoryJunction(string link, string target)
+    {
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            ArgumentList =
+            {
+                "/d",
+                "/c",
+                "mklink",
+                "/J",
+                link,
+                target
+            }
+        });
+        Assert.NotNull(process);
+        process.WaitForExit();
+        Assert.True(
+            process.ExitCode == 0,
+            $"Unable to create mandatory Windows junction fixture. stdout: {process.StandardOutput.ReadToEnd()} stderr: {process.StandardError.ReadToEnd()}");
     }
 
     private sealed class CountingFileHasher : IFileHasher

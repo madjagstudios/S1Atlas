@@ -4,6 +4,8 @@
     <ProjectReference Include="..\..\src\S1Atlas.Core\S1Atlas.Core.csproj" />
     <ProjectReference Include="..\..\src\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
     <ProjectReference Include="..\..\src\S1Atlas.Storage\S1Atlas.Storage.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Indexing\S1Atlas.Indexing.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\S1Atlas.Cli\S1Atlas.Cli.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\S1Atlas.FakeCpp2Il\S1Atlas.FakeCpp2Il.csproj" ReferenceOutputAssembly="false" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
