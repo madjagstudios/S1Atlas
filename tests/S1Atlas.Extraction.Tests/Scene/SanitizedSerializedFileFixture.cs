@@ -455,11 +455,19 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         WriteNullTerminated(writer, path);
     }
 
-    private static void WriteBigEndian(BinaryWriter writer, uint value) =>
-        writer.Write(BitConverter.GetBytes(value).Reverse().ToArray());
+    private static void WriteBigEndian(BinaryWriter writer, uint value)
+    {
+        var bytes = BitConverter.GetBytes(value);
+        Array.Reverse(bytes);
+        writer.Write(bytes);
+    }
 
-    private static void WriteBigEndian(BinaryWriter writer, long value) =>
-        writer.Write(BitConverter.GetBytes(value).Reverse().ToArray());
+    private static void WriteBigEndian(BinaryWriter writer, long value)
+    {
+        var bytes = BitConverter.GetBytes(value);
+        Array.Reverse(bytes);
+        writer.Write(bytes);
+    }
 
     public void Dispose()
     {
