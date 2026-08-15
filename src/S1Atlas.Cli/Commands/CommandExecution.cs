@@ -1,6 +1,7 @@
 using S1Atlas.Cli.Output;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Tools;
+using S1Atlas.Indexing.Diffing;
 
 namespace S1Atlas.Cli.Commands;
 
@@ -41,6 +42,10 @@ internal static class CommandExecution
                 exception.Stage.ToString());
         }
         catch (ToolOperationException exception)
+        {
+            return output.Failure(1, exception.Code, exception.Message);
+        }
+        catch (IndexDiffException exception)
         {
             return output.Failure(1, exception.Code, exception.Message);
         }
