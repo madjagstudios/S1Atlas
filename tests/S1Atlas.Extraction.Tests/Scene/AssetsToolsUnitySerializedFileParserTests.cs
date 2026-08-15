@@ -31,6 +31,7 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
             item => AssertObject(item, 104, 115, ParsedSceneObjectKind.MonoScript),
             item => AssertObject(item, 105, 1, ParsedSceneObjectKind.GameObject),
             item => AssertObject(item, 106, 4, ParsedSceneObjectKind.Transform),
+            item => AssertObject(item, 107, 23, ParsedSceneObjectKind.Other),
             item => AssertObject(item, 108, 141, ParsedSceneObjectKind.BuildSettings));
         Assert.False(container.HasPrefabEvidence);
     }
@@ -51,7 +52,9 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
         Assert.Equal(7u, gameObject.Layer);
         Assert.Equal((ushort)3, gameObject.Tag);
         Assert.True(gameObject.IsActive);
-        Assert.Equal([new ParsedScenePPtr(0, 102), new ParsedScenePPtr(0, 103)], gameObject.Components);
+        Assert.Equal(
+            [new ParsedScenePPtr(0, 102), new ParsedScenePPtr(0, 103), new ParsedScenePPtr(0, 107)],
+            gameObject.Components);
 
         var rootTransform = Assert.Single(container.Objects, item => item.LocalFileId == 102);
         var transform = Assert.IsType<ParsedTransformData>(rootTransform.Transform);
@@ -85,15 +88,18 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
         Assert.Equal(new ParsedScenePPtr(0, 104), behaviour.Script);
         Assert.True(behaviour.Enabled);
         Assert.Contains(behaviourObject.References, reference =>
-            reference.FieldPath == "m_Target" &&
+            reference.FieldPath == "m_ExternalTarget" &&
             reference.DeclaredType == "PPtr<GameObject>" &&
-            reference.Target == new ParsedScenePPtr(1, 501));
+            reference.Target == new ParsedScenePPtr(1, 101));
+        Assert.Contains(behaviourObject.References, reference =>
+            reference.FieldPath == "m_MissingTarget" &&
+            reference.Target == new ParsedScenePPtr(2, 999));
 
         var scriptObject = Assert.Single(container.Objects, item => item.LocalFileId == 104);
         var script = Assert.IsType<ParsedMonoScriptData>(scriptObject.MonoScript);
-        Assert.Equal("Sanitized.Fixture.dll", script.AssemblyName);
-        Assert.Equal("S1Atlas.Fixture", script.Namespace);
-        Assert.Equal("Sanitized.Component", script.ClassName);
+        Assert.Equal("Assembly-CSharp.dll", script.AssemblyName);
+        Assert.Equal("Fixture.Namespace", script.Namespace);
+        Assert.Equal("SceneGraphBehaviour", script.ClassName);
 
         Assert.Contains(
             Assert.Single(container.Objects, item => item.LocalFileId == 101).References,
@@ -133,7 +139,7 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
             [fixture.VerifiedContainer],
             TestContext.Current.CancellationToken));
 
-        Assert.Equal(7, container.Objects.Count);
+        Assert.Equal(8, container.Objects.Count);
         Assert.All(container.Objects, item => Assert.Empty(item.References));
         Assert.All(container.Objects, item => Assert.Null(item.GameObject));
         Assert.All(container.Objects, item => Assert.Null(item.Transform));
@@ -152,12 +158,15 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
             [fixture.VerifiedContainer],
             TestContext.Current.CancellationToken));
 
-        var external = Assert.Single(container.ExternalReferences);
-        Assert.Equal(1, external.FileId);
-        Assert.Equal("archive:/CAB-sanitized/CAB-sanitized", external.PathName);
+        Assert.Equal(2, container.ExternalReferences.Count);
+        var external = container.ExternalReferences.Single(item => item.FileId == 1);
+        Assert.Equal("archive:/CAB-fixture/sharedassets0.assets", external.PathName);
         Assert.Equal(
-            "archive:/CAB-sanitized/CAB-sanitized",
+            "archive:/CAB-fixture/sharedassets0.assets",
             external.OriginalPathName);
+        Assert.Equal(
+            "archive:/CAB-fixture/missing.assets",
+            container.ExternalReferences.Single(item => item.FileId == 2).PathName);
     }
 
     [Fact]

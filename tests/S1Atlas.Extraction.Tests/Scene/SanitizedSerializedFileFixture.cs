@@ -44,7 +44,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         return new SanitizedSerializedFileFixture(root, primary);
     }
 
-    private static byte[] CreateBytes(
+    internal static byte[] CreateBytes(
         string userInformation,
         int? prefabClassId,
         bool includeTypeTree)
@@ -55,24 +55,27 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
             TransformType(),
             MonoBehaviourType(),
             MonoScriptType(),
+            BuiltInComponentType(),
             BuildSettingsType()
         };
         if (prefabClassId is not null)
         {
             types.Add(new FixtureType(prefabClassId.Value, "Prefab", [
-                Node(0, "Prefab", "Base")
+                Node(0, "Prefab", "Base"),
+                .. PPtrNodes(1, "PPtr<GameObject>", "m_RootGameObject")
             ]));
         }
 
         var objects = new List<FixtureObject>
         {
-            new(101, 0, GameObjectPayload("Sanitized Root", [PPtr(0, 102), PPtr(0, 103)], 7, 3, true)),
+            new(101, 0, GameObjectPayload("Sanitized Root", [PPtr(0, 102), PPtr(0, 103), PPtr(0, 107)], 7, 3, true)),
             new(102, 1, TransformPayload(101, [106], 0, 0)),
-            new(103, 2, MonoBehaviourPayload(101, 104, PPtr(1, 501))),
-            new(104, 3, MonoScriptPayload("Sanitized.Component", "S1Atlas.Fixture", "Sanitized.Fixture.dll")),
+            new(103, 2, MonoBehaviourPayload(101, 104, PPtr(0, 101), PPtr(1, 101), PPtr(2, 999))),
+            new(104, 3, MonoScriptPayload("SceneGraphBehaviour", "Fixture.Namespace", "Assembly-CSharp.dll")),
             new(105, 0, GameObjectPayload("Sanitized Child", [PPtr(0, 106)], 8, 4, true)),
             new(106, 1, TransformPayload(105, [], 102, 1)),
-            new(108, 4, BuildSettingsPayload([
+            new(107, 4, new byte[4]),
+            new(108, 5, BuildSettingsPayload([
                 "Assets/Scenes/SanitizedBootstrap.unity",
                 "Assets/Scenes/SanitizedWorld.unity",
                 "Assets/Scenes/SanitizedInterior.unity"
@@ -80,7 +83,8 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         };
         if (prefabClassId is not null)
         {
-            objects.Add(new FixtureObject(107, types.Count - 1, []));
+            objects.Add(new FixtureObject(109, types.Count - 1, Payload(writer =>
+                WritePPtr(writer, PPtr(0, 101)))));
         }
 
         using var dataStream = new MemoryStream();
@@ -118,11 +122,9 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
             }
 
             writer.Write(0); // script types
-            writer.Write(1); // externals
-            WriteNullTerminated(writer, string.Empty);
-            writer.Write(new byte[16]);
-            writer.Write(0);
-            WriteNullTerminated(writer, "archive:/CAB-sanitized/CAB-sanitized");
+            writer.Write(2); // externals
+            WriteExternal(writer, "archive:/CAB-fixture/sharedassets0.assets");
+            WriteExternal(writer, "archive:/CAB-fixture/missing.assets");
             writer.Write(0); // reference types
             WriteNullTerminated(writer, userInformation);
         }
@@ -206,7 +208,9 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         Node(1, "string", "m_Name"),
         Node(2, "Array", "Array", isArray: true),
         Node(3, "int", "size"), Node(3, "char", "data"),
-        .. PPtrNodes(1, "PPtr<GameObject>", "m_Target")
+        .. PPtrNodes(1, "PPtr<GameObject>", "m_LocalTarget"),
+        .. PPtrNodes(1, "PPtr<GameObject>", "m_ExternalTarget"),
+        .. PPtrNodes(1, "PPtr<GameObject>", "m_MissingTarget")
     ], ScriptTypeIndex: 0);
 
     private static FixtureType MonoScriptType() => new(115, "MonoScript",
@@ -225,6 +229,11 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         Node(1, "string", "m_AssemblyName"),
         Node(2, "Array", "Array", isArray: true),
         Node(3, "int", "size"), Node(3, "char", "data")
+    ]);
+
+    private static FixtureType BuiltInComponentType() => new(23, "MeshRenderer",
+    [
+        Node(0, "MeshRenderer", "Base")
     ]);
 
     private static FixtureType BuildSettingsType() => new(141, "BuildSettings",
@@ -288,14 +297,18 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
     private static byte[] MonoBehaviourPayload(
         long gameObject,
         long script,
-        (int FileId, long PathId) target) => Payload(writer =>
+        (int FileId, long PathId) localTarget,
+        (int FileId, long PathId) externalTarget,
+        (int FileId, long PathId) missingTarget) => Payload(writer =>
     {
         WritePPtr(writer, PPtr(0, gameObject));
         writer.Write((byte)1);
         Align(writer, 4);
         WritePPtr(writer, PPtr(0, script));
         WriteString(writer, "Sanitized Component Instance");
-        WritePPtr(writer, target);
+        WritePPtr(writer, localTarget);
+        WritePPtr(writer, externalTarget);
+        WritePPtr(writer, missingTarget);
     });
 
     private static byte[] MonoScriptPayload(
@@ -432,6 +445,14 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
     {
         writer.Write(Encoding.UTF8.GetBytes(value));
         writer.Write((byte)0);
+    }
+
+    private static void WriteExternal(BinaryWriter writer, string path)
+    {
+        WriteNullTerminated(writer, string.Empty);
+        writer.Write(new byte[16]);
+        writer.Write(0);
+        WriteNullTerminated(writer, path);
     }
 
     private static void WriteBigEndian(BinaryWriter writer, uint value) =>

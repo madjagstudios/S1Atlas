@@ -175,6 +175,55 @@ evidence; `--apply` exits `0` only when nothing remained blocked or failed,
 `1` when any did, and `2` on cancellation. `extractions cleanup` issues no network
 request.
 
+Build and query the static scene intelligence index after the same build has a
+preferred integrity-verified extraction, a replay-verified input snapshot, and a
+completed Schedule I Installed code index:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- index --scene
+dotnet run --project src/S1Atlas.Cli -- index --scene --build <64-character-build-id> --json
+dotnet run --project src/S1Atlas.Cli -- scenes --kind scene --limit 50
+dotnet run --project src/S1Atlas.Cli -- scenes --kind prefab --limit 50 --json
+dotnet run --project src/S1Atlas.Cli -- scene <scene-id-or-exact-name> --children --components --refs
+dotnet run --project src/S1Atlas.Cli -- gameobject <game-object-id-or-scene-id/name> --children --components --refs
+dotnet run --project src/S1Atlas.Cli -- prefab <prefab-id-or-exact-name> --objects --components
+dotnet run --project src/S1Atlas.Cli -- component <component-id-or-exact-type> --refs --code --json
+```
+
+Scene indexing is static, offline, and read-only with respect to the game install.
+It parses only the supported Unity 2022.3 SerializedFile containers and sidecars;
+it never launches the game, Unity, a managed game assembly, or a parser subprocess,
+and it makes no network request. Inputs are hashed before and after parsing. A
+completed immutable snapshot is written beneath the local Atlas data root, with
+its marker written last; failed imports are not queryable. List and nested queries
+are counted in SQLite and bounded to 50 rows by default unless `--limit` is given.
+
+### Scene fidelity boundary
+
+Scene intelligence reports only facts proven by the selected serialized files:
+
+- `FullyRecovered`, `PartiallyRecovered`, `GraphOnly`, `StubOrUnavailable`, and
+  `Unknown` are categorical availability states, not confidence scores.
+- A custom MonoBehaviour without a reviewed field schema is `GraphOnly` when its
+  identity and attachment graph are available. S1Atlas does not invent custom
+  fields or values and v1 has no general serialized-field value table.
+- MonoBehaviour-to-code links require one exact same-build Schedule I Installed
+  `SymbolIdentity` match. Missing, ambiguous, unavailable, and not-indexed links
+  remain explicit; no fuzzy match is substituted.
+- PPtrs resolve only to exact objects in the verified parsed container set.
+  External or missing targets retain unresolved evidence rather than inferred
+  destinations.
+- A prefab document requires parser-certified prefab/PrefabInstance class-ID
+  evidence. Marker text and ordinary asset-file roots are not prefab proof.
+- Scene names come from recovered build-settings scene paths. When unavailable,
+  the raw container basename is an explicit fallback, not a fabricated name.
+- UnityFS/AssetBundle-only content, YAML scenes, runtime behavior, visual or world
+  reconstruction, spatial inference, and complete prefab coverage are outside v1.
+
+An empty query or zero recovered graph rows is therefore not proof that the game
+contains no matching runtime objects. Inspect each row's recovery and resolution
+statuses and treat the recorded counts as measured coverage denominators.
+
 For live input, S1Atlas re-hashes the selected build inputs before process
 execution and again afterward. A mismatch before execution requires a new
 `scan`; a change during execution rejects the output. `--snapshot-inputs`
@@ -341,6 +390,12 @@ handler. They use no proprietary fixture and make no network request.
 | `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
 | `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
 | `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
+| `index --scene [--build <id>] [--force] [--json]` | Build or reuse an offline, integrity-verified scene snapshot for the selected build |
+| `scenes [--build <id>] [--snapshot <id>] [--kind scene\|prefab] [--query <text>] [--limit <n>] [--json]` | List counted, bounded scene or proven-prefab documents |
+| `scene <id\|exact-name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one scene and optionally its bounded graph pages |
+| `gameobject <id\|scene-id/name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one GameObject and optionally its bounded graph pages |
+| `prefab <id\|exact-name> [--objects] [--components] [--limit <n>] [--json]` | Inspect one parser-proven prefab document |
+| `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, serialized references, and an exact code-symbol handoff |
 
 ## Validation Policy
 
