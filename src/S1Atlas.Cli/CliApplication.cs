@@ -25,6 +25,7 @@ using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.Workflow;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Indexing.Scene;
+using S1Atlas.Indexing.Diff;
 
 namespace S1Atlas.Cli;
 
@@ -286,6 +287,7 @@ public sealed class CliApplication
             sqliteRepository,
             new IlSpyManagedDecompiler());
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
+        var diffService = new BuildDiffService(sqliteRepository);
         var sceneIndexingWorkflow = new SceneIndexWorkflow(
             _paths.RootDirectory,
             sqliteRepository,
@@ -357,6 +359,9 @@ public sealed class CliApplication
         root.Subcommands.Add(PrefabCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ComponentCommand.Create(sceneQueryService, indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
+        root.Subcommands.Add(DiffCommand.Create(
+            diffService, sqliteRepository, sqliteRepository, sqliteRepository, repository,
+            output, error, cancellationToken));
 
         return root.Parse(args).Invoke(new InvocationConfiguration
         {

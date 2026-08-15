@@ -479,6 +479,86 @@ public sealed partial class SqliteAtlasRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT fp.symbol_id, fp.fingerprint_kind, fp.fingerprint
+            FROM symbol_fingerprints AS fp
+            INNER JOIN symbols AS symbol ON symbol.symbol_id = fp.symbol_id
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $id AND run.status = 'Completed'
+            ORDER BY fp.symbol_id COLLATE BINARY, fp.fingerprint_kind COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        var result = new List<IndexFingerprintRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new IndexFingerprintRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        return result;
+    }
+
+    public async Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string sourceIdentity,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceIdentity);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                   run.completed_at_utc, run.failure_message
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+            WHERE run.status = 'Completed'
+              AND snapshot.codebase = $codebase
+              AND snapshot.channel = $channel
+              AND snapshot.source_identity = $sourceIdentity
+            ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$codebase", codebase.ToString());
+        command.Parameters.AddWithValue("$channel", channel.ToString());
+        command.Parameters.AddWithValue("$sourceIdentity", sourceIdentity);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
+    }
+
+    public async Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string buildId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                   run.completed_at_utc, run.failure_message
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+            INNER JOIN environment_snapshots AS env ON env.snapshot_id = snapshot.environment_snapshot_id
+            WHERE run.status = 'Completed'
+              AND snapshot.codebase = $codebase
+              AND snapshot.channel = $channel
+              AND env.build_id = $buildId
+            ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$codebase", codebase.ToString());
+        command.Parameters.AddWithValue("$channel", channel.ToString());
+        command.Parameters.AddWithValue("$buildId", buildId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
+    }
+
     private static CodeSnapshotRecord ReadSnapshot(SqliteDataReader reader) =>
         new(reader.GetString(0), Enum.Parse<CodebaseKind>(reader.GetString(1)), Enum.Parse<CodeChannel>(reader.GetString(2)), reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 
