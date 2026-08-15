@@ -179,6 +179,53 @@ public sealed partial class SqliteAtlasRepository
         return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
     }
 
+    public async Task<IndexRunRecord?> GetLatestCompletedIndexForSnapshotAsync(
+        string snapshotId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshotId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT index_id, snapshot_id, status, started_at_utc, completed_at_utc, failure_message
+            FROM index_runs
+            WHERE snapshot_id = $snapshot AND status = 'Completed'
+            ORDER BY completed_at_utc DESC, index_id COLLATE BINARY DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$snapshot", snapshotId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
+    }
+
+    public async Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string sourceIdentity,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceIdentity);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                   run.completed_at_utc, run.failure_message
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+            WHERE run.status = 'Completed'
+              AND snapshot.codebase = $codebase
+              AND snapshot.channel = $channel
+              AND snapshot.source_identity = $identity
+            ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$codebase", codebase.ToString());
+        command.Parameters.AddWithValue("$channel", channel.ToString());
+        command.Parameters.AddWithValue("$identity", sourceIdentity);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
+    }
+
     public async Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsAsync(
         string indexId,
         CancellationToken cancellationToken)
@@ -199,6 +246,29 @@ public sealed partial class SqliteAtlasRepository
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             result.Add(ReadSymbol(reader));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT fingerprint.symbol_id, fingerprint.fingerprint_kind, fingerprint.fingerprint
+            FROM symbol_fingerprints AS fingerprint
+            INNER JOIN symbols AS symbol ON symbol.symbol_id = fingerprint.symbol_id
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $id AND run.status = 'Completed'
+            ORDER BY fingerprint.symbol_id COLLATE BINARY, fingerprint.fingerprint_kind COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        var result = new List<IndexFingerprintRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new IndexFingerprintRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
         return result;
     }
 

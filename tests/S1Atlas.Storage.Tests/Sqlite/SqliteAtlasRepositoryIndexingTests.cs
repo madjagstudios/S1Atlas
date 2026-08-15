@@ -200,6 +200,41 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
                 cancellationToken));
     }
 
+    [Fact]
+    public async Task Completed_fingerprints_are_scoped_to_the_requested_completed_index_and_sorted()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord(
+            "snapshot-fingerprints",
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "binary-fingerprints",
+            "2026-08-14T03:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-fingerprints", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+        await _repository.CompleteIndexRunAsync(
+            "index-fingerprints",
+            new IndexWriteSet(
+                [new IndexSymbolRecord("symbol", snapshot.SnapshotId, "S1Api:Installed:Type:Demo.Widget", "Type", "Demo.Widget", "Demo.Widget", false)],
+                [],
+                [],
+                [
+                    new IndexFingerprintRecord("symbol", "structural", "structure"),
+                    new IndexFingerprintRecord("symbol", "declaration", "declaration")
+                ],
+                []),
+            "2026-08-14T03:01:00Z",
+            cancellationToken);
+
+        var fingerprints = await _repository.GetCompletedFingerprintsAsync("index-fingerprints", cancellationToken);
+
+        Assert.Equal(["declaration", "structural"], fingerprints.Select(fingerprint => fingerprint.Kind));
+        Assert.Equal("declaration", fingerprints[0].Fingerprint);
+    }
+
     private async Task<IndexSymbolRecord> SeedSearchIndexAsync(CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);
