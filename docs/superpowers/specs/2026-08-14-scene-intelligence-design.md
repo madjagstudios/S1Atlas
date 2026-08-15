@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-This milestone adds the smallest useful static model of Schedule I's Unity object graph: scenes, GameObjects, parenting, components, selected prefab roots, and serialized object/script references. It makes the graph searchable beside the existing IL2CPP-derived code index so a modder can answer questions such as:
+This milestone adds the smallest useful static model of Schedule I's Unity object graph: scenes, GameObjects, parenting, components, proven prefab roots, and serialized object/script references. It makes the graph searchable beside the existing IL2CPP-derived code index so a modder can answer questions such as:
 
 - Which scene contains a named GameObject?
 - Which components are attached to it, and which indexed `ScheduleOne.*` types do they represent?
@@ -39,7 +39,7 @@ resources.assets               + .resS
 globalgamemanagers             + globalgamemanagers.assets + .resS
 ```
 
-The binary files identify Unity `2022.3.62`. The files contain SerializedFile object markers such as `GameObject` and `Prefab`; the inspected install has no human-readable `.unity` or `.prefab` files and no `.bundle` or `.unity3d` files under `Schedule I_Data`. `globalgamemanagers` is also the existing repository-configured Unity-version source.
+The binary files identify Unity `2022.3.62`. Binary strings include markers such as `GameObject` and `Prefab`, but a string marker is not evidence of a serialized class ID or prefab asset. The inspected install has no human-readable `.unity` or `.prefab` files and no `.bundle` or `.unity3d` files under `Schedule I_Data`. The repository's extraction profile names `Schedule I_Data/globalgamemanagers` as the first Unity-version source, and the Windows metadata reader records the resulting installation observation without executing the game.
 
 This commits v1 to the following parse target:
 
@@ -79,6 +79,8 @@ The code index can confirm that a type exists and provide its canonical identity
 
 An IL2CPP binary does not retain the editor YAML source. Custom MonoBehaviour fields are interpretable only when the SerializedFile supplies an embedded or otherwise reviewed TypeTree-equivalent schema. IL2CPP metadata and the reconstructed `ScheduleOne.*` symbols are not a license to guess that schema.
 
+**V1 decision:** the required value proposition is the GameObject/Transform/component/reference graph plus exact code links. General custom MonoBehaviour field-value recovery is a best-effort extra, not a v1 success criterion. Scene Intelligence will not generate a new IL2CPP type database from `global-metadata.dat` and reconstructed assemblies in this milestone. That can be a later, separately justified milestone if real mod-development questions show that field values are worth the added parser/type-database and storage complexity.
+
 Therefore v1 does not claim to recover arbitrary serialized values when:
 
 - the container is unreadable or truncated;
@@ -87,12 +89,12 @@ Therefore v1 does not claim to recover arbitrary serialized values when:
 - a PPtr target is in an unparsed or missing external container; or
 - the script identity cannot be mapped exactly to the selected code index.
 
-V1 records field paths and declared types only when supplied by the parser's type information. It stores typed primitive/string/enum values only when the type information and byte boundaries are unambiguous. It stores PPtrs as references, not as guessed names. Unsupported nested data, large opaque blobs, textures, meshes, audio, shaders, and arbitrary asset payloads remain unavailable.
+V1 stores field paths and declared types only for serialized references when supplied by the parser's type information. It stores built-in Transform values only when the known Unity schema and byte boundaries are unambiguous. It stores PPtrs as references, not as guessed names. It does not persist a general custom-field value table. Unsupported nested data, custom MonoBehaviour values without a reviewed type schema, large opaque blobs, textures, meshes, audio, shaders, and arbitrary asset payloads remain unavailable.
 
 Every scene, component, serialized field, and serialized reference has a `SceneRecovery` availability classification:
 
 ```text
-FullyRecovered       required object/type information and captured data are available
+FullyRecovered       all data required by this record's declared v1 scope is available
 PartiallyRecovered   graph/type information exists, but one or more requested fields are unsupported
 GraphOnly            identity, attachment, and hierarchy are available; serialized field values are not
 StubOrUnavailable    the container/object data could not be read or was not supported
@@ -113,14 +115,15 @@ Transform parenting, root order, sibling order, and local transform values when 
   built-in Transform schema is available; no derived world transforms
 components attached to GameObjects, including built-in components and MonoBehaviours
 MonoScript identity extraction and exact linking to the selected Schedule I code index
-prefab roots/object graphs represented by Prefab objects in the selected .assets files
-serialized field paths/types and a bounded set of unambiguous primitive values
+asset-file GameObject roots and components available for graph/reference resolution
+serialized reference field paths/types when supplied by type information; no general
+  custom MonoBehaviour value capture
 serialized PPtr references within a parsed scene/asset graph and to indexed code symbols
 immutable, build-scoped SQLite scene snapshots
 bounded/countable human and JSON queries
 ```
 
-Prefabs are in scope only when they are present as serialized objects in the committed `.assets` target. The v1 data model represents a scene or prefab document as a row in `scenes` with a `kind` of `Scene` or `Prefab`; this keeps the graph model small while preserving the distinction in queries.
+**Prefab decision:** bundle-only prefabs are deferred. In the selected `.assets` files, a `scenes.kind = Prefab` row is emitted only when the parser verifies a supported prefab/PrefabInstance class ID or another parser-certified prefab-asset relationship. A string such as `Prefab` never classifies an object. If the real-player files contain no such records, v1 still indexes asset-file GameObject roots as ordinary graph objects for reference resolution, but emits no prefab entity and does not claim prefab coverage. The `prefab` query is therefore a bounded view over proven prefab rows, not a promise that every GameObject root is a prefab.
 
 ### 3.2 Deferred
 
@@ -169,7 +172,7 @@ container/header/external-reference validation
 S1Atlas-owned Unity SerializedFile adapter
         |
         +--> object identities, GameObjects, Transforms, components
-        +--> TypeTree-backed fields and PPtrs
+        +--> TypeTree-backed built-in data and reference PPtrs
         |
         v
 exact MonoScript -> code-index symbol resolution
@@ -186,11 +189,11 @@ The parser boundary is S1Atlas-owned. The Core/Storage/CLI layers consume S1Atla
 ```text
 ReadVerifiedSerializedFiles(inputManifest) -> SerializedFileDocument records
 ReadObjectTable(document) -> ObjectRecord records
-DecodeWithTypeTree(object, typeTree) -> TypedField records or explicit unavailable status
+DecodeWithTypeTree(object, typeTree) -> supported built-in/reference data or explicit unavailable status
 ResolvePPtr(reference, parsedDocuments) -> exact target identity or unresolved reference
 ```
 
-If a Unity-asset parser dependency is used, it must be selected and reviewed before implementation against Unity `2022.3.62`, pinned to an exact version and package/binary SHA-256, and recorded through the existing managed-tool supply-chain metadata. Its license, transitive licenses, provenance, update path, and whether redistribution is permitted must be recorded. Network access is allowed only for an explicit tool acquisition/update operation; normal scene indexing is offline. A parser process may run as a static parser, but it must never load or execute the game, Unity, a mod, a managed game assembly, or serialized asset code.
+If a Unity-asset parser dependency is used, it must be selected and reviewed before implementation against Unity `2022.3.62`, pinned to an exact version and package/binary SHA-256, and recorded through the existing managed-tool supply-chain metadata. License compatibility is a release gate, not merely documentation: a copyleft parser cannot be bundled or redistributed unless the planned S1Atlas distribution model explicitly approves that consequence. The selected parser's license, transitive licenses, provenance, update path, and redistribution terms must be recorded. Network access is allowed only for an explicit tool acquisition/update operation; normal scene indexing is offline. A parser process may run as a static parser, but it must never load or execute the game, Unity, a mod, a managed game assembly, or serialized asset code.
 
 The exact parser package/version is an implementation gate, not an excuse to weaken the boundary: no candidate is authoritative until it passes the fixture and real-install smoke against the committed container set. If no candidate can legally and reliably parse the required files, the milestone reports `UnsupportedContainer` and does not fabricate a partial success.
 
@@ -242,19 +245,15 @@ components
   resolved_type_symbol_id nullable, resolved_code_index_id nullable,
   type_resolution_status, recovery_status
 
-serialized_fields
-  field_id PK, component_id FK, field_path, declared_type nullable,
-  value_kind/value_text nullable, value_available, recovery_status
-
 serialized_refs
   reference_id PK, scene_snapshot_id FK, source_component_id FK nullable,
-  field_id FK nullable, field_path nullable, source_container/local_file ID,
+  field_path/declared_type nullable, source_container/local_file ID,
   target_container/local_file ID nullable, target_game_object_id nullable,
   target_component_id nullable, target_symbol_id nullable, target_text nullable,
   resolution_status, evidence, recovery_status
 ```
 
-The table names and keys are deliberate. Local file IDs are not globally unique, so every persisted object identity is scoped by the scene snapshot and container. `scenes.kind = Prefab` avoids a second graph model for prefab roots. `serialized_fields` is bounded metadata/value capture, not a blob store. `serialized_refs` is the normalized cross-object/code edge table; unresolved target columns remain null while raw target identity/text remains present.
+The table names and keys are deliberate. Local file IDs are not globally unique, so every persisted object identity is scoped by the scene snapshot and container. `scenes.kind = Prefab` avoids a second graph model for proven prefab roots. `serialized_refs` is the normalized cross-object/code edge table; unresolved target columns remain null while raw target identity/text remains present. There is deliberately no general `serialized_fields` table in v1: custom field values are not the milestone's authority or success criterion.
 
 Required indexes include:
 
@@ -266,14 +265,13 @@ game_objects(scene_id, name), game_objects(scene_snapshot_id, name)
 game_objects(scene_snapshot_id, container_id, local_file_id) UNIQUE
 transforms(parent_game_object_id)
 components(game_object_id, kind), components(resolved_type_symbol_id)
-serialized_fields(component_id, field_path)
 serialized_refs(source_component_id, field_path)
 serialized_refs(target_game_object_id), serialized_refs(target_symbol_id)
 ```
 
 The parser stages any disposable manifests under the Atlas data root, validates counts, foreign-key targets, input hashes, and recovery classifications, then commits the normalized rows and `Completed` status in one database transaction. A failed or cancelled import has no queryable completed snapshot. The prior completed scene snapshot and the prior current Atlas state remain authoritative. Filesystem promotion and database promotion follow the existing staged/atomic snapshot pattern; no in-place database or generated-artifact mutation is allowed.
 
-Expected volume is many thousands of GameObjects plus multiple components and references per object. Queries must filter and count in SQLite, use indexed predicates, and return only bounded pages. The design does not permit loading the complete graph merely to satisfy a default list query.
+Expected volume is many thousands of GameObjects plus multiple components and references per object. The importer processes one verified container at a time, uses prepared batched inserts inside the promotion transaction, and does not retain full object payloads in memory. Queries must filter and count in SQLite, use indexed predicates, and return only bounded pages. The design does not permit loading the complete graph merely to satisfy a default list query.
 
 ## 8. Query and CLI Surface
 
@@ -290,7 +288,7 @@ s1atlas gameobject <game-object-id|scene-id/name>
 s1atlas prefab <prefab-id|exact-name> [--objects] [--components]
                [--refs] [--limit <n>] [--json]
 s1atlas component <component-id|exact-type-selector>
-                  [--fields] [--refs] [--code] [--limit <n>] [--json]
+                  [--refs] [--code] [--limit <n>] [--json]
 ```
 
 List and child/reference queries default to a documented limit of 50. Human output says, for example, `Found 18,421 GameObjects. Showing 50.` Detail output includes the scene snapshot ID, build ID, container relative path and SHA-256, local file ID, readable name/path, `SceneRecovery`, raw/derived evidence, and exact code symbol ID/canonical signature when resolved. `--code` prints a handoff to the existing symbol/source query rather than duplicating source retrieval.
@@ -326,10 +324,10 @@ Unity 2022.3 SerializedFile header/version and sidecar discovery
 validated input manifest creation, re-read hash verification, and path containment
 external-file table and local/external PPtr resolution
 GameObject/component/Transform extraction and parent-cycle rejection
-Prefab object classification without a second graph model
-TypeTree decoding for supported primitive/string/enum/reference cases
+class-ID-based prefab classification without a second graph model; marker strings are not evidence
+TypeTree decoding for supported built-in/reference cases only
 missing/stripped TypeTree -> GraphOnly, never guessed field values
-unsupported/nested/opaque fields -> PartiallyRecovered or StubOrUnavailable
+custom MonoBehaviour fields without a reviewed type database -> GraphOnly, never guessed values
 exact MonoScript -> SymbolIdentity resolution, missing, and ambiguous cases
 same-build enforcement for scene snapshot and code index
 migration 8 creation, checksum/idempotence, foreign keys, and indexes
@@ -346,11 +344,13 @@ The smoke report must quantify at least:
 
 ```text
 containers discovered / accepted / rejected, with rejection reasons
-Scene and Prefab documents, GameObjects, roots, Transforms, and components
+Scene documents, proven Prefab documents, asset-file GameObject roots, Transforms, and components
+serialized class IDs and prefab/PrefabInstance evidence, including the explicit no-prefab case
 components with usable MonoScript identity
 components resolved to an exact ScheduleI Installed Type symbol
 components unresolved by reason: missing identity, not indexed, ambiguous, unavailable
-serialized fields typed and values captured, versus GraphOnly/unsupported/unavailable
+custom MonoBehaviour components classified GraphOnly versus any fields decoded by a reviewed
+  TypeTree-equivalent schema; custom-field decoding is reported, not required for success
 serialized references total, resolved to GameObject/component, resolved to code symbol,
   and unresolved textual/external targets
 counts by every SceneRecovery state
@@ -358,7 +358,7 @@ counts by every SceneRecovery state
 
 The report must also prove that the selected files' hashes are unchanged before/after, the game and Unity were not run, no runtime probing occurred, and normal parsing made no network request. It must record whether embedded TypeTree-equivalent data was present per container and whether `resources.assets` or any external reference contributed graph objects. It must not claim complete scene coverage from a successful parse; coverage is the recorded denominator/numerator counts and availability categories.
 
-The current install inspection resolved the container names but did not establish parser-level TypeTree availability, final scene names, or the complete prefab/reference population. Those are deliberate real-smoke checks, not guessed design facts. A smoke that cannot parse a selected container records `UnsupportedContainer` and its impact on coverage instead of silently dropping it.
+The current install inspection resolved the container names but did not establish parser-level TypeTree availability, serialized prefab class IDs, final scene names, or the complete reference population. Those are deliberate real-smoke checks, not guessed design facts. A smoke that cannot parse a selected container records `UnsupportedContainer` and its impact on coverage instead of silently dropping it. Scene names must come from the build-settings scene-path list in `globalgamemanagers`; if that list cannot be recovered, the container basename remains a raw fallback such as `level1`, not a fabricated human scene name.
 
 ## 10. Anti-Overengineering Guardrails
 
@@ -370,6 +370,7 @@ no visual scene reconstruction or spatial/world simulation
 no numerical confidence scoring
 no generalized multi-game/multi-engine abstraction
 no AssetBundle/UnityFS support in v1
+no generated IL2CPP type database or general custom-field value model in v1
 no graph database, blob store, or second authority
 no fuzzy scene-to-code linking or fabricated field values/references
 no portal, MCP, agent-skill, or other later-milestone work
@@ -383,10 +384,13 @@ prefer a small normalized graph and bounded queries over a universal asset model
     SerializedFiles, with globalgamemanagers* used for support/provenance and sidecars
     treated as byte providers
 [ ] no YAML, Unity runtime, game execution, or runtime probing is required
-[ ] scenes, prefab documents, GameObjects, parenting, components, selected Transform data,
-    fields, and serialized references have normalized SQLite storage in migration 8
-[ ] every scene/component/field/reference exposes SceneRecovery availability status
+[ ] scenes, proven prefab documents, GameObjects, parenting, components, selected Transform
+    data, and serialized references have normalized SQLite storage in migration 8
+[ ] every scene/component/reference exposes SceneRecovery availability status; custom
+    MonoBehaviour field recovery is explicitly best-effort and not a completion gate
 [ ] no field value or target is fabricated when TypeTree/type/reference information is absent
+[ ] prefab rows are emitted only from verified class-ID/object-relationship evidence; a
+    marker string or ordinary asset-file GameObject root is never mislabeled as a prefab
 [ ] MonoBehaviour script identity resolves only by exact existing SymbolIdentity in the
     same build's completed ScheduleI Installed code index
 [ ] unresolved textual and ambiguous links remain explicit and queryable
@@ -429,7 +433,7 @@ Scene Intelligence is roadmap milestone 2 of the six V1 completion milestones. I
 ```text
 1. Polish & Usability            complete
 2. Scene Intelligence            this document
-3. Build & Symbol Diffing        pending / separate milestone
+3. Build & Symbol Diffing        in review / separate milestone
 4. Human Portal                  consumes scene and code queries
 5. MCP + Agent Skill             consumes the same evidence and links
 6. V1 Hardening & Release        real-install validation and operational hardening
