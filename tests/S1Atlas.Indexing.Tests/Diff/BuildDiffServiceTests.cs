@@ -204,8 +204,8 @@ public sealed class BuildDiffServiceTests : IAsyncDisposable
         var result = await _service.DiffAsync(idA, idB, "ScheduleI", "Installed", "Method", ct);
 
         Assert.Equal(1, result.CountsByClassification[DiffClassification.Unchanged]);
-        Assert.Equal(1, result.TotalSymbolsA);
-        Assert.Equal(1, result.TotalSymbolsB);
+        Assert.Equal(2, result.TotalSymbolsA);
+        Assert.Equal(2, result.TotalSymbolsB);
     }
 
     [Fact]

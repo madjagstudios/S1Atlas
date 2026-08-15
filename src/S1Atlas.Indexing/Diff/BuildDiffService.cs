@@ -50,8 +50,6 @@ public sealed class BuildDiffService
         foreach (var c in Enum.GetValues<DiffClassification>())
             counts[c] = 0;
 
-        int totalA = 0, totalB = 0;
-
         foreach (var key in allKeys)
         {
             var inA = mapA.TryGetValue(key, out var symA);
@@ -67,9 +65,6 @@ public sealed class BuildDiffService
 
             if (kindFilter is not null && !string.Equals(kind, kindFilter, StringComparison.OrdinalIgnoreCase))
                 continue;
-
-            if (inA) totalA++;
-            if (inB) totalB++;
 
             counts[classification]++;
 
@@ -95,16 +90,10 @@ public sealed class BuildDiffService
             return cmp != 0 ? cmp : string.Compare(a.QualifiedName, b.QualifiedName, StringComparison.Ordinal);
         });
 
-        if (kindFilter is null)
-        {
-            totalA = symbolsA.Count;
-            totalB = symbolsB.Count;
-        }
-
         return new BuildDiffResult(
             indexIdA, indexIdB,
             codebase, channel,
-            totalA, totalB,
+            symbolsA.Count, symbolsB.Count,
             counts, changes);
     }
 
