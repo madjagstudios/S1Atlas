@@ -9,4 +9,6 @@ public sealed record SceneIndexWorkflowResult(
     int GameObjectCount,
     int TransformCount,
     int ComponentCount,
-    int ReferenceCount);
+    int ReferenceCount,
+    IReadOnlyDictionary<string, int>? RecoveryCounts = null,
+    IReadOnlyList<string>? Warnings = null);

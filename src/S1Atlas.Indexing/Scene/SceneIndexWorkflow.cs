@@ -416,7 +416,18 @@ public sealed class SceneIndexWorkflow
             writeSet?.GameObjects.Count ?? 0,
             writeSet?.Transforms.Count ?? 0,
             writeSet?.Components.Count ?? 0,
-            writeSet?.References.Count ?? 0);
+            writeSet?.References.Count ?? 0,
+            writeSet is null ? new Dictionary<string, int>() : RecoveryCounts(writeSet),
+            []);
+
+    private static IReadOnlyDictionary<string, int> RecoveryCounts(SceneWriteSet writeSet) =>
+        writeSet.Documents.Select(row => row.RecoveryStatus)
+            .Concat(writeSet.GameObjects.Select(row => row.RecoveryStatus))
+            .Concat(writeSet.Transforms.Select(row => row.RecoveryStatus))
+            .Concat(writeSet.Components.Select(row => row.RecoveryStatus))
+            .Concat(writeSet.References.Select(row => row.RecoveryStatus))
+            .GroupBy(status => status.ToString(), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
     private static string FailureCode(Exception exception) =>
         exception is OperationCanceledException ? "Canceled" : "SceneIndexingFailed";

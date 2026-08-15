@@ -18,11 +18,13 @@ using S1Atlas.Extraction.Profiles;
 using S1Atlas.Extraction.Promotion;
 using S1Atlas.Extraction.Tools;
 using S1Atlas.Extraction.Validation;
+using S1Atlas.Extraction.Scene;
 using S1Atlas.Storage.Sqlite;
 using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.Workflow;
 using S1Atlas.Indexing.Query;
+using S1Atlas.Indexing.Scene;
 
 namespace S1Atlas.Cli;
 
@@ -284,6 +286,16 @@ public sealed class CliApplication
             sqliteRepository,
             new IlSpyManagedDecompiler());
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
+        var sceneIndexingWorkflow = new SceneIndexWorkflow(
+            _paths.RootDirectory,
+            sqliteRepository,
+            sqliteRepository,
+            repository,
+            new PreferredVerifiedExtractionResolver(_paths.RootDirectory, sqliteRepository, integrityVerifier),
+            new SceneInputVerifier(fileHasher),
+            new AssetsToolsUnitySerializedFileParser(),
+            new SceneNormalizer(new SceneCodeSymbolResolver(sqliteRepository), new SceneRecoveryClassifier()));
+        var sceneQueryService = new SceneQueryService(sqliteRepository, repository);
 
         var root = new RootCommand(
             "Local Schedule I developer-intelligence tools.");
@@ -327,6 +339,7 @@ public sealed class CliApplication
             IndexCommand.Create(
                 indexingWorkflow,
                 apiIndexingWorkflow,
+                sceneIndexingWorkflow,
                 repository,
                 output,
                 error,
@@ -338,6 +351,11 @@ public sealed class CliApplication
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(ScenesCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(SceneCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(GameObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(PrefabCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(ComponentCommand.Create(sceneQueryService, indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
 
         return root.Parse(args).Invoke(new InvocationConfiguration

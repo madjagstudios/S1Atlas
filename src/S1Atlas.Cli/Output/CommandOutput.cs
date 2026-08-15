@@ -117,18 +117,14 @@ internal sealed class CommandOutput
         else
         {
             _standardError.WriteLine(message);
-            if (stage is not null || attemptId is not null)
+            if (stage is not null)
             {
-                if (stage is not null)
-                {
-                    _standardError.WriteLine($"Stage:   {stage}");
-                }
-
-                _standardError.WriteLine($"Code:    {code}");
-                if (attemptId is not null)
-                {
-                    _standardError.WriteLine($"Attempt: {attemptId}");
-                }
+                _standardError.WriteLine($"Stage:   {stage}");
+            }
+            _standardError.WriteLine($"Code:    {code}");
+            if (attemptId is not null)
+            {
+                _standardError.WriteLine($"Attempt: {attemptId}");
             }
         }
 

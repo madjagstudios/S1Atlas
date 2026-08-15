@@ -4,6 +4,7 @@ using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Workflow;
+using S1Atlas.Indexing.Scene;
 using S1Atlas.Storage.Sqlite;
 
 namespace S1Atlas.Cli.Commands;
@@ -13,18 +14,23 @@ internal static class IndexCommand
     public static Command Create(
         IndexingWorkflow workflow,
         ApiIndexingWorkflow apiWorkflow,
+        SceneIndexWorkflow sceneWorkflow,
         IAtlasRepository repository,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
     {
         var forceOption = new Option<bool>("--force") { Description = "Rebuild a completed index as a new candidate." };
+        var sceneOption = new Option<bool>("--scene") { Description = "Build the verified Unity scene intelligence index." };
+        var buildOption = new Option<string?>("--build") { Description = "A completed build ID for scene indexing." };
         var codebaseOption = new Option<string?>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string?>("--channel") { Description = "installed, release, or preview." };
         var commitOption = new Option<string?>("--commit") { Description = "An exact cached upstream commit SHA." };
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command("index", "Build the installed Schedule I source and symbol index.");
         command.Options.Add(forceOption);
+        command.Options.Add(sceneOption);
+        command.Options.Add(buildOption);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(commitOption);
@@ -36,6 +42,25 @@ internal static class IndexCommand
                 () =>
                 {
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    if (parseResult.GetValue(sceneOption))
+                    {
+                        var sceneBuildId = parseResult.GetValue(buildOption) ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
+                        if (sceneBuildId is null)
+                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.");
+                        var sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, parseResult.GetValue(forceOption), cancellationToken).GetAwaiter().GetResult();
+                        var sceneData = new SceneIndexOutput(
+                            sceneResult.SceneSnapshotId,
+                            sceneBuildId,
+                            SceneIndexWorkflow.ParserId,
+                            SceneIndexWorkflow.ParserVersion,
+                            sceneResult.SceneCount,
+                            sceneResult.GameObjectCount,
+                            sceneResult.ComponentCount,
+                            sceneResult.ReferenceCount,
+                            sceneResult.RecoveryCounts ?? new Dictionary<string, int>(),
+                            sceneResult.Warnings ?? []);
+                        return commandOutput.Success(sceneData, writer => writer.WriteLine($"scene {sceneData.SceneSnapshotId} | build {sceneData.BuildId} | parser {sceneData.ParserId} {sceneData.ParserVersion} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}"));
+                    }
                     var requestedCodebase = parseResult.GetValue(codebaseOption);
                     var requestedChannel = parseResult.GetValue(channelOption);
                     var requestedCommit = parseResult.GetValue(commitOption);
