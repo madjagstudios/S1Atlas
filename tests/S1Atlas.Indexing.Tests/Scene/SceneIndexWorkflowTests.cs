@@ -600,6 +600,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(PublishedSnapshotIds.Contains(CompletedSnapshot?.SceneSnapshotId ?? string.Empty) ? CompletedSnapshot : null);
         public Task<SceneIndexStatistics?> GetSceneIndexStatisticsAsync(string sceneSnapshotId, CancellationToken cancellationToken)
         {

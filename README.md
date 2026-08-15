@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, Phase 3 extraction orchestration, Phase 4 validation and promotion, and Phase 5 hardening, replay, and milestone finalization are complete. Phase 3 still runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. ILSpy decompilation, C# source generation, symbol/call indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
+> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, and the build-diffing milestone are all complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. **Generated HTML documentation, the read-only MCP server, and the S1Atlas agent skill remain the outstanding V1 milestones.**
 
 ## What the Foundation Can Do
 
@@ -175,6 +175,34 @@ evidence; `--apply` exits `0` only when nothing remained blocked or failed,
 `1` when any did, and `2` on cancellation. `extractions cleanup` issues no network
 request.
 
+Build and query the code index once the current build has a preferred,
+integrity-verified extraction. The index decompiles the reconstructed assemblies
+with ILSpy, records normalized symbols and relationships with Roslyn, and answers
+queries entirely offline:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- index
+dotnet run --project src/S1Atlas.Cli -- index --codebase s1api --channel installed
+dotnet run --project src/S1Atlas.Cli -- search "<name-fragment>" --limit 25
+dotnet run --project src/S1Atlas.Cli -- type "<Namespace.TypeName>"
+dotnet run --project src/S1Atlas.Cli -- method "<TypeName.MethodName>"
+dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --context 6
+dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --file --output symbol.cs
+dotnet run --project src/S1Atlas.Cli -- refs "<TypeName.MethodName>" --json
+dotnet run --project src/S1Atlas.Cli -- callers "<TypeName.MethodName>"
+dotnet run --project src/S1Atlas.Cli -- callees "<TypeName.MethodName>"
+```
+
+Upstream S1API/S1MAPI channels are cached explicitly before a release/preview
+index; `upstream status` is always offline and `upstream sync` is the only
+networked upstream command:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- upstream status --codebase s1api
+dotnet run --project src/S1Atlas.Cli -- upstream sync s1api --commit <40-character-sha>
+dotnet run --project src/S1Atlas.Cli -- index --codebase s1api --channel release --commit <40-character-sha>
+```
+
 Build and query the static scene intelligence index after the same build has a
 preferred integrity-verified extraction, a replay-verified input snapshot, and a
 completed Schedule I Installed code index:
@@ -189,6 +217,19 @@ dotnet run --project src/S1Atlas.Cli -- gameobject <game-object-id-or-scene-id/n
 dotnet run --project src/S1Atlas.Cli -- prefab <prefab-id-or-exact-name> --objects --components
 dotnet run --project src/S1Atlas.Cli -- component <component-id-or-exact-type> --refs --code --json
 ```
+
+Compare two indexed builds to see what changed:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- diff <build-id-before> <build-id-after>
+dotnet run --project src/S1Atlas.Cli -- diff <build-id-before> <build-id-after> --kind Method --json
+dotnet run --project src/S1Atlas.Cli -- diff <build-id-before> <build-id-after> --limit 100
+```
+
+`diff` compares existing indexed data and classifies each symbol as Added,
+Removed, MethodBodyChanged, RelationshipsChanged, or Unchanged. It requires both
+builds to have a completed, preferred, integrity-verified index. The command is
+entirely offline.
 
 Scene indexing is static, offline, and read-only with respect to the game install.
 It parses only the supported Unity 2022.3 SerializedFile containers and sidecars;
@@ -342,12 +383,13 @@ After a Foundation-v1 database is migrated, its existing snapshot remains identi
 
 ```text
 S1Atlas.Core        Domain records and interfaces
-S1Atlas.Extraction  Read-only discovery, hashing, dependency, and local Steam metadata detection
+S1Atlas.Extraction  Read-only discovery, hashing, dependency, local Steam metadata detection, and Cpp2IL orchestration
+S1Atlas.Indexing    ILSpy decompilation, Roslyn source/symbol indexing, relationships, scene intelligence, and index queries
 S1Atlas.Storage     Checksummed migrations and transactional SQLite persistence
 S1Atlas.Cli         Human and machine-readable command-line interface
 ```
 
-The dependency direction keeps game/tool-specific details out of the Core domain model and allows later Cpp2IL and ILSpy adapters to be replaced without changing the CLI, docs portal, or MCP query surface.
+The dependency direction keeps game/tool-specific details out of the Core domain model and allows the Cpp2IL and ILSpy adapters to be replaced without changing the CLI, future docs portal, or MCP query surface.
 
 ## Managed Cpp2IL Pin
 
@@ -390,12 +432,23 @@ handler. They use no proprietary fixture and make no network request.
 | `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
 | `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
 | `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
+| `index [--codebase <id>] [--channel <id>] [--commit <sha>] [--force] [--json]` | Build the installed Schedule I code index (no options) or an S1API/S1MAPI code index |
+| `search <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Query the normalized code index across symbols, types, and methods |
+| `type <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed type definitions |
+| `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |
+| `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--limit <n>] [--json]` | Show integrity-checked decompiled source for one resolved symbol |
+| `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed references to a resolved symbol |
+| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callers of a resolved method |
+| `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callees of a resolved method |
+| `upstream status [--codebase <s1api\|s1mapi>] [--json]` | Show cached upstream API status without network access |
+| `upstream sync <s1api\|s1mapi> --commit <sha> [--json]` | Fetch and cache one exact upstream commit for later indexing |
 | `index --scene [--build <id>] [--force] [--json]` | Build or reuse an offline, integrity-verified scene snapshot for the selected build |
 | `scenes [--build <id>] [--snapshot <id>] [--kind scene\|prefab] [--query <text>] [--limit <n>] [--json]` | List counted, bounded scene or proven-prefab documents |
 | `scene <id\|exact-name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one scene and optionally its bounded graph pages |
 | `gameobject <id\|scene-id/name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one GameObject and optionally its bounded graph pages |
 | `prefab <id\|exact-name> [--objects] [--components] [--limit <n>] [--json]` | Inspect one parser-proven prefab document |
 | `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, serialized references, and an exact code-symbol handoff |
+| `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
 
 ## Validation Policy
 
@@ -423,14 +476,24 @@ test policy with a tiny managed-byte floor and never modify the production
 
 ## Next Milestone
 
-With Phase 5 complete, the validated Cpp2IL extraction milestone is finished:
-conservative cleanup and retention, explicit archived-only replay with per-snapshot
-certification, and the repository-hygiene CI gate are in place. The next
-independent design cycle adds ILSpy decompilation, normalized source and symbol
-metadata, and initial search/type/method/source commands over the preferred,
-integrity-verified extraction — always through the full integrity-verifying API,
-and never a Phase 3 candidate, retained failure output, or an unverified database
-row.
+The validated Cpp2IL extraction pipeline, the code-index milestone (ILSpy
+decompilation, normalized source and symbol metadata, and the
+`search`/`type`/`method`/`source`/`refs`/`callers`/`callees` commands over the
+preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, and
+the static scene-intelligence milestone are all complete. Every query runs
+through the full integrity-verifying API — never a Phase 3 candidate, retained
+failure output, or an unverified database row.
+
+The remaining V1 milestones are independent design cycles:
+
+1. **Static human portal** — generate the local, offline HTML exploration site
+   with navigation, search, source viewing, plain-English context, and provenance.
+2. **Read-only MCP server** — expose the same integrity-verified knowledge to
+   agents through build-aware query tools (no write operations).
+3. **Agent skill** — document correct, evidence-first S1Atlas usage for agents.
+
+Final hardening (documentation and the local installation/use workflow) closes
+out V1 once those land.
 
 ## Project Documents
 

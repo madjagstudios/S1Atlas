@@ -193,6 +193,9 @@ public sealed class SceneCodeSymbolResolverTests : IAsyncDisposable
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) => _inner.GetCompletedRelationshipsByTargetSymbolIdAsync(indexId, symbolId, cancellationToken);
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) => _inner.GetCompletedSourceFilesAsync(indexId, cancellationToken);
         public Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken) => _inner.GetCompletedSourceLocationsAsync(indexId, cancellationToken);
+        public Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken) => _inner.GetCompletedFingerprintsAsync(indexId, cancellationToken);
+        public Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken) => _inner.GetLatestCompletedIndexBySourceIdentityAsync(codebase, channel, sourceIdentity, cancellationToken);
+        public Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken) => _inner.GetLatestCompletedIndexForBuildAsync(codebase, channel, buildId, cancellationToken);
     }
 
     public ValueTask DisposeAsync()
