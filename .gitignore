@@ -21,6 +21,9 @@ worktrees/
 
 # S1Atlas generated data
 data/
+scene-indexes/
+scene-staging/
+scene-recovery/
 installed/
 upstream/
 *.db
