@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, Phase 3 extraction orchestration, Phase 4 validation and promotion, and Phase 5 hardening, replay, and milestone finalization are complete. Phase 3 still runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. ILSpy decompilation, C# source generation, symbol/call indexing, generated HTML documentation, build diffing, MCP, and the S1Atlas agent skill remain later milestones.
+> **Current state:** Phase 1 metadata and database migration, the Phase 2 managed Cpp2IL supply chain, Phase 3 extraction orchestration, Phase 4 validation and promotion, Phase 5 hardening, replay, and milestone finalization, and the initial Build & Symbol Diffing milestone are complete. Phase 3 still runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The diff layer is read-only and derived from completed index runs; portal, MCP, and the S1Atlas agent skill remain later milestones.
 
 ## What the Foundation Can Do
 
@@ -68,6 +68,14 @@ Then explore the stored environment:
 dotnet run --project src/S1Atlas.Cli -- status
 dotnet run --project src/S1Atlas.Cli -- env
 dotnet run --project src/S1Atlas.Cli -- builds
+```
+
+Compare two completed indexes without re-indexing or mutating stored facts:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- diff --codebase s1api --from installed --to release --limit 50
+dotnet run --project src/S1Atlas.Cli -- diff --codebase s1api --from <index-id> --to <index-id> --symbol <symbol-selector> --json
+dotnet run --project src/S1Atlas.Cli -- diff --codebase schedule-i --from <index-id> --to <index-id> --all --json
 ```
 
 Inspect or explicitly install the managed Cpp2IL pin:
@@ -341,6 +349,7 @@ handler. They use no proprietary fixture and make no network request.
 | `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
 | `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
 | `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
+| `diff --codebase <codebase> --from <selector> --to <selector> [--symbol <selector>] [--kind <kind>] [--limit <n>] [--all] [--json]` | Compare two completed indexes with meaningful derived changes; `--all` includes unchanged and standalone unavailable-body classifications |
 
 ## Validation Policy
 
