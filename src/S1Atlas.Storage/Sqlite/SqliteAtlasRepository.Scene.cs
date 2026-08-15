@@ -19,11 +19,17 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             await using (var existing = connection.CreateCommand())
             {
                 existing.Transaction = transaction;
-                existing.CommandText = "SELECT published_at_utc FROM scene_snapshots WHERE scene_snapshot_id = $id;";
+                existing.CommandText = "SELECT status, published_at_utc FROM scene_snapshots WHERE scene_snapshot_id = $id;";
                 existing.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
                 await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
-                if (await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0))
-                    throw new InvalidOperationException($"Published scene snapshot '{snapshot.SceneSnapshotId}' is immutable.");
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    var status = reader.GetString(0);
+                    if (!reader.IsDBNull(1))
+                        throw new InvalidOperationException($"Published scene snapshot '{snapshot.SceneSnapshotId}' is immutable.");
+                    if (string.Equals(status, "Running", StringComparison.Ordinal))
+                        throw new InvalidOperationException($"Scene snapshot '{snapshot.SceneSnapshotId}' is already being indexed.");
+                }
             }
 
             await using (var reconcile = connection.CreateCommand())
@@ -41,7 +47,9 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
                     DELETE FROM scenes WHERE scene_snapshot_id = $id;
                     DELETE FROM scene_containers WHERE scene_snapshot_id = $id;
                     DELETE FROM scene_snapshots
-                    WHERE scene_snapshot_id = $id AND published_at_utc IS NULL;
+                    WHERE scene_snapshot_id = $id
+                      AND status IN ('Completed', 'Failed')
+                      AND published_at_utc IS NULL;
                     """;
                 reconcile.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
                 await reconcile.ExecuteNonQueryAsync(cancellationToken);
@@ -317,7 +325,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot
               AND ($kind IS NULL OR scene.kind = $kind)
-              AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\\' COLLATE NOCASE);
+              AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\' COLLATE NOCASE);
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$kind", options.Kind?.ToString()), ("$query", escaped));
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -327,7 +335,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot
               AND ($kind IS NULL OR scene.kind = $kind)
-              AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\\' COLLATE NOCASE)
+              AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\' COLLATE NOCASE)
             ORDER BY scene.name COLLATE BINARY, scene.scene_id COLLATE BINARY
             LIMIT $limit;
             """;
@@ -358,6 +366,9 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     public async Task<IReadOnlyList<SceneDocumentRecord>> FindScenesByExactNameAsync(string sceneSnapshotId, string name, SceneDocumentKind? kind, int limit, CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
         await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
         command.CommandText = "SELECT scene.scene_id, scene.scene_snapshot_id, scene.container_id, scene.kind, scene.name, scene.source_local_file_id, scene.object_count, scene.root_count, scene.recovery_status FROM scenes AS scene INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot AND scene.name = $name COLLATE BINARY AND ($kind IS NULL OR scene.kind = $kind) ORDER BY scene.scene_id COLLATE BINARY LIMIT $limit;";
         command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$name", name); command.Parameters.AddWithValue("$kind", (object?)kind?.ToString() ?? DBNull.Value); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneDocumentRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadDocument(reader)); return rows;
@@ -375,7 +386,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($parent IS NULL OR transform.parent_game_object_id = $parent)
-              AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\\' COLLATE NOCASE);
+              AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\' COLLATE NOCASE);
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$parent", options.ParentGameObjectId), ("$query", escaped));
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -386,7 +397,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($parent IS NULL OR transform.parent_game_object_id = $parent)
-              AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\\' COLLATE NOCASE)
+              AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\' COLLATE NOCASE)
             ORDER BY game_object.name COLLATE BINARY, game_object.game_object_id COLLATE BINARY
             LIMIT $limit;
             """;
@@ -416,6 +427,10 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     public async Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
         await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
         command.CommandText = "SELECT game_object_id, scene_id, container_id, local_file_id, name, active, layer, tag, recovery_status FROM game_objects AS item INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = item.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND item.scene_snapshot_id = $snapshot AND item.scene_id = $scene AND item.name = $name COLLATE BINARY ORDER BY item.game_object_id COLLATE BINARY LIMIT $limit;";
         command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$scene", sceneId); command.Parameters.AddWithValue("$name", name); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneGameObjectRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadGameObject(reader)); return rows;
@@ -434,7 +449,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
               AND ($kind IS NULL OR component.kind = $kind)
-              AND ($query IS NULL OR component.kind LIKE $query ESCAPE '\\' COLLATE NOCASE);
+              AND ($query IS NULL OR component.kind LIKE $query ESCAPE '\' COLLATE NOCASE);
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$kind", options.ExactKind), ("$query", escaped));
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -449,7 +464,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
               AND ($kind IS NULL OR component.kind = $kind)
-              AND ($query IS NULL OR component.kind LIKE $query ESCAPE '\\' COLLATE NOCASE)
+              AND ($query IS NULL OR component.kind LIKE $query ESCAPE '\' COLLATE NOCASE)
             ORDER BY component.kind COLLATE BINARY, component.component_id COLLATE BINARY
             LIMIT $limit;
             """;
@@ -534,7 +549,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
               AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
               AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
-              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\\' COLLATE NOCASE);
+              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\' COLLATE NOCASE);
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$component", options.SourceComponentId), ("$query", escaped));
         var unresolved = await CountAsync(connection, """
             SELECT COUNT(*) FROM serialized_refs AS reference
@@ -550,7 +565,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
               AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
               AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
-              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\\' COLLATE NOCASE)
+              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\' COLLATE NOCASE)
               AND reference.resolution_status <> 'Resolved';
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$component", options.SourceComponentId), ("$query", escaped));
         await using var command = connection.CreateCommand();
@@ -572,7 +587,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
               AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
               AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
-              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\\' COLLATE NOCASE)
+              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\' COLLATE NOCASE)
             ORDER BY reference.field_path COLLATE BINARY, reference.reference_id COLLATE BINARY
             LIMIT $limit;
             """;
