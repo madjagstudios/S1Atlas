@@ -39,6 +39,9 @@ public sealed class RepositoryHygieneScriptTests
     [InlineData("artifact-manifest.json")]
     [InlineData("validation.json")]
     [InlineData("extraction.json")]
+    [InlineData("scene-manifest.json")]
+    [InlineData("scene-index.manifest.json")]
+    [InlineData("scene-validation.json")]
     [InlineData("complete.marker")]
     [InlineData("extraction.lock")]
     [InlineData("stdout.log")]
@@ -60,6 +63,9 @@ public sealed class RepositoryHygieneScriptTests
     [InlineData("reconstructed")]
     [InlineData("decompiled")]
     [InlineData(".staging")]
+    [InlineData("scene-indexes")]
+    [InlineData("scene-staging")]
+    [InlineData("scene-recovery")]
     public void Script_ProhibitedSegment_FailsWithNonZeroExit(string segment)
     {
         var exitCode = RunWithTrackedPaths(

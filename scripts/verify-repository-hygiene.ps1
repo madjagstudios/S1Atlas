@@ -30,6 +30,9 @@ $prohibitedBasenames = @(
     'artifact-manifest.json',
     'validation.json',
     'extraction.json',
+    'scene-manifest.json',
+    'scene-index.manifest.json',
+    'scene-validation.json',
     'complete.marker',
     'extraction.lock',
     'stdout.log',
@@ -41,7 +44,10 @@ $prohibitedSegments = @(
     'retained-output',
     'reconstructed',
     'decompiled',
-    '.staging'
+    '.staging',
+    'scene-indexes',
+    'scene-staging',
+    'scene-recovery'
 )
 
 if ($TrackedPathsFile) {

@@ -202,6 +202,38 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(
+        string indexId,
+        string canonicalKey,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalKey);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status
+            FROM index_runs AS run
+            INNER JOIN symbols AS symbol INDEXED BY ux_symbols_snapshot_key
+                ON symbol.snapshot_id = run.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND symbol.canonical_key = $canonicalKey COLLATE BINARY
+            ORDER BY symbol.symbol_id COLLATE BINARY
+            LIMIT 2;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$canonicalKey", canonicalKey);
+
+        var result = new List<IndexSymbolRecord>(2);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadSymbol(reader));
+        return result;
+    }
+
     public async Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(
         string indexId,
         string symbolId,

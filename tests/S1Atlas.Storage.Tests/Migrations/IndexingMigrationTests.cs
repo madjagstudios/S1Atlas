@@ -16,7 +16,7 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Fresh_database_migrates_to_v7_database_schema()
+    public async Task Fresh_database_migrates_to_v8_scene_intelligence_database_schema()
     {
         await new SqliteMigrationRunner(_databasePath, Path.Combine(_root, "backups")).MigrateAsync(
             TestContext.Current.CancellationToken);
@@ -24,13 +24,22 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
         await using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
         {
             await connection.OpenAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(7L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+            Assert.Equal(8L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+            Assert.Equal(8, SqliteMigrations.All.Count);
             foreach (var table in new[] { "code_snapshots", "index_runs", "symbols", "source_files", "source_locations", "symbol_fingerprints", "relationships", "upstream_repositories", "upstream_snapshots", "upstream_state" })
                 Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=$name;", ("$name", table)));
             Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('symbols') WHERE name='body_recovery_status';"));
+            foreach (var table in new[] { "scene_snapshots", "scene_containers", "scenes", "game_objects", "transforms", "components", "serialized_refs" })
+                Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=$name;", ("$name", table)));
+            Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('scene_snapshots') WHERE name='published_at_utc';"));
+            foreach (var index in new[] { "ix_scene_snapshots_build_status_completed", "ix_scene_containers_snapshot_path", "ix_scenes_snapshot_kind_name", "ix_game_objects_scene_name", "ix_game_objects_snapshot_name", "ux_game_objects_snapshot_container_local_file", "ix_transforms_parent_game_object", "ix_components_game_object_kind", "ix_components_resolved_type_symbol", "ix_serialized_refs_source_field_path", "ix_serialized_refs_target_game_object", "ix_serialized_refs_target_symbol" })
+                Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='index' AND name=$name;", ("$name", index)));
 
             await using var command = connection.CreateCommand();
             command.CommandText = "INSERT INTO code_snapshots(snapshot_id, codebase, channel, source_identity, created_at_utc) VALUES ('s', 'ScheduleI', 'Preview', 'x', '2026-01-01');";
+            Assert.Throws<SqliteException>(() => command.ExecuteNonQuery());
+
+            command.CommandText = "INSERT INTO scene_snapshots(scene_snapshot_id, build_id, extraction_id, input_snapshot_id, code_snapshot_id, code_index_id, parser_id, parser_version, container_manifest_digest, status, recovery_status, started_at_utc) VALUES ('scene', 'missing', 'missing', 'missing', 'missing', 'missing', 'parser', '1', 'digest', 'Invalid', 'Unknown', '2026-01-01');";
             Assert.Throws<SqliteException>(() => command.ExecuteNonQuery());
         }
     }

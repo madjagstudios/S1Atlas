@@ -37,6 +37,15 @@ public sealed record AtlasPaths(string RootDirectory)
     public string GetBuildIndexDirectory(string buildId, string indexId) =>
         Path.Combine(GetBuildIndexesDirectory(buildId), indexId);
 
+    public string GetBuildSceneIndexesDirectory(string buildId) =>
+        Path.Combine(GetBuildDirectory(buildId), "scene-indexes");
+
+    public string GetBuildSceneIndexDirectory(string buildId, string sceneSnapshotId) =>
+        Path.Combine(GetBuildSceneIndexesDirectory(buildId), sceneSnapshotId);
+
+    public string GetBuildSceneIndexStagingDirectory(string buildId, string sceneSnapshotId) =>
+        GetBuildSceneIndexDirectory(buildId, sceneSnapshotId) + ".staging";
+
     public string GetInstalledApiIndexDirectory(
         string codebase,
         string binarySha256,

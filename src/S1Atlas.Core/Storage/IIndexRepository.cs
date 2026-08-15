@@ -73,6 +73,10 @@ public sealed record IndexWriteSet(
 
 public interface IIndexRepository
 {
+    ISceneRepository RequireSceneRepository() =>
+        this as ISceneRepository ?? throw new InvalidOperationException(
+            "Scene indexing requires an index repository that also owns scene persistence.");
+
     Task CreateCodeSnapshotAsync(CodeSnapshotRecord snapshot, CancellationToken cancellationToken);
     Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken);
     Task StartIndexRunAsync(IndexRunRecord run, CancellationToken cancellationToken);
@@ -81,6 +85,10 @@ public interface IIndexRepository
     Task<IndexRunRecord?> GetCompletedIndexAsync(string indexId, CancellationToken cancellationToken);
     Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsAsync(string indexId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(
+        string indexId,
+        string canonicalKey,
+        CancellationToken cancellationToken);
     Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken);
     Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null);

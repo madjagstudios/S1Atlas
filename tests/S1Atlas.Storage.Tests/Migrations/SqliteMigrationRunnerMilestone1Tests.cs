@@ -18,10 +18,13 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public void MigrationSeven_HasCommittedChecksum_AndEarlierMigrationsRemainPinned()
+    public void MigrationsSevenAndEight_HaveCommittedNamesAndChecksums_AndEarlierMigrationsRemainPinned()
     {
-        Assert.Equal(7, SqliteMigrations.All.Count);
+        Assert.Equal(8, SqliteMigrations.All.Count);
         Assert.Equal("d03021f97dfe3cd5e52305ae945258aa7fdbc8ccb086808a8255df7df0d10bb0", SqliteMigrations.All[6].Checksum);
+        Assert.Equal(8, SqliteMigrations.All[7].Version);
+        Assert.Equal("scene-intelligence-v8", SqliteMigrations.All[7].Name);
+        Assert.Equal("f925bbdaae3dd9f3ad994f3333fed1588a451f2678e241892ccac8ca142b0d4a", SqliteMigrations.All[7].Checksum);
         Assert.Equal(
             [
                 "90ee69e49a9763c6443b4db0b5b2752ff78292fb7a7f7e7b5d86fd22137fd92e",
@@ -33,7 +36,39 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task VersionSixDatabase_MigratesToSeven_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
+    public async Task VersionSevenDatabase_MigratesToEightExactlyOnce_AndTheSecondRunIsIdempotent()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await new SqliteMigrationRunner(
+            _databasePath,
+            _backupDirectory,
+            SqliteMigrations.All.Take(7).ToArray()).MigrateAsync(cancellationToken);
+
+        var runner = new SqliteMigrationRunner(_databasePath, _backupDirectory);
+        await runner.MigrateAsync(cancellationToken);
+        await runner.MigrateAsync(cancellationToken);
+
+        await using var connection = new SqliteConnection($"Data Source={_databasePath}");
+        await connection.OpenAsync(cancellationToken);
+        Assert.Equal(1L, await ScalarAsync(
+            connection,
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 8 AND name = 'scene-intelligence-v8';",
+            cancellationToken));
+        Assert.Equal(
+            SqliteMigrations.All[7].Checksum,
+            await TextScalarAsync(
+                connection,
+                "SELECT checksum FROM schema_migrations WHERE version = 8;",
+                cancellationToken));
+        Assert.Equal(7L, await ScalarAsync(
+            connection,
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('scene_snapshots','scene_containers','scenes','game_objects','transforms','components','serialized_refs');",
+            cancellationToken));
+        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-8-*.db", SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public async Task VersionSixDatabase_MigratesToEight_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var v6Migrations = SqliteMigrations.All.Take(6).ToArray();
@@ -55,7 +90,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
 
         await using var migrated = new SqliteConnection($"Data Source={_databasePath}");
         await migrated.OpenAsync(cancellationToken);
-        Assert.Equal(7L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
+        Assert.Equal(8L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1';", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1' AND body_recovery_status IS NULL;", cancellationToken));
 
@@ -75,7 +110,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
             await Assert.ThrowsAsync<SqliteException>(() => invalid.ExecuteNonQueryAsync(cancellationToken));
         }
 
-        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-7-*.db", SearchOption.TopDirectoryOnly));
+        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-8-*.db", SearchOption.TopDirectoryOnly));
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
@@ -90,6 +125,15 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    private static async Task<string> TextScalarAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return Convert.ToString(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
     public ValueTask DisposeAsync()
