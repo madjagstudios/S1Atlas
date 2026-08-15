@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
@@ -27,6 +30,10 @@ public sealed class SceneIndexWorkflow
         "Schedule I_Data/globalgamemanagers",
         "Schedule I_Data/globalgamemanagers.assets"
     ];
+    private static readonly JsonSerializerOptions ManifestJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     private readonly string _dataRoot;
     private readonly IIndexRepository _repository;
@@ -105,6 +112,7 @@ public sealed class SceneIndexWorkflow
             environment.Installation.InstallationRoot!,
             declarations,
             cancellationToken);
+        RequireSupportedUnityVersion(verifiedInput.Containers);
         var parserVersion = force ? _parserVersion + ":forced:" + Guid.NewGuid().ToString("N") : _parserVersion;
         var sceneSnapshotId = SceneSnapshotIdentity.Create(
             buildId,
@@ -146,18 +154,20 @@ public sealed class SceneIndexWorkflow
             SceneSnapshotStatus.Running,
             SceneRecoveryStatus.Unknown,
             DateTimeOffset.UtcNow.ToString("O"));
-        var runStarted = false;
-        var databaseCompleted = false;
+        var snapshotCreated = false;
+        var databasePublished = false;
+        var finalPromoted = false;
         try
         {
             await _sceneRepository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+            snapshotCreated = true;
             await _sceneRepository.StartSceneSnapshotAsync(sceneSnapshotId, DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
-            runStarted = true;
 
             var parsed = await _parser.ParseAsync(verifiedInput.Containers, cancellationToken);
             RequireParserFacts(parsed, verifiedInput.Containers);
             var writeSet = await _normalizer.NormalizeAsync(snapshot, verifiedInput.Containers, parsed, cancellationToken);
             RequireBoundedWriteSet(writeSet, verifiedInput.Containers.Count);
+            await WriteStagingManifestAsync(paths.StagingRoot, writeSet, verifiedInput.Containers, cancellationToken);
             await _inputVerifier.VerifyAfterParsingAsync(verifiedInput, cancellationToken);
             await RequireStableAuthoritiesAsync(authority, inputSnapshot, code, buildId, cancellationToken);
 
@@ -166,14 +176,19 @@ public sealed class SceneIndexWorkflow
                 writeSet,
                 DateTimeOffset.UtcNow.ToString("O"),
                 cancellationToken);
-            databaseCompleted = true;
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
+            finalPromoted = true;
             await File.WriteAllTextAsync(paths.CompleteMarkerPath, sceneSnapshotId + "\n", cancellationToken);
+            await _sceneRepository.PublishSceneSnapshotAsync(
+                sceneSnapshotId,
+                DateTimeOffset.UtcNow.ToString("O"),
+                cancellationToken);
+            databasePublished = true;
             return ToResult(writeSet.Snapshot, reused: false, writeSet);
         }
         catch (Exception exception)
         {
-            if (runStarted && !databaseCompleted)
+            if (snapshotCreated && !databasePublished)
             {
                 try
                 {
@@ -189,6 +204,8 @@ public sealed class SceneIndexWorkflow
                 }
             }
 
+            if (finalPromoted && !databasePublished)
+                DeleteOwnedFinal(buildId, sceneSnapshotId);
             DeleteOwnedStaging(buildId, sceneSnapshotId);
             throw;
         }
@@ -306,10 +323,20 @@ public sealed class SceneIndexWorkflow
 
     private static IReadOnlyList<string> Sidecars(string root, string primaryRelativePath)
     {
-        var candidates = new List<string> { primaryRelativePath + ".resS" };
+        var candidates = new List<string>
+        {
+            primaryRelativePath + ".resS",
+            primaryRelativePath + ".resource"
+        };
         if (primaryRelativePath.EndsWith(".assets", StringComparison.Ordinal))
             candidates.Add(primaryRelativePath[..^".assets".Length] + ".resource");
         return candidates.Where(relativePath => File.Exists(Path.Combine(root, relativePath))).ToArray();
+    }
+
+    private static void RequireSupportedUnityVersion(IReadOnlyList<VerifiedSceneContainer> containers)
+    {
+        if (containers.Any(container => !container.UnityVersion.StartsWith("2022.3.62", StringComparison.Ordinal)))
+            throw new InvalidDataException("Scene inputs must target Unity 2022.3.62.");
     }
 
     private static void RequireParserFacts(
@@ -334,6 +361,47 @@ public sealed class SceneIndexWorkflow
             Directory.Delete(paths.StagingRoot, recursive: true);
     }
 
+    private void DeleteOwnedFinal(string buildId, string sceneSnapshotId)
+    {
+        var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
+        if (Directory.Exists(paths.FinalRoot))
+            Directory.Delete(paths.FinalRoot, recursive: true);
+    }
+
+    private static async Task WriteStagingManifestAsync(
+        string stagingRoot,
+        SceneWriteSet writeSet,
+        IReadOnlyList<VerifiedSceneContainer> verifiedContainers,
+        CancellationToken cancellationToken)
+    {
+        var payload = new SceneIndexStagingPayload(
+            writeSet.Snapshot.SceneSnapshotId,
+            writeSet.Snapshot.ContainerManifestDigest,
+            new SceneIndexCounts(
+                writeSet.Containers.Count,
+                writeSet.Documents.Count,
+                writeSet.GameObjects.Count,
+                writeSet.Transforms.Count,
+                writeSet.Components.Count,
+                writeSet.References.Count),
+            verifiedContainers
+                .OrderBy(container => container.RelativePath, StringComparer.Ordinal)
+                .Select(container => new SceneIndexContainerManifest(
+                    container.RelativePath,
+                    container.ByteCount,
+                    container.Sha256,
+                    container.SidecarManifest))
+                .ToArray());
+        var payloadJson = JsonSerializer.Serialize(payload, ManifestJsonOptions);
+        var manifest = new SceneIndexStagingManifest(
+            payload,
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson))).ToLowerInvariant());
+        var path = Path.Combine(stagingRoot, "scene-index.manifest.json");
+        await using var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, useAsync: true);
+        await JsonSerializer.SerializeAsync(stream, manifest, ManifestJsonOptions, cancellationToken);
+        await stream.FlushAsync(cancellationToken);
+    }
+
     private static SceneIndexWorkflowResult ToResult(SceneSnapshotRecord snapshot, bool reused, SceneWriteSet? writeSet) =>
         new(
             snapshot.SceneSnapshotId,
@@ -350,4 +418,8 @@ public sealed class SceneIndexWorkflow
         exception is OperationCanceledException ? "Canceled" : "SceneIndexingFailed";
 
     private sealed record CodeIndexAuthority(IndexRunRecord Run, CodeSnapshotRecord Snapshot);
+    private sealed record SceneIndexStagingManifest(SceneIndexStagingPayload Payload, string SceneDataSha256);
+    private sealed record SceneIndexStagingPayload(string SceneSnapshotId, string ContainerManifestDigest, SceneIndexCounts Counts, IReadOnlyList<SceneIndexContainerManifest> Containers);
+    private sealed record SceneIndexCounts(int ContainerCount, int SceneCount, int GameObjectCount, int TransformCount, int ComponentCount, int ReferenceCount);
+    private sealed record SceneIndexContainerManifest(string RelativePath, long ByteCount, string Sha256, string SidecarManifest);
 }

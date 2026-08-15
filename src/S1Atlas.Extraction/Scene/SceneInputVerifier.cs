@@ -358,11 +358,15 @@ public sealed class SceneInputVerifier
             sidecarPath,
             $"{primaryPath}.resS",
             StringComparison.Ordinal);
-        var matchesResource = primaryPath.EndsWith(".assets", StringComparison.Ordinal) &&
-            string.Equals(
+        var matchesResource = string.Equals(
                 sidecarPath,
-                $"{primaryPath[..^".assets".Length]}.resource",
-                StringComparison.Ordinal);
+                $"{primaryPath}.resource",
+                StringComparison.Ordinal) ||
+            (primaryPath.EndsWith(".assets", StringComparison.Ordinal) &&
+             string.Equals(
+                 sidecarPath,
+                 $"{primaryPath[..^".assets".Length]}.resource",
+                 StringComparison.Ordinal));
         if (!matchesResS && !matchesResource)
         {
             throw new IOException(

@@ -31,6 +31,7 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
         await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
 
         await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, CreateWriteSet(snapshot, includeSecondDocument: true), "2026-08-14T01:01:00Z", cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
 
         var completed = await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken);
         Assert.Equal(SceneSnapshotStatus.Completed, completed!.Status);
@@ -173,6 +174,46 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
 
         Assert.Equal(0L, await CountAsync("scene_containers", cancellationToken));
         Assert.Null(await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task Completed_snapshot_is_not_queryable_until_publication_succeeds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, CreateWriteSet(snapshot), "2026-08-14T01:01:00Z", cancellationToken);
+
+        Assert.Null(await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken));
+        Assert.Equal(0, (await _repository.ListScenesAsync(
+            new SceneListQueryOptions(snapshot.SceneSnapshotId, null, null, 50), cancellationToken)).TotalCount);
+
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        Assert.NotNull(await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken));
+        Assert.Equal(1, (await _repository.ListScenesAsync(
+            new SceneListQueryOptions(snapshot.SceneSnapshotId, null, null, 50), cancellationToken)).TotalCount);
+    }
+
+    [Fact]
+    public async Task Unpublished_completion_can_be_failed_after_promotion_failure()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, CreateWriteSet(snapshot), "2026-08-14T01:01:00Z", cancellationToken);
+
+        await _repository.FailSceneSnapshotAsync(snapshot.SceneSnapshotId, "promotion_failed", "marker write failed", "2026-08-14T01:02:00Z", cancellationToken);
+
+        Assert.Null(await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken));
+        Assert.Null(await _repository.GetLatestCompletedSceneSnapshotAsync("build-a", cancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:03:00Z", cancellationToken));
     }
 
     [Fact]

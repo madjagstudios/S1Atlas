@@ -181,6 +181,83 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Failure_after_database_completion_never_publishes_or_reuses_the_snapshot()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) =>
+        {
+            var staging = Directory.GetDirectories(_root, "*.staging", SearchOption.AllDirectories).Single();
+            Directory.CreateDirectory(Path.Combine(staging, "complete.marker"));
+            return Parsed(containers);
+        });
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        var snapshot = Assert.Single(repository.CreatedSnapshots);
+        Assert.DoesNotContain(snapshot.SceneSnapshotId, repository.PublishedSnapshotIds);
+        Assert.Contains(snapshot.SceneSnapshotId, repository.FailedSnapshotIds);
+        Assert.Null(await repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, TestContext.Current.CancellationToken));
+        Assert.False(Directory.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, snapshot.SceneSnapshotId).FinalRoot));
+    }
+
+    [Fact]
+    public async Task Start_failure_marks_the_created_snapshot_failed_and_removes_owned_staging()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        repository.ThrowOnStart = true;
+        var workflow = CreateWorkflow(repository, Authority());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        var snapshot = Assert.Single(repository.CreatedSnapshots);
+        Assert.Contains(snapshot.SceneSnapshotId, repository.FailedSnapshotIds);
+        Assert.False(Directory.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, snapshot.SceneSnapshotId).StagingRoot));
+    }
+
+    [Fact]
+    public async Task Every_allowlisted_primary_includes_matching_resource_sidecars()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var installRoot = repository.Environment.Installation.InstallationRoot!;
+        Directory.CreateDirectory(Path.Combine(installRoot, "Schedule I_Data"));
+        File.WriteAllBytes(Path.Combine(installRoot, "Schedule I_Data", "level0.resource"), [1]);
+        var workflow = CreateWorkflow(repository, Authority());
+
+        await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.Contains(Path.Combine(installRoot, "Schedule I_Data", "level0.resource"), Assert.Single(repository.LastParsedContainers).SidecarPaths);
+    }
+
+    [Fact]
+    public async Task Unsupported_unity_version_is_rejected_before_parsing()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), unityVersion: "2022.3.61f1");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, repository.ParserCalls);
+    }
+
+    [Fact]
+    public async Task Promoted_scene_index_contains_a_bounded_manifest_with_counts_and_hash()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority());
+
+        var result = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        var manifest = Path.Combine(OwnedScenePaths.ForScheduleOne(_root, _buildId, result.SceneSnapshotId).FinalRoot, "scene-index.manifest.json");
+        Assert.True(File.Exists(manifest));
+        var text = await File.ReadAllTextAsync(manifest, TestContext.Current.CancellationToken);
+        Assert.Contains("sceneDataSha256", text, StringComparison.Ordinal);
+        Assert.Contains("containerCount", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Matching_completed_scene_snapshot_is_reused_and_force_creates_a_new_snapshot()
     {
         var repository = CreateRepository(replayVerified: true);
@@ -202,14 +279,16 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     private SceneIndexWorkflow CreateWorkflow(
         WorkflowRepository repository,
         Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> authority,
-        Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, IReadOnlyList<ParsedSceneContainer>>? parse = null)
+        Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, IReadOnlyList<ParsedSceneContainer>>? parse = null,
+        string unityVersion = "2022.3.62f1")
     {
         var installRoot = repository.Environment.Installation.InstallationRoot!;
         Directory.CreateDirectory(Path.Combine(installRoot, "Schedule I_Data"));
-        WriteSerializedFile(Path.Combine(installRoot, "Schedule I_Data", "level0"));
+        WriteSerializedFile(Path.Combine(installRoot, "Schedule I_Data", "level0"), unityVersion);
         var parser = new DelegateParser((containers, cancellationToken) =>
         {
             repository.ParserCalls++;
+            repository.LastParsedContainers = containers;
             return Task.FromResult(parse?.Invoke(containers, cancellationToken) ?? Parsed(containers));
         });
         var resolver = new SceneCodeSymbolResolver(
@@ -271,9 +350,8 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256,
             container.UnityVersion, container.SerializedFileVersion, [], [], false)).ToArray();
 
-    private static void WriteSerializedFile(string path)
+    private static void WriteSerializedFile(string path, string unityVersion)
     {
-        const string unityVersion = "2022.3.62f1";
         var metadata = Encoding.ASCII.GetBytes(unityVersion + "\0");
         var fileSize = 48 + metadata.Length;
         using var stream = File.Create(path);
@@ -322,9 +400,12 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public IndexRunRecord IndexRun { get; set; } = indexRun;
         public CodeSnapshotRecord CodeSnapshot { get; set; } = codeSnapshot;
         public int ParserCalls { get; set; }
+        public IReadOnlyList<VerifiedSceneContainer> LastParsedContainers { get; set; } = [];
         public bool ThrowOnComplete { get; set; }
+        public bool ThrowOnStart { get; set; }
         public List<SceneSnapshotRecord> CreatedSnapshots { get; } = [];
         public List<string> FailedSnapshotIds { get; } = [];
+        public List<string> PublishedSnapshotIds { get; } = [];
         public SceneSnapshotRecord? CompletedSnapshot { get; private set; }
 
         public Task<ExtractionAttempt?> GetAttemptAsync(string attemptId, CancellationToken cancellationToken) => Task.FromResult<ExtractionAttempt?>(Attempt);
@@ -332,9 +413,13 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<EnvironmentSnapshot?> GetCurrentSnapshotAsync(CancellationToken cancellationToken) => Task.FromResult<EnvironmentSnapshot?>(Environment);
         public Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken) => Task.FromResult<IndexRunRecord?>(IndexRun);
         public Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken) => Task.FromResult<CodeSnapshotRecord?>(CodeSnapshot);
-        public Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken) => Task.FromResult(CompletedSnapshot?.SceneSnapshotId == sceneSnapshotId ? CompletedSnapshot : null);
+        public Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken) => Task.FromResult(PublishedSnapshotIds.Contains(sceneSnapshotId) && CompletedSnapshot?.SceneSnapshotId == sceneSnapshotId ? CompletedSnapshot : null);
         public Task CreateSceneSnapshotAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken) { CreatedSnapshots.Add(snapshot); return Task.CompletedTask; }
-        public Task StartSceneSnapshotAsync(string sceneSnapshotId, string startedAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task StartSceneSnapshotAsync(string sceneSnapshotId, string startedAtUtc, CancellationToken cancellationToken)
+        {
+            if (ThrowOnStart) throw new InvalidOperationException("injected start failure");
+            return Task.CompletedTask;
+        }
         public Task CompleteSceneSnapshotAsync(string sceneSnapshotId, SceneWriteSet writeSet, string completedAtUtc, CancellationToken cancellationToken)
         {
             if (ThrowOnComplete) throw new InvalidOperationException("injected database rollback");
@@ -342,6 +427,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             return Task.CompletedTask;
         }
         public Task FailSceneSnapshotAsync(string sceneSnapshotId, string failureCode, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) { FailedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
+        public Task PublishSceneSnapshotAsync(string sceneSnapshotId, string publishedAtUtc, CancellationToken cancellationToken) { PublishedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
 
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task SaveSnapshotAsync(EnvironmentSnapshot snapshot, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -369,7 +455,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(CompletedSnapshot);
+        public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(PublishedSnapshotIds.Contains(CompletedSnapshot?.SceneSnapshotId ?? string.Empty) ? CompletedSnapshot : null);
         public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneDocumentRecord?> GetSceneAsync(string sceneSnapshotId, string sceneId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();

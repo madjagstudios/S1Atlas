@@ -124,7 +124,8 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             UPDATE scene_snapshots
             SET status = 'Failed', completed_at_utc = $completed,
                 failure_code = $code, failure_message = $message
-            WHERE scene_snapshot_id = $id AND status = 'Running';
+            WHERE scene_snapshot_id = $id
+              AND (status = 'Running' OR (status = 'Completed' AND published_at_utc IS NULL));
             """;
         command.Parameters.AddWithValue("$id", sceneSnapshotId);
         command.Parameters.AddWithValue("$code", failureCode);
@@ -134,12 +135,34 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             throw new InvalidOperationException($"Scene snapshot '{sceneSnapshotId}' could not be failed.");
     }
 
+    public async Task PublishSceneSnapshotAsync(
+        string sceneSnapshotId,
+        string publishedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(publishedAtUtc);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE scene_snapshots
+            SET published_at_utc = $published
+            WHERE scene_snapshot_id = $id
+              AND status = 'Completed'
+              AND published_at_utc IS NULL;
+            """;
+        command.Parameters.AddWithValue("$id", sceneSnapshotId);
+        command.Parameters.AddWithValue("$published", publishedAtUtc);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException($"Scene snapshot '{sceneSnapshotId}' could not be published.");
+    }
+
     public async Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = SnapshotSelectSql + " WHERE scene_snapshot_id = $id AND status = 'Completed';";
+        command.CommandText = SnapshotSelectSql + " WHERE scene_snapshot_id = $id AND status = 'Completed' AND published_at_utc IS NOT NULL;";
         command.Parameters.AddWithValue("$id", sceneSnapshotId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadSceneSnapshot(reader) : null;
@@ -151,7 +174,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = SnapshotSelectSql + """
-             WHERE build_id = $build AND status = 'Completed'
+             WHERE build_id = $build AND status = 'Completed' AND published_at_utc IS NOT NULL
              ORDER BY completed_at_utc DESC, scene_snapshot_id COLLATE BINARY DESC
              LIMIT 1;
             """;
@@ -168,7 +191,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         var total = await CountAsync(connection, """
             SELECT COUNT(*) FROM scenes AS scene
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND scene.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot
               AND ($kind IS NULL OR scene.kind = $kind)
               AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\\' COLLATE NOCASE);
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$kind", options.Kind?.ToString()), ("$query", escaped));
@@ -178,7 +201,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
                    scene.object_count, scene.root_count, scene.recovery_status
             FROM scenes AS scene
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND scene.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot
               AND ($kind IS NULL OR scene.kind = $kind)
               AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\\' COLLATE NOCASE)
             ORDER BY scene.name COLLATE BINARY, scene.scene_id COLLATE BINARY
@@ -201,7 +224,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             SELECT scene.scene_id, scene.scene_snapshot_id, scene.container_id, scene.kind, scene.name,
                    scene.source_local_file_id, scene.object_count, scene.root_count, scene.recovery_status
             FROM scenes AS scene INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = scene.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND scene.scene_snapshot_id = $snapshot AND scene.scene_id = $id;
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND scene.scene_snapshot_id = $snapshot AND scene.scene_id = $id;
             """;
         command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
         command.Parameters.AddWithValue("$id", sceneId);
@@ -218,7 +241,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             SELECT COUNT(*) FROM game_objects AS game_object
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
             LEFT JOIN transforms AS transform ON transform.game_object_id = game_object.game_object_id
-            WHERE snapshot.status = 'Completed' AND game_object.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($parent IS NULL OR transform.parent_game_object_id = $parent)
               AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\\' COLLATE NOCASE);
@@ -229,7 +252,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             FROM game_objects AS game_object
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
             LEFT JOIN transforms AS transform ON transform.game_object_id = game_object.game_object_id
-            WHERE snapshot.status = 'Completed' AND game_object.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($parent IS NULL OR transform.parent_game_object_id = $parent)
               AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\\' COLLATE NOCASE)
@@ -252,7 +275,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         command.CommandText = """
             SELECT game_object_id, scene_id, container_id, local_file_id, name, active, layer, tag, recovery_status
             FROM game_objects AS game_object INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND game_object.scene_snapshot_id = $snapshot AND game_object.game_object_id = $id;
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND game_object.game_object_id = $id;
             """;
         command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
         command.Parameters.AddWithValue("$id", gameObjectId);
@@ -269,7 +292,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             SELECT COUNT(*) FROM components AS component
             INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND game_object.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
               AND ($kind IS NULL OR component.kind = $kind)
@@ -284,7 +307,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             FROM components AS component
             INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND game_object.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
               AND ($kind IS NULL OR component.kind = $kind)
@@ -313,7 +336,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             FROM components AS component
             INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND game_object.scene_snapshot_id = $snapshot AND component.component_id = $id;
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND component.component_id = $id;
             """;
         command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
         command.Parameters.AddWithValue("$id", componentId);
@@ -331,7 +354,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             LEFT JOIN components AS component ON component.component_id = reference.source_component_id
             LEFT JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND reference.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
@@ -347,7 +370,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             LEFT JOIN components AS component ON component.component_id = reference.source_component_id
             LEFT JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND reference.scene_snapshot_id = $snapshot
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
               AND ($scene IS NULL OR game_object.scene_id = $scene)
               AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
