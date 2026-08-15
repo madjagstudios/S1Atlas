@@ -40,6 +40,7 @@ public sealed class RepositoryHygieneScriptTests
     [InlineData("validation.json")]
     [InlineData("extraction.json")]
     [InlineData("scene-manifest.json")]
+    [InlineData("scene-index.manifest.json")]
     [InlineData("scene-validation.json")]
     [InlineData("complete.marker")]
     [InlineData("extraction.lock")]

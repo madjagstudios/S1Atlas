@@ -79,7 +79,7 @@ public sealed class SceneSelector
         var byId = await _repository.GetComponentAsync(sceneSnapshotId, selector, cancellationToken);
         if (byId is not null) return SceneSelectionResult<SceneComponentRecord>.Resolved(byId);
 
-        var matches = (await _repository.FindComponentsByExactKindAsync(sceneSnapshotId, selector, CandidateLimit, cancellationToken))
+        var matches = (await _repository.FindComponentsByExactTypeAsync(sceneSnapshotId, selector, CandidateLimit, cancellationToken))
             .OrderBy(row => row.Kind, StringComparer.Ordinal)
             .ThenBy(row => row.ComponentId, StringComparer.Ordinal)
             .ToArray();

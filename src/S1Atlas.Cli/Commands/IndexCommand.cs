@@ -60,18 +60,7 @@ internal static class IndexCommand
                         {
                             return commandOutput.Failure(1, exception.Status.ToString(), exception.Message);
                         }
-                        var sceneData = new SceneIndexOutput(
-                            sceneResult.SceneSnapshotId,
-                            sceneBuildId,
-                            SceneIndexWorkflow.ParserId,
-                            SceneIndexWorkflow.ParserVersion,
-                            sceneResult.SceneCount,
-                            sceneResult.GameObjectCount,
-                            sceneResult.ComponentCount,
-                            sceneResult.ReferenceCount,
-                            sceneResult.RecoveryCounts ?? new Dictionary<string, int>(),
-                            sceneResult.Warnings ?? []);
-                        return commandOutput.Success(sceneData, writer => { writer.WriteLine($"scene {sceneData.SceneSnapshotId} | build {sceneData.BuildId} | parser {sceneData.ParserId} {sceneData.ParserVersion} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}"); writer.WriteLine("Recovery: " + string.Join(", ", sceneData.RecoveryCounts.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "=" + item.Value))); foreach (var warning in sceneData.Warnings) writer.WriteLine("Warning: " + warning); });
+                        return WriteSceneResult(commandOutput, sceneResult);
                     }
                     var requestedCodebase = parseResult.GetValue(codebaseOption);
                     var requestedChannel = parseResult.GetValue(channelOption);
@@ -178,6 +167,37 @@ internal static class IndexCommand
                 cancellationToken);
         });
         return command;
+    }
+
+    internal static int WriteSceneResult(CommandOutput commandOutput, SceneIndexWorkflowResult sceneResult)
+    {
+        ArgumentNullException.ThrowIfNull(commandOutput);
+        ArgumentNullException.ThrowIfNull(sceneResult);
+        var sceneData = new SceneIndexOutput(
+            sceneResult.SceneSnapshotId,
+            sceneResult.BuildId,
+            sceneResult.CodeIndexId,
+            sceneResult.ParserId,
+            sceneResult.ParserVersion,
+            sceneResult.Reused,
+            sceneResult.ContainerCount,
+            sceneResult.SceneCount,
+            sceneResult.GameObjectCount,
+            sceneResult.TransformCount,
+            sceneResult.ComponentCount,
+            sceneResult.ReferenceCount,
+            sceneResult.RecoveryCounts ?? new Dictionary<string, int>(),
+            sceneResult.Warnings ?? []);
+        return commandOutput.Success(sceneData, writer =>
+        {
+            writer.WriteLine(
+                $"scene {sceneData.SceneSnapshotId} | build {sceneData.BuildId} | code index {sceneData.CodeIndexId} | " +
+                $"parser {sceneData.ParserId} {sceneData.ParserVersion} | {(sceneData.Reused ? "reused" : "rebuilt")} | " +
+                $"containers {sceneData.ContainerCount} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | " +
+                $"transforms {sceneData.TransformCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}");
+            writer.WriteLine("Recovery: " + string.Join(", ", sceneData.RecoveryCounts.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "=" + item.Value)));
+            foreach (var warning in sceneData.Warnings) writer.WriteLine("Warning: " + warning);
+        });
     }
 
     private static bool TryParseApiCodebase(string? value, out CodebaseKind codebase)

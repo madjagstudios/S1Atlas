@@ -79,16 +79,26 @@ public sealed record ReferenceListQueryOptions(
 public sealed record ScenePageResult<T>(
     int TotalCount,
     int ReturnedCount,
-    IReadOnlyList<T> Rows)
+    IReadOnlyList<T> Rows,
+    int UnresolvedCount = 0)
 {
     public int TotalCount { get; init; } = RequireNonnegative(TotalCount, nameof(TotalCount));
     public int ReturnedCount { get; init; } = RequireNonnegative(ReturnedCount, nameof(ReturnedCount));
+    public int UnresolvedCount { get; init; } = RequireUnresolvedCount(TotalCount, UnresolvedCount);
     public IReadOnlyList<T> Rows { get; init; } = RequireRows(TotalCount, ReturnedCount, Rows);
 
     private static int RequireNonnegative(int value, string parameterName)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(value, parameterName);
         return value;
+    }
+
+    private static int RequireUnresolvedCount(int totalCount, int unresolvedCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(unresolvedCount, nameof(unresolvedCount));
+        if (unresolvedCount > totalCount)
+            throw new ArgumentException("UnresolvedCount must not exceed TotalCount.", nameof(unresolvedCount));
+        return unresolvedCount;
     }
 
     private static IReadOnlyList<T> RequireRows(int totalCount, int returnedCount, IReadOnlyList<T> rows)

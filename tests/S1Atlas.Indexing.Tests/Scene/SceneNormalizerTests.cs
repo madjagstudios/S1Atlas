@@ -389,6 +389,32 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         Assert.Equal(SceneResolutionStatus.Resolved, reference.ResolutionStatus);
     }
 
+    [Fact]
+    public async Task Stripped_mono_behaviour_keeps_its_game_object_attachment_without_inventing_script_identity()
+    {
+        var level = Container(
+            "Schedule I_Data/level0",
+            objects:
+            [
+                GameObject(1, "Retained owner", [new ParsedScenePPtr(0, 10)]),
+                Object(10, 114, ParsedSceneObjectKind.MonoBehaviour)
+            ]);
+
+        var result = await NormalizeAsync([level]);
+
+        var gameObject = Assert.Single(result.GameObjects);
+        var component = Assert.Single(result.Components);
+        Assert.Equal(gameObject.GameObjectId, component.GameObjectId);
+        Assert.Equal("MonoBehaviour", component.Kind);
+        Assert.Equal(SceneRecoveryStatus.GraphOnly, component.RecoveryStatus);
+        Assert.Equal(SceneResolutionStatus.Unavailable, component.TypeResolutionStatus);
+        Assert.Null(component.ScriptAssembly);
+        Assert.Null(component.ScriptNamespace);
+        Assert.Null(component.ScriptClass);
+        Assert.Null(component.ResolvedTypeSymbolId);
+        Assert.Null(component.ResolvedCodeIndexId);
+    }
+
     private async Task<SceneWriteSet> NormalizeAsync(
         IReadOnlyList<ParsedSceneContainer> parsed,
         SceneCodeSymbolResolver? resolver = null)

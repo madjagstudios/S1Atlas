@@ -149,7 +149,7 @@ public sealed class SceneIndexWorkflow
 
         var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
         if (Directory.Exists(paths.FinalRoot))
-            throw new InvalidOperationException("SceneIndexFinalPathAlreadyExists");
+            DeleteOwnedFinal(buildId, sceneSnapshotId);
 
         DeleteOwnedStaging(buildId, sceneSnapshotId);
         Directory.CreateDirectory(paths.StagingRoot);
@@ -223,12 +223,20 @@ public sealed class SceneIndexWorkflow
         }
     }
 
-    private async Task<PreferredVerifiedExtraction> RequireAuthorityAsync(string buildId, CancellationToken cancellationToken) =>
-        await _authorityResolver(buildId, cancellationToken) is { } authority &&
-        string.Equals(authority.BuildId, buildId, StringComparison.Ordinal) &&
-        string.Equals(authority.Extraction.BuildId, buildId, StringComparison.Ordinal)
-            ? authority
-            : throw new InvalidOperationException("NoPreferredVerifiedExtraction");
+    private async Task<PreferredVerifiedExtraction> RequireAuthorityAsync(string buildId, CancellationToken cancellationToken)
+    {
+        var authority = await _authorityResolver(buildId, cancellationToken);
+        if (authority is null ||
+            !string.Equals(authority.BuildId, buildId, StringComparison.Ordinal) ||
+            !string.Equals(authority.Extraction.BuildId, buildId, StringComparison.Ordinal))
+        {
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.NoPreferredVerifiedExtraction,
+                "No preferred replay-verified extraction exists for the requested build.");
+        }
+
+        return authority;
+    }
 
     private async Task<InputSnapshot> RequireReplayVerifiedInputAsync(
         PreferredVerifiedExtraction authority,
@@ -239,14 +247,18 @@ public sealed class SceneIndexWorkflow
         if (attempt?.InputSnapshotId is not { Length: > 0 } inputSnapshotId ||
             !string.Equals(attempt.BuildId, buildId, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("NoReplayVerifiedExtractionInput");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.NoReplayVerifiedExtractionInput,
+                "The preferred extraction does not identify a replay-verified input snapshot for the requested build.");
         }
 
         var input = await _extractionRepository.GetInputSnapshotAsync(inputSnapshotId, cancellationToken);
         if (input is null || !input.ReplayVerified ||
             !string.Equals(input.BuildId, buildId, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("NoReplayVerifiedExtractionInput");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.NoReplayVerifiedExtractionInput,
+                "The preferred extraction input snapshot is not replay-verified for the requested build.");
         }
 
         return input;
@@ -259,7 +271,9 @@ public sealed class SceneIndexWorkflow
             !string.Equals(environment.Build.BuildId, buildId, StringComparison.Ordinal) ||
             string.IsNullOrWhiteSpace(environment.Installation.InstallationRoot))
         {
-            throw new InvalidOperationException("NoMatchingEnvironmentSnapshot");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.NoMatchingEnvironmentSnapshot,
+                "The current environment snapshot does not match the requested scene-index build.");
         }
 
         return environment;
@@ -275,7 +289,9 @@ public sealed class SceneIndexWorkflow
             environmentSnapshotId: null,
             cancellationToken);
         if (run is null)
-            throw new InvalidOperationException("NoCompletedScheduleOneCodeIndex");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.NoCompletedScheduleOneCodeIndex,
+                "No completed Schedule I Installed code index is available for scene linking.");
 
         var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
         if (snapshot is null ||
@@ -284,7 +300,9 @@ public sealed class SceneIndexWorkflow
             string.IsNullOrWhiteSpace(snapshot.EnvironmentSnapshotId) ||
             !string.Equals(snapshot.SourceIdentity, authority.Extraction.ExtractionId, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("CrossBuildCodeIndex");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.CrossBuildCodeIndex,
+                "The completed Schedule I Installed code index does not belong to the selected extraction and build.");
         }
 
         return new CodeIndexAuthority(run, snapshot);
@@ -301,21 +319,27 @@ public sealed class SceneIndexWorkflow
         if (!string.Equals(finalAuthority.Extraction.ExtractionId, authority.Extraction.ExtractionId, StringComparison.Ordinal) ||
             !Equals(finalAuthority.Preference, authority.Preference))
         {
-            throw new InvalidOperationException("PreferredExtractionChanged");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.PreferredExtractionChanged,
+                "The preferred verified extraction changed while scene indexing was running.");
         }
 
         var finalInput = await RequireReplayVerifiedInputAsync(finalAuthority, buildId, cancellationToken);
         if (!string.Equals(finalInput.InputSnapshotId, inputSnapshot.InputSnapshotId, StringComparison.Ordinal) ||
             !string.Equals(finalInput.ManifestDigest, inputSnapshot.ManifestDigest, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("ReplayVerifiedInputChanged");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.ReplayVerifiedInputChanged,
+                "The replay-verified extraction input changed while scene indexing was running.");
         }
 
         var finalCode = await RequireCodeIndexAsync(finalAuthority, cancellationToken);
         if (!string.Equals(finalCode.Run.IndexId, code.Run.IndexId, StringComparison.Ordinal) ||
             !string.Equals(finalCode.Snapshot.SnapshotId, code.Snapshot.SnapshotId, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException("CodeIndexChanged");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.CodeIndexChanged,
+                "The completed Schedule I Installed code index changed while scene indexing was running.");
         }
     }
 
@@ -329,7 +353,9 @@ public sealed class SceneIndexWorkflow
                 Sidecars(root, relativePath)))
             .ToArray();
         if (declarations.Length == 0)
-            throw new InvalidOperationException("NoVerifiedSceneContainers");
+            throw new SceneIndexFailureException(
+                SceneQueryStatus.NoVerifiedSceneContainers,
+                "No allowlisted verified scene containers exist under the selected installation root.");
         return declarations;
     }
 
@@ -417,7 +443,10 @@ public sealed class SceneIndexWorkflow
     private static SceneIndexWorkflowResult ToResult(SceneSnapshotRecord snapshot, bool reused, SceneWriteSet? writeSet) =>
         new(
             snapshot.SceneSnapshotId,
+            snapshot.BuildId,
             snapshot.CodeIndexId,
+            snapshot.ParserId,
+            snapshot.ParserVersion,
             reused,
             writeSet?.Containers.Count ?? 0,
             writeSet?.Documents.Count ?? 0,
@@ -430,11 +459,23 @@ public sealed class SceneIndexWorkflow
 
     private async Task<SceneIndexWorkflowResult> ToResultAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken)
     {
-        var scenes = await _sceneRepository.ListScenesAsync(new SceneListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
-        var objects = await _sceneRepository.ListGameObjectsAsync(new GameObjectListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
-        var components = await _sceneRepository.ListComponentsAsync(new ComponentListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
-        var references = await _sceneRepository.ListReferencesAsync(new ReferenceListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
-        return new SceneIndexWorkflowResult(snapshot.SceneSnapshotId, snapshot.CodeIndexId, true, 0, scenes.TotalCount, objects.TotalCount, 0, components.TotalCount, references.TotalCount, new Dictionary<string, int>(), []);
+        var statistics = await _sceneRepository.GetSceneIndexStatisticsAsync(snapshot.SceneSnapshotId, cancellationToken)
+            ?? throw new InvalidOperationException("PublishedSceneSnapshotStatisticsMissing");
+        return new SceneIndexWorkflowResult(
+            snapshot.SceneSnapshotId,
+            snapshot.BuildId,
+            snapshot.CodeIndexId,
+            snapshot.ParserId,
+            snapshot.ParserVersion,
+            true,
+            statistics.ContainerCount,
+            statistics.DocumentCount,
+            statistics.GameObjectCount,
+            statistics.TransformCount,
+            statistics.ComponentCount,
+            statistics.ReferenceCount,
+            statistics.RecoveryCounts,
+            []);
     }
 
     private static IReadOnlyDictionary<string, int> RecoveryCounts(SceneWriteSet writeSet) =>

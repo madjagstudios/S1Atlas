@@ -1,4 +1,7 @@
 using S1Atlas.Cli;
+using S1Atlas.Cli.Commands;
+using S1Atlas.Cli.Output;
+using S1Atlas.Indexing.Scene;
 using S1Atlas.Storage.Sqlite;
 using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Builds;
@@ -54,6 +57,60 @@ public sealed class SceneCliTests : IAsyncDisposable
         Assert.Equal(1, jsonExit);
         Assert.Contains("NoEnvironmentSnapshot", humanError.ToString(), StringComparison.Ordinal);
         Assert.Contains("NoEnvironmentSnapshot", jsonOutput.ToString(), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, jsonError.ToString());
+    }
+
+    [Fact]
+    public async Task Index_scene_authority_failure_has_the_same_distinct_code_in_human_and_json()
+    {
+        await SeedPublishedSceneAsync();
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var humanOutput = new StringWriter(); using var humanError = new StringWriter();
+        using var jsonOutput = new StringWriter(); using var jsonError = new StringWriter();
+
+        var humanExit = application.Invoke(["index", "--scene", "--build", "build-a"], humanOutput, humanError, TestContext.Current.CancellationToken);
+        var jsonExit = application.Invoke(["index", "--scene", "--build", "build-a", "--json"], jsonOutput, jsonError, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, humanExit);
+        Assert.Equal(1, jsonExit);
+        Assert.Contains("NoPreferredVerifiedExtraction", humanError.ToString(), StringComparison.Ordinal);
+        Assert.Contains("NoPreferredVerifiedExtraction", jsonOutput.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("OperationalFailure", humanError.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("OperationalFailure", jsonOutput.ToString(), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, jsonError.ToString());
+    }
+
+    [Fact]
+    public void Index_scene_success_mapping_preserves_provenance_counts_and_human_json_parity()
+    {
+        var result = new SceneIndexWorkflowResult(
+            "snapshot-a",
+            "build-a",
+            "index-a",
+            "fixture-parser",
+            "9.1:forced:nonce",
+            true,
+            2,
+            3,
+            5,
+            7,
+            11,
+            13,
+            new Dictionary<string, int> { [nameof(S1Atlas.Core.Scenes.SceneRecoveryStatus.GraphOnly)] = 17 },
+            ["synthetic warning"]);
+        using var humanOutput = new StringWriter(); using var humanError = new StringWriter();
+        using var jsonOutput = new StringWriter(); using var jsonError = new StringWriter();
+
+        var humanExit = IndexCommand.WriteSceneResult(new CommandOutput("index", false, humanOutput, humanError), result);
+        var jsonExit = IndexCommand.WriteSceneResult(new CommandOutput("index", true, jsonOutput, jsonError), result);
+
+        Assert.Equal(0, humanExit);
+        Assert.Equal(0, jsonExit);
+        foreach (var expected in new[] { "snapshot-a", "build-a", "index-a", "fixture-parser", "9.1:forced:nonce", "reused", "containers 2", "documents 3", "objects 5", "transforms 7", "components 11", "references 13", "GraphOnly=17", "synthetic warning" })
+            Assert.Contains(expected, humanOutput.ToString(), StringComparison.Ordinal);
+        foreach (var property in new[] { "sceneSnapshotId", "buildId", "codeIndexId", "parserId", "parserVersion", "reused", "containerCount", "documentCount", "gameObjectCount", "transformCount", "componentCount", "referenceCount", "recoveryCounts", "warnings" })
+            Assert.Contains("\"" + property + "\"", jsonOutput.ToString(), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, humanError.ToString());
         Assert.Equal(string.Empty, jsonError.ToString());
     }
 

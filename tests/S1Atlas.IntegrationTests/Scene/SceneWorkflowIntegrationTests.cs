@@ -227,6 +227,56 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Stripped_mono_behaviour_record_publishes_as_an_attached_graph_only_component()
+    {
+        var setup = await CreateSetupAsync();
+        var parser = new DelegateParser((containers, _) => Task.FromResult<IReadOnlyList<ParsedSceneContainer>>(
+            containers.Select(container => new ParsedSceneContainer(
+                container.RelativePath,
+                container.PrimaryPath,
+                container.SidecarPaths,
+                container.Sha256,
+                container.UnityVersion,
+                container.SerializedFileVersion,
+                Path.GetFileName(container.RelativePath) == "level0"
+                    ?
+                    [
+                        new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [], new ParsedGameObjectData("Retained owner", 0, 0, true, [new ParsedScenePPtr(0, 10)]), null, null, null, null),
+                        new ParsedSceneObject(10, 114, 192, 32, ParsedSceneObjectKind.MonoBehaviour, [], null, null, null, null, null)
+                    ]
+                    : [],
+                [],
+                false)).ToArray()));
+        var workflow = new SceneIndexWorkflow(
+            setup.DataRoot,
+            setup.Repository,
+            setup.Repository,
+            setup.Repository,
+            (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(Authority()),
+            new SceneInputVerifier(new Sha256FileHasher()),
+            parser,
+            new SceneNormalizer(new SceneCodeSymbolResolver(setup.Repository), new SceneRecoveryClassifier()));
+
+        var result = await workflow.RunScheduleOneAsync(
+            _buildId,
+            force: false,
+            TestContext.Current.CancellationToken);
+        var components = await setup.Repository.ListComponentsAsync(
+            new ComponentListQueryOptions(result.SceneSnapshotId, Limit: 50),
+            TestContext.Current.CancellationToken);
+
+        var component = Assert.Single(components.Rows);
+        Assert.Equal("MonoBehaviour", component.Kind);
+        Assert.Equal(SceneRecoveryStatus.GraphOnly, component.RecoveryStatus);
+        Assert.Equal(SceneResolutionStatus.Unavailable, component.TypeResolutionStatus);
+        Assert.Null(component.ScriptAssembly);
+        Assert.Null(component.ScriptNamespace);
+        Assert.Null(component.ScriptClass);
+        Assert.Null(component.ResolvedTypeSymbolId);
+        Assert.NotNull(await setup.Repository.GetCompletedSceneSnapshotAsync(result.SceneSnapshotId, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Migration_8_completion_rolls_back_all_graph_rows_when_a_late_insert_fails()
     {
         var setup = await CreateSetupAsync();
@@ -453,6 +503,15 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
         string DatabasePath,
         SqliteAtlasRepository Repository,
         SceneIndexWorkflow Workflow);
+
+    private sealed class DelegateParser(
+        Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, Task<IReadOnlyList<ParsedSceneContainer>>> parse)
+        : IUnitySerializedFileParser
+    {
+        public Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(
+            IReadOnlyList<VerifiedSceneContainer> containers,
+            CancellationToken cancellationToken) => parse(containers, cancellationToken);
+    }
 
     private sealed class IntegrationSerializedFileFixture : IDisposable
     {

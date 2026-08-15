@@ -2,7 +2,10 @@ namespace S1Atlas.Indexing.Scene;
 
 public sealed record SceneIndexWorkflowResult(
     string SceneSnapshotId,
+    string BuildId,
     string CodeIndexId,
+    string ParserId,
+    string ParserVersion,
     bool Reused,
     int ContainerCount,
     int SceneCount,

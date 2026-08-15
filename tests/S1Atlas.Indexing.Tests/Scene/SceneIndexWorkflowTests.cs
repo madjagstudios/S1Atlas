@@ -33,10 +33,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         var repository = CreateRepository(replayVerified: true);
         var workflow = CreateWorkflow(repository, (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(null));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
 
-        Assert.Equal("NoPreferredVerifiedExtraction", exception.Message);
+        Assert.Equal(SceneQueryStatus.NoPreferredVerifiedExtraction, exception.Status);
         Assert.Empty(repository.CreatedSnapshots);
     }
 
@@ -46,10 +46,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         var repository = CreateRepository(replayVerified: false);
         var workflow = CreateWorkflow(repository, Authority());
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
 
-        Assert.Equal("NoReplayVerifiedExtractionInput", exception.Message);
+        Assert.Equal(SceneQueryStatus.NoReplayVerifiedExtractionInput, exception.Status);
         Assert.Equal(0, repository.ParserCalls);
     }
 
@@ -60,10 +60,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         repository.CodeSnapshot = repository.CodeSnapshot with { SourceIdentity = new string('f', 64) };
         var workflow = CreateWorkflow(repository, Authority());
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
 
-        Assert.Equal("CrossBuildCodeIndex", exception.Message);
+        Assert.Equal(SceneQueryStatus.CrossBuildCodeIndex, exception.Status);
         Assert.Empty(repository.CreatedSnapshots);
     }
 
@@ -149,10 +149,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
                         new ExtractionStatistics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, []))));
         });
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
 
-        Assert.Equal("PreferredExtractionChanged", exception.Message);
+        Assert.Equal(SceneQueryStatus.PreferredExtractionChanged, exception.Status);
         Assert.Null(repository.CompletedSnapshot);
     }
 
@@ -166,10 +166,10 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             return Parsed(containers);
         });
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
 
-        Assert.Equal("CodeIndexChanged", exception.Message);
+        Assert.Equal(SceneQueryStatus.CodeIndexChanged, exception.Status);
         Assert.Null(repository.CompletedSnapshot);
 
         repository = CreateRepository(replayVerified: true);
@@ -286,6 +286,11 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         Assert.False(first.Reused);
         Assert.True(reused.Reused);
         Assert.False(forced.Reused);
+        Assert.Equal(_buildId, first.BuildId);
+        Assert.Equal(_codeIndexId, first.CodeIndexId);
+        Assert.Equal(SceneIndexWorkflow.ParserId, first.ParserId);
+        Assert.Equal(SceneIndexWorkflow.ParserVersion, first.ParserVersion);
+        Assert.StartsWith(SceneIndexWorkflow.ParserVersion + ":forced:", forced.ParserVersion, StringComparison.Ordinal);
         Assert.NotEqual(first.SceneSnapshotId, forced.SceneSnapshotId);
         Assert.True(File.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, first.SceneSnapshotId).CompleteMarkerPath));
         Assert.Equal(1, first.ContainerCount);
@@ -294,6 +299,46 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         Assert.Equal(first.GameObjectCount, reused.GameObjectCount);
         Assert.Equal(first.ComponentCount, reused.ComponentCount);
         Assert.Equal(first.ReferenceCount, reused.ReferenceCount);
+        Assert.Equal(first.ContainerCount, reused.ContainerCount);
+        Assert.Equal(first.TransformCount, reused.TransformCount);
+        Assert.Equal(first.RecoveryCounts, reused.RecoveryCounts);
+    }
+
+    [Fact]
+    public async Task Failed_deterministic_rerun_reconciles_stale_owned_staging_and_final_paths()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var parseCalls = 0;
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) =>
+        {
+            parseCalls++;
+            if (parseCalls == 1)
+                throw new InvalidDataException("synthetic crash before completion");
+            return Parsed(containers);
+        });
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+        var sceneSnapshotId = Assert.Single(repository.CreatedSnapshots).SceneSnapshotId;
+        var paths = OwnedScenePaths.ForScheduleOne(_root, _buildId, sceneSnapshotId);
+        Directory.CreateDirectory(paths.StagingRoot);
+        await File.WriteAllTextAsync(
+            Path.Combine(paths.StagingRoot, "partial.tmp"),
+            "partial",
+            TestContext.Current.CancellationToken);
+        Directory.CreateDirectory(paths.FinalRoot);
+        await File.WriteAllTextAsync(
+            Path.Combine(paths.FinalRoot, "orphan.tmp"),
+            "orphan",
+            TestContext.Current.CancellationToken);
+
+        var result = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.Equal(sceneSnapshotId, result.SceneSnapshotId);
+        Assert.False(result.Reused);
+        Assert.False(Directory.Exists(paths.StagingRoot));
+        Assert.False(File.Exists(Path.Combine(paths.FinalRoot, "orphan.tmp")));
+        Assert.True(File.Exists(paths.CompleteMarkerPath));
     }
 
     private SceneIndexWorkflow CreateWorkflow(
@@ -478,6 +523,25 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(PublishedSnapshotIds.Contains(CompletedSnapshot?.SceneSnapshotId ?? string.Empty) ? CompletedSnapshot : null);
+        public Task<SceneIndexStatistics?> GetSceneIndexStatisticsAsync(string sceneSnapshotId, CancellationToken cancellationToken)
+        {
+            if (CompletedWriteSet is null || !PublishedSnapshotIds.Contains(sceneSnapshotId))
+                return Task.FromResult<SceneIndexStatistics?>(null);
+            return Task.FromResult<SceneIndexStatistics?>(new(
+                CompletedWriteSet.Containers.Count,
+                CompletedWriteSet.Documents.Count,
+                CompletedWriteSet.GameObjects.Count,
+                CompletedWriteSet.Transforms.Count,
+                CompletedWriteSet.Components.Count,
+                CompletedWriteSet.References.Count,
+                CompletedWriteSet.Documents.Select(row => row.RecoveryStatus)
+                    .Concat(CompletedWriteSet.GameObjects.Select(row => row.RecoveryStatus))
+                    .Concat(CompletedWriteSet.Transforms.Select(row => row.RecoveryStatus))
+                    .Concat(CompletedWriteSet.Components.Select(row => row.RecoveryStatus))
+                    .Concat(CompletedWriteSet.References.Select(row => row.RecoveryStatus))
+                    .GroupBy(status => status.ToString(), StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal)));
+        }
         public Task<IReadOnlyList<SceneContainerRecord>> GetSceneContainersAsync(string sceneSnapshotId, IReadOnlyList<string> containerIds, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneContainerRecord>>([]);
         public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneDocumentRecord>(CompletedWriteSet?.Documents.Count ?? 0, 0, []));
         public Task<IReadOnlyList<SceneDocumentRecord>> FindScenesByExactNameAsync(string sceneSnapshotId, string name, SceneDocumentKind? kind, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
@@ -486,7 +550,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneGameObjectRecord?> GetGameObjectAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneComponentRecord>(CompletedWriteSet?.Components.Count ?? 0, 0, []));
-        public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactKindAsync(string sceneSnapshotId, string kind, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneReferenceRecord>(CompletedWriteSet?.References.Count ?? 0, 0, []));
         public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();

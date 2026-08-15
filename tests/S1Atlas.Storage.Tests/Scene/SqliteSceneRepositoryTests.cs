@@ -84,6 +84,151 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Create_snapshot_reconciles_stale_running_and_failed_attempts_with_the_same_identity()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.CreateSceneSnapshotAsync(snapshot with { StartedAtUtc = "2026-08-14T01:00:00Z" }, cancellationToken);
+        await _repository.FailSceneSnapshotAsync(
+            snapshot.SceneSnapshotId,
+            "parse_failed",
+            "synthetic parser failure",
+            "2026-08-14T01:01:00Z",
+            cancellationToken);
+
+        await _repository.CreateSceneSnapshotAsync(snapshot with { StartedAtUtc = "2026-08-14T01:02:00Z" }, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        Assert.Equal(1L, await CountAsync("scene_snapshots", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Create_snapshot_reconciles_an_unpublished_completion_and_removes_its_owned_graph_rows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(
+            snapshot.SceneSnapshotId,
+            CreateWriteSet(snapshot),
+            "2026-08-14T01:01:00Z",
+            cancellationToken);
+
+        await _repository.CreateSceneSnapshotAsync(snapshot with { StartedAtUtc = "2026-08-14T01:02:00Z" }, cancellationToken);
+
+        Assert.Equal(1L, await CountAsync("scene_snapshots", cancellationToken));
+        Assert.Equal(0L, await CountAsync("scene_containers", cancellationToken));
+        Assert.Equal(0L, await CountAsync("serialized_refs", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Create_snapshot_preserves_an_immutable_published_snapshot()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(
+            snapshot.SceneSnapshotId,
+            CreateWriteSet(snapshot),
+            "2026-08-14T01:01:00Z",
+            cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.CreateSceneSnapshotAsync(snapshot with { StartedAtUtc = "2026-08-14T01:03:00Z" }, cancellationToken));
+
+        Assert.NotNull(await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken));
+        Assert.Equal(1L, await CountAsync("scene_containers", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Completion_atomically_persists_aggregate_and_document_recovery_with_reusable_statistics()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        var writeSet = CreateWriteSet(snapshot) with
+        {
+            Snapshot = snapshot with { RecoveryStatus = SceneRecoveryStatus.GraphOnly },
+            Documents =
+            [
+                new SceneDocumentRecord(
+                    "scene-a",
+                    snapshot.SceneSnapshotId,
+                    "container-a",
+                    SceneDocumentKind.Scene,
+                    "Alpha",
+                    1,
+                    2,
+                    1,
+                    SceneRecoveryStatus.PartiallyRecovered)
+            ]
+        };
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+
+        await _repository.CompleteSceneSnapshotAsync(
+            snapshot.SceneSnapshotId,
+            writeSet,
+            "2026-08-14T01:01:00Z",
+            cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        var completed = await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken);
+        var document = Assert.Single((await _repository.ListScenesAsync(
+            new SceneListQueryOptions(snapshot.SceneSnapshotId), cancellationToken)).Rows);
+        var statistics = await _repository.GetSceneIndexStatisticsAsync(snapshot.SceneSnapshotId, cancellationToken);
+
+        Assert.Equal(SceneRecoveryStatus.GraphOnly, completed!.RecoveryStatus);
+        Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, document.RecoveryStatus);
+        Assert.NotNull(statistics);
+        Assert.NotEmpty(statistics.RecoveryCounts);
+        Assert.Equal(1, statistics.RecoveryCounts[nameof(SceneRecoveryStatus.PartiallyRecovered)]);
+    }
+
+    [Fact]
+    public async Task GameObject_sourced_references_use_container_local_identity_for_filters_and_full_unresolved_counts()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        var writeSet = CreateWriteSet(snapshot) with
+        {
+            References =
+            [
+                new SceneReferenceRecord("reference-a", snapshot.SceneSnapshotId, null, "a", "GameObject", "container-a", 11, "container-a", 11, "object-a", null, null, null, SceneResolutionStatus.Resolved, "evidence", SceneRecoveryStatus.FullyRecovered),
+                new SceneReferenceRecord("reference-b", snapshot.SceneSnapshotId, null, "b", "GameObject", "container-a", 11, null, null, null, null, null, "missing-b", SceneResolutionStatus.UnresolvedText, "evidence", SceneRecoveryStatus.PartiallyRecovered),
+                new SceneReferenceRecord("reference-c", snapshot.SceneSnapshotId, null, "c", "GameObject", "container-a", 11, null, null, null, null, null, "missing-c", SceneResolutionStatus.Unavailable, "evidence", SceneRecoveryStatus.GraphOnly)
+            ]
+        };
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, writeSet, "2026-08-14T01:01:00Z", cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        var byScene = await _repository.ListReferencesAsync(
+            new ReferenceListQueryOptions(snapshot.SceneSnapshotId, SceneId: "scene-a", Limit: 1),
+            cancellationToken);
+        var byObject = await _repository.ListReferencesAsync(
+            new ReferenceListQueryOptions(snapshot.SceneSnapshotId, GameObjectId: "object-a", Limit: 1),
+            cancellationToken);
+
+        Assert.Equal(3, byScene.TotalCount);
+        Assert.Equal(1, byScene.ReturnedCount);
+        Assert.Equal(2, byScene.UnresolvedCount);
+        Assert.Equal(3, byObject.TotalCount);
+        Assert.Equal(1, byObject.ReturnedCount);
+        Assert.Equal(2, byObject.UnresolvedCount);
+    }
+
+    [Fact]
     public async Task Completion_rejects_cross_build_authorities_without_committing_scene_rows()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -174,6 +319,86 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
 
         Assert.Equal(0L, await CountAsync("scene_containers", cancellationToken));
         Assert.Null(await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken));
+    }
+
+    [Fact]
+    public async Task Exact_component_type_lookup_matches_built_in_kind_and_normalized_mono_behaviour_identity()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        var writeSet = CreateWriteSet(snapshot) with
+        {
+            Components =
+            [
+                new SceneComponentRecord("component-a", "object-a", "container-a", 12, 4, "Transform", null, null, null, "symbol-build-a", "index-build-a", SceneResolutionStatus.Resolved, SceneRecoveryStatus.FullyRecovered),
+                new SceneComponentRecord("component-widget-a", "object-a", "container-a", 13, 114, "MonoBehaviour", "Assembly-CSharp", "Game", "Widget", null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.GraphOnly),
+                new SceneComponentRecord("component-widget-b", "object-a", "container-a", 14, 114, "MonoBehaviour", "Assembly-CSharp", "Game", "Widget", null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.GraphOnly),
+                new SceneComponentRecord("component-unique", "object-a", "container-a", 15, 114, "MonoBehaviour", "Assembly-CSharp", "Game", "Unique", null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.GraphOnly)
+            ]
+        };
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, writeSet, "2026-08-14T01:01:00Z", cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        var builtIn = await _repository.FindComponentsByExactTypeAsync(
+            snapshot.SceneSnapshotId, "Transform", 50, cancellationToken);
+        var uniqueScript = await _repository.FindComponentsByExactTypeAsync(
+            snapshot.SceneSnapshotId, "Game.Unique", 50, cancellationToken);
+        var ambiguousScript = await _repository.FindComponentsByExactTypeAsync(
+            snapshot.SceneSnapshotId, "Game.Widget", 50, cancellationToken);
+
+        Assert.Equal("component-a", Assert.Single(builtIn).ComponentId);
+        Assert.Equal("component-unique", Assert.Single(uniqueScript).ComponentId);
+        Assert.Equal(["component-widget-a", "component-widget-b"], ambiguousScript.Select(component => component.ComponentId));
+    }
+
+    [Fact]
+    public async Task Completion_rejects_reference_target_symbol_from_another_build_code_index()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        await SeedBuildAsync("build-b", cancellationToken);
+        await ExecuteAsync("INSERT INTO environment_snapshots(snapshot_id, build_id, atlas_version, captured_at_utc, identity_version) VALUES ('environment-build-b', 'build-b', 'atlas', '2026-01-02', 1); INSERT INTO code_snapshots(snapshot_id, codebase, channel, environment_snapshot_id, source_identity, created_at_utc) VALUES ('code-build-b', 'ScheduleI', 'Installed', 'environment-build-b', 'source-b', '2026-01-02'); INSERT INTO index_runs(index_id, snapshot_id, status, started_at_utc, completed_at_utc) VALUES ('index-build-b', 'code-build-b', 'Completed', '2026-01-02', '2026-01-02'); INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort) VALUES ('symbol-build-b', 'code-build-b', 'ScheduleI:Installed:Type:Game.OtherBuild', 'Type', 'Game.OtherBuild', 'Game.OtherBuild', 0);");
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        var writeSet = CreateWriteSet(snapshot) with
+        {
+            References =
+            [
+                new SceneReferenceRecord("reference-a", snapshot.SceneSnapshotId, "component-a", "target", "MonoScript", "container-a", 12, null, null, null, null, "symbol-build-b", null, SceneResolutionStatus.Resolved, "evidence", SceneRecoveryStatus.FullyRecovered)
+            ]
+        };
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, writeSet, "2026-08-14T01:01:00Z", cancellationToken));
+
+        Assert.Equal(0L, await CountAsync("scene_containers", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Completion_rejects_reference_target_symbol_from_another_same_build_code_index()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        await ExecuteAsync("INSERT INTO code_snapshots(snapshot_id, codebase, channel, environment_snapshot_id, source_identity, created_at_utc) VALUES ('code-other', 'ScheduleI', 'Installed', 'environment-build-a', 'source', '2026-01-02'); INSERT INTO index_runs(index_id, snapshot_id, status, started_at_utc, completed_at_utc) VALUES ('index-other', 'code-other', 'Completed', '2026-01-02', '2026-01-02'); INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort) VALUES ('symbol-other', 'code-other', 'ScheduleI:Installed:Type:Game.Other', 'Type', 'Game.Other', 'Game.Other', 0);");
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        var writeSet = CreateWriteSet(snapshot) with
+        {
+            References =
+            [
+                new SceneReferenceRecord("reference-a", snapshot.SceneSnapshotId, "component-a", "target", "MonoScript", "container-a", 12, null, null, null, null, "symbol-other", null, SceneResolutionStatus.Resolved, "evidence", SceneRecoveryStatus.FullyRecovered)
+            ]
+        };
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, writeSet, "2026-08-14T01:01:00Z", cancellationToken));
+
+        Assert.Equal(0L, await CountAsync("scene_containers", cancellationToken));
     }
 
     [Fact]

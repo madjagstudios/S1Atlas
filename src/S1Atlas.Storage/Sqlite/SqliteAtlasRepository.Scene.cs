@@ -13,20 +13,62 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             throw new ArgumentException("A scene snapshot must be created in Running status.", nameof(snapshot));
 
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            INSERT INTO scene_snapshots (
-                scene_snapshot_id, build_id, extraction_id, input_snapshot_id,
-                code_snapshot_id, code_index_id, parser_id, parser_version,
-                container_manifest_digest, status, recovery_status, started_at_utc,
-                completed_at_utc, failure_code, failure_message)
-            VALUES (
-                $id, $build, $extraction, $input, $codeSnapshot, $codeIndex,
-                $parserId, $parserVersion, $digest, 'Running', $recovery, $started,
-                NULL, NULL, NULL);
-            """;
-        AddSnapshotParameters(command, snapshot);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await using (var existing = connection.CreateCommand())
+            {
+                existing.Transaction = transaction;
+                existing.CommandText = "SELECT published_at_utc FROM scene_snapshots WHERE scene_snapshot_id = $id;";
+                existing.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
+                await using var reader = await existing.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0))
+                    throw new InvalidOperationException($"Published scene snapshot '{snapshot.SceneSnapshotId}' is immutable.");
+            }
+
+            await using (var reconcile = connection.CreateCommand())
+            {
+                reconcile.Transaction = transaction;
+                reconcile.CommandText = """
+                    DELETE FROM serialized_refs WHERE scene_snapshot_id = $id;
+                    DELETE FROM transforms
+                    WHERE game_object_id IN (
+                        SELECT game_object_id FROM game_objects WHERE scene_snapshot_id = $id);
+                    DELETE FROM components
+                    WHERE game_object_id IN (
+                        SELECT game_object_id FROM game_objects WHERE scene_snapshot_id = $id);
+                    DELETE FROM game_objects WHERE scene_snapshot_id = $id;
+                    DELETE FROM scenes WHERE scene_snapshot_id = $id;
+                    DELETE FROM scene_containers WHERE scene_snapshot_id = $id;
+                    DELETE FROM scene_snapshots
+                    WHERE scene_snapshot_id = $id AND published_at_utc IS NULL;
+                    """;
+                reconcile.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
+                await reconcile.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO scene_snapshots (
+                    scene_snapshot_id, build_id, extraction_id, input_snapshot_id,
+                    code_snapshot_id, code_index_id, parser_id, parser_version,
+                    container_manifest_digest, status, recovery_status, started_at_utc,
+                    completed_at_utc, failure_code, failure_message)
+                VALUES (
+                    $id, $build, $extraction, $input, $codeSnapshot, $codeIndex,
+                    $parserId, $parserVersion, $digest, 'Running', $recovery, $started,
+                    NULL, NULL, NULL);
+                """;
+            AddSnapshotParameters(command, snapshot);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task StartSceneSnapshotAsync(string sceneSnapshotId, string startedAtUtc, CancellationToken cancellationToken)
@@ -71,6 +113,12 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
                 snapshot,
                 writeSet.Components,
                 cancellationToken);
+            await ValidateReferenceSymbolAuthoritiesAsync(
+                connection,
+                transaction,
+                snapshot,
+                writeSet.References,
+                cancellationToken);
 
             foreach (var container in writeSet.Containers)
                 await InsertContainerAsync(connection, transaction, container, cancellationToken);
@@ -90,10 +138,12 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             update.CommandText = """
                 UPDATE scene_snapshots
                 SET status = 'Completed', completed_at_utc = $completed,
+                    recovery_status = $recovery,
                     failure_code = NULL, failure_message = NULL
                 WHERE scene_snapshot_id = $id AND status = 'Running';
                 """;
             update.Parameters.AddWithValue("$completed", completedAtUtc);
+            update.Parameters.AddWithValue("$recovery", writeSet.Snapshot.RecoveryStatus.ToString());
             update.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
             if (await update.ExecuteNonQueryAsync(cancellationToken) != 1)
                 throw new InvalidOperationException($"Scene snapshot '{sceneSnapshotId}' could not be completed.");
@@ -181,6 +231,70 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         command.Parameters.AddWithValue("$build", buildId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? ReadSceneSnapshot(reader) : null;
+    }
+
+    public async Task<SceneIndexStatistics?> GetSceneIndexStatisticsAsync(
+        string sceneSnapshotId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var counts = connection.CreateCommand();
+        counts.CommandText = """
+            SELECT
+                (SELECT COUNT(*) FROM scene_containers WHERE scene_snapshot_id = snapshot.scene_snapshot_id),
+                (SELECT COUNT(*) FROM scenes WHERE scene_snapshot_id = snapshot.scene_snapshot_id),
+                (SELECT COUNT(*) FROM game_objects WHERE scene_snapshot_id = snapshot.scene_snapshot_id),
+                (SELECT COUNT(*) FROM transforms AS transform
+                    INNER JOIN game_objects AS game_object ON game_object.game_object_id = transform.game_object_id
+                    WHERE game_object.scene_snapshot_id = snapshot.scene_snapshot_id),
+                (SELECT COUNT(*) FROM components AS component
+                    INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
+                    WHERE game_object.scene_snapshot_id = snapshot.scene_snapshot_id),
+                (SELECT COUNT(*) FROM serialized_refs WHERE scene_snapshot_id = snapshot.scene_snapshot_id)
+            FROM scene_snapshots AS snapshot
+            WHERE snapshot.scene_snapshot_id = $snapshot
+              AND snapshot.status = 'Completed'
+              AND snapshot.published_at_utc IS NOT NULL;
+            """;
+        counts.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        int[] values;
+        await using (var countReader = await counts.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await countReader.ReadAsync(cancellationToken))
+                return null;
+            values = Enumerable.Range(0, 6).Select(countReader.GetInt32).ToArray();
+        }
+
+        await using var recovery = connection.CreateCommand();
+        recovery.CommandText = """
+            SELECT recovery_status, COUNT(*)
+            FROM (
+                SELECT recovery_status FROM scenes WHERE scene_snapshot_id = $snapshot
+                UNION ALL
+                SELECT recovery_status FROM game_objects WHERE scene_snapshot_id = $snapshot
+                UNION ALL
+                SELECT transform.recovery_status FROM transforms AS transform
+                    INNER JOIN game_objects AS game_object ON game_object.game_object_id = transform.game_object_id
+                    WHERE game_object.scene_snapshot_id = $snapshot
+                UNION ALL
+                SELECT component.recovery_status FROM components AS component
+                    INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
+                    WHERE game_object.scene_snapshot_id = $snapshot
+                UNION ALL
+                SELECT recovery_status FROM serialized_refs WHERE scene_snapshot_id = $snapshot
+            )
+            GROUP BY recovery_status
+            ORDER BY recovery_status COLLATE BINARY;
+            """;
+        recovery.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        var recoveryCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        await using var recoveryReader = await recovery.ExecuteReaderAsync(cancellationToken);
+        while (await recoveryReader.ReadAsync(cancellationToken))
+            recoveryCounts.Add(recoveryReader.GetString(0), recoveryReader.GetInt32(1));
+
+        return new SceneIndexStatistics(
+            values[0], values[1], values[2], values[3], values[4], values[5], recoveryCounts);
     }
 
     public async Task<IReadOnlyList<SceneContainerRecord>> GetSceneContainersAsync(string sceneSnapshotId, IReadOnlyList<string> containerIds, CancellationToken cancellationToken)
@@ -368,11 +482,37 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         return await reader.ReadAsync(cancellationToken) ? ReadComponent(reader) : null;
     }
 
-    public async Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactKindAsync(string sceneSnapshotId, string kind, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT component.component_id, component.game_object_id, component.container_id, component.local_file_id, component.unity_class_id, component.kind, component.script_assembly, component.script_namespace, component.script_class, component.resolved_type_symbol_id, component.resolved_code_index_id, component.type_resolution_status, component.recovery_status FROM components AS component INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND component.kind = $kind COLLATE BINARY ORDER BY component.component_id COLLATE BINARY LIMIT $limit;";
-        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$kind", kind); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneComponentRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadComponent(reader)); return rows;
+        command.CommandText = """
+            SELECT component.component_id, component.game_object_id, component.container_id, component.local_file_id,
+                   component.unity_class_id, component.kind, component.script_assembly, component.script_namespace,
+                   component.script_class, component.resolved_type_symbol_id, component.resolved_code_index_id,
+                   component.type_resolution_status, component.recovery_status
+            FROM components AS component
+            INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
+            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
+            WHERE snapshot.status = 'Completed'
+              AND snapshot.published_at_utc IS NOT NULL
+              AND game_object.scene_snapshot_id = $snapshot
+              AND (
+                    component.kind = $selector COLLATE BINARY
+                    OR CASE
+                        WHEN component.script_class IS NULL THEN NULL
+                        WHEN component.script_namespace IS NULL OR component.script_namespace = '' THEN component.script_class
+                        ELSE component.script_namespace || '.' || component.script_class
+                       END = $selector COLLATE BINARY)
+            ORDER BY component.component_id COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        command.Parameters.AddWithValue("$selector", selector);
+        command.Parameters.AddWithValue("$limit", limit);
+        var rows = new List<SceneComponentRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadComponent(reader));
+        return rows;
     }
 
     public async Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken)
@@ -383,13 +523,35 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         var total = await CountAsync(connection, """
             SELECT COUNT(*) FROM serialized_refs AS reference
             LEFT JOIN components AS component ON component.component_id = reference.source_component_id
-            LEFT JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
+            LEFT JOIN game_objects AS component_game_object ON component_game_object.game_object_id = component.game_object_id
+            LEFT JOIN game_objects AS source_game_object
+              ON reference.source_component_id IS NULL
+             AND source_game_object.scene_snapshot_id = reference.scene_snapshot_id
+             AND source_game_object.container_id = reference.source_container_id
+             AND source_game_object.local_file_id = reference.source_local_file_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR game_object.scene_id = $scene)
-              AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
+              AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
+              AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
               AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\\' COLLATE NOCASE);
+            """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$component", options.SourceComponentId), ("$query", escaped));
+        var unresolved = await CountAsync(connection, """
+            SELECT COUNT(*) FROM serialized_refs AS reference
+            LEFT JOIN components AS component ON component.component_id = reference.source_component_id
+            LEFT JOIN game_objects AS component_game_object ON component_game_object.game_object_id = component.game_object_id
+            LEFT JOIN game_objects AS source_game_object
+              ON reference.source_component_id IS NULL
+             AND source_game_object.scene_snapshot_id = reference.scene_snapshot_id
+             AND source_game_object.container_id = reference.source_container_id
+             AND source_game_object.local_file_id = reference.source_local_file_id
+            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
+              AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
+              AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
+              AND ($component IS NULL OR reference.source_component_id = $component)
+              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\\' COLLATE NOCASE)
+              AND reference.resolution_status <> 'Resolved';
             """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$component", options.SourceComponentId), ("$query", escaped));
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -399,11 +561,16 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
                    reference.resolution_status, reference.evidence, reference.recovery_status
             FROM serialized_refs AS reference
             LEFT JOIN components AS component ON component.component_id = reference.source_component_id
-            LEFT JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
+            LEFT JOIN game_objects AS component_game_object ON component_game_object.game_object_id = component.game_object_id
+            LEFT JOIN game_objects AS source_game_object
+              ON reference.source_component_id IS NULL
+             AND source_game_object.scene_snapshot_id = reference.scene_snapshot_id
+             AND source_game_object.container_id = reference.source_container_id
+             AND source_game_object.local_file_id = reference.source_local_file_id
             INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
             WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR game_object.scene_id = $scene)
-              AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
+              AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
+              AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
               AND ($component IS NULL OR reference.source_component_id = $component)
               AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\\' COLLATE NOCASE)
             ORDER BY reference.field_path COLLATE BINARY, reference.reference_id COLLATE BINARY
@@ -413,7 +580,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         var rows = new List<SceneReferenceRecord>(Math.Min(options.Limit, 256));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadReference(reader));
-        return new ScenePageResult<SceneReferenceRecord>(total, rows.Count, rows);
+        return new ScenePageResult<SceneReferenceRecord>(total, rows.Count, rows, unresolved);
     }
 
     private const string SnapshotSelectSql = """
@@ -510,6 +677,59 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             if (Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture) != 1)
             {
                 throw new InvalidOperationException("Resolved scene component type symbols must belong to the snapshot's Schedule I code snapshot.");
+            }
+        }
+    }
+
+    private static async Task ValidateReferenceSymbolAuthoritiesAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        SceneSnapshotRecord snapshot,
+        IReadOnlyList<SceneReferenceRecord> references,
+        CancellationToken cancellationToken)
+    {
+        var symbolIds = references
+            .Select(reference => reference.TargetSymbolId)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        foreach (var symbolChunk in symbolIds.Chunk(500))
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            var parameters = symbolChunk.Select((symbolId, index) =>
+            {
+                var name = "$symbol" + index;
+                command.Parameters.AddWithValue(name, symbolId);
+                return name;
+            }).ToArray();
+            command.CommandText = $"""
+                SELECT COUNT(*)
+                FROM symbols AS symbol
+                INNER JOIN code_snapshots AS code_snapshot ON code_snapshot.snapshot_id = symbol.snapshot_id
+                INNER JOIN environment_snapshots AS environment ON environment.snapshot_id = code_snapshot.environment_snapshot_id
+                INNER JOIN index_runs AS code_index
+                    ON code_index.index_id = $codeIndex
+                   AND code_index.snapshot_id = symbol.snapshot_id
+                WHERE symbol.symbol_id IN ({string.Join(',', parameters)})
+                  AND symbol.snapshot_id = $codeSnapshot
+                  AND symbol.kind = 'Type'
+                  AND symbol.canonical_key LIKE 'ScheduleI:Installed:Type:%'
+                  AND code_snapshot.codebase = 'ScheduleI'
+                  AND code_snapshot.channel = 'Installed'
+                  AND environment.build_id = $build
+                  AND code_index.status = 'Completed';
+                """;
+            command.Parameters.AddWithValue("$codeIndex", snapshot.CodeIndexId);
+            command.Parameters.AddWithValue("$codeSnapshot", snapshot.CodeSnapshotId);
+            command.Parameters.AddWithValue("$build", snapshot.BuildId);
+            var validated = Convert.ToInt32(
+                await command.ExecuteScalarAsync(cancellationToken),
+                System.Globalization.CultureInfo.InvariantCulture);
+            if (validated != symbolChunk.Length)
+            {
+                throw new InvalidOperationException(
+                    "Serialized reference target symbols must belong to the scene snapshot's exact completed Schedule I Installed code index and build.");
             }
         }
     }

@@ -157,6 +157,67 @@ public sealed class SceneQueryServiceTests
         Assert.Empty(repository.SceneLimits);
     }
 
+    [Fact]
+    public async Task Scene_reference_outcome_uses_the_full_filtered_set_beyond_the_returned_page()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Documents = [Document("scene-a", "Arena")];
+        repository.References = Enumerable.Range(0, 51)
+            .Select(index => new SceneReferenceRecord(
+                "reference-" + index,
+                "snapshot-a",
+                null,
+                "field-" + index,
+                "GameObject",
+                "container-a",
+                1,
+                null,
+                null,
+                null,
+                null,
+                null,
+                index == 50 ? "missing" : null,
+                index == 50 ? SceneResolutionStatus.UnresolvedText : SceneResolutionStatus.Resolved,
+                "evidence",
+                SceneRecoveryStatus.FullyRecovered))
+            .ToArray();
+
+        var result = await new SceneQueryService(repository).SceneAsync(
+            new SceneQueryRequest("snapshot-a", "scene-a", IncludeReferences: true, Limit: 1),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(51, result.References.TotalCount);
+        Assert.Equal(1, result.References.ReturnedCount);
+        Assert.Equal(1, result.References.UnresolvedCount);
+        Assert.All(result.References.Rows, reference => Assert.Equal(SceneResolutionStatus.Resolved, reference.ResolutionStatus));
+        Assert.Equal(SceneQueryStatus.UnresolvedSceneReference, result.Status);
+    }
+
+    [Fact]
+    public async Task Component_selector_preserves_exact_and_ambiguous_semantics_for_normalized_script_types()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Components =
+        [
+            new SceneComponentRecord("component-transform", "object-a", "container-a", 1, 4, "Transform", null, null, null, null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.FullyRecovered),
+            new SceneComponentRecord("component-unique", "object-a", "container-a", 2, 114, "MonoBehaviour", "Assembly-CSharp", "Game", "Unique", null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.GraphOnly),
+            new SceneComponentRecord("component-widget-a", "object-a", "container-a", 3, 114, "MonoBehaviour", "Assembly-CSharp", "Game", "Widget", null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.GraphOnly),
+            new SceneComponentRecord("component-widget-b", "object-a", "container-a", 4, 114, "MonoBehaviour", "Assembly-CSharp", "Game", "Widget", null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.GraphOnly)
+        ];
+        var selector = new SceneSelector(repository);
+
+        var builtIn = await selector.ResolveComponentAsync("snapshot-a", "Transform", TestContext.Current.CancellationToken);
+        var unique = await selector.ResolveComponentAsync("snapshot-a", "Game.Unique", TestContext.Current.CancellationToken);
+        var ambiguous = await selector.ResolveComponentAsync("snapshot-a", "Game.Widget", TestContext.Current.CancellationToken);
+
+        Assert.Equal("component-transform", builtIn.Selected!.ComponentId);
+        Assert.Equal("component-unique", unique.Selected!.ComponentId);
+        Assert.Equal(SceneQueryStatus.AmbiguousComponent, ambiguous.Status);
+        Assert.Equal(["component-widget-a", "component-widget-b"], ambiguous.Candidates.Select(component => component.ComponentId));
+    }
+
     private static SceneSnapshotRecord Snapshot() => new(
         "snapshot-a", "build-a", "extraction-a", "input-a", "code-a", "index-a", "parser", "1",
         new string('a', 64), SceneSnapshotStatus.Completed, SceneRecoveryStatus.FullyRecovered, "2026-08-15T00:00:00Z");
@@ -172,12 +233,14 @@ public sealed class SceneQueryServiceTests
         public Dictionary<string, SceneSnapshotRecord> Snapshots { get; } = [];
         public IReadOnlyList<SceneDocumentRecord> Documents { get; set; } = [];
         public IReadOnlyList<SceneComponentRecord> Components { get; set; } = [];
+        public IReadOnlyList<SceneReferenceRecord> References { get; set; } = [];
         public IReadOnlyList<SceneContainerRecord> Containers { get; set; } = [];
         public List<int> SceneLimits { get; } = [];
         public int ExactSceneNameLookups { get; private set; }
 
         public Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken) => Task.FromResult(Snapshots.GetValueOrDefault(sceneSnapshotId));
         public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(Snapshots.Values.SingleOrDefault(snapshot => snapshot.BuildId == buildId));
+        public Task<SceneIndexStatistics?> GetSceneIndexStatisticsAsync(string sceneSnapshotId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken)
         {
             SceneLimits.Add(options.Limit);
@@ -199,8 +262,20 @@ public sealed class SceneQueryServiceTests
             return Task.FromResult(new ScenePageResult<SceneComponentRecord>(rows.Length, rows.Length, rows));
         }
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => Task.FromResult(Components.SingleOrDefault(component => component.ComponentId == componentId));
-        public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactKindAsync(string sceneSnapshotId, string kind, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneComponentRecord>>(Components.Where(component => component.Kind == kind).Take(limit).ToArray());
-        public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneReferenceRecord>(0, 0, []));
+        public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneComponentRecord>>(Components.Where(component => component.Kind == selector || string.Equals(string.IsNullOrEmpty(component.ScriptNamespace) ? component.ScriptClass : component.ScriptNamespace + "." + component.ScriptClass, selector, StringComparison.Ordinal)).Take(limit).ToArray());
+        public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken)
+        {
+            var rows = References
+                .Where(reference => reference.SceneSnapshotId == options.SceneSnapshotId)
+                .Where(reference => options.SourceComponentId is null || reference.SourceComponentId == options.SourceComponentId)
+                .ToArray();
+            var page = rows.Take(options.Limit).ToArray();
+            return Task.FromResult(new ScenePageResult<SceneReferenceRecord>(
+                rows.Length,
+                page.Length,
+                page,
+                rows.Count(reference => reference.ResolutionStatus != SceneResolutionStatus.Resolved)));
+        }
         public Task CreateSceneSnapshotAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task StartSceneSnapshotAsync(string sceneSnapshotId, string startedAtUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task CompleteSceneSnapshotAsync(string sceneSnapshotId, SceneWriteSet writeSet, string completedAtUtc, CancellationToken cancellationToken) => throw new NotSupportedException();

@@ -163,6 +163,15 @@ public sealed record SceneWriteSet(
     IReadOnlyList<SceneComponentRecord> Components,
     IReadOnlyList<SceneReferenceRecord> References);
 
+public sealed record SceneIndexStatistics(
+    int ContainerCount,
+    int DocumentCount,
+    int GameObjectCount,
+    int TransformCount,
+    int ComponentCount,
+    int ReferenceCount,
+    IReadOnlyDictionary<string, int> RecoveryCounts);
+
 internal static class SceneContract
 {
     public static string RequireId(string value, string parameterName)

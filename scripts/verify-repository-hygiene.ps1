@@ -31,6 +31,7 @@ $prohibitedBasenames = @(
     'validation.json',
     'extraction.json',
     'scene-manifest.json',
+    'scene-index.manifest.json',
     'scene-validation.json',
     'complete.marker',
     'extraction.lock',

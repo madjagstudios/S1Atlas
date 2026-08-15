@@ -143,14 +143,16 @@ public sealed class SceneNormalizer
             SceneCodeSymbolResolution? scriptResolution = null;
             if (item.Kind == ParsedSceneObjectKind.MonoBehaviour)
             {
-                scriptResolution = await ResolveMonoBehaviourScriptAsync(
-                    snapshot,
-                    componentKey,
-                    item,
-                    objects,
-                    pointers,
-                    scriptResolutions,
-                    cancellationToken);
+                scriptResolution = item.MonoBehaviour is null
+                    ? UnavailableScript()
+                    : await ResolveMonoBehaviourScriptAsync(
+                        snapshot,
+                        componentKey,
+                        item,
+                        objects,
+                        pointers,
+                        scriptResolutions,
+                        cancellationToken);
             }
 
             components.Add(new SceneComponentRecord(

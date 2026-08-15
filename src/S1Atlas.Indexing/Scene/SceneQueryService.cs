@@ -54,7 +54,7 @@ public sealed class SceneQueryService
         var references = request.IncludeReferences
             ? await _repository.ListReferencesAsync(new ReferenceListQueryOptions(snapshot.Snapshot.SceneSnapshotId, scene.SceneId, Limit: request.Limit), cancellationToken)
             : Empty<SceneReferenceRecord>();
-        return new SceneDocumentQueryResult(Outcome(scene.RecoveryStatus, references.Rows), snapshot.Snapshot, scene, [], children, components, references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { scene.ContainerId }.Concat(children.Rows.Select(row => row.ContainerId)).Concat(components.Rows.Select(row => row.ContainerId)).Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
+        return new SceneDocumentQueryResult(Outcome(scene.RecoveryStatus, references), snapshot.Snapshot, scene, [], children, components, references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { scene.ContainerId }.Concat(children.Rows.Select(row => row.ContainerId)).Concat(components.Rows.Select(row => row.ContainerId)).Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
     }
 
     public async Task<GameObjectQueryResult> GameObjectAsync(GameObjectQueryRequest request, CancellationToken cancellationToken)
@@ -76,7 +76,7 @@ public sealed class SceneQueryService
         var references = request.IncludeReferences
             ? await _repository.ListReferencesAsync(new ReferenceListQueryOptions(snapshot.Snapshot.SceneSnapshotId, GameObjectId: gameObject.GameObjectId, Limit: request.Limit), cancellationToken)
             : Empty<SceneReferenceRecord>();
-        return new GameObjectQueryResult(Outcome(gameObject.RecoveryStatus, references.Rows), snapshot.Snapshot, gameObject, [], children, components, references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { gameObject.ContainerId }.Concat(children.Rows.Select(row => row.ContainerId)).Concat(components.Rows.Select(row => row.ContainerId)).Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
+        return new GameObjectQueryResult(Outcome(gameObject.RecoveryStatus, references), snapshot.Snapshot, gameObject, [], children, components, references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { gameObject.ContainerId }.Concat(children.Rows.Select(row => row.ContainerId)).Concat(components.Rows.Select(row => row.ContainerId)).Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
     }
 
     public Task<SceneDocumentQueryResult> PrefabAsync(PrefabQueryRequest request, CancellationToken cancellationToken) =>
@@ -96,7 +96,7 @@ public sealed class SceneQueryService
             : Empty<SceneReferenceRecord>();
         var status = request.IncludeCode && component.ResolvedTypeSymbolId is null
             ? SceneQueryStatus.UnresolvedCodeSymbol
-            : Outcome(component.RecoveryStatus, references.Rows);
+            : Outcome(component.RecoveryStatus, references);
         return new ComponentQueryResult(status, snapshot.Snapshot, component, [], references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { component.ContainerId }.Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
     }
 
@@ -128,9 +128,9 @@ public sealed class SceneQueryService
             : new SceneSnapshotQueryResult(SceneQueryStatus.Resolved, completed);
     }
 
-    private static SceneQueryStatus Outcome(SceneRecoveryStatus recovery, IReadOnlyList<SceneReferenceRecord> references) =>
+    private static SceneQueryStatus Outcome(SceneRecoveryStatus recovery, ScenePageResult<SceneReferenceRecord> references) =>
         recovery == SceneRecoveryStatus.PartiallyRecovered ? SceneQueryStatus.PartialRecovery :
-        references.Any(reference => reference.ResolutionStatus is not SceneResolutionStatus.Resolved) ? SceneQueryStatus.UnresolvedSceneReference :
+        references.UnresolvedCount > 0 ? SceneQueryStatus.UnresolvedSceneReference :
         SceneQueryStatus.Resolved;
 
     private static ScenePageResult<T> Empty<T>() => new(0, 0, []);
@@ -152,7 +152,16 @@ public enum SceneQueryStatus
     UnsupportedContainer,
     PartialRecovery,
     UnresolvedSceneReference,
-    UnresolvedCodeSymbol
+    UnresolvedCodeSymbol,
+    NoPreferredVerifiedExtraction,
+    NoReplayVerifiedExtractionInput,
+    NoMatchingEnvironmentSnapshot,
+    NoCompletedScheduleOneCodeIndex,
+    CrossBuildCodeIndex,
+    PreferredExtractionChanged,
+    ReplayVerifiedInputChanged,
+    CodeIndexChanged,
+    NoVerifiedSceneContainers
 }
 
 public sealed record SceneListRequest(string? BuildId = null, string? SceneSnapshotId = null, SceneDocumentKind? Kind = null, string? Query = null, int Limit = SceneQueryService.DefaultLimit);
