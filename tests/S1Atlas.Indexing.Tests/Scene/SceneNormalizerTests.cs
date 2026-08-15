@@ -58,6 +58,31 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Missing_type_tree_gameobject_evidence_cannot_become_a_fully_recovered_empty_scene()
+    {
+        var containers = new[]
+        {
+            Container(
+                "Schedule I_Data/level0",
+                objects: [Object(1, 1, ParsedSceneObjectKind.GameObject)]),
+            Container(
+                "Schedule I_Data/globalgamemanagers",
+                objects: [Object(100, 141, ParsedSceneObjectKind.BuildSettings, buildSettings: new ParsedBuildSettingsData(["Assets/Scenes/Main.unity"]))])
+        };
+
+        var result = await NormalizeAsync(containers);
+
+        var document = DocumentFor(result, "level0");
+        Assert.Equal("Main", document.Name);
+        Assert.Equal(1, document.ObjectCount);
+        Assert.Equal(SceneRecoveryStatus.StubOrUnavailable, document.RecoveryStatus);
+        Assert.Equal(SceneRecoveryStatus.StubOrUnavailable, result.Snapshot.RecoveryStatus);
+        Assert.Empty(result.GameObjects);
+        Assert.Empty(result.Transforms);
+        Assert.Empty(result.Components);
+    }
+
+    [Fact]
     public async Task Marker_text_without_prefab_class_relationship_does_not_create_prefab()
     {
         var asset = Container(
@@ -110,6 +135,26 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         Assert.Equal(0, prefab.ObjectCount);
         var ordinary = Assert.Single(result.Documents, document => document.Kind == SceneDocumentKind.Scene);
         Assert.Equal(ordinary.SceneId, Assert.Single(result.GameObjects).SceneId);
+    }
+
+    [Fact]
+    public async Task Prefab_instance_in_a_level_never_creates_a_prefab_asset_document()
+    {
+        var rootReference = new ParsedSceneReference("m_RootGameObject", "PPtr<GameObject>", new ParsedScenePPtr(0, 1));
+        var level = Container(
+            "Schedule I_Data/level0",
+            objects:
+            [
+                GameObject(1, "Scene Root"),
+                Object(9, 1001, ParsedSceneObjectKind.PrefabEvidence, references: [rootReference])
+            ],
+            hasPrefabEvidence: true);
+
+        var result = await NormalizeAsync([level]);
+
+        Assert.DoesNotContain(result.Documents, document => document.Kind == SceneDocumentKind.Prefab);
+        Assert.Equal(SceneDocumentKind.Scene, Assert.Single(result.Documents).Kind);
+        Assert.Single(result.GameObjects);
     }
 
     [Fact]
@@ -253,6 +298,48 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Missing_external_transform_child_marks_parent_and_scene_partial()
+    {
+        var childReference = new ParsedSceneReference("m_Children.Array[0]", "PPtr<Transform>", new ParsedScenePPtr(4, 99));
+        var parent = Transform(
+            11,
+            1,
+            references: [childReference],
+            children: [new ParsedScenePPtr(4, 99)]);
+        var level = Container(
+            "Schedule I_Data/level0",
+            objects: [GameObject(1, "Parent", [new ParsedScenePPtr(0, 11)]), parent],
+            externals: [new ParsedSceneExternalReference(4, "missing.assets", "archive:/CAB/missing.assets")]);
+
+        var result = await NormalizeAsync([level]);
+
+        Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, Assert.Single(result.Transforms).RecoveryStatus);
+        Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, Assert.Single(result.Documents).RecoveryStatus);
+        Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, result.Snapshot.RecoveryStatus);
+        Assert.Equal(SceneResolutionStatus.UnresolvedText, Assert.Single(result.References).ResolutionStatus);
+    }
+
+    [Fact]
+    public async Task Child_omitted_from_parent_children_list_marks_both_transforms_and_scene_partial()
+    {
+        var level = Container(
+            "Schedule I_Data/level0",
+            objects:
+            [
+                GameObject(1, "Parent", [new ParsedScenePPtr(0, 11)]),
+                GameObject(2, "Child", [new ParsedScenePPtr(0, 12)]),
+                Transform(11, 1),
+                Transform(12, 2, parentTransformId: 11)
+            ]);
+
+        var result = await NormalizeAsync([level]);
+
+        Assert.All(result.Transforms, transform => Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, transform.RecoveryStatus));
+        Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, Assert.Single(result.Documents).RecoveryStatus);
+        Assert.Equal(SceneRecoveryStatus.PartiallyRecovered, result.Snapshot.RecoveryStatus);
+    }
+
+    [Fact]
     public async Task Null_pptr_is_a_fully_recovered_explicit_absence()
     {
         var nullReference = new ParsedSceneReference("m_Optional", "PPtr<GameObject>", new ParsedScenePPtr(0, 0));
@@ -371,6 +458,7 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         long parentTransformId = 0,
         int parentFileId = 0,
         IReadOnlyList<ParsedSceneReference>? references = null,
+        IReadOnlyList<ParsedScenePPtr>? children = null,
         long byteOffset = 128,
         long byteCount = 64) =>
         Object(
@@ -381,7 +469,7 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
             transform: new ParsedTransformData(
                 new ParsedScenePPtr(0, gameObjectId),
                 new ParsedScenePPtr(parentFileId, parentTransformId),
-                [],
+                children ?? [],
                 new ParsedSceneVector3(1, 2, 3),
                 new ParsedSceneQuaternion(0, 0, 0, 1),
                 new ParsedSceneVector3(1, 1, 1),

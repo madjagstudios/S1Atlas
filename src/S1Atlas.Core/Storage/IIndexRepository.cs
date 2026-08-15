@@ -81,19 +81,10 @@ public interface IIndexRepository
     Task<IndexRunRecord?> GetCompletedIndexAsync(string indexId, CancellationToken cancellationToken);
     Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsAsync(string indexId, CancellationToken cancellationToken);
-    async Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(
+    Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(
         string indexId,
         string canonicalKey,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalKey);
-        var symbols = await GetCompletedSymbolsAsync(indexId, cancellationToken);
-        return symbols
-            .Where(symbol => string.Equals(symbol.CanonicalKey, canonicalKey, StringComparison.Ordinal))
-            .OrderBy(symbol => symbol.SymbolId, StringComparer.Ordinal)
-            .ToArray();
-    }
+        CancellationToken cancellationToken);
     Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken);
     Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null);

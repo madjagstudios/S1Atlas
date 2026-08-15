@@ -105,6 +105,28 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Completed_canonical_key_lookup_returns_only_the_exact_candidate_from_the_requested_completed_index()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var expected = await SeedSearchIndexAsync(cancellationToken);
+
+        var found = await _repository.GetCompletedSymbolByCanonicalKeyAsync(
+            "index-search",
+            expected.CanonicalKey,
+            cancellationToken);
+
+        Assert.Equal(expected, Assert.Single(found));
+        Assert.Empty(await _repository.GetCompletedSymbolByCanonicalKeyAsync(
+            "index-search",
+            expected.CanonicalKey + "Proxy",
+            cancellationToken));
+        Assert.Empty(await _repository.GetCompletedSymbolByCanonicalKeyAsync(
+            "missing-index",
+            expected.CanonicalKey,
+            cancellationToken));
+    }
+
+    [Fact]
     public async Task Completed_symbol_search_counts_exactly_ranks_deterministically_and_applies_limit()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

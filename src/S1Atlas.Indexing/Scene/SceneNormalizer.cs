@@ -296,17 +296,38 @@ public sealed class SceneNormalizer
             result[pair.Key] = new TransformFact(pair.Key, gameObject, parentGameObject, siblingIndex, data, schemaValid, hierarchyComplete);
         }
 
-        foreach (var fact in result.Values.Where(fact => fact.SchemaValid))
+        var listedChildren = result.Values
+            .Where(fact => fact.SchemaValid)
+            .ToDictionary(fact => fact.Transform, _ => new HashSet<ObjectKey>());
+        foreach (var fact in result.Values.Where(fact => fact.SchemaValid).ToArray())
         {
             for (var index = 0; index < fact.Data.Children.Count; index++)
             {
                 var child = pointers.Resolve(fact.Transform.ContainerPath, fact.Data.Children[index]);
                 if (child.Target is null)
+                {
+                    result[fact.Transform] = result[fact.Transform] with { HierarchyComplete = false };
                     continue;
+                }
                 if (!result.TryGetValue(child.Target.Value, out var childFact) || childFact.ParentGameObject != fact.GameObject)
                     throw new InvalidDataException("Transform child and parent relationships disagree.");
+                listedChildren[fact.Transform].Add(child.Target.Value);
                 result[child.Target.Value] = childFact with { SiblingIndex = index };
             }
+        }
+
+        var transformByGameObject = result.Values.ToDictionary(fact => fact.GameObject, fact => fact.Transform);
+        foreach (var childFact in result.Values.Where(fact => fact.SchemaValid && fact.ParentGameObject is not null).ToArray())
+        {
+            if (!transformByGameObject.TryGetValue(childFact.ParentGameObject!.Value, out var parentTransform) ||
+                !listedChildren.TryGetValue(parentTransform, out var children) ||
+                children.Contains(childFact.Transform))
+            {
+                continue;
+            }
+
+            result[parentTransform] = result[parentTransform] with { HierarchyComplete = false };
+            result[childFact.Transform] = result[childFact.Transform] with { HierarchyComplete = false };
         }
         return result;
     }
@@ -343,6 +364,12 @@ public sealed class SceneNormalizer
         {
             var level = LevelNumber(path);
             var hasBuildSettingsName = level < sceneNames.Count && !string.IsNullOrWhiteSpace(sceneNames[level]);
+            var objectTableGameObjects = objects
+                .Where(pair => string.Equals(pair.Key.ContainerPath, path, StringComparison.Ordinal) &&
+                               pair.Value.Kind == ParsedSceneObjectKind.GameObject)
+                .Select(pair => pair.Value)
+                .ToArray();
+            var hasUndecodedGameObjects = objectTableGameObjects.Any(item => item.GameObject is null);
             var name = hasBuildSettingsName
                 ? SceneNameFromPath(sceneNames[level])
                 : Path.GetFileName(path);
@@ -354,9 +381,11 @@ public sealed class SceneNormalizer
                 SceneDocumentKind.Scene,
                 name,
                 null,
+                objectTableGameObjects.Length,
                 0,
-                0,
-                hasBuildSettingsName
+                hasUndecodedGameObjects
+                    ? SceneRecoveryStatus.StubOrUnavailable
+                    : hasBuildSettingsName
                     ? SceneRecoveryStatus.FullyRecovered
                     : SceneRecoveryStatus.PartiallyRecovered));
             foreach (var gameObject in gameObjectKeys.Where(key => string.Equals(key.ContainerPath, path, StringComparison.Ordinal)))
@@ -397,7 +426,11 @@ public sealed class SceneNormalizer
             var remaining = gameObjectKeys
                 .Where(key => string.Equals(key.ContainerPath, path, StringComparison.Ordinal) && !assignments.ContainsKey(key))
                 .ToArray();
-            if (remaining.Length == 0)
+            var undecodedCount = objects.Count(pair =>
+                string.Equals(pair.Key.ContainerPath, path, StringComparison.Ordinal) &&
+                pair.Value.Kind == ParsedSceneObjectKind.GameObject &&
+                pair.Value.GameObject is null);
+            if (remaining.Length == 0 && undecodedCount == 0)
                 continue;
             var sceneId = HashId(snapshot.SceneSnapshotId, "asset-graph", path);
             documents.Add(new SceneDocumentRecord(
@@ -407,9 +440,11 @@ public sealed class SceneNormalizer
                 SceneDocumentKind.Scene,
                 Path.GetFileName(path),
                 null,
+                remaining.Length + undecodedCount,
                 0,
-                0,
-                SceneRecoveryStatus.GraphOnly));
+                undecodedCount > 0
+                    ? SceneRecoveryStatus.StubOrUnavailable
+                    : SceneRecoveryStatus.GraphOnly));
             foreach (var gameObject in remaining)
                 assignments[gameObject] = sceneId;
         }
@@ -424,7 +459,8 @@ public sealed class SceneNormalizer
         PointerResolver pointers)
     {
         var roots = new List<PrefabRoot>();
-        foreach (var container in containers.Values.Where(container => container.HasPrefabEvidence))
+        foreach (var container in containers.Values.Where(container =>
+                     container.HasPrefabEvidence && IsOrdinaryAssetPath(container.RelativePath)))
         {
             foreach (var evidence in container.Objects.Where(item =>
                          item.Kind == ParsedSceneObjectKind.PrefabEvidence &&
@@ -612,7 +648,17 @@ public sealed class SceneNormalizer
             {
                 var members = gameObjects.Where(item => string.Equals(item.SceneId, document.SceneId, StringComparison.Ordinal)).ToArray();
                 var roots = members.Count(item => !transformed.TryGetValue(item.GameObjectId, out var transform) || transform.ParentGameObjectId is null);
-                return document with { ObjectCount = members.Length, RootCount = roots };
+                var recovery = AggregateRecovery(
+                    new[] { document.RecoveryStatus }
+                        .Concat(members
+                            .Where(item => transformed.ContainsKey(item.GameObjectId))
+                            .Select(item => transformed[item.GameObjectId].RecoveryStatus)));
+                return document with
+                {
+                    ObjectCount = Math.Max(document.ObjectCount, members.Length),
+                    RootCount = roots,
+                    RecoveryStatus = recovery
+                };
             })
             .OrderBy(document => document.SceneId, StringComparer.Ordinal)
             .ToArray();
