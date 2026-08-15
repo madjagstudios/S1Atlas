@@ -1,0 +1,353 @@
+using S1Atlas.Core.Environment;
+using S1Atlas.Core.Extraction;
+using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Scenes;
+using S1Atlas.Core.Storage;
+using S1Atlas.Extraction.Scene;
+using S1Atlas.Indexing.Authority;
+using S1Atlas.Indexing.Paths;
+
+namespace S1Atlas.Indexing.Scene;
+
+public sealed class SceneIndexWorkflow
+{
+    public const string ParserId = "assetstools-net";
+    public const string ParserVersion = "3.0.5";
+    public const int SerializedFileSchemaVersion = 22;
+
+    private static readonly string[] SupportedContainerPaths =
+    [
+        "Schedule I_Data/level0",
+        "Schedule I_Data/level1",
+        "Schedule I_Data/level2",
+        "Schedule I_Data/sharedassets0.assets",
+        "Schedule I_Data/sharedassets1.assets",
+        "Schedule I_Data/sharedassets2.assets",
+        "Schedule I_Data/resources.assets",
+        "Schedule I_Data/globalgamemanagers",
+        "Schedule I_Data/globalgamemanagers.assets"
+    ];
+
+    private readonly string _dataRoot;
+    private readonly IIndexRepository _repository;
+    private readonly ISceneRepository _sceneRepository;
+    private readonly IExtractionRepository _extractionRepository;
+    private readonly IAtlasRepository _atlasRepository;
+    private readonly Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> _authorityResolver;
+    private readonly SceneInputVerifier _inputVerifier;
+    private readonly IUnitySerializedFileParser _parser;
+    private readonly SceneNormalizer _normalizer;
+    private readonly string _parserVersion;
+
+    public SceneIndexWorkflow(
+        string dataRoot,
+        IIndexRepository repository,
+        IExtractionRepository extractionRepository,
+        IAtlasRepository atlasRepository,
+        PreferredVerifiedExtractionResolver authorityResolver,
+        SceneInputVerifier inputVerifier,
+        IUnitySerializedFileParser parser,
+        SceneNormalizer normalizer,
+        string parserVersion = ParserVersion)
+        : this(
+            dataRoot,
+            repository,
+            extractionRepository,
+            atlasRepository,
+            authorityResolver is null
+                ? throw new ArgumentNullException(nameof(authorityResolver))
+                : authorityResolver.ResolveAsync,
+            inputVerifier,
+            parser,
+            normalizer,
+            parserVersion)
+    {
+    }
+
+    internal SceneIndexWorkflow(
+        string dataRoot,
+        IIndexRepository repository,
+        IExtractionRepository extractionRepository,
+        IAtlasRepository atlasRepository,
+        Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> authorityResolver,
+        SceneInputVerifier inputVerifier,
+        IUnitySerializedFileParser parser,
+        SceneNormalizer normalizer,
+        string parserVersion = ParserVersion)
+    {
+        _dataRoot = Path.GetFullPath(dataRoot ?? throw new ArgumentNullException(nameof(dataRoot)));
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _sceneRepository = _repository.RequireSceneRepository();
+        _extractionRepository = extractionRepository ?? throw new ArgumentNullException(nameof(extractionRepository));
+        _atlasRepository = atlasRepository ?? throw new ArgumentNullException(nameof(atlasRepository));
+        _authorityResolver = authorityResolver ?? throw new ArgumentNullException(nameof(authorityResolver));
+        _inputVerifier = inputVerifier ?? throw new ArgumentNullException(nameof(inputVerifier));
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
+        ArgumentException.ThrowIfNullOrWhiteSpace(parserVersion);
+        _parserVersion = parserVersion;
+    }
+
+    public async Task<SceneIndexWorkflowResult> RunScheduleOneAsync(
+        string buildId,
+        bool force,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var authority = await RequireAuthorityAsync(buildId, cancellationToken);
+        var inputSnapshot = await RequireReplayVerifiedInputAsync(authority, buildId, cancellationToken);
+        var environment = await RequireEnvironmentAsync(buildId, cancellationToken);
+        var code = await RequireCodeIndexAsync(authority, cancellationToken);
+        var declarations = SelectSceneContainers(environment.Installation.InstallationRoot!);
+        var verifiedInput = await _inputVerifier.CaptureAsync(
+            environment.Installation.InstallationRoot!,
+            declarations,
+            cancellationToken);
+        var parserVersion = force ? _parserVersion + ":forced:" + Guid.NewGuid().ToString("N") : _parserVersion;
+        var sceneSnapshotId = SceneSnapshotIdentity.Create(
+            buildId,
+            authority.Extraction.ExtractionId,
+            inputSnapshot.ManifestDigest,
+            code.Run.IndexId,
+            ParserId,
+            parserVersion,
+            SerializedFileSchemaVersion,
+            verifiedInput.Containers.Select(container => new SceneSnapshotContainerFact(
+                container.RelativePath,
+                container.ByteCount,
+                container.Sha256,
+                container.SidecarManifest)).ToArray());
+
+        if (!force)
+        {
+            var completed = await _sceneRepository.GetCompletedSceneSnapshotAsync(sceneSnapshotId, cancellationToken);
+            if (completed is not null)
+                return ToResult(completed, reused: true, null);
+        }
+
+        var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
+        if (Directory.Exists(paths.FinalRoot))
+            throw new InvalidOperationException("SceneIndexFinalPathAlreadyExists");
+
+        DeleteOwnedStaging(buildId, sceneSnapshotId);
+        Directory.CreateDirectory(paths.StagingRoot);
+        var snapshot = new SceneSnapshotRecord(
+            sceneSnapshotId,
+            buildId,
+            authority.Extraction.ExtractionId,
+            inputSnapshot.InputSnapshotId,
+            code.Snapshot.SnapshotId,
+            code.Run.IndexId,
+            ParserId,
+            parserVersion,
+            verifiedInput.ManifestDigest,
+            SceneSnapshotStatus.Running,
+            SceneRecoveryStatus.Unknown,
+            DateTimeOffset.UtcNow.ToString("O"));
+        var runStarted = false;
+        var databaseCompleted = false;
+        try
+        {
+            await _sceneRepository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+            await _sceneRepository.StartSceneSnapshotAsync(sceneSnapshotId, DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
+            runStarted = true;
+
+            var parsed = await _parser.ParseAsync(verifiedInput.Containers, cancellationToken);
+            RequireParserFacts(parsed, verifiedInput.Containers);
+            var writeSet = await _normalizer.NormalizeAsync(snapshot, verifiedInput.Containers, parsed, cancellationToken);
+            RequireBoundedWriteSet(writeSet, verifiedInput.Containers.Count);
+            await _inputVerifier.VerifyAfterParsingAsync(verifiedInput, cancellationToken);
+            await RequireStableAuthoritiesAsync(authority, inputSnapshot, code, buildId, cancellationToken);
+
+            await _sceneRepository.CompleteSceneSnapshotAsync(
+                sceneSnapshotId,
+                writeSet,
+                DateTimeOffset.UtcNow.ToString("O"),
+                cancellationToken);
+            databaseCompleted = true;
+            Directory.Move(paths.StagingRoot, paths.FinalRoot);
+            await File.WriteAllTextAsync(paths.CompleteMarkerPath, sceneSnapshotId + "\n", cancellationToken);
+            return ToResult(writeSet.Snapshot, reused: false, writeSet);
+        }
+        catch (Exception exception)
+        {
+            if (runStarted && !databaseCompleted)
+            {
+                try
+                {
+                    await _sceneRepository.FailSceneSnapshotAsync(
+                        sceneSnapshotId,
+                        FailureCode(exception),
+                        exception.Message,
+                        DateTimeOffset.UtcNow.ToString("O"),
+                        CancellationToken.None);
+                }
+                catch
+                {
+                }
+            }
+
+            DeleteOwnedStaging(buildId, sceneSnapshotId);
+            throw;
+        }
+    }
+
+    private async Task<PreferredVerifiedExtraction> RequireAuthorityAsync(string buildId, CancellationToken cancellationToken) =>
+        await _authorityResolver(buildId, cancellationToken) is { } authority &&
+        string.Equals(authority.BuildId, buildId, StringComparison.Ordinal) &&
+        string.Equals(authority.Extraction.BuildId, buildId, StringComparison.Ordinal)
+            ? authority
+            : throw new InvalidOperationException("NoPreferredVerifiedExtraction");
+
+    private async Task<InputSnapshot> RequireReplayVerifiedInputAsync(
+        PreferredVerifiedExtraction authority,
+        string buildId,
+        CancellationToken cancellationToken)
+    {
+        var attempt = await _extractionRepository.GetAttemptAsync(authority.Extraction.SourceAttemptId, cancellationToken);
+        if (attempt?.InputSnapshotId is not { Length: > 0 } inputSnapshotId ||
+            !string.Equals(attempt.BuildId, buildId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("NoReplayVerifiedExtractionInput");
+        }
+
+        var input = await _extractionRepository.GetInputSnapshotAsync(inputSnapshotId, cancellationToken);
+        if (input is null || !input.ReplayVerified ||
+            !string.Equals(input.BuildId, buildId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("NoReplayVerifiedExtractionInput");
+        }
+
+        return input;
+    }
+
+    private async Task<EnvironmentSnapshot> RequireEnvironmentAsync(string buildId, CancellationToken cancellationToken)
+    {
+        var environment = await _atlasRepository.GetCurrentSnapshotAsync(cancellationToken);
+        if (environment is null ||
+            !string.Equals(environment.Build.BuildId, buildId, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(environment.Installation.InstallationRoot))
+        {
+            throw new InvalidOperationException("NoMatchingEnvironmentSnapshot");
+        }
+
+        return environment;
+    }
+
+    private async Task<CodeIndexAuthority> RequireCodeIndexAsync(
+        PreferredVerifiedExtraction authority,
+        CancellationToken cancellationToken)
+    {
+        var run = await _repository.GetLatestCompletedIndexAsync(
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            environmentSnapshotId: null,
+            cancellationToken);
+        if (run is null)
+            throw new InvalidOperationException("NoCompletedScheduleOneCodeIndex");
+
+        var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
+        if (snapshot is null ||
+            snapshot.Codebase != CodebaseKind.ScheduleI ||
+            snapshot.Channel != CodeChannel.Installed ||
+            string.IsNullOrWhiteSpace(snapshot.EnvironmentSnapshotId) ||
+            !string.Equals(snapshot.SourceIdentity, authority.Extraction.ExtractionId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("CrossBuildCodeIndex");
+        }
+
+        return new CodeIndexAuthority(run, snapshot);
+    }
+
+    private async Task RequireStableAuthoritiesAsync(
+        PreferredVerifiedExtraction authority,
+        InputSnapshot inputSnapshot,
+        CodeIndexAuthority code,
+        string buildId,
+        CancellationToken cancellationToken)
+    {
+        var finalAuthority = await RequireAuthorityAsync(buildId, cancellationToken);
+        if (!string.Equals(finalAuthority.Extraction.ExtractionId, authority.Extraction.ExtractionId, StringComparison.Ordinal) ||
+            !Equals(finalAuthority.Preference, authority.Preference))
+        {
+            throw new InvalidOperationException("PreferredExtractionChanged");
+        }
+
+        var finalInput = await RequireReplayVerifiedInputAsync(finalAuthority, buildId, cancellationToken);
+        if (!string.Equals(finalInput.InputSnapshotId, inputSnapshot.InputSnapshotId, StringComparison.Ordinal) ||
+            !string.Equals(finalInput.ManifestDigest, inputSnapshot.ManifestDigest, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("ReplayVerifiedInputChanged");
+        }
+
+        var finalCode = await RequireCodeIndexAsync(finalAuthority, cancellationToken);
+        if (!string.Equals(finalCode.Run.IndexId, code.Run.IndexId, StringComparison.Ordinal) ||
+            !string.Equals(finalCode.Snapshot.SnapshotId, code.Snapshot.SnapshotId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("CodeIndexChanged");
+        }
+    }
+
+    private static IReadOnlyList<SceneContainerDeclaration> SelectSceneContainers(string installRoot)
+    {
+        var root = Path.GetFullPath(installRoot);
+        var declarations = SupportedContainerPaths
+            .Where(relativePath => File.Exists(Path.Combine(root, relativePath)))
+            .Select(relativePath => new SceneContainerDeclaration(
+                relativePath,
+                Sidecars(root, relativePath)))
+            .ToArray();
+        if (declarations.Length == 0)
+            throw new InvalidOperationException("NoVerifiedSceneContainers");
+        return declarations;
+    }
+
+    private static IReadOnlyList<string> Sidecars(string root, string primaryRelativePath)
+    {
+        var candidates = new List<string> { primaryRelativePath + ".resS" };
+        if (primaryRelativePath.EndsWith(".assets", StringComparison.Ordinal))
+            candidates.Add(primaryRelativePath[..^".assets".Length] + ".resource");
+        return candidates.Where(relativePath => File.Exists(Path.Combine(root, relativePath))).ToArray();
+    }
+
+    private static void RequireParserFacts(
+        IReadOnlyList<ParsedSceneContainer> parsed,
+        IReadOnlyList<VerifiedSceneContainer> verified)
+    {
+        ArgumentNullException.ThrowIfNull(parsed);
+        if (parsed.Count != verified.Count || parsed.Any(container => container.SerializedFileVersion != SerializedFileSchemaVersion))
+            throw new InvalidDataException("Scene parser did not produce the required class-ID facts for the verified container set.");
+    }
+
+    private static void RequireBoundedWriteSet(SceneWriteSet writeSet, int verifiedContainerCount)
+    {
+        if (writeSet.Containers.Count != verifiedContainerCount || writeSet.Containers.Count > SupportedContainerPaths.Length)
+            throw new InvalidDataException("Scene normalization produced an invalid container write set.");
+    }
+
+    private void DeleteOwnedStaging(string buildId, string sceneSnapshotId)
+    {
+        var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
+        if (Directory.Exists(paths.StagingRoot))
+            Directory.Delete(paths.StagingRoot, recursive: true);
+    }
+
+    private static SceneIndexWorkflowResult ToResult(SceneSnapshotRecord snapshot, bool reused, SceneWriteSet? writeSet) =>
+        new(
+            snapshot.SceneSnapshotId,
+            snapshot.CodeIndexId,
+            reused,
+            writeSet?.Containers.Count ?? 0,
+            writeSet?.Documents.Count ?? 0,
+            writeSet?.GameObjects.Count ?? 0,
+            writeSet?.Transforms.Count ?? 0,
+            writeSet?.Components.Count ?? 0,
+            writeSet?.References.Count ?? 0);
+
+    private static string FailureCode(Exception exception) =>
+        exception is OperationCanceledException ? "Canceled" : "SceneIndexingFailed";
+
+    private sealed record CodeIndexAuthority(IndexRunRecord Run, CodeSnapshotRecord Snapshot);
+}

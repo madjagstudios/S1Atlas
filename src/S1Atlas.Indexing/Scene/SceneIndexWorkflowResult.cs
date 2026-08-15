@@ -1,0 +1,12 @@
+namespace S1Atlas.Indexing.Scene;
+
+public sealed record SceneIndexWorkflowResult(
+    string SceneSnapshotId,
+    string CodeIndexId,
+    bool Reused,
+    int ContainerCount,
+    int SceneCount,
+    int GameObjectCount,
+    int TransformCount,
+    int ComponentCount,
+    int ReferenceCount);

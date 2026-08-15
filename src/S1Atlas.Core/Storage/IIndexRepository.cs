@@ -73,6 +73,10 @@ public sealed record IndexWriteSet(
 
 public interface IIndexRepository
 {
+    ISceneRepository RequireSceneRepository() =>
+        this as ISceneRepository ?? throw new InvalidOperationException(
+            "Scene indexing requires an index repository that also owns scene persistence.");
+
     Task CreateCodeSnapshotAsync(CodeSnapshotRecord snapshot, CancellationToken cancellationToken);
     Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken);
     Task StartIndexRunAsync(IndexRunRecord run, CancellationToken cancellationToken);
