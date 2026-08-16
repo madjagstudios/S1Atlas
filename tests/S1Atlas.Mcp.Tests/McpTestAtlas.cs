@@ -2,6 +2,7 @@ using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Scenes;
 using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Hashing;
@@ -49,6 +50,10 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string IndexId { get; private set; } = string.Empty;
     public string IndexIdA { get; private set; } = string.Empty;
     public string IndexIdB { get; private set; } = string.Empty;
+    public string ExtractionIdA { get; private set; } = string.Empty;
+    public string ExtractionIdB { get; private set; } = string.Empty;
+    public string InputSnapshotIdA { get; private set; } = string.Empty;
+    public string InputSnapshotIdB { get; private set; } = string.Empty;
     public string KnownSymbolFragment => "Dealer";
     public string MethodSelector => "System.Void Demo.Widget::Run()";
     public string MethodSymbolId => "method-run";
@@ -56,6 +61,13 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string CompareSelector => CompareSymbolCanonicalKey;
     public string SourceRelativePath => "Assembly-CSharp.cs";
     public string SourcePath => Path.Combine(DataRoot, "builds", BuildIdASeed, "indexes", IndexId, SourceRelativePath);
+    public string SceneNameA => "Downtown";
+    public string SceneNameB => "Warehouse";
+    public string SceneSnapshotIdA { get; private set; } = string.Empty;
+    public string SceneSnapshotIdB { get; private set; } = string.Empty;
+    public string GameObjectSelector => "Downtown Root";
+    public string PrefabSelector => "Dealer Prefab";
+    public string ComponentSelector => "DealerController";
 
     public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(string buildId = BuildIdASeed)
     {
@@ -73,6 +85,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             compareBodyFingerprint: "compare-body-same");
         atlas.IndexId = seeded.IndexId;
         atlas.IndexIdA = seeded.IndexId;
+        atlas.ExtractionIdA = seeded.ExtractionId;
+        atlas.InputSnapshotIdA = seeded.InputSnapshotId;
         return atlas;
     }
 
@@ -98,6 +112,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             compareBodyFingerprintA);
         atlas.IndexId = seededA.IndexId;
         atlas.IndexIdA = seededA.IndexId;
+        atlas.ExtractionIdA = seededA.ExtractionId;
+        atlas.InputSnapshotIdA = seededA.InputSnapshotId;
 
         var seededB = await atlas.SeedHealthyBuildAsync(
             BuildIdBSeed,
@@ -106,7 +122,31 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             compareBodyFingerprintB);
         atlas.BuildIdB = seededB.BuildId;
         atlas.IndexIdB = seededB.IndexId;
+        atlas.ExtractionIdB = seededB.ExtractionId;
+        atlas.InputSnapshotIdB = seededB.InputSnapshotId;
 
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedTwoSceneBuildsAsync()
+    {
+        var atlas = await SeedTwoInstalledBuildsAsync();
+        atlas.SceneSnapshotIdA = await atlas.SeedSceneSnapshotAsync(
+            atlas.BuildIdA,
+            atlas.IndexIdA,
+            atlas.ExtractionIdA,
+            atlas.InputSnapshotIdA,
+            "scene-snapshot-a",
+            atlas.SceneNameA,
+            includeCodeHandoff: true);
+        atlas.SceneSnapshotIdB = await atlas.SeedSceneSnapshotAsync(
+            atlas.BuildIdB,
+            atlas.IndexIdB,
+            atlas.ExtractionIdB,
+            atlas.InputSnapshotIdB,
+            "scene-snapshot-b",
+            atlas.SceneNameB,
+            includeCodeHandoff: false);
         return atlas;
     }
 
@@ -168,7 +208,105 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             resolvedIndexId,
             compareBodyFingerprint);
 
-        return new HealthySeed(buildId, seeded.Extraction.ExtractionId, resolvedIndexId);
+        return new HealthySeed(buildId, seeded.Extraction.ExtractionId, seeded.InputSnapshot.InputSnapshotId, resolvedIndexId);
+    }
+
+    private async Task<string> SeedSceneSnapshotAsync(
+        string buildId,
+        string indexId,
+        string extractionId,
+        string inputSnapshotId,
+        string sceneSnapshotId,
+        string sceneName,
+        bool includeCodeHandoff)
+    {
+        const string digest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        var snapshot = new SceneSnapshotRecord(
+            sceneSnapshotId,
+            buildId,
+            extractionId,
+            inputSnapshotId,
+            "snapshot-" + extractionId,
+            indexId,
+            "fixture-parser",
+            "1",
+            digest,
+            SceneSnapshotStatus.Running,
+            SceneRecoveryStatus.FullyRecovered,
+            BaseTime.AddMinutes(30).ToString("O"));
+        var container = new SceneContainerRecord(
+            "container-" + buildId,
+            sceneSnapshotId,
+            "sharedassets0.assets",
+            "Assets",
+            "2022.3.62",
+            1,
+            1,
+            digest,
+            "fixture");
+        var scene = new SceneDocumentRecord(
+            "scene-" + buildId,
+            sceneSnapshotId,
+            container.ContainerId,
+            SceneDocumentKind.Scene,
+            sceneName,
+            1,
+            1,
+            1,
+            SceneRecoveryStatus.FullyRecovered);
+        var prefab = new SceneDocumentRecord(
+            "prefab-" + buildId,
+            sceneSnapshotId,
+            container.ContainerId,
+            SceneDocumentKind.Prefab,
+            "Dealer Prefab",
+            2,
+            1,
+            1,
+            SceneRecoveryStatus.FullyRecovered);
+        var gameObject = new SceneGameObjectRecord(
+            "game-object-" + buildId,
+            scene.SceneId,
+            container.ContainerId,
+            3,
+            "Downtown Root",
+            true,
+            0,
+            "Untagged",
+            SceneRecoveryStatus.FullyRecovered);
+        var component = new SceneComponentRecord(
+            "component-" + buildId,
+            gameObject.GameObjectId,
+            container.ContainerId,
+            4,
+            114,
+            "DealerController",
+            "Assembly-CSharp",
+            "Demo",
+            "DealerController",
+            includeCodeHandoff ? "type-widget" : null,
+            includeCodeHandoff ? indexId : null,
+            includeCodeHandoff ? SceneResolutionStatus.Resolved : SceneResolutionStatus.NotIndexed,
+            SceneRecoveryStatus.FullyRecovered);
+
+        await _repository.CreateSceneSnapshotAsync(snapshot, CancellationToken.None);
+        await _repository.CompleteSceneSnapshotAsync(
+            sceneSnapshotId,
+            new SceneWriteSet(
+                snapshot,
+                [container],
+                [scene, prefab],
+                [gameObject],
+                [new SceneTransformRecord(gameObject.GameObjectId, null, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered)],
+                [component],
+                []),
+            BaseTime.AddMinutes(31).ToString("O"),
+            CancellationToken.None);
+        await _repository.PublishSceneSnapshotAsync(
+            sceneSnapshotId,
+            BaseTime.AddMinutes(32).ToString("O"),
+            CancellationToken.None);
+        return sceneSnapshotId;
     }
 
     private async Task SeedCompletedInstalledIndexAsync(
@@ -414,10 +552,23 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         var manifest = CreateManifest();
         var digest = ArtifactManifestFingerprint.Create(manifest);
         var extractionId = ExtractionId.Create(recipeId, digest);
+        var inputSnapshot = InputSnapshot.CreateUnverified(
+            buildId,
+            Path.Combine(DataRoot, "inputs"),
+            new InputManifest([]),
+            BaseTime);
+        await _repository.SaveInputSnapshotAsync(inputSnapshot, CancellationToken.None);
+        await _repository.MarkInputSnapshotReplayVerifiedAsync(
+            inputSnapshot.InputSnapshotId,
+            buildId,
+            inputSnapshot.ManifestDigest,
+            BaseTime.AddMinutes(1),
+            CancellationToken.None);
         var attempt = await AdvanceAttemptToValidatingAsync(
             buildId,
             recipeId,
             extractionId[..32],
+            inputSnapshot.InputSnapshotId,
             CancellationToken.None);
         var statistics = new ExtractionStatistics(
             ArtifactCount: 1,
@@ -495,7 +646,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         await WriteFinalDocumentsAsync(extraction, manifest, report);
         await _repository.CommitValidatedExtractionAsync(promotion, CancellationToken.None);
 
-        return new SeededExtraction(extraction, report);
+        return new SeededExtraction(extraction, report, inputSnapshot);
     }
 
     private async Task WriteFinalDocumentsAsync(
@@ -525,6 +676,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         string buildId,
         string recipeId,
         string attemptId,
+        string inputSnapshotId,
         CancellationToken cancellationToken)
     {
         var created = new ExtractionAttempt(
@@ -541,7 +693,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             AdapterVersion: 1,
             ExtractionSchemaVersion: 1,
             InputSource: ExtractionInputSource.Live,
-            InputSnapshotId: null,
+            InputSnapshotId: inputSnapshotId,
             Status: ExtractionAttemptStatus.Created,
             CreatedAtUtc: BaseTime,
             StartedAtUtc: null,
@@ -683,11 +835,13 @@ internal sealed class McpTestAtlas : IAsyncDisposable
 
     private sealed record SeededExtraction(
         ValidatedExtraction Extraction,
-        ValidationReport Report);
+        ValidationReport Report,
+        InputSnapshot InputSnapshot);
 
     private sealed record HealthySeed(
         string BuildId,
         string ExtractionId,
+        string InputSnapshotId,
         string IndexId);
 
     private string GetFinalExtractionRoot(string buildId, string extractionId) =>
