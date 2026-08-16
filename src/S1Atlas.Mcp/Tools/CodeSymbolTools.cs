@@ -88,6 +88,11 @@ public sealed class CodeSymbolTools
         [Description("Source context lines before and after the selected span.")] int context = 5,
         CancellationToken ct = default)
     {
+        if (ToolArguments.TryValidateSelector(selector, out ToolEnvelope<SourceSnippetQueryResult> selectorError))
+        {
+            return selectorError;
+        }
+
         try
         {
             var boundedContext = ToolArguments.BoundContext(context);
@@ -159,6 +164,11 @@ public sealed class CodeSymbolTools
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default)
     {
+        if (ToolArguments.TryValidateSelector(selector, out ToolEnvelope<RelationshipQuerySetResult> selectorError))
+        {
+            return selectorError;
+        }
+
         try
         {
             var boundedLimit = ToolArguments.BoundLimit(limit);
@@ -200,6 +210,11 @@ public sealed class CodeSymbolTools
         SymbolKind kind,
         CancellationToken ct)
     {
+        if (ToolArguments.TryValidateSelector(selector, out ToolEnvelope<SymbolQueryResult> selectorError))
+        {
+            return selectorError;
+        }
+
         try
         {
             return await EnvelopeMapper.WithAuthorityAsync(
@@ -232,6 +247,11 @@ public sealed class CodeSymbolTools
         CancellationToken ct,
         Func<S1Atlas.Indexing.Query.IndexQueryService, S1Atlas.Core.Storage.IndexRunRecord, string, int, CancellationToken, Task<RelationshipQuerySetResult>> query)
     {
+        if (ToolArguments.TryValidateSelector(selector, out ToolEnvelope<RelationshipQuerySetResult> selectorError))
+        {
+            return selectorError;
+        }
+
         try
         {
             var boundedLimit = ToolArguments.BoundLimit(limit);
@@ -253,6 +273,22 @@ public sealed class CodeSymbolTools
 
     private static class ToolArguments
     {
+        public static bool TryValidateSelector<T>(
+            string? selector,
+            out ToolEnvelope<T> error) where T : class
+        {
+            if (!string.IsNullOrWhiteSpace(selector))
+            {
+                error = null!;
+                return false;
+            }
+
+            error = EnvelopeMapper.Invalid<T>(
+                "InvalidArguments",
+                "The selector must not be blank or whitespace.");
+            return true;
+        }
+
         public static int BoundContext(int context)
         {
             if (context < 0)

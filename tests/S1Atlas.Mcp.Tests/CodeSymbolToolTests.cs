@@ -7,6 +7,36 @@ namespace S1Atlas.Mcp.Tests;
 public sealed class CodeSymbolToolTests
 {
     [Fact]
+    public async Task GetType_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetTypeAsync(
+            "   ",
+            buildId: null,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
+    }
+
+    [Fact]
+    public async Task GetMethod_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetMethodAsync(
+            "   ",
+            buildId: null,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
+    }
+
+    [Fact]
     public async Task SearchSymbols_HealthyBuild_ResolvesAgainstPreferredIndex()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -109,6 +139,22 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task GetSource_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            "   ",
+            buildId: null,
+            context: 0,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
+    }
+
+    [Fact]
     public async Task FindCallers_PreservesCompletenessNotice()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -123,6 +169,22 @@ public sealed class CodeSymbolToolTests
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.NotEmpty(envelope.Data!.CompletenessNotice);
         Assert.True(envelope.Data.CallerCompletenessBoundedByTargetResolution);
+    }
+
+    [Fact]
+    public async Task FindCallers_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallersAsync(
+            "   ",
+            buildId: null,
+            limit: 50,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
     }
 
     [Fact]
@@ -144,6 +206,22 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task FindReferences_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindReferencesAsync(
+            "   ",
+            buildId: null,
+            limit: 50,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
+    }
+
+    [Fact]
     public async Task FindRelatedTypes_FiltersToTypeRelations()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -161,6 +239,22 @@ public sealed class CodeSymbolToolTests
             envelope.Data!.Relationships.Select(edge => edge.RelationshipId).OrderBy(id => id, StringComparer.Ordinal));
         Assert.DoesNotContain(envelope.Data.Relationships, edge => edge.Kind == "Calls");
         Assert.DoesNotContain(envelope.Data.Relationships, edge => edge.Kind == "ReadsField");
+    }
+
+    [Fact]
+    public async Task FindRelatedTypes_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindRelatedTypesAsync(
+            "   ",
+            buildId: null,
+            limit: 50,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
     }
 
     private static CodeSymbolTools CreateTools(McpTestAtlas atlas)
