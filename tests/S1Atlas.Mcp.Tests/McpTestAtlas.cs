@@ -7,6 +7,8 @@ using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Manifests;
 using S1Atlas.Storage.Sqlite;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace S1Atlas.Mcp.Tests;
 
@@ -34,6 +36,14 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     }
 
     public string DataRoot { get; }
+    public string BuildIdValue => BuildId;
+    public string IndexId { get; private set; } = string.Empty;
+    public string KnownSymbolFragment => "Dealer";
+    public string MethodSelector => "System.Void Demo.Widget::Run()";
+    public string MethodSymbolId => "method-run";
+    public string TypeSelector => "Demo.Widget";
+    public string SourceRelativePath => "Assembly-CSharp.cs";
+    public string SourcePath => Path.Combine(DataRoot, "builds", BuildId, "indexes", IndexId, SourceRelativePath);
 
     public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(string buildId = BuildId)
     {
@@ -58,6 +68,19 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             seeded.Extraction.ExtractionId,
             buildId,
             indexId);
+        atlas.IndexId = indexId;
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> EmptyAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
         return atlas;
     }
 
@@ -107,6 +130,29 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                 IndexRunStatus.Running,
                 createdAtUtc),
             ct);
+
+        const string sourceText = "namespace Demo;\npublic class Widget\n{\n    public void Run() { }\n}\n";
+        var sourceFile = new IndexSourceFileRecord(
+            "source-file-widget",
+            snapshotId,
+            SourceRelativePath,
+            Sha256(sourceText),
+            Encoding.UTF8.GetByteCount(sourceText));
+        var sourceLocation = new IndexSourceLocationRecord(
+            MethodSymbolId,
+            sourceFile.SourceFileId,
+            4,
+            5,
+            4,
+            26);
+
+        var indexRoot = Path.Combine(DataRoot, "builds", buildId, "indexes", indexId);
+        Directory.CreateDirectory(indexRoot);
+        await File.WriteAllTextAsync(
+            Path.Combine(indexRoot, sourceFile.RelativePath),
+            sourceText,
+            new UTF8Encoding(false),
+            ct);
         await _repository.CompleteIndexRunAsync(
             indexId,
             new IndexWriteSet(
@@ -118,12 +164,162 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Type",
                         "Demo.Authority",
                         "Demo.Authority",
+                        false),
+                    new IndexSymbolRecord(
+                        "type-widget",
+                        snapshotId,
+                        "ScheduleI:Installed:Type:Demo.Widget",
+                        "Type",
+                        TypeSelector,
+                        TypeSelector,
+                        false),
+                    new IndexSymbolRecord(
+                        MethodSymbolId,
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Widget::Run()",
+                        "Method",
+                        "Demo.Widget.Run",
+                        MethodSelector,
+                        false,
+                        BodyRecoveryStatus.Unknown),
+                    new IndexSymbolRecord(
+                        "type-dealer-alpha",
+                        snapshotId,
+                        "ScheduleI:Installed:Type:Alpha.DealerService",
+                        "Type",
+                        "Alpha.DealerService",
+                        "Alpha.DealerService",
+                        false),
+                    new IndexSymbolRecord(
+                        "type-dealer-beta",
+                        snapshotId,
+                        "ScheduleI:Installed:Type:Beta.DealerService",
+                        "Type",
+                        "Beta.DealerService",
+                        "Beta.DealerService",
+                        false),
+                    new IndexSymbolRecord(
+                        "method-caller",
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Caller::Invoke()",
+                        "Method",
+                        "Demo.Caller.Invoke",
+                        "System.Void Demo.Caller::Invoke()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        "method-service-execute",
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Service::Execute()",
+                        "Method",
+                        "Demo.Service.Execute",
+                        "System.Void Demo.Service::Execute()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        "method-worker-alpha",
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Alpha.Worker::Run()",
+                        "Method",
+                        "Alpha.Worker.Run",
+                        "System.Void Alpha.Worker::Run()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        "method-worker-beta",
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Beta.Worker::Run()",
+                        "Method",
+                        "Beta.Worker.Run",
+                        "System.Void Beta.Worker::Run()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        "type-base-widget",
+                        snapshotId,
+                        "ScheduleI:Installed:Type:Demo.WidgetBase",
+                        "Type",
+                        "Demo.WidgetBase",
+                        "Demo.WidgetBase",
+                        false),
+                    new IndexSymbolRecord(
+                        "type-payload",
+                        snapshotId,
+                        "ScheduleI:Installed:Type:Demo.Payload",
+                        "Type",
+                        "Demo.Payload",
+                        "Demo.Payload",
+                        false),
+                    new IndexSymbolRecord(
+                        "type-result",
+                        snapshotId,
+                        "ScheduleI:Installed:Type:Demo.Result",
+                        "Type",
+                        "Demo.Result",
+                        "Demo.Result",
+                        false),
+                    new IndexSymbolRecord(
+                        "field-state",
+                        snapshotId,
+                        "ScheduleI:Installed:Field:Demo.Widget::System.Int32 _state",
+                        "Field",
+                        "Demo.Widget._state",
+                        "System.Int32 Demo.Widget::_state",
                         false)
                 ],
+                [sourceFile],
+                [sourceLocation],
                 [],
-                [],
-                [],
-                []),
+                [
+                    new IndexRelationshipRecord(
+                        "incoming-call",
+                        snapshotId,
+                        "method-caller",
+                        MethodSymbolId,
+                        null,
+                        "Calls",
+                        "fixture:incoming-call"),
+                    new IndexRelationshipRecord(
+                        "outgoing-call",
+                        snapshotId,
+                        MethodSymbolId,
+                        "method-service-execute",
+                        null,
+                        "Calls",
+                        "fixture:outgoing-call"),
+                    new IndexRelationshipRecord(
+                        "inherits-widget-base",
+                        snapshotId,
+                        "type-widget",
+                        "type-base-widget",
+                        null,
+                        "Inherits",
+                        "fixture:inherits"),
+                    new IndexRelationshipRecord(
+                        "parameter-type-payload",
+                        snapshotId,
+                        MethodSymbolId,
+                        "type-payload",
+                        null,
+                        "ParameterType",
+                        "fixture:parameter-type"),
+                    new IndexRelationshipRecord(
+                        "return-type-result",
+                        snapshotId,
+                        MethodSymbolId,
+                        "type-result",
+                        null,
+                        "ReturnType",
+                        "fixture:return-type"),
+                    new IndexRelationshipRecord(
+                        "reads-widget-field",
+                        snapshotId,
+                        MethodSymbolId,
+                        "field-state",
+                        null,
+                        "ReadsField",
+                        "fixture:reads-field")
+                ]),
             BaseTime.AddMinutes(21).ToString("O"),
             ct);
     }
@@ -394,6 +590,9 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                     0)
             ]);
     }
+
+    private static string Sha256(string text) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
 
     private sealed record SeededExtraction(
         ValidatedExtraction Extraction,
