@@ -7,14 +7,18 @@ namespace S1Atlas.Storage.Tests;
 public sealed class ReadOnlySqliteAtlasRepositoryTests
 {
     [Fact]
-    public void Open_MissingDatabase_ThrowsAndCreatesNothing()
+    public async Task Read_MissingDatabase_ThrowsAndCreatesNothing()
     {
         var dir = Directory.CreateTempSubdirectory().FullName;
-        var dbPath = Path.Combine(dir, "atlas.db");
+        var parent = Path.Combine(dir, "missing");
+        var dbPath = Path.Combine(parent, "atlas.db");
 
-        var factory = new ReadOnlySqliteConnectionFactory(dbPath);
+        var readOnly = new ReadOnlySqliteAtlasRepository(
+            new ReadOnlySqliteConnectionFactory(dbPath));
 
-        Assert.Throws<FileNotFoundException>(() => factory.Open());
+        await Assert.ThrowsAsync<FileNotFoundException>(
+            () => readOnly.ListBuildsAsync(CancellationToken.None));
+        Assert.False(Directory.Exists(parent), "read-only open must not create the parent directory");
         Assert.False(File.Exists(dbPath), "read-only open must not create the database");
     }
 
@@ -36,6 +40,7 @@ public sealed class ReadOnlySqliteAtlasRepositoryTests
 
         var builds = await readOnly.ListBuildsAsync(CancellationToken.None);
         Assert.NotEmpty(builds);
+        Assert.Equal("build-a", builds[0].BuildId);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => readOnly.InitializeAsync(CancellationToken.None));
