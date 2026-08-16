@@ -8,9 +8,7 @@
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
     <ProjectReference Include="..\S1Atlas.Application\S1Atlas.Application.csproj" />
-    <ProjectReference Include="..\S1Atlas.Cli\S1Atlas.Cli.csproj" />
     <ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" />
-    <ProjectReference Include="..\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
     <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
     <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.8" />

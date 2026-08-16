@@ -43,4 +43,36 @@ public sealed class HostCompositionTests
                 forbiddenVerbs,
                 verb => name.Contains(verb, StringComparison.OrdinalIgnoreCase)));
     }
+
+    [Fact]
+    public void McpProject_DoesNotReferenceCliOrExtractionProjects()
+    {
+        var projectFile = File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "S1Atlas.Mcp.csproj"));
+
+        Assert.DoesNotContain("S1Atlas.Cli", projectFile, StringComparison.Ordinal);
+        Assert.DoesNotContain("S1Atlas.Extraction", projectFile, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void McpComposition_UsesSharedApplicationFactoryWithoutReflection()
+    {
+        var source = File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "McpServerComposition.cs"));
+
+        Assert.Contains("ReadOnlyAtlasComposition", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Activator.CreateInstance", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetType(", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ValidatedExtractionIntegrityVerifier", source, StringComparison.Ordinal);
+    }
+
+    private static string GetRepoPath(params string[] segments)
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "S1Atlas.sln")))
+        {
+            current = current.Parent;
+        }
+
+        Assert.NotNull(current);
+        return Path.Combine([current!.FullName, .. segments]);
+    }
 }

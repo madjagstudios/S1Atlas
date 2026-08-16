@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using S1Atlas.Cli.Configuration;
+using S1Atlas.Application.Configuration;
 using S1Atlas.Mcp;
 
 if (args is not ["mcp", "serve", ..])
@@ -10,7 +10,7 @@ if (args is not ["mcp", "serve", ..])
     return 2;
 }
 
-var dataDirectory = AtlasPaths.FromEnvironment().RootDirectory;
+var dataDirectory = AtlasDataPaths.FromEnvironment().RootDirectory;
 var services = McpServerComposition.BuildReadOnlyServices(dataDirectory);
 
 var builder = Host.CreateApplicationBuilder(args);

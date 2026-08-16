@@ -81,3 +81,32 @@ dotnet build S1Atlas.sln
 ## Concerns
 
 - `S1Atlas.Mcp` currently depends on reflection to instantiate the existing extraction integrity verifier and document store because that constructor surface is not publicly available to the new host project. The behavior is covered by the composition test, but this remains the main maintainability risk until a shared public factory or visibility decision is made in a later task.
+
+## Review Fix Round 1
+
+Addressed the review finding about MCP crossing the approved boundary:
+
+- removed the direct `S1Atlas.Cli` project reference from `S1Atlas.Mcp`
+- removed the direct `S1Atlas.Extraction` project reference from `S1Atlas.Mcp`
+- moved Atlas-home/data-path resolution into shared application code via `AtlasDataPaths`
+- moved read-only repository/service composition into `S1Atlas.Application.Composition.ReadOnlyAtlasComposition`
+- replaced MCP-side reflection-based verifier activation with a supported extraction factory method used by the shared application composition
+- added MCP boundary regression coverage to verify:
+  - the MCP project file no longer references `S1Atlas.Cli` or `S1Atlas.Extraction`
+  - `McpServerComposition` delegates to `ReadOnlyAtlasComposition` and no longer reflects into verifier construction
+
+### Commands Run
+
+```powershell
+dotnet test tests/S1Atlas.Mcp.Tests --filter HostCompositionTests
+dotnet build S1Atlas.sln
+```
+
+### Output
+
+- `dotnet test tests/S1Atlas.Mcp.Tests --filter HostCompositionTests` -> PASS (4 tests)
+- `dotnet build S1Atlas.sln` -> PASS
+
+### Concerns
+
+- None for this fix round. The reviewed host-level reflection and forbidden direct project references have been removed from `S1Atlas.Mcp`.
