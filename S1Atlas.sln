@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Cli", "src\S1Atlas.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Indexing", "src\S1Atlas.Indexing\S1Atlas.Indexing.csproj", "{AAAAAAA1-AAAA-4AAA-8AAA-AAAAAAAAAAA1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Application", "src\S1Atlas.Application\S1Atlas.Application.csproj", "{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Core.Tests", "tests\S1Atlas.Core.Tests\S1Atlas.Core.Tests.csproj", "{55555555-5555-4555-8555-555555555555}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Indexing.Tests", "tests\S1Atlas.Indexing.Tests\S1Atlas.Indexing.Tests.csproj", "{BBBBBBB1-BBBB-4BBB-8BBB-BBBBBBBBBBB1}"
@@ -56,6 +58,10 @@ Global
 		{AAAAAAA1-AAAA-4AAA-8AAA-AAAAAAAAAAA1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AAAAAAA1-AAAA-4AAA-8AAA-AAAAAAAAAAA1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AAAAAAA1-AAAA-4AAA-8AAA-AAAAAAAAAAA1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{55555555-5555-4555-8555-555555555555}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{55555555-5555-4555-8555-555555555555}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{55555555-5555-4555-8555-555555555555}.Release|Any CPU.ActiveCfg = Release|Any CPU
