@@ -58,6 +58,30 @@ The shared bundle includes:
 - Read-only Atlas build/environment access through `IAtlasRepository`.
 - Read-only extraction-history access for validated/preferred build metadata.
 
+### 2.4 Authority parity between CLI and MCP
+
+The Schedule I Installed build-authority resolution described in section 3.2
+(current-or-explicit build → preferred verified extraction → matching completed
+Installed index by source identity → full integrity verification) is owned by a
+single shared component in `S1Atlas.Application` and consumed by **both** the CLI
+Schedule I query commands and the MCP host. There must be exactly one authority
+path for the game surface, so an agent (MCP) and a human (CLI) cannot receive a
+different answer for the same Schedule I query.
+
+Today the CLI query commands resolve a Schedule I index by `(codebase, channel)`
+alone, without proving the preferred verified extraction or re-checking
+integrity. This milestone routes the CLI's Schedule I Installed queries through
+the shared authority path, so they gain the same preferred-and-verified guarantee
+and optional `--build` selection. The default behavior (no build specified →
+current build) is preserved.
+
+This parity requirement is scoped to the Schedule I Installed surface, which is
+all MCP V1 exposes (section 4.1). The CLI retains its separate S1API/S1MAPI
+codebase and release/preview channel resolution unchanged: those indexes are
+built from cached upstream source commits, not Cpp2IL extractions, and have no
+preferred-verified-extraction authority to share. MCP V1 does not expose the API
+codebases at all.
+
 ## 3. Trust and read-only boundary
 
 ### 3.1 Storage opening
@@ -197,8 +221,12 @@ JSON-friendly names and enums while mapping to the existing Core models.
 
 The existing `IndexQueryService` will gain a build-aware selection path or
 equivalent overload so these calls remain on the service rather than having
-the MCP adapter reimplement repository queries. Existing CLI default behavior
-must remain compatible.
+the MCP adapter reimplement repository queries. Per section 2.4 this build-aware
+Schedule I path is the shared authority path consumed by both the CLI Schedule I
+query commands and MCP; the storage lookups it builds on
+(`GetLatestCompletedIndexBySourceIdentityAsync` /
+`GetLatestCompletedIndexForBuildAsync`) already exist. The CLI's no-build default
+(current build) and its separate S1API/S1MAPI resolution remain compatible.
 
 ### 5.2 Build comparison
 
@@ -329,6 +357,9 @@ The milestone is complete when:
   context used.
 - All data comes through the existing integrity-verified authority and query
   services; no raw DB re-query exists in the MCP adapter.
+- The Schedule I build-authority path is shared: the CLI Schedule I query
+  commands and MCP resolve the same preferred, integrity-verified index, so the
+  two surfaces cannot diverge for a Schedule I query (section 2.4).
 - Source results are hash-verified and never written by MCP.
 - Missing, ambiguous, unavailable, partial, and integrity-invalid states are
   explicit.
