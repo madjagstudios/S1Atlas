@@ -1,4 +1,5 @@
 using System.CommandLine;
+using S1Atlas.Application.Authority;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
@@ -11,15 +12,18 @@ internal static class IndexQueryCommandFactory
     public static Command Create(
         string name,
         IndexQueryService service,
+        InstalledBuildAuthorityResolver authorityResolver,
         IAtlasRepository repository,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken,
-        Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>> execute)
+        Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>> execute,
+        Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>> executeInIndex)
     {
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
+        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",
@@ -30,6 +34,7 @@ internal static class IndexQueryCommandFactory
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
+        command.Options.Add(buildOption);
         command.Options.Add(limitOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
@@ -50,7 +55,34 @@ internal static class IndexQueryCommandFactory
                         parseResult.GetValue(codebaseOption),
                         parseResult.GetValue(channelOption),
                         limit);
-                    var data = execute(parseResult.GetValue(queryArgument)!, options, cancellationToken).GetAwaiter().GetResult();
+                    var buildId = parseResult.GetValue(buildOption);
+                    if (!string.IsNullOrWhiteSpace(buildId) && !UsesInstalledScheduleIAuthority(options))
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "InvalidOptionCombination",
+                            "--build is only valid with --codebase schedule-i and --channel installed or all.");
+                    }
+
+                    IndexQueryOutput data;
+                    if (UsesInstalledScheduleIAuthority(options))
+                    {
+                        var authority = authorityResolver.ResolveAsync(buildId, cancellationToken).GetAwaiter().GetResult();
+                        if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
+                        {
+                            return commandOutput.Failure(
+                                1,
+                                authority.Status.ToString(),
+                                authority.Message ?? "The requested Schedule I build is unavailable.");
+                        }
+
+                        data = executeInIndex(
+                            parseResult.GetValue(queryArgument)!, authority.IndexRun!, limit, cancellationToken).GetAwaiter().GetResult();
+                    }
+                    else
+                    {
+                        data = execute(parseResult.GetValue(queryArgument)!, options, cancellationToken).GetAwaiter().GetResult();
+                    }
                     if (data.Resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
                     {
                         return commandOutput.Failure(
@@ -145,4 +177,9 @@ internal static class IndexQueryCommandFactory
             _ => throw new ArgumentException("Channel must be installed, release, preview, or all.", nameof(channel))
         }, false, limit);
     }
+
+    public static bool UsesInstalledScheduleIAuthority(IndexQueryOptions options) =>
+        options.Codebase == CodebaseKind.ScheduleI &&
+        options.Channel == CodeChannel.Installed &&
+        !options.AllChannels;
 }

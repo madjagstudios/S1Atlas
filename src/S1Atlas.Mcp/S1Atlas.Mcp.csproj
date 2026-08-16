@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <ProjectReference Include="..\S1Atlas.Application\S1Atlas.Application.csproj" />
+    <ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" />
+    <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
+    <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.8" />
+  </ItemGroup>
+</Project>

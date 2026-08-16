@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" />
+    <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
+    <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
+    <ProjectReference Include="..\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
+  </ItemGroup>
+</Project>

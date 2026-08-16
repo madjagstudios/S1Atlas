@@ -36,6 +36,14 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
         _repository = repository;
     }
 
+    public static ValidatedExtractionIntegrityVerifier Create(
+        IFileHasher fileHasher,
+        IValidatedExtractionRepository? repository = null) =>
+        new(
+            new ValidatedExtractionDocumentStore(),
+            fileHasher,
+            repository);
+
     /// <summary>
     /// Verifies the extraction identified by <paramref name="extractionId"/> against
     /// its repository row and artifact rows, at its owned final extraction root.

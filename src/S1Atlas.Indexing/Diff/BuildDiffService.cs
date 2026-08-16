@@ -97,6 +97,54 @@ public sealed class BuildDiffService
             counts, changes);
     }
 
+    public async Task<SymbolDiff?> DiffSymbolAsync(
+        string indexIdA,
+        string indexIdB,
+        string codebase,
+        string channel,
+        string canonicalKey,
+        CancellationToken cancellationToken)
+    {
+        var symbolsA = await _repository.GetCompletedSymbolsAsync(indexIdA, cancellationToken);
+        var symbolsB = await _repository.GetCompletedSymbolsAsync(indexIdB, cancellationToken);
+        var fingerprintsA = await _repository.GetCompletedFingerprintsAsync(indexIdA, cancellationToken);
+        var fingerprintsB = await _repository.GetCompletedFingerprintsAsync(indexIdB, cancellationToken);
+        var relationshipsA = await _repository.GetCompletedRelationshipsAsync(indexIdA, cancellationToken);
+        var relationshipsB = await _repository.GetCompletedRelationshipsAsync(indexIdB, cancellationToken);
+
+        var mapA = symbolsA.ToDictionary(s => s.CanonicalKey, StringComparer.Ordinal);
+        var mapB = symbolsB.ToDictionary(s => s.CanonicalKey, StringComparer.Ordinal);
+
+        var inA = mapA.TryGetValue(canonicalKey, out var symA);
+        var inB = mapB.TryGetValue(canonicalKey, out var symB);
+        if (!inA && !inB)
+            return null;
+
+        var fpBySymbolA = GroupFingerprints(fingerprintsA);
+        var fpBySymbolB = GroupFingerprints(fingerprintsB);
+
+        var symIdToKeyA = symbolsA.ToDictionary(s => s.SymbolId, s => s.CanonicalKey, StringComparer.Ordinal);
+        var symIdToKeyB = symbolsB.ToDictionary(s => s.SymbolId, s => s.CanonicalKey, StringComparer.Ordinal);
+
+        var relBySourceA = GroupRelationships(relationshipsA);
+        var relBySourceB = GroupRelationships(relationshipsB);
+
+        var classification = Classify(
+            inA, inB, symA, symB,
+            fpBySymbolA, fpBySymbolB,
+            relBySourceA, relBySourceB,
+            symIdToKeyA, symIdToKeyB);
+
+        var chosen = inB ? symB! : symA!;
+        return new SymbolDiff(
+            canonicalKey,
+            chosen.QualifiedName,
+            chosen.Kind,
+            classification,
+            inA ? symA!.Signature : null,
+            inB ? symB!.Signature : null);
+    }
+
     private static DiffClassification Classify(
         bool inA, bool inB,
         IndexSymbolRecord? symA, IndexSymbolRecord? symB,

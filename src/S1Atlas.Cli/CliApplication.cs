@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.CommandLine;
+using S1Atlas.Application.Authority;
 using S1Atlas.Cli.Commands;
 using S1Atlas.Cli.Configuration;
 using S1Atlas.Core.Extraction;
@@ -287,6 +288,11 @@ public sealed class CliApplication
             sqliteRepository,
             new IlSpyManagedDecompiler());
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
+        var authorityResolver = new InstalledBuildAuthorityResolver(
+            new PreferredVerifiedExtractionResolver(_paths.RootDirectory, sqliteRepository, integrityVerifier),
+            sqliteRepository,
+            sqliteRepository,
+            sqliteRepository);
         var diffService = new BuildDiffService(sqliteRepository);
         var sceneIndexingWorkflow = new SceneIndexWorkflow(
             _paths.RootDirectory,
@@ -346,13 +352,13 @@ public sealed class CliApplication
                 output,
                 error,
                 cancellationToken));
-        root.Subcommands.Add(SearchCommand.Create(indexQueryService, repository, output, error, cancellationToken));
-        root.Subcommands.Add(TypeCommand.Create(indexQueryService, repository, output, error, cancellationToken));
-        root.Subcommands.Add(MethodCommand.Create(indexQueryService, repository, output, error, cancellationToken));
-        root.Subcommands.Add(SourceCommand.Create(indexQueryService, repository, _paths.RootDirectory, output, error, cancellationToken));
-        root.Subcommands.Add(RefsCommand.Create(indexQueryService, repository, output, error, cancellationToken));
-        root.Subcommands.Add(CallersCommand.Create(indexQueryService, repository, output, error, cancellationToken));
-        root.Subcommands.Add(CalleesCommand.Create(indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(SearchCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(TypeCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(MethodCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(SourceCommand.Create(indexQueryService, authorityResolver, repository, _paths.RootDirectory, output, error, cancellationToken));
+        root.Subcommands.Add(RefsCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(CallersCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(CalleesCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScenesCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(SceneCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(GameObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
