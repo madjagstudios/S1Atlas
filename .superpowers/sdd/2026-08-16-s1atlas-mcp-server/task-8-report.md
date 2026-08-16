@@ -23,3 +23,9 @@ Result: 3 passed, 0 failed, 0 skipped.
 Replaced the single-build `ToolEnvelope<SymbolDiff>` return with a comparison-specific envelope that preserves the standard status, error, candidates, data, and provenance conventions while exposing full `BuildA` and `BuildB` contexts. Both contexts are populated on successful comparisons and symbol-not-found results; when right-build authority fails, the resolved left context remains available alongside the right failure context. Added assertions for both contexts, a no-match `NotFound` case, and right-build failure preservation.
 
 Verification after the fix: 5 passed, 0 failed, 0 skipped.
+
+## Round-2 review fix
+
+Restored `compare_symbol` to return the planned `ToolEnvelope<SymbolDiff>` type. `ToolEnvelope` now has optional `BuildA` and `BuildB` properties, leaving existing `Build` behavior unchanged for other tools. Compare success and `NotFound` responses now include FACT authority provenance for both builds as well as DERIVED comparison provenance; right-build authority failures preserve the left context and explicit failure context/status.
+
+Verification: 5 passed, 0 failed, 0 skipped.

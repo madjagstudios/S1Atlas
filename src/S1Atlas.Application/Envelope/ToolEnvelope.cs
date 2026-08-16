@@ -42,6 +42,9 @@ public sealed record ToolEnvelope<T>(
     IReadOnlyList<ProvenanceEntry> Provenance,
     ToolError? Error) where T : class
 {
+    public BuildContext? BuildA { get; init; }
+    public BuildContext? BuildB { get; init; }
+
     public static ToolEnvelope<T> Resolved(
         BuildContext? build,
         T data,

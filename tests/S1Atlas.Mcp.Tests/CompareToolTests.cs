@@ -13,7 +13,7 @@ public sealed class CompareToolTests
         await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
         var tools = CreateTools(atlas);
 
-        var envelope = await tools.CompareSymbolAsync(
+        ToolEnvelope<SymbolDiff> envelope = await tools.CompareSymbolAsync(
             selector: atlas.CompareSelector,
             buildIdA: atlas.BuildIdA,
             buildIdB: "",
@@ -45,6 +45,10 @@ public sealed class CompareToolTests
         Assert.Equal(DiffClassification.Unchanged, envelope.Data!.Classification);
         Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA);
         Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB);
+        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA && entry.Classification == ProvenanceClassification.Fact);
+        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB && entry.Classification == ProvenanceClassification.Fact);
+        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA && entry.Classification == ProvenanceClassification.Derived);
+        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB && entry.Classification == ProvenanceClassification.Derived);
     }
 
     [Fact]
