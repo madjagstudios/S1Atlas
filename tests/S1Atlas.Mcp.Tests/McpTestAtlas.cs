@@ -18,10 +18,17 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         DateTimeOffset.Parse("2026-08-16T00:00:00Z");
 
     private const string ToolInstanceId = "tool-instance-1";
-    private const string BuildId = "build-a";
-    private const string RecipeId = "1111111111111111111111111111111111111111111111111111111111111111";
+    private const string BuildIdASeed = "build-a";
+    private const string BuildIdBSeed = "build-b";
+    private const string RecipeIdA = "1111111111111111111111111111111111111111111111111111111111111111";
+    private const string RecipeIdB = "2222222222222222222222222222222222222222222222222222222222222222";
     private const string ProfileDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string PolicyDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string CompareSymbolCanonicalKey = "N.T.M()";
+    private const string CompareSymbolQualifiedName = "N.T.M";
+    private const string CompareSymbolSignature = "N.T.M()";
+    private const string CompareSymbolId = "method-compare";
+    private const string CompareSymbolDeclarationFingerprint = "compare-symbol-declaration";
 
     private readonly string _root;
     private readonly SqliteAtlasRepository _repository;
@@ -36,16 +43,21 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     }
 
     public string DataRoot { get; }
-    public string BuildIdValue => BuildId;
+    public string BuildIdValue => BuildIdASeed;
+    public string BuildIdA => BuildIdASeed;
+    public string BuildIdB { get; private set; } = BuildIdBSeed;
     public string IndexId { get; private set; } = string.Empty;
+    public string IndexIdA { get; private set; } = string.Empty;
+    public string IndexIdB { get; private set; } = string.Empty;
     public string KnownSymbolFragment => "Dealer";
     public string MethodSelector => "System.Void Demo.Widget::Run()";
     public string MethodSymbolId => "method-run";
     public string TypeSelector => "Demo.Widget";
+    public string CompareSelector => CompareSymbolCanonicalKey;
     public string SourceRelativePath => "Assembly-CSharp.cs";
-    public string SourcePath => Path.Combine(DataRoot, "builds", BuildId, "indexes", IndexId, SourceRelativePath);
+    public string SourcePath => Path.Combine(DataRoot, "builds", BuildIdASeed, "indexes", IndexId, SourceRelativePath);
 
-    public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(string buildId = BuildId)
+    public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(string buildId = BuildIdASeed)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -54,21 +66,47 @@ internal sealed class McpTestAtlas : IAsyncDisposable
 
         var atlas = new McpTestAtlas(root);
         await atlas.InitializeAsync(CancellationToken.None);
-        await atlas.SeedCurrentBuildAsync(buildId);
-        var seeded = await atlas.SeedValidatedExtractionAsync(buildId);
-        await atlas._repository.SetPreferredExtractionAsync(
-            new PreferredExtraction(
-                buildId,
-                seeded.Extraction.ExtractionId,
-                seeded.Report.ValidatedAtUtc,
-                ExtractionPreferenceReason.ManualPromotion),
-            CancellationToken.None);
-        var indexId = "index-" + seeded.Extraction.ExtractionId;
-        await atlas.SeedCompletedInstalledIndexAsync(
-            seeded.Extraction.ExtractionId,
+        var seeded = await atlas.SeedHealthyBuildAsync(
             buildId,
-            indexId);
-        atlas.IndexId = indexId;
+            recipeId: RecipeIdA,
+            indexId: null,
+            compareBodyFingerprint: "compare-body-same");
+        atlas.IndexId = seeded.IndexId;
+        atlas.IndexIdA = seeded.IndexId;
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedTwoInstalledBuildsAsync()
+        => await SeedTwoInstalledBuildsAsync("compare-body-same", "compare-body-same");
+
+    public static async Task<McpTestAtlas> SeedTwoInstalledBuildsAsync(
+        string compareBodyFingerprintA,
+        string compareBodyFingerprintB)
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+
+        var seededA = await atlas.SeedHealthyBuildAsync(
+            BuildIdASeed,
+            recipeId: RecipeIdA,
+            indexId: "index-a",
+            compareBodyFingerprintA);
+        atlas.IndexId = seededA.IndexId;
+        atlas.IndexIdA = seededA.IndexId;
+
+        var seededB = await atlas.SeedHealthyBuildAsync(
+            BuildIdBSeed,
+            recipeId: RecipeIdB,
+            indexId: "index-b",
+            compareBodyFingerprintB);
+        atlas.BuildIdB = seededB.BuildId;
+        atlas.IndexIdB = seededB.IndexId;
+
         return atlas;
     }
 
@@ -107,12 +145,40 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         await _repository.SaveSnapshotAsync(CreateSnapshot(buildId), CancellationToken.None);
     }
 
+    private async Task<HealthySeed> SeedHealthyBuildAsync(
+        string buildId,
+        string recipeId,
+        string? indexId,
+        string compareBodyFingerprint)
+    {
+        await SeedCurrentBuildAsync(buildId);
+        var seeded = await SeedValidatedExtractionAsync(buildId, recipeId);
+        await _repository.SetPreferredExtractionAsync(
+            new PreferredExtraction(
+                buildId,
+                seeded.Extraction.ExtractionId,
+                seeded.Report.ValidatedAtUtc,
+                ExtractionPreferenceReason.ManualPromotion),
+            CancellationToken.None);
+
+        var resolvedIndexId = indexId ?? "index-" + seeded.Extraction.ExtractionId;
+        await SeedCompletedInstalledIndexAsync(
+            seeded.Extraction.ExtractionId,
+            buildId,
+            resolvedIndexId,
+            compareBodyFingerprint);
+
+        return new HealthySeed(buildId, seeded.Extraction.ExtractionId, resolvedIndexId);
+    }
+
     private async Task SeedCompletedInstalledIndexAsync(
         string extractionId,
         string buildId,
-        string indexId)
+        string indexId,
+        string compareBodyFingerprint)
     {
         var ct = CancellationToken.None;
+        string Id(string value) => buildId == BuildIdASeed ? value : value + "-" + buildId;
         var snapshotId = "snapshot-" + extractionId;
         var createdAtUtc = BaseTime.AddMinutes(20).ToString("O");
         await _repository.CreateCodeSnapshotAsync(
@@ -133,13 +199,13 @@ internal sealed class McpTestAtlas : IAsyncDisposable
 
         const string sourceText = "namespace Demo;\npublic class Widget\n{\n    public void Run() { }\n}\n";
         var sourceFile = new IndexSourceFileRecord(
-            "source-file-widget",
+            Id("source-file-widget"),
             snapshotId,
             SourceRelativePath,
             Sha256(sourceText),
             Encoding.UTF8.GetByteCount(sourceText));
         var sourceLocation = new IndexSourceLocationRecord(
-            MethodSymbolId,
+            Id(MethodSymbolId),
             sourceFile.SourceFileId,
             4,
             5,
@@ -158,7 +224,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             new IndexWriteSet(
                 [
                     new IndexSymbolRecord(
-                        "symbol-" + extractionId,
+                        Id("symbol-" + extractionId),
                         snapshotId,
                         "ScheduleI:Installed:Type:Demo.Authority",
                         "Type",
@@ -166,7 +232,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Demo.Authority",
                         false),
                     new IndexSymbolRecord(
-                        "type-widget",
+                        Id("type-widget"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Demo.Widget",
                         "Type",
@@ -174,7 +240,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         TypeSelector,
                         false),
                     new IndexSymbolRecord(
-                        MethodSymbolId,
+                        Id(MethodSymbolId),
                         snapshotId,
                         "ScheduleI:Installed:Method:Demo.Widget::Run()",
                         "Method",
@@ -183,7 +249,16 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         false,
                         BodyRecoveryStatus.Unknown),
                     new IndexSymbolRecord(
-                        "type-dealer-alpha",
+                        Id(CompareSymbolId),
+                        snapshotId,
+                        CompareSymbolCanonicalKey,
+                        "Method",
+                        CompareSymbolQualifiedName,
+                        CompareSymbolSignature,
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        Id("type-dealer-alpha"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Alpha.DealerService",
                         "Type",
@@ -191,7 +266,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Alpha.DealerService",
                         false),
                     new IndexSymbolRecord(
-                        "type-dealer-beta",
+                        Id("type-dealer-beta"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Beta.DealerService",
                         "Type",
@@ -199,7 +274,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Beta.DealerService",
                         false),
                     new IndexSymbolRecord(
-                        "method-caller",
+                        Id("method-caller"),
                         snapshotId,
                         "ScheduleI:Installed:Method:Demo.Caller::Invoke()",
                         "Method",
@@ -208,7 +283,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         false,
                         BodyRecoveryStatus.Recovered),
                     new IndexSymbolRecord(
-                        "method-service-execute",
+                        Id("method-service-execute"),
                         snapshotId,
                         "ScheduleI:Installed:Method:Demo.Service::Execute()",
                         "Method",
@@ -217,7 +292,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         false,
                         BodyRecoveryStatus.Recovered),
                     new IndexSymbolRecord(
-                        "method-worker-alpha",
+                        Id("method-worker-alpha"),
                         snapshotId,
                         "ScheduleI:Installed:Method:Alpha.Worker::Run()",
                         "Method",
@@ -226,7 +301,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         false,
                         BodyRecoveryStatus.Recovered),
                     new IndexSymbolRecord(
-                        "method-worker-beta",
+                        Id("method-worker-beta"),
                         snapshotId,
                         "ScheduleI:Installed:Method:Beta.Worker::Run()",
                         "Method",
@@ -235,7 +310,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         false,
                         BodyRecoveryStatus.Recovered),
                     new IndexSymbolRecord(
-                        "type-base-widget",
+                        Id("type-base-widget"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Demo.WidgetBase",
                         "Type",
@@ -243,7 +318,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Demo.WidgetBase",
                         false),
                     new IndexSymbolRecord(
-                        "type-payload",
+                        Id("type-payload"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Demo.Payload",
                         "Type",
@@ -251,7 +326,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Demo.Payload",
                         false),
                     new IndexSymbolRecord(
-                        "type-result",
+                        Id("type-result"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Demo.Result",
                         "Type",
@@ -259,7 +334,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Demo.Result",
                         false),
                     new IndexSymbolRecord(
-                        "field-state",
+                        Id("field-state"),
                         snapshotId,
                         "ScheduleI:Installed:Field:Demo.Widget::System.Int32 _state",
                         "Field",
@@ -269,53 +344,62 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                 ],
                 [sourceFile],
                 [sourceLocation],
-                [],
+                [
+                    new IndexFingerprintRecord(
+                        Id(CompareSymbolId),
+                        "declaration",
+                        CompareSymbolDeclarationFingerprint),
+                    new IndexFingerprintRecord(
+                        Id(CompareSymbolId),
+                        "method-body",
+                        compareBodyFingerprint)
+                ],
                 [
                     new IndexRelationshipRecord(
-                        "incoming-call",
+                        Id("incoming-call"),
                         snapshotId,
-                        "method-caller",
-                        MethodSymbolId,
+                        Id("method-caller"),
+                        Id(MethodSymbolId),
                         null,
                         "Calls",
                         "fixture:incoming-call"),
                     new IndexRelationshipRecord(
-                        "outgoing-call",
+                        Id("outgoing-call"),
                         snapshotId,
-                        MethodSymbolId,
-                        "method-service-execute",
+                        Id(MethodSymbolId),
+                        Id("method-service-execute"),
                         null,
                         "Calls",
                         "fixture:outgoing-call"),
                     new IndexRelationshipRecord(
-                        "inherits-widget-base",
+                        Id("inherits-widget-base"),
                         snapshotId,
-                        "type-widget",
-                        "type-base-widget",
+                        Id("type-widget"),
+                        Id("type-base-widget"),
                         null,
                         "Inherits",
                         "fixture:inherits"),
                     new IndexRelationshipRecord(
-                        "parameter-type-payload",
+                        Id("parameter-type-payload"),
                         snapshotId,
-                        MethodSymbolId,
-                        "type-payload",
+                        Id(MethodSymbolId),
+                        Id("type-payload"),
                         null,
                         "ParameterType",
                         "fixture:parameter-type"),
                     new IndexRelationshipRecord(
-                        "return-type-result",
+                        Id("return-type-result"),
                         snapshotId,
-                        MethodSymbolId,
-                        "type-result",
+                        Id(MethodSymbolId),
+                        Id("type-result"),
                         null,
                         "ReturnType",
                         "fixture:return-type"),
                     new IndexRelationshipRecord(
-                        "reads-widget-field",
+                        Id("reads-widget-field"),
                         snapshotId,
-                        MethodSymbolId,
-                        "field-state",
+                        Id(MethodSymbolId),
+                        Id("field-state"),
                         null,
                         "ReadsField",
                         "fixture:reads-field")
@@ -324,13 +408,14 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             ct);
     }
 
-    private async Task<SeededExtraction> SeedValidatedExtractionAsync(string buildId)
+    private async Task<SeededExtraction> SeedValidatedExtractionAsync(string buildId, string recipeId)
     {
         var manifest = CreateManifest();
         var digest = ArtifactManifestFingerprint.Create(manifest);
-        var extractionId = ExtractionId.Create(RecipeId, digest);
+        var extractionId = ExtractionId.Create(recipeId, digest);
         var attempt = await AdvanceAttemptToValidatingAsync(
             buildId,
+            recipeId,
             extractionId[..32],
             CancellationToken.None);
         var statistics = new ExtractionStatistics(
@@ -358,7 +443,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             ]);
         var extraction = new ValidatedExtraction(
             extractionId,
-            RecipeId,
+            recipeId,
             buildId,
             ToolInstanceId,
             attempt.AttemptId,
@@ -379,7 +464,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             ValidationSubjectKind.CandidateOutput,
             null,
             buildId,
-            RecipeId,
+            recipeId,
             "managed-assemblies-v1",
             1,
             PolicyDigest,
@@ -437,12 +522,13 @@ internal sealed class McpTestAtlas : IAsyncDisposable
 
     private async Task<ExtractionAttempt> AdvanceAttemptToValidatingAsync(
         string buildId,
+        string recipeId,
         string attemptId,
         CancellationToken cancellationToken)
     {
         var created = new ExtractionAttempt(
             AttemptId: attemptId,
-            RecipeId: RecipeId,
+            RecipeId: recipeId,
             BuildId: buildId,
             ToolInstanceId: ToolInstanceId,
             ProfileId: "default-profile",
@@ -597,6 +683,11 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     private sealed record SeededExtraction(
         ValidatedExtraction Extraction,
         ValidationReport Report);
+
+    private sealed record HealthySeed(
+        string BuildId,
+        string ExtractionId,
+        string IndexId);
 
     private string GetFinalExtractionRoot(string buildId, string extractionId) =>
         Path.Combine(DataRoot, "builds", buildId, "extractions", extractionId);
