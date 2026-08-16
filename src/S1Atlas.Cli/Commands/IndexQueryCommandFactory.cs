@@ -61,7 +61,7 @@ internal static class IndexQueryCommandFactory
                         return commandOutput.Failure(
                             1,
                             "InvalidOptionCombination",
-                            "--build is only valid with --codebase schedule-i and --channel installed.");
+                            "--build is only valid with --codebase schedule-i and --channel installed or all.");
                     }
 
                     IndexQueryOutput data;
@@ -180,6 +180,5 @@ internal static class IndexQueryCommandFactory
 
     public static bool UsesInstalledScheduleIAuthority(IndexQueryOptions options) =>
         options.Codebase == CodebaseKind.ScheduleI &&
-        options.Channel == CodeChannel.Installed &&
-        !options.AllChannels;
+        (options.Channel == CodeChannel.Installed || options.AllChannels);
 }

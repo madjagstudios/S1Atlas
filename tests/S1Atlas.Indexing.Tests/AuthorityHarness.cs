@@ -74,7 +74,7 @@ internal sealed class AuthorityHarness : IAsyncDisposable
             CancellationToken.None);
     }
 
-    public async Task SeedPreferredVerifiedExtractionAsync(
+    public async Task<string> SeedPreferredVerifiedExtractionAsync(
         string buildId = BuildId,
         string? extractionId = null)
     {
@@ -86,12 +86,14 @@ internal sealed class AuthorityHarness : IAsyncDisposable
                 seeded.Report.ValidatedAtUtc,
                 ExtractionPreferenceReason.ManualPromotion),
             CancellationToken.None);
+        return seeded.Extraction.ExtractionId;
     }
 
     public async Task SeedCompletedInstalledIndexAsync(
         string extractionId,
         string buildId = BuildId,
-        string? indexId = null)
+        string? indexId = null,
+        string? associatedBuildId = null)
     {
         var ct = CancellationToken.None;
         var snapshotId = "snapshot-" + extractionId;
@@ -103,7 +105,10 @@ internal sealed class AuthorityHarness : IAsyncDisposable
                 CodebaseKind.ScheduleI,
                 CodeChannel.Installed,
                 extractionId,
-                createdAtUtc),
+                createdAtUtc,
+                associatedBuildId is null
+                    ? null
+                    : EnvironmentSnapshotId.Create(CreateSnapshot(associatedBuildId))),
             ct);
         await _repository.StartIndexRunAsync(
             new IndexRunRecord(
@@ -131,6 +136,17 @@ internal sealed class AuthorityHarness : IAsyncDisposable
                 []),
             BaseTime.AddMinutes(21).ToString("O"),
             ct);
+    }
+
+    public async Task SeedCompletedInstalledIndexAssociatedWithDifferentBuildAsync(string extractionId)
+    {
+        const string otherBuildId = "build-b";
+        await SeedCurrentBuildAsync(otherBuildId);
+        await SeedCompletedInstalledIndexAsync(
+            extractionId,
+            BuildId,
+            associatedBuildId: otherBuildId);
+        await SeedCurrentBuildAsync(BuildId);
     }
 
     public async Task SeedCorruptedPreferenceAsync(string buildId = BuildId)

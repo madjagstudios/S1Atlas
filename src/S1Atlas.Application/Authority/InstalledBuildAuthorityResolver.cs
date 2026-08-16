@@ -23,6 +23,11 @@ public sealed class InstalledBuildAuthorityResolver
         _validated = validatedRepository ?? throw new ArgumentNullException(nameof(validatedRepository));
     }
 
+    public Task<PreferredVerifiedExtraction?> ResolvePreferredExtractionAsync(
+        string buildId,
+        CancellationToken ct) =>
+        _preferredResolver.ResolveAsync(buildId, ct);
+
     public async Task<InstalledBuildAuthority> ResolveAsync(
         string? requestedBuildId,
         CancellationToken ct)
@@ -97,6 +102,30 @@ public sealed class InstalledBuildAuthorityResolver
                 requestedBuildId,
                 resolvedBuildId,
                 "No completed Schedule I Installed index exists for the verified extraction.");
+        }
+
+        var snapshot = await _index.GetCodeSnapshotAsync(run.SnapshotId, ct);
+        if (snapshot is null ||
+            snapshot.Codebase != CodebaseKind.ScheduleI ||
+            snapshot.Channel != CodeChannel.Installed ||
+            !string.Equals(snapshot.SourceIdentity, extractionId, StringComparison.Ordinal))
+        {
+            return Fail(
+                InstalledBuildAuthorityStatus.IndexBuildMismatch,
+                requestedBuildId,
+                resolvedBuildId,
+                "The completed index does not match the preferred extraction authority.");
+        }
+
+        var associatedBuildId = await _index.GetCompletedIndexBuildIdAsync(run.IndexId, ct);
+        if (associatedBuildId is not null &&
+            !string.Equals(associatedBuildId, resolvedBuildId, StringComparison.Ordinal))
+        {
+            return Fail(
+                InstalledBuildAuthorityStatus.IndexBuildMismatch,
+                requestedBuildId,
+                resolvedBuildId,
+                "The completed index does not belong to the resolved build.");
         }
 
         return new InstalledBuildAuthority(

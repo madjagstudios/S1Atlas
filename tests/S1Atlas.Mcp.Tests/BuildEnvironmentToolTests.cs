@@ -41,6 +41,19 @@ public sealed class BuildEnvironmentToolTests
     }
 
     [Fact]
+    public async Task ListBuilds_PreferredVerifiedExtractionWithoutIndex_ReportsIndependentAvailability()
+    {
+        await using var atlas = await McpTestAtlas.SeedPreferredVerifiedBuildWithoutIndexAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.ListBuildsAsync(ct: CancellationToken.None);
+
+        var build = Assert.Single(envelope.Data!.Builds);
+        Assert.True(build.HasPreferredVerifiedExtraction);
+        Assert.False(build.HasCompletedIndex);
+    }
+
+    [Fact]
     public async Task GetEnvironment_NoBuild_ReturnsCurrent()
     {
         await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();

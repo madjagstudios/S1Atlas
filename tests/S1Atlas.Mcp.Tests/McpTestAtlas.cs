@@ -93,6 +93,29 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         return atlas;
     }
 
+    public static async Task<McpTestAtlas> SeedPreferredVerifiedBuildWithoutIndexAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(BuildIdASeed);
+        var seeded = await atlas.SeedValidatedExtractionAsync(BuildIdASeed, RecipeIdA);
+        await atlas._repository.SetPreferredExtractionAsync(
+            new PreferredExtraction(
+                BuildIdASeed,
+                seeded.Extraction.ExtractionId,
+                seeded.Report.ValidatedAtUtc,
+                ExtractionPreferenceReason.ManualPromotion),
+            CancellationToken.None);
+        atlas.ExtractionIdA = seeded.Extraction.ExtractionId;
+        atlas.InputSnapshotIdA = seeded.InputSnapshot.InputSnapshotId;
+        return atlas;
+    }
+
     public static async Task<McpTestAtlas> SeedTwoInstalledBuildsAsync()
         => await SeedTwoInstalledBuildsAsync("compare-body-same", "compare-body-same");
 
@@ -185,6 +208,19 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         return Task.FromResult(new McpTestAtlas(root));
+    }
+
+    public static async Task<McpTestAtlas> CreateCorruptDatabaseRootAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(
+            Path.Combine(root, "atlas.db"),
+            "not a sqlite database: " + root,
+            CancellationToken.None);
+        return new McpTestAtlas(root);
     }
 
     public static async Task<McpTestAtlas> EmptyAsync()

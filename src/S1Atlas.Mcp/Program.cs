@@ -1,8 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using S1Atlas.Application.Configuration;
+using S1Atlas.Application.Envelope;
 using S1Atlas.Mcp;
+using System.Text.Json;
 
 if (args is not ["mcp", "serve", ..])
 {
@@ -24,10 +27,13 @@ builder.Services.AddSingleton(services.AuthorityResolver);
 builder.Services.AddSingleton(services.IndexQueryService);
 builder.Services.AddSingleton(services.BuildDiffService);
 builder.Services.AddSingleton(services.SceneQueryService);
+var toolJsonOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+toolJsonOptions.Converters.Insert(0, new ToolStatusJsonConverter());
+toolJsonOptions.Converters.Insert(0, new ProvenanceClassificationJsonConverter());
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly(typeof(McpToolCatalog).Assembly);
+    .WithToolsFromAssembly(typeof(McpToolCatalog).Assembly, toolJsonOptions);
 
 await builder.Build().RunAsync();
 return 0;

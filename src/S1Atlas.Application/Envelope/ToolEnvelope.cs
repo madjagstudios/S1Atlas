@@ -1,5 +1,9 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace S1Atlas.Application.Envelope;
 
+[JsonConverter(typeof(ToolStatusJsonConverter))]
 public enum ToolStatus
 {
     Resolved,
@@ -9,11 +13,58 @@ public enum ToolStatus
     Invalid
 }
 
+[JsonConverter(typeof(ProvenanceClassificationJsonConverter))]
 public enum ProvenanceClassification
 {
     Fact,
     Derived,
     Interpretation
+}
+
+public sealed class ToolStatusJsonConverter : JsonConverter<ToolStatus>
+{
+    public override ToolStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString() switch
+        {
+            "resolved" or "Resolved" => ToolStatus.Resolved,
+            "not_found" or "NotFound" => ToolStatus.NotFound,
+            "ambiguous" or "Ambiguous" => ToolStatus.Ambiguous,
+            "unavailable" or "Unavailable" => ToolStatus.Unavailable,
+            "invalid" or "Invalid" => ToolStatus.Invalid,
+            _ => throw new JsonException("Unknown tool status.")
+        };
+
+    public override void Write(Utf8JsonWriter writer, ToolStatus value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            ToolStatus.Resolved => "resolved",
+            ToolStatus.NotFound => "not_found",
+            ToolStatus.Ambiguous => "ambiguous",
+            ToolStatus.Unavailable => "unavailable",
+            ToolStatus.Invalid => "invalid",
+            _ => throw new JsonException("Unknown tool status.")
+        });
+}
+
+public sealed class ProvenanceClassificationJsonConverter : JsonConverter<ProvenanceClassification>
+{
+    public override ProvenanceClassification Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString() switch
+        {
+            "FACT" or "Fact" => ProvenanceClassification.Fact,
+            "DERIVED" or "Derived" => ProvenanceClassification.Derived,
+            "INTERPRETATION" or "Interpretation" => ProvenanceClassification.Interpretation,
+            _ => throw new JsonException("Unknown provenance classification.")
+        };
+
+    public override void Write(Utf8JsonWriter writer, ProvenanceClassification value, JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            ProvenanceClassification.Fact => "FACT",
+            ProvenanceClassification.Derived => "DERIVED",
+            ProvenanceClassification.Interpretation => "INTERPRETATION",
+            _ => throw new JsonException("Unknown provenance classification.")
+        });
 }
 
 public sealed record BuildContext(

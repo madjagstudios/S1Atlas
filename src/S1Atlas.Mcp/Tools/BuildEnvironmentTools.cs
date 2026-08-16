@@ -40,19 +40,16 @@ public sealed class BuildEnvironmentTools
 
         foreach (var build in builds.Take(Math.Min(limit, 500)))
         {
+            var preferred = await _services.AuthorityResolver.ResolvePreferredExtractionAsync(build.BuildId, ct);
             var authority = await _services.AuthorityResolver.ResolveAsync(build.BuildId, ct);
-            var index = await _services.Repository.GetLatestCompletedIndexForBuildAsync(
-                CodebaseKind.ScheduleI,
-                CodeChannel.Installed,
-                build.BuildId,
-                ct);
             items.Add(new BuildListItem(
                 build.BuildId,
                 build.FirstSeenAtUtc,
                 build.IsValid,
                 string.Equals(current?.Build.BuildId, build.BuildId, StringComparison.Ordinal),
-                authority.Status == InstalledBuildAuthorityStatus.Resolved,
-                index is not null));
+                preferred is not null &&
+                    string.Equals(preferred.Extraction.BuildId, build.BuildId, StringComparison.Ordinal),
+                authority.Status == InstalledBuildAuthorityStatus.Resolved));
         }
 
         return ToolEnvelope<BuildListResult>.Resolved(

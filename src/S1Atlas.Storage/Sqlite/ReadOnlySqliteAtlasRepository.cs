@@ -571,6 +571,24 @@ public sealed class ReadOnlySqliteAtlasRepository :
             return await reader.ReadAsync() ? ReadRun(reader) : null;
         }, cancellationToken);
 
+    public Task<string?> GetCompletedIndexBuildIdAsync(string indexId, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT env.build_id
+                FROM index_runs AS run
+                INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+                INNER JOIN environment_snapshots AS env ON env.snapshot_id = snapshot.environment_snapshot_id
+                WHERE run.index_id = $indexId
+                  AND run.status = 'Completed'
+                LIMIT 1;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            return (string?)await command.ExecuteScalarAsync();
+        }, cancellationToken);
+
     public Task CreateSceneSnapshotAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken) => throw new InvalidOperationException(ReadOnlyMessage);
     public Task StartSceneSnapshotAsync(string sceneSnapshotId, string startedAtUtc, CancellationToken cancellationToken) => throw new InvalidOperationException(ReadOnlyMessage);
     public Task CompleteSceneSnapshotAsync(string sceneSnapshotId, SceneWriteSet writeSet, string completedAtUtc, CancellationToken cancellationToken) => throw new InvalidOperationException(ReadOnlyMessage);

@@ -40,6 +40,36 @@ public sealed class CliQueryParityTests
     }
 
     [Fact]
+    public async Task Search_ScheduleI_AllChannels_UsesPreferredVerifiedIndex()
+    {
+        await using var atlas = await CliParityAtlas.SeedPreferredPlusNewerNonPreferredAsync();
+
+        var preferred = CliRunner.Run(
+            atlas.DataRoot,
+            "search",
+            "Alpha",
+            "--codebase",
+            "schedule-i",
+            "--channel",
+            "all",
+            "--json");
+        var nonPreferred = CliRunner.Run(
+            atlas.DataRoot,
+            "search",
+            "Beta",
+            "--codebase",
+            "schedule-i",
+            "--channel",
+            "all",
+            "--json");
+
+        Assert.Equal(0, preferred.ExitCode);
+        Assert.Contains("Alpha", preferred.StandardOutput, StringComparison.Ordinal);
+        Assert.Equal(1, nonPreferred.ExitCode);
+        Assert.Contains("SymbolNotFound", nonPreferred.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Search_Api_S1Api_PathUnchanged()
     {
         await using var atlas = await CliParityAtlas.SeedPreferredPlusNewerNonPreferredAsync();

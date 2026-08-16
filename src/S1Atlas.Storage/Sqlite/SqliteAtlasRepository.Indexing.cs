@@ -559,6 +559,26 @@ public sealed partial class SqliteAtlasRepository
         return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
     }
 
+    public async Task<string?> GetCompletedIndexBuildIdAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT env.build_id
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+            INNER JOIN environment_snapshots AS env ON env.snapshot_id = snapshot.environment_snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        return (string?)await command.ExecuteScalarAsync(cancellationToken);
+    }
+
     private static CodeSnapshotRecord ReadSnapshot(SqliteDataReader reader) =>
         new(reader.GetString(0), Enum.Parse<CodebaseKind>(reader.GetString(1)), Enum.Parse<CodeChannel>(reader.GetString(2)), reader.GetString(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 

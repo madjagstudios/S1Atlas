@@ -78,4 +78,18 @@ public sealed class InstalledBuildAuthorityResolverTests
         Assert.Equal(seeded.ExtractionId, result.ExtractionId);
         Assert.Equal(seeded.IndexId, result.IndexId);
     }
+
+    [Fact]
+    public async Task Resolve_PreferredIndexAssociatedWithDifferentBuild_ReturnsIndexBuildMismatch()
+    {
+        await using var harness = await AuthorityHarness.EmptyAsync();
+        var extractionId = await harness.SeedPreferredVerifiedExtractionAsync();
+        await harness.SeedCompletedInstalledIndexAssociatedWithDifferentBuildAsync(extractionId);
+        var resolver = harness.CreateResolver();
+
+        var result = await resolver.ResolveAsync(requestedBuildId: null, CancellationToken.None);
+
+        Assert.Equal(InstalledBuildAuthorityStatus.IndexBuildMismatch, result.Status);
+        Assert.Null(result.IndexId);
+    }
 }

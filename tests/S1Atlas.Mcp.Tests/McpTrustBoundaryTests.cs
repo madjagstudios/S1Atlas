@@ -65,11 +65,52 @@ public sealed class McpTrustBoundaryTests
 
         using var result = JsonDocument.Parse(serialized);
         var root = result.RootElement;
-        Assert.Equal("Resolved", root.GetProperty("status").GetString());
+        Assert.Equal("resolved", root.GetProperty("status").GetString());
         Assert.Equal(atlas.BuildIdB, root.GetProperty("build").GetProperty("resolvedBuildId").GetString());
         Assert.Equal(atlas.IndexIdB, root.GetProperty("build").GetProperty("indexId").GetString());
         Assert.Contains(root.GetProperty("provenance").EnumerateArray(), entry =>
-            entry.GetProperty("classification").GetString() == "Fact");
+            entry.GetProperty("classification").GetString() == "FACT");
+    }
+
+    [Fact]
+    public async Task StdioHost_CodeSymbolSchemasMatchApprovedContractsAndAllowOmittedOptions()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+
+        var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
+        AssertSchema(schemas["get_type"], ["selector", "buildId", "limit"], ["selector"]);
+        AssertSchema(schemas["get_method"], ["selector", "buildId", "limit"], ["selector"]);
+        AssertSchema(
+            schemas["find_related_types"],
+            ["selector", "buildId", "relationKinds", "limit"],
+            ["selector"]);
+
+        var serialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "get_type",
+            new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector });
+        using var result = JsonDocument.Parse(serialized);
+        Assert.Contains(
+            result.RootElement.GetProperty("status").GetString(),
+            new[] { "resolved", "ambiguous" });
+    }
+
+    private static void AssertSchema(
+        string serializedSchema,
+        IReadOnlyList<string> expectedProperties,
+        IReadOnlyList<string> expectedRequired)
+    {
+        using var schema = JsonDocument.Parse(serializedSchema);
+        Assert.Equal(
+            expectedProperties.OrderBy(value => value, StringComparer.Ordinal),
+            schema.RootElement.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name)
+                .OrderBy(value => value, StringComparer.Ordinal));
+        Assert.Equal(
+            expectedRequired.OrderBy(value => value, StringComparer.Ordinal),
+            schema.RootElement.GetProperty("required").EnumerateArray()
+                .Select(value => value.GetString()!)
+                .OrderBy(value => value, StringComparer.Ordinal));
     }
 
     [Fact]
@@ -142,6 +183,20 @@ public sealed class McpTrustBoundaryTests
             Assert.Equal("AtlasUnavailable", envelope.Error!.Code);
         });
         Assert.False(File.Exists(Path.Combine(atlas.DataRoot, "atlas.db")));
+    }
+
+    [Fact]
+    public async Task CorruptAtlas_ReturnsStableUnavailableWithoutStorageDetails()
+    {
+        await using var atlas = await McpTestAtlas.CreateCorruptDatabaseRootAsync();
+
+        var envelope = await McpTestHost.SearchSymbolsAsync(atlas.DataRoot, "Dealer");
+
+        Assert.Equal(ToolStatus.Unavailable, envelope.Status);
+        Assert.Equal("AtlasUnavailable", envelope.Error!.Code);
+        Assert.Equal("The Atlas data store is unavailable.", envelope.Error.Message);
+        Assert.DoesNotContain(atlas.DataRoot, envelope.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sqlite", envelope.Error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -218,6 +273,16 @@ internal static class McpTestHost
         return tools.Select(tool => tool.Name).ToArray();
     }
 
+    public static async Task<IReadOnlyDictionary<string, string>> GetToolSchemasThroughStdioAsync(string dataRoot)
+    {
+        await using var client = await CreateStdioClientAsync(dataRoot);
+        var tools = await client.ListToolsAsync(cancellationToken: CancellationToken.None);
+        return tools.ToDictionary(
+            tool => tool.Name,
+            tool => tool.JsonSchema.GetRawText(),
+            StringComparer.Ordinal);
+    }
+
     public static string ReadHostWiringSources() =>
         string.Concat(
             File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "Program.cs")),
@@ -241,6 +306,20 @@ internal static class McpTestHost
         return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
     }
 
+    public static async Task<string> CallToolThroughStdioAsync(
+        string dataRoot,
+        string toolName,
+        IReadOnlyDictionary<string, object?> arguments)
+    {
+        await using var client = await CreateStdioClientAsync(dataRoot);
+        var result = await client.CallToolAsync(
+            toolName,
+            arguments,
+            cancellationToken: CancellationToken.None);
+        Assert.False(result.IsError ?? false, JsonSerializer.Serialize(result.Content));
+        return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+    }
+
     public static async Task ExerciseEveryToolAsync(McpTestAtlas atlas)
     {
         var services = McpServerComposition.BuildReadOnlyServices(atlas.DataRoot);
@@ -252,18 +331,18 @@ internal static class McpTestHost
 
         await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, ct);
         await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, "not-a-kind", 50, ct);
-        await code.GetTypeAsync(atlas.TypeSelector, null, ct);
-        await code.GetTypeAsync(" ", null, ct);
-        await code.GetMethodAsync(atlas.MethodSelector, null, ct);
-        await code.GetMethodAsync(" ", null, ct);
+        await code.GetTypeAsync(atlas.TypeSelector, null, ct: ct);
+        await code.GetTypeAsync(" ", null, ct: ct);
+        await code.GetMethodAsync(atlas.MethodSelector, null, ct: ct);
+        await code.GetMethodAsync(" ", null, ct: ct);
         await code.GetSourceAsync(atlas.MethodSelector, null, 0, ct);
         await code.GetSourceAsync(" ", null, 0, ct);
         await code.FindCallersAsync(atlas.MethodSelector, null, 50, ct);
         await code.FindCallersAsync(" ", null, 50, ct);
         await code.FindReferencesAsync(atlas.MethodSelector, null, 50, ct);
         await code.FindReferencesAsync(" ", null, 50, ct);
-        await code.FindRelatedTypesAsync(atlas.MethodSelector, null, 50, ct);
-        await code.FindRelatedTypesAsync(" ", null, 50, ct);
+        await code.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
+        await code.FindRelatedTypesAsync(" ", null, null, 50, ct);
 
         await compare.CompareSymbolAsync(atlas.CompareSelector, atlas.BuildIdA, atlas.BuildIdB, ct);
         await compare.CompareSymbolAsync(atlas.CompareSelector, atlas.BuildIdA, " ", ct);
@@ -289,12 +368,12 @@ internal static class McpTestHost
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
         var ct = CancellationToken.None;
         var search = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, ct);
-        var type = await tools.GetTypeAsync(atlas.TypeSelector, null, ct);
-        var method = await tools.GetMethodAsync(atlas.MethodSelector, null, ct);
+        var type = await tools.GetTypeAsync(atlas.TypeSelector, null, ct: ct);
+        var method = await tools.GetMethodAsync(atlas.MethodSelector, null, ct: ct);
         var source = await tools.GetSourceAsync(atlas.MethodSelector, null, 0, ct);
         var callers = await tools.FindCallersAsync(atlas.MethodSelector, null, 50, ct);
         var references = await tools.FindReferencesAsync(atlas.MethodSelector, null, 50, ct);
-        var relatedTypes = await tools.FindRelatedTypesAsync(atlas.MethodSelector, null, 50, ct);
+        var relatedTypes = await tools.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
         return
         [
             Observe(search, search.Data!.Results.Select(result => result.IndexId)),
@@ -346,8 +425,8 @@ internal static class McpTestHost
         await using var empty = await McpTestAtlas.EmptyAsync();
         var emptyTools = new BuildEnvironmentTools(McpServerComposition.BuildReadOnlyServices(empty.DataRoot));
         return (
-            Observe(await tools.GetTypeAsync("Missing.Symbol", null, CancellationToken.None)),
-            Observe(await tools.GetTypeAsync("DealerService", null, CancellationToken.None)),
+            Observe(await tools.GetTypeAsync("Missing.Symbol", null, ct: CancellationToken.None)),
+            Observe(await tools.GetTypeAsync("DealerService", null, ct: CancellationToken.None)),
             Observe(await emptyTools.GetEnvironmentAsync(null, CancellationToken.None)));
     }
 

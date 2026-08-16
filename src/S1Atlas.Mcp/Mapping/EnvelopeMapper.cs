@@ -29,10 +29,14 @@ public static class EnvelopeMapper
         {
             return await operation();
         }
-        catch (FileNotFoundException exception)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
         {
             return ToolEnvelope<T>.Unavailable(
-                new ToolError("AtlasUnavailable", exception.Message));
+                new ToolError("AtlasUnavailable", "The Atlas data store is unavailable."));
         }
     }
 
@@ -161,18 +165,16 @@ public static class EnvelopeMapper
         ToolEnvelope<T>.Invalid(new ToolError(code, message));
 
     public static ToolEnvelope<T> SourceIntegrityFailure<T>(
-        InstalledBuildAuthority authority,
-        string message) where T : class =>
+        InstalledBuildAuthority authority) where T : class =>
         ToolEnvelope<T>.Unavailable(
-            new ToolError("SourceIntegrityFailure", message),
+            new ToolError("SourceIntegrityFailure", "The indexed source failed integrity verification."),
             BuildFrom(authority),
             Derived(authority, "source-integrity"));
 
     public static ToolEnvelope<T> SourceUnavailable<T>(
-        InstalledBuildAuthority authority,
-        string message) where T : class =>
+        InstalledBuildAuthority authority) where T : class =>
         ToolEnvelope<T>.Unavailable(
-            new ToolError("SourceUnavailable", message),
+            new ToolError("SourceUnavailable", "The indexed source is unavailable."),
             BuildFrom(authority),
             Derived(authority, "source-selection"));
 
