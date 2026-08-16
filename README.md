@@ -322,15 +322,21 @@ extraction and a completed matching Installed index; MCP never returns a Phase
 row. `compare_symbol` requires two explicit build IDs. Tool responses include
 status, requested and resolved build context, extraction/index provenance,
 integrity state, data, candidates where applicable, and structured errors.
+`get_environment` returns only the current environment snapshot when `buildId`
+is omitted. With an explicit non-current build ID it returns `unavailable` with
+`NoMatchingEnvironmentSnapshot`; it never returns historical environment facts.
 Facts are labeled `FACT`; deterministic selection, ranking, counts,
 relationship direction, completeness boundaries, and diff classifications are
 labeled `DERIVED`. Expected failures use stable domain codes such as
-`InvalidArguments`, `NoAtlasState`, `NoCurrentBuild`, `BuildNotFound`,
+`AtlasUnavailable`, `InvalidArguments`, `InvalidLimit`, `InvalidKind`,
+`NoAtlasState`, `NoCurrentBuild`, `BuildNotFound`,
 `NoPreferredVerifiedExtraction`, `ExtractionIntegrityFailure`,
 `NoCompletedIndex`, `IndexBuildMismatch`, `SymbolNotFound`,
 `AmbiguousSymbol`, `SourceUnavailable`, `SourceIntegrityFailure`,
-`NoCompletedSceneIndex`, `SceneSnapshotNotFound`, `PartialRecovery`, and
-`UnresolvedSceneReference`. Unexpected failures are logged to stderr and
+`NoMatchingEnvironmentSnapshot`, `NoCompletedSceneIndex`,
+`SceneSnapshotNotFound`, `SceneNotFound`, `GameObjectNotFound`,
+`UnresolvedCodeSymbol`, `PartialRecovery`, and `UnresolvedSceneReference`.
+Unexpected failures are logged to stderr and
 returned as safe MCP tool errors without stack traces or raw storage details.
 
 MCP has no write, patch, network, or game-execution capability. It does not
