@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, and the build-diffing milestone are all complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. **Generated HTML documentation, the read-only MCP server, and the S1Atlas agent skill remain the outstanding V1 milestones.**
+> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, the build-diffing milestone, and the read-only MCP server are all complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. The CLI and MCP share the same preferred-verified Schedule I Installed authority path, so human and agent queries have parity. **Generated HTML documentation and the S1Atlas agent skill remain the outstanding V1 milestones.**
 
 ## What the Foundation Can Do
 
@@ -292,6 +292,52 @@ Each JSON invocation writes exactly one top-level envelope to stdout with `schem
 
 Without `--game-path`, S1Atlas checks the standard Steam locations under `Program Files (x86)` and `Program Files`.
 
+## Read-only MCP server
+
+Launch the MCP server as a separate executable over stdio:
+
+```powershell
+dotnet run --project src/S1Atlas.Mcp -- mcp serve
+```
+
+Standard output is reserved for MCP protocol messages; diagnostics and logs go
+to standard error. MCP uses the same Atlas data root as the CLI: `%LOCALAPPDATA%\S1Atlas`
+by default, or the root supplied through `S1ATLAS_HOME`. The variable moves the
+database and all Atlas-owned data together. MCP opens the existing database in
+read-only mode; it does not create the root or database, run migrations, or
+change stored data.
+
+V1 exposes only the Schedule I `Installed` surface through these tools:
+
+`search_symbols`, `get_type`, `get_method`, `get_source`, `find_callers`,
+`find_references`, `find_related_types`, `compare_symbol`, `list_builds`,
+`get_environment`, `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`,
+and `get_component`.
+
+Every symbol and scene query resolves an omitted `buildId` from the current
+environment, while an explicit build ID is used exactly and never silently
+replaced. The selected build must have a preferred, integrity-verified
+extraction and a completed matching Installed index; MCP never returns a Phase
+3 candidate, retained failure output, unverified extraction, or unchecked index
+row. `compare_symbol` requires two explicit build IDs. Tool responses include
+status, requested and resolved build context, extraction/index provenance,
+integrity state, data, candidates where applicable, and structured errors.
+Facts are labeled `FACT`; deterministic selection, ranking, counts,
+relationship direction, completeness boundaries, and diff classifications are
+labeled `DERIVED`. Expected failures use stable domain codes such as
+`InvalidArguments`, `NoAtlasState`, `NoCurrentBuild`, `BuildNotFound`,
+`NoPreferredVerifiedExtraction`, `ExtractionIntegrityFailure`,
+`NoCompletedIndex`, `IndexBuildMismatch`, `SymbolNotFound`,
+`AmbiguousSymbol`, `SourceUnavailable`, `SourceIntegrityFailure`,
+`NoCompletedSceneIndex`, `SceneSnapshotNotFound`, `PartialRecovery`, and
+`UnresolvedSceneReference`. Unexpected failures are logged to stderr and
+returned as safe MCP tool errors without stack traces or raw storage details.
+
+MCP has no write, patch, network, or game-execution capability. It does not
+install tools, run extraction, launch a game or external process, sync
+upstream data, or expose S1API/S1MAPI channels. Source and scene results read
+only already-indexed Atlas-owned files with existing integrity checks.
+
 ## Local Data Location
 
 By default, Atlas data is stored at:
@@ -386,10 +432,12 @@ S1Atlas.Core        Domain records and interfaces
 S1Atlas.Extraction  Read-only discovery, hashing, dependency, local Steam metadata detection, and Cpp2IL orchestration
 S1Atlas.Indexing    ILSpy decompilation, Roslyn source/symbol indexing, relationships, scene intelligence, and index queries
 S1Atlas.Storage     Checksummed migrations and transactional SQLite persistence
+S1Atlas.Application Shared read-only composition and Schedule I Installed build authority
 S1Atlas.Cli         Human and machine-readable command-line interface
+S1Atlas.Mcp         Read-only MCP stdio server for Schedule I Installed queries
 ```
 
-The dependency direction keeps game/tool-specific details out of the Core domain model and allows the Cpp2IL and ILSpy adapters to be replaced without changing the CLI, future docs portal, or MCP query surface.
+The dependency direction keeps game/tool-specific details out of the Core domain model and allows the Cpp2IL and ILSpy adapters to be replaced without changing the CLI, docs portal, or MCP query surface. `S1Atlas.Application` owns the shared read-only composition and authority resolver consumed by both CLI Schedule I queries and MCP, preserving parity.
 
 ## Managed Cpp2IL Pin
 
@@ -449,6 +497,7 @@ handler. They use no proprietary fixture and make no network request.
 | `prefab <id\|exact-name> [--objects] [--components] [--limit <n>] [--json]` | Inspect one parser-proven prefab document |
 | `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, serialized references, and an exact code-symbol handoff |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
+| `S1Atlas.Mcp mcp serve` | Launch the read-only Schedule I Installed MCP server over stdio |
 
 ## Validation Policy
 
@@ -479,18 +528,17 @@ test policy with a tiny managed-byte floor and never modify the production
 The validated Cpp2IL extraction pipeline, the code-index milestone (ILSpy
 decompilation, normalized source and symbol metadata, and the
 `search`/`type`/`method`/`source`/`refs`/`callers`/`callees` commands over the
-preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, and
-the static scene-intelligence milestone are all complete. Every query runs
-through the full integrity-verifying API — never a Phase 3 candidate, retained
-failure output, or an unverified database row.
+preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the
+static scene-intelligence milestone, and the read-only MCP server are all
+complete. CLI Schedule I queries and MCP use the same shared authority path and
+full integrity-verifying API — never a Phase 3 candidate, retained failure
+output, or an unverified database row.
 
 The remaining V1 milestones are independent design cycles:
 
 1. **Static human portal** — generate the local, offline HTML exploration site
    with navigation, search, source viewing, plain-English context, and provenance.
-2. **Read-only MCP server** — expose the same integrity-verified knowledge to
-   agents through build-aware query tools (no write operations).
-3. **Agent skill** — document correct, evidence-first S1Atlas usage for agents.
+2. **Agent skill** — document correct, evidence-first S1Atlas usage for agents.
 
 Final hardening (documentation and the local installation/use workflow) closes
 out V1 once those land.
