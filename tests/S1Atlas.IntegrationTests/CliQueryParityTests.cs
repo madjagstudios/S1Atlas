@@ -40,7 +40,7 @@ public sealed class CliQueryParityTests
     }
 
     [Fact]
-    public async Task Search_ScheduleI_AllChannels_UsesPreferredVerifiedIndex()
+    public async Task Search_ScheduleI_Installed_UsesPreferredVerifiedIndex()
     {
         await using var atlas = await CliParityAtlas.SeedPreferredPlusNewerNonPreferredAsync();
 
@@ -51,7 +51,7 @@ public sealed class CliQueryParityTests
             "--codebase",
             "schedule-i",
             "--channel",
-            "all",
+            "installed",
             "--json");
         var nonPreferred = CliRunner.Run(
             atlas.DataRoot,
@@ -60,7 +60,7 @@ public sealed class CliQueryParityTests
             "--codebase",
             "schedule-i",
             "--channel",
-            "all",
+            "installed",
             "--json");
 
         Assert.Equal(0, preferred.ExitCode);

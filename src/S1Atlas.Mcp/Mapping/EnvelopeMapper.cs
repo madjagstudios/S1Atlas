@@ -10,17 +10,45 @@ public static class EnvelopeMapper
         InstalledBuildAuthorityResolver resolver,
         string? buildId,
         CancellationToken ct,
-        Func<InstalledBuildAuthority, Task<ToolEnvelope<T>>> onResolved) where T : class =>
-        await WithAtlasAvailabilityAsync(async () =>
+        Func<InstalledBuildAuthority, Task<ToolEnvelope<T>>> onResolved) where T : class
+    {
+        InstalledBuildAuthority authority;
+        try
         {
-            var authority = await resolver.ResolveAsync(buildId, ct);
-            if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
-            {
-                return AuthorityEnvelope.From<T>(authority);
-            }
+            authority = await resolver.ResolveAsync(buildId, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LogUnexpected(exception);
+            return ToolEnvelope<T>.Unavailable(
+                new ToolError("AtlasUnavailable", "The Atlas data store is unavailable."));
+        }
 
+        if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
+        {
+            return AuthorityEnvelope.From<T>(authority);
+        }
+
+        try
+        {
             return await onResolved(authority);
-        });
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LogUnexpected(exception);
+            return ToolEnvelope<T>.Unavailable(
+                new ToolError("UnexpectedToolFailure", "The MCP tool could not complete."),
+                BuildFrom(authority));
+        }
+    }
 
     public static async Task<ToolEnvelope<T>> WithAtlasAvailabilityAsync<T>(
         Func<Task<ToolEnvelope<T>>> operation) where T : class
@@ -33,11 +61,37 @@ public static class EnvelopeMapper
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            LogUnexpected(exception);
             return ToolEnvelope<T>.Unavailable(
                 new ToolError("AtlasUnavailable", "The Atlas data store is unavailable."));
         }
+    }
+
+    public static ToolEnvelope<SymbolQueryResult> FromResolveOne(
+        InstalledBuildAuthority authority,
+        SymbolSearchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var build = BuildFrom(authority);
+        return result.TotalCount switch
+        {
+            0 => ToolEnvelope<SymbolQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                Derived(authority, "symbol-selection")),
+            1 => ToolEnvelope<SymbolQueryResult>.Resolved(
+                build,
+                result.Results[0],
+                Fact(authority, "index-symbol"),
+                Derived(authority, "symbol-selection")),
+            _ => ToolEnvelope<SymbolQueryResult>.Ambiguous(
+                build,
+                result.Results.Cast<object>().ToArray(),
+                Derived(authority, "symbol-selection"))
+        };
     }
 
     public static BuildContext BuildFrom(InstalledBuildAuthority authority)
@@ -193,4 +247,7 @@ public static class EnvelopeMapper
             authority.ResolvedBuildId,
             authority.ExtractionId,
             authority.IndexId);
+
+    private static void LogUnexpected(Exception exception) =>
+        Console.Error.WriteLine($"Unexpected MCP tool failure: {exception.GetType().Name}: {exception.Message}");
 }

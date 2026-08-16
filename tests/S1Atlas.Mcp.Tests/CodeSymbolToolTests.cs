@@ -1,4 +1,6 @@
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
+using S1Atlas.Mcp.Mapping;
 using S1Atlas.Mcp.Tools;
 using Xunit;
 
@@ -143,7 +145,7 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
-    public async Task GetMethod_LimitBoundsCandidateResolution()
+    public async Task GetMethod_LimitOne_StillReturnsAmbiguous()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
         var tools = CreateTools(atlas);
@@ -154,8 +156,55 @@ public sealed class CodeSymbolToolTests
             limit: 1,
             ct: CancellationToken.None);
 
-        Assert.Equal(ToolStatus.Resolved, envelope.Status);
-        Assert.NotNull(envelope.Data);
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Single(envelope.Candidates);
+    }
+
+    [Fact]
+    public async Task GetType_MultipleMatches_WithLimitOne_StillReturnsAmbiguous()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetTypeAsync(
+            "DealerService",
+            buildId: null,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Single(envelope.Candidates);
+        Assert.Equal(atlas.BuildIdValue, envelope.Build!.ResolvedBuildId);
+    }
+
+    [Fact]
+    public async Task UnexpectedServiceException_IsLoggedAndKeepsBuildContext()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var services = McpServerComposition.BuildReadOnlyServices(atlas.DataRoot);
+        using var stderr = new StringWriter();
+        var originalError = Console.Error;
+        Console.SetError(stderr);
+        try
+        {
+            var envelope = await EnvelopeMapper.WithAuthorityAsync<SymbolQueryResult>(
+                services.AuthorityResolver,
+                buildId: null,
+                CancellationToken.None,
+                _ => throw new InvalidOperationException("private source path must not escape"));
+
+            Assert.Equal(ToolStatus.Unavailable, envelope.Status);
+            Assert.Equal("UnexpectedToolFailure", envelope.Error?.Code);
+            Assert.Equal(atlas.BuildIdValue, envelope.Build?.ResolvedBuildId);
+            Assert.Equal(atlas.IndexId, envelope.Build?.IndexId);
+            Assert.DoesNotContain("private source path", envelope.Error?.Message ?? string.Empty, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+
+        Assert.Contains("Unexpected MCP tool failure", stderr.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

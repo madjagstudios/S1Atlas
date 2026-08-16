@@ -180,5 +180,6 @@ internal static class IndexQueryCommandFactory
 
     public static bool UsesInstalledScheduleIAuthority(IndexQueryOptions options) =>
         options.Codebase == CodebaseKind.ScheduleI &&
-        (options.Channel == CodeChannel.Installed || options.AllChannels);
+        options.Channel == CodeChannel.Installed &&
+        !options.AllChannels;
 }

@@ -237,15 +237,15 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                var results = await _services.IndexQueryService.FindInIndexAsync(
+                var result = await _services.IndexQueryService.SearchInIndexAsync(
                     authority.IndexRun!,
                     CodebaseKind.ScheduleI,
                     CodeChannel.Installed,
                     selector,
-                    kind,
                     boundedLimit,
+                    kind,
                     ct);
-                return EnvelopeMapper.FromFind(authority, results);
+                return EnvelopeMapper.FromResolveOne(authority, result);
             });
     }
 
