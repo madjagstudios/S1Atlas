@@ -187,7 +187,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                 CodebaseKind.ScheduleI,
                 CodeChannel.Installed,
                 extractionId,
-                createdAtUtc),
+                createdAtUtc,
+                EnvironmentSnapshotId.Create(CreateSnapshot(buildId))),
             ct);
         await _repository.StartIndexRunAsync(
             new IndexRunRecord(
