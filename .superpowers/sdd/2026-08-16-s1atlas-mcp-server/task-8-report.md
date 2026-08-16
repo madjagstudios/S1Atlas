@@ -29,3 +29,9 @@ Verification after the fix: 5 passed, 0 failed, 0 skipped.
 Restored `compare_symbol` to return the planned `ToolEnvelope<SymbolDiff>` type. `ToolEnvelope` now has optional `BuildA` and `BuildB` properties, leaving existing `Build` behavior unchanged for other tools. Compare success and `NotFound` responses now include FACT authority provenance for both builds as well as DERIVED comparison provenance; right-build authority failures preserve the left context and explicit failure context/status.
 
 Verification: 5 passed, 0 failed, 0 skipped.
+
+## Round-3 review fix
+
+Corrected authority failure context mapping. A left-build failure now retains `BuildA` for the failed request and exposes an unresolved `BuildB` context for the separately requested right build. A right-build failure retains the resolved left context and its FACT authority provenance while preserving the right failure status, error, context, and provenance.
+
+Verification: 6 passed, 0 failed, 0 skipped.

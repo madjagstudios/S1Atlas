@@ -114,6 +114,30 @@ public sealed class CompareToolTests
         Assert.Equal("ScheduleI", envelope.BuildB.Codebase);
         Assert.Equal("Installed", envelope.BuildB.Channel);
         Assert.False(envelope.BuildB.IntegrityVerified);
+        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA && entry.Classification == ProvenanceClassification.Fact);
+    }
+
+    [Fact]
+    public async Task CompareSymbol_LeftBuildFailure_PreservesBothRequestedContexts()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.CompareSymbolAsync(
+            selector: atlas.CompareSelector,
+            buildIdA: "missing-build-a",
+            buildIdB: atlas.BuildIdB,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("BuildNotFound", envelope.Error?.Code);
+        Assert.Equal("missing-build-a", envelope.BuildA!.RequestedBuildId);
+        Assert.False(envelope.BuildA.IntegrityVerified);
+        Assert.Equal(atlas.BuildIdB, envelope.BuildB!.RequestedBuildId);
+        Assert.Null(envelope.BuildB.ResolvedBuildId);
+        Assert.Equal("ScheduleI", envelope.BuildB.Codebase);
+        Assert.Equal("Installed", envelope.BuildB.Channel);
+        Assert.False(envelope.BuildB.IntegrityVerified);
     }
 
     private static CompareTools CreateTools(McpTestAtlas atlas)

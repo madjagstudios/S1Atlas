@@ -36,13 +36,20 @@ public sealed class CompareTools
         var authorityA = await _services.AuthorityResolver.ResolveAsync(buildIdA, ct);
         if (authorityA.Status != InstalledBuildAuthorityStatus.Resolved)
         {
-            return WithContexts(AuthorityEnvelope.From<SymbolDiff>(authorityA), Context(authorityA), Context(authorityA));
+            return WithContexts(AuthorityEnvelope.From<SymbolDiff>(authorityA), Context(authorityA), MissingContext(buildIdB));
         }
 
         var authorityB = await _services.AuthorityResolver.ResolveAsync(buildIdB, ct);
         if (authorityB.Status != InstalledBuildAuthorityStatus.Resolved)
         {
-            return WithContexts(AuthorityEnvelope.From<SymbolDiff>(authorityB), EnvelopeMapper.BuildFrom(authorityA), Context(authorityB));
+            var failure = AuthorityEnvelope.From<SymbolDiff>(authorityB);
+            failure = failure with
+            {
+                Provenance = new[] { AuthorityFact(authorityA, "installed-build-authority:left") }
+                    .Concat(failure.Provenance)
+                    .ToArray()
+            };
+            return WithContexts(failure, EnvelopeMapper.BuildFrom(authorityA), Context(authorityB));
         }
 
         var diff = await _services.BuildDiffService.DiffSymbolAsync(
@@ -86,6 +93,9 @@ public sealed class CompareTools
             : new BuildContext(authority.RequestedBuildId, authority.ResolvedBuildId, authority.ExtractionId,
                 authority.IndexId, "ScheduleI", "Installed",
                 authority.Status == InstalledBuildAuthorityStatus.Resolved);
+
+    private static BuildContext MissingContext(string requestedBuildId) =>
+        new(requestedBuildId, null, null, null, "ScheduleI", "Installed", false);
 
     private static ProvenanceEntry AuthorityFact(InstalledBuildAuthority authority, string source) =>
         new(ProvenanceClassification.Fact, source, authority.ResolvedBuildId ?? authority.RequestedBuildId,
