@@ -1,10 +1,12 @@
 using S1Atlas.Application.Envelope;
 using S1Atlas.Core.Indexing;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using S1Atlas.Mcp;
 using S1Atlas.Mcp.Tools;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -40,14 +42,34 @@ public sealed class McpTrustBoundaryTests
     }
 
     [Fact]
-    public void McpHost_ExposesNoNetworkProcessOrGameExecutionDependencies()
+    public void McpHost_WiresOnlyStdioAndReadOnlyServices()
     {
-        var dependencies = McpTestHost.GetHostAssemblyReferences();
+        var sources = McpTestHost.ReadHostWiringSources();
 
-        Assert.DoesNotContain("S1Atlas.Cli", dependencies);
-        Assert.DoesNotContain("S1Atlas.Extraction", dependencies);
-        Assert.DoesNotContain("System.Net.Http", dependencies);
-        Assert.DoesNotContain("System.Diagnostics.Process", dependencies);
+        Assert.Contains("WithStdioServerTransport", sources, StringComparison.Ordinal);
+        Assert.Contains("ReadOnlyAtlasComposition", sources, StringComparison.Ordinal);
+        Assert.DoesNotContain("S1Atlas.Cli", sources, StringComparison.Ordinal);
+        Assert.DoesNotContain("HttpClient", sources, StringComparison.Ordinal);
+        Assert.DoesNotContain("System.Diagnostics.Process", sources, StringComparison.Ordinal);
+        Assert.DoesNotContain("WindowsScheduleOneLocator", sources, StringComparison.Ordinal);
+        Assert.DoesNotContain("GameLocator", sources, StringComparison.Ordinal);
+        Assert.DoesNotContain("Installer", sources, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StdioHost_CallTool_ReturnsSerializedAuthorityEnvelope()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+
+        var serialized = await McpTestHost.CallSearchSymbolsThroughStdioAsync(atlas.DataRoot);
+
+        using var result = JsonDocument.Parse(serialized);
+        var root = result.RootElement;
+        Assert.Equal("Resolved", root.GetProperty("status").GetString());
+        Assert.Equal(atlas.BuildIdB, root.GetProperty("build").GetProperty("resolvedBuildId").GetString());
+        Assert.Equal(atlas.IndexIdB, root.GetProperty("build").GetProperty("indexId").GetString());
+        Assert.Contains(root.GetProperty("provenance").EnumerateArray(), entry =>
+            entry.GetProperty("classification").GetString() == "Fact");
     }
 
     [Fact]
@@ -108,6 +130,37 @@ public sealed class McpTrustBoundaryTests
     }
 
     [Fact]
+    public async Task ReadOnlyOpen_DirectToolsReturnAtlasUnavailableWithoutCreatingDatabase()
+    {
+        await using var atlas = await McpTestAtlas.CreateAbsentDatabaseRootAsync();
+
+        var (builds, environment, comparison) = await McpTestHost.QueryDirectToolsAgainstAbsentDatabaseAsync(atlas.DataRoot);
+
+        Assert.All([builds, environment, comparison], envelope =>
+        {
+            Assert.Equal(ToolStatus.Unavailable, envelope.Status);
+            Assert.Equal("AtlasUnavailable", envelope.Error!.Code);
+        });
+        Assert.False(File.Exists(Path.Combine(atlas.DataRoot, "atlas.db")));
+    }
+
+    [Fact]
+    public async Task NonAuthoritativeSceneSnapshot_IsRejectedBeforeQuerying()
+    {
+        await using var atlas = await McpTestAtlas.SeedPreferredVerifiedBuildWithNonAuthoritativeSceneSnapshotAsync();
+
+        var envelope = await McpTestHost.GetSceneAsync(atlas, atlas.NonAuthoritativeSceneSnapshotId);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("SceneSnapshotNotFound", envelope.Error!.Code);
+        Assert.Null(envelope.Data);
+        Assert.Equal(atlas.IndexId, envelope.Build!.IndexId);
+        Assert.DoesNotContain(envelope.Provenance, entry =>
+            entry.ExtractionId == atlas.NonAuthoritativeExtractionId ||
+            entry.IndexId == atlas.NonAuthoritativeIndexId);
+    }
+
+    [Fact]
     public async Task DefaultAndExplicitHistoricalBuildResolve()
     {
         await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
@@ -165,11 +218,28 @@ internal static class McpTestHost
         return tools.Select(tool => tool.Name).ToArray();
     }
 
-    public static IReadOnlyList<string> GetHostAssemblyReferences() =>
-        typeof(McpToolCatalog).Assembly
-            .GetReferencedAssemblies()
-            .Select(reference => reference.Name!)
-            .ToArray();
+    public static string ReadHostWiringSources() =>
+        string.Concat(
+            File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "Program.cs")),
+            File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "McpServerComposition.cs")),
+            File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "S1Atlas.Mcp.csproj")));
+
+    public static async Task<string> CallSearchSymbolsThroughStdioAsync(string dataRoot)
+    {
+        await using var client = await CreateStdioClientAsync(dataRoot);
+        var result = await client.CallToolAsync(
+            "search_symbols",
+            new Dictionary<string, object?>
+            {
+                ["query"] = "Dealer",
+                ["buildId"] = null,
+                ["kind"] = null,
+                ["limit"] = 50
+            },
+            cancellationToken: CancellationToken.None);
+        Assert.False(result.IsError ?? false, JsonSerializer.Serialize(result.Content));
+        return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+    }
 
     public static async Task ExerciseEveryToolAsync(McpTestAtlas atlas)
     {
@@ -245,6 +315,23 @@ internal static class McpTestHost
         new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(dataRoot))
             .SearchSymbolsAsync(query, null, null, 50, CancellationToken.None);
 
+    public static async Task<(ToolObservation Builds, ToolObservation Environment, ToolObservation Comparison)> QueryDirectToolsAgainstAbsentDatabaseAsync(string dataRoot)
+    {
+        var services = McpServerComposition.BuildReadOnlyServices(dataRoot);
+        var builds = new BuildEnvironmentTools(services);
+        var compare = new CompareTools(services);
+        return (
+            Observe(await builds.ListBuildsAsync(50, CancellationToken.None)),
+            Observe(await builds.GetEnvironmentAsync(null, CancellationToken.None)),
+            Observe(await compare.CompareSymbolAsync("N.T.M()", "build-a", "build-b", CancellationToken.None)));
+    }
+
+    public static Task<ToolEnvelope<S1Atlas.Indexing.Scene.SceneDocumentQueryResult>> GetSceneAsync(
+        McpTestAtlas atlas,
+        string sceneSnapshotId) =>
+        new SceneTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot))
+            .GetSceneAsync(atlas.SceneNameA, atlas.BuildIdA, sceneSnapshotId, null, false, false, false, 50, CancellationToken.None);
+
     public static async Task<(ToolObservation Default, ToolObservation Historical)> ResolveDefaultAndHistoricalBuildAsync(McpTestAtlas atlas)
     {
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
@@ -274,6 +361,30 @@ internal static class McpTestHost
 
     private static ToolObservation Observe<T>(ToolEnvelope<T> envelope, IEnumerable<string> answerIndexIds) where T : class =>
         new(envelope.Status, envelope.Build, envelope.Candidates, envelope.Provenance, envelope.Error, answerIndexIds.ToArray());
+
+    private static async Task<McpClient> CreateStdioClientAsync(string dataRoot)
+    {
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Command = "dotnet",
+            Arguments = [typeof(McpToolCatalog).Assembly.Location, "mcp", "serve"],
+            EnvironmentVariables = new Dictionary<string, string?> { ["S1ATLAS_HOME"] = dataRoot },
+            Name = "s1atlas-mcp-test"
+        });
+        return await McpClient.CreateAsync(transport, cancellationToken: CancellationToken.None);
+    }
+
+    private static string GetRepoPath(params string[] segments)
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "S1Atlas.sln")))
+        {
+            current = current.Parent;
+        }
+
+        Assert.NotNull(current);
+        return Path.Combine([current!.FullName, .. segments]);
+    }
 }
 
 internal sealed record ToolObservation(

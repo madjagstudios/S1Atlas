@@ -10,9 +10,8 @@ public static class EnvelopeMapper
         InstalledBuildAuthorityResolver resolver,
         string? buildId,
         CancellationToken ct,
-        Func<InstalledBuildAuthority, Task<ToolEnvelope<T>>> onResolved) where T : class
-    {
-        try
+        Func<InstalledBuildAuthority, Task<ToolEnvelope<T>>> onResolved) where T : class =>
+        await WithAtlasAvailabilityAsync(async () =>
         {
             var authority = await resolver.ResolveAsync(buildId, ct);
             if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
@@ -21,6 +20,14 @@ public static class EnvelopeMapper
             }
 
             return await onResolved(authority);
+        });
+
+    public static async Task<ToolEnvelope<T>> WithAtlasAvailabilityAsync<T>(
+        Func<Task<ToolEnvelope<T>>> operation) where T : class
+    {
+        try
+        {
+            return await operation();
         }
         catch (FileNotFoundException exception)
         {

@@ -184,28 +184,40 @@ public sealed class SceneTools
         CancellationToken ct,
         Func<InstalledBuildAuthority, SceneSnapshotRecord, Task<ToolEnvelope<T>>> onResolved) where T : class
     {
-        var snapshot = await ResolveSnapshotAsync(authority, sceneSnapshotId, ct);
-        return snapshot is null
-            ? SnapshotError<T>(authority, sceneSnapshotId)
-            : await onResolved(authority, snapshot);
+        var resolution = await ResolveSnapshotAsync(authority, sceneSnapshotId, ct);
+        return resolution.Snapshot is null
+            ? SnapshotError<T>(authority, sceneSnapshotId, resolution.AuthorityMismatch)
+            : await onResolved(authority, resolution.Snapshot);
     }
 
-    private async Task<SceneSnapshotRecord?> ResolveSnapshotAsync(InstalledBuildAuthority authority, string? sceneSnapshotId, CancellationToken ct)
+    private async Task<SceneSnapshotResolution> ResolveSnapshotAsync(InstalledBuildAuthority authority, string? sceneSnapshotId, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(sceneSnapshotId))
         {
             var specified = await _services.Repository.GetCompletedSceneSnapshotAsync(sceneSnapshotId, ct);
-            return specified is not null && string.Equals(specified.BuildId, authority.ResolvedBuildId, StringComparison.Ordinal)
-                ? specified
-                : null;
+            return specified is null
+                ? new SceneSnapshotResolution(null, false)
+                : SnapshotMatchesAuthority(specified, authority)
+                    ? new SceneSnapshotResolution(specified, false)
+                    : new SceneSnapshotResolution(null, true);
         }
 
-        return await _services.Repository.GetLatestCompletedSceneSnapshotAsync(authority.ResolvedBuildId!, ct);
+        var latest = await _services.Repository.GetLatestCompletedSceneSnapshotAsync(authority.ResolvedBuildId!, ct);
+        return latest is null
+            ? new SceneSnapshotResolution(null, false)
+            : SnapshotMatchesAuthority(latest, authority)
+                ? new SceneSnapshotResolution(latest, false)
+                : new SceneSnapshotResolution(null, true);
     }
 
-    private static ToolEnvelope<T> SnapshotError<T>(InstalledBuildAuthority authority, string? sceneSnapshotId) where T : class =>
+    private static ToolEnvelope<T> SnapshotError<T>(InstalledBuildAuthority authority, string? sceneSnapshotId, bool authorityMismatch) where T : class =>
         string.IsNullOrWhiteSpace(sceneSnapshotId)
-            ? ToolEnvelope<T>.NotFound(
+            ? authorityMismatch
+                ? ToolEnvelope<T>.Unavailable(
+                    new ToolError("SceneSnapshotNotFound", "The completed scene snapshot does not match the preferred verified extraction and index."),
+                    EnvelopeMapper.BuildFrom(authority),
+                    Derived(authority, "scene-snapshot-selection"))
+                : ToolEnvelope<T>.NotFound(
                 EnvelopeMapper.BuildFrom(authority),
                 new ToolError("NoCompletedSceneIndex", "No completed scene index exists for the requested build."),
                 Derived(authority, "scene-snapshot-selection"))
@@ -213,6 +225,13 @@ public sealed class SceneTools
                 new ToolError("SceneSnapshotNotFound", "The requested scene snapshot was not found for the selected build."),
                 EnvelopeMapper.BuildFrom(authority),
                 Derived(authority, "scene-snapshot-selection"));
+
+    private static bool SnapshotMatchesAuthority(SceneSnapshotRecord snapshot, InstalledBuildAuthority authority) =>
+        string.Equals(snapshot.BuildId, authority.ResolvedBuildId, StringComparison.Ordinal) &&
+        string.Equals(snapshot.ExtractionId, authority.ExtractionId, StringComparison.Ordinal) &&
+        string.Equals(snapshot.CodeIndexId, authority.IndexId, StringComparison.Ordinal);
+
+    private sealed record SceneSnapshotResolution(SceneSnapshotRecord? Snapshot, bool AuthorityMismatch);
 
     private static ToolEnvelope<T> FromResult<T>(InstalledBuildAuthority authority, SceneQueryStatus status, T result, IReadOnlyList<object> candidates, string source) where T : class
     {

@@ -54,6 +54,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string ExtractionIdB { get; private set; } = string.Empty;
     public string NonAuthoritativeExtractionId { get; private set; } = "unverified-extraction";
     public string NonAuthoritativeIndexId { get; private set; } = "index-unverified";
+    public string NonAuthoritativeSceneSnapshotId { get; private set; } = string.Empty;
     public string InputSnapshotIdA { get; private set; } = string.Empty;
     public string InputSnapshotIdB { get; private set; } = string.Empty;
     public string KnownSymbolFragment => "Dealer";
@@ -163,6 +164,20 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         return atlas;
     }
 
+    public static async Task<McpTestAtlas> SeedPreferredVerifiedBuildWithNonAuthoritativeSceneSnapshotAsync()
+    {
+        var atlas = await SeedPreferredVerifiedBuildWithNonAuthoritativeCandidatesAsync();
+        atlas.NonAuthoritativeSceneSnapshotId = await atlas.SeedSceneSnapshotAsync(
+            atlas.BuildIdA,
+            atlas.NonAuthoritativeIndexId,
+            atlas.NonAuthoritativeExtractionId,
+            atlas.InputSnapshotIdA,
+            "non-authoritative-scene-snapshot",
+            atlas.SceneNameA,
+            includeCodeHandoff: false);
+        return atlas;
+    }
+
     public static Task<McpTestAtlas> CreateAbsentDatabaseRootAsync()
     {
         var root = Path.Combine(
@@ -234,8 +249,10 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             Path.Combine(DataRoot, "attempts", "retained-failure", "retained-output", "failed.txt"),
             "retained failure", CancellationToken.None);
 
+        var nonAuthoritativeExtraction = await SeedValidatedExtractionAsync(BuildIdASeed, RecipeIdB);
+        NonAuthoritativeExtractionId = nonAuthoritativeExtraction.Extraction.ExtractionId;
         await SeedCompletedInstalledIndexAsync(
-            NonAuthoritativeExtractionId,
+            nonAuthoritativeExtraction.Extraction.ExtractionId,
             BuildIdASeed,
             NonAuthoritativeIndexId,
             "unverified-index-body");

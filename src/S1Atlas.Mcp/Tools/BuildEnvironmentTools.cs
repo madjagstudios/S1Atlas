@@ -19,9 +19,14 @@ public sealed class BuildEnvironmentTools
     }
 
     [McpServerTool(Name = "list_builds"), Description("List indexed Schedule I Installed builds and their verified extraction and index availability.")]
-    public async Task<ToolEnvelope<BuildListResult>> ListBuildsAsync(
+    public Task<ToolEnvelope<BuildListResult>> ListBuildsAsync(
         [Description("Maximum builds to return (1-500).")] int limit = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        EnvelopeMapper.WithAtlasAvailabilityAsync(() => ListBuildsCoreAsync(limit, ct));
+
+    private async Task<ToolEnvelope<BuildListResult>> ListBuildsCoreAsync(
+        int limit,
+        CancellationToken ct)
     {
         if (limit <= 0)
         {
@@ -58,9 +63,14 @@ public sealed class BuildEnvironmentTools
     }
 
     [McpServerTool(Name = "get_environment"), Description("Return verified environment facts for the current Schedule I Installed build.")]
-    public async Task<ToolEnvelope<EnvironmentFacts>> GetEnvironmentAsync(
+    public Task<ToolEnvelope<EnvironmentFacts>> GetEnvironmentAsync(
         [Description("Optional build ID; only the current environment snapshot can be returned.")] string? buildId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        EnvelopeMapper.WithAtlasAvailabilityAsync(() => GetEnvironmentCoreAsync(buildId, ct));
+
+    private async Task<ToolEnvelope<EnvironmentFacts>> GetEnvironmentCoreAsync(
+        string? buildId,
+        CancellationToken ct)
     {
         var snapshot = await _services.Repository.GetCurrentSnapshotAsync(ct);
         if (snapshot is null)
