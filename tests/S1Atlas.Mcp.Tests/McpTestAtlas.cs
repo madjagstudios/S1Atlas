@@ -52,6 +52,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string IndexIdB { get; private set; } = string.Empty;
     public string ExtractionIdA { get; private set; } = string.Empty;
     public string ExtractionIdB { get; private set; } = string.Empty;
+    public string NonAuthoritativeExtractionId { get; private set; } = "unverified-extraction";
+    public string NonAuthoritativeIndexId { get; private set; } = "index-unverified";
     public string InputSnapshotIdA { get; private set; } = string.Empty;
     public string InputSnapshotIdB { get; private set; } = string.Empty;
     public string KnownSymbolFragment => "Dealer";
@@ -151,6 +153,25 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         return atlas;
     }
 
+    public static Task<McpTestAtlas> SeedHealthyInstalledBuildWithScenesAsync() =>
+        SeedTwoSceneBuildsAsync();
+
+    public static async Task<McpTestAtlas> SeedPreferredVerifiedBuildWithNonAuthoritativeCandidatesAsync()
+    {
+        var atlas = await SeedHealthyInstalledBuildAsync();
+        await atlas.SeedNonAuthoritativeCandidatesAsync();
+        return atlas;
+    }
+
+    public static Task<McpTestAtlas> CreateAbsentDatabaseRootAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return Task.FromResult(new McpTestAtlas(root));
+    }
+
     public static async Task<McpTestAtlas> EmptyAsync()
     {
         var root = Path.Combine(
@@ -179,6 +200,45 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         Directory.CreateDirectory(DataRoot);
         await _repository.InitializeAsync(cancellationToken);
         await SeedToolInstanceAsync(cancellationToken);
+    }
+
+    private async Task SeedNonAuthoritativeCandidatesAsync()
+    {
+        var phaseThreeAttempt = await AdvanceAttemptToValidatingAsync(
+            BuildIdASeed,
+            RecipeIdB,
+            "33333333333333333333333333333333",
+            InputSnapshotIdA,
+            CancellationToken.None);
+        var unverified = InputSnapshot.CreateUnverified(
+            BuildIdASeed,
+            Path.Combine(DataRoot, "inputs", "unverified"),
+            new InputManifest(
+            [
+                new InputManifestEntry(
+                    "unverified.dat",
+                    "fixture",
+                    1,
+                    "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    BaseTime.AddMinutes(40))
+            ]),
+            BaseTime.AddMinutes(40));
+        await _repository.SaveInputSnapshotAsync(unverified, CancellationToken.None);
+
+        Directory.CreateDirectory(Path.Combine(DataRoot, "attempts", phaseThreeAttempt.AttemptId, "candidate-output"));
+        await File.WriteAllTextAsync(
+            Path.Combine(DataRoot, "attempts", phaseThreeAttempt.AttemptId, "candidate-output", "unverified.txt"),
+            "phase-3 candidate", CancellationToken.None);
+        Directory.CreateDirectory(Path.Combine(DataRoot, "attempts", "retained-failure", "retained-output"));
+        await File.WriteAllTextAsync(
+            Path.Combine(DataRoot, "attempts", "retained-failure", "retained-output", "failed.txt"),
+            "retained failure", CancellationToken.None);
+
+        await SeedCompletedInstalledIndexAsync(
+            NonAuthoritativeExtractionId,
+            BuildIdASeed,
+            NonAuthoritativeIndexId,
+            "unverified-index-body");
     }
 
     private async Task SeedCurrentBuildAsync(string buildId)
@@ -318,7 +378,11 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         string compareBodyFingerprint)
     {
         var ct = CancellationToken.None;
-        string Id(string value) => buildId == BuildIdASeed ? value : value + "-" + buildId;
+        string Id(string value) => extractionId == NonAuthoritativeExtractionId
+            ? value + "-" + indexId
+            : buildId == BuildIdASeed
+                ? value
+                : value + "-" + buildId;
         var snapshotId = "snapshot-" + extractionId;
         var createdAtUtc = BaseTime.AddMinutes(20).ToString("O");
         await _repository.CreateCodeSnapshotAsync(

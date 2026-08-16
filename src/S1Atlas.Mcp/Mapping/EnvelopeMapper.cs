@@ -12,13 +12,21 @@ public static class EnvelopeMapper
         CancellationToken ct,
         Func<InstalledBuildAuthority, Task<ToolEnvelope<T>>> onResolved) where T : class
     {
-        var authority = await resolver.ResolveAsync(buildId, ct);
-        if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
+        try
         {
-            return AuthorityEnvelope.From<T>(authority);
-        }
+            var authority = await resolver.ResolveAsync(buildId, ct);
+            if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
+            {
+                return AuthorityEnvelope.From<T>(authority);
+            }
 
-        return await onResolved(authority);
+            return await onResolved(authority);
+        }
+        catch (FileNotFoundException exception)
+        {
+            return ToolEnvelope<T>.Unavailable(
+                new ToolError("AtlasUnavailable", exception.Message));
+        }
     }
 
     public static BuildContext BuildFrom(InstalledBuildAuthority authority)
