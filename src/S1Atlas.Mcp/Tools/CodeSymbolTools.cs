@@ -414,5 +414,5 @@ public sealed class CodeSymbolTools
                     authority.ResolvedBuildId,
                     authority.ExtractionId,
                     authority.IndexId));
-        }
     }
+}
