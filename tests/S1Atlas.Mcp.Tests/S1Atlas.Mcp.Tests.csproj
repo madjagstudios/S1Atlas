@@ -6,6 +6,11 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\S1Atlas.Application\S1Atlas.Application.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Cli\S1Atlas.Cli.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Mcp\S1Atlas.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\S1Atlas.Storage\S1Atlas.Storage.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
