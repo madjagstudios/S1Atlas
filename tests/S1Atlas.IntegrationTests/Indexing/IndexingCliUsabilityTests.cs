@@ -35,7 +35,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["search", "dealer", "--limit", "3", "--json"],
+            ["search", "dealer", "--channel", "all", "--limit", "3", "--json"],
             output,
             error,
             cancellationToken);
@@ -59,7 +59,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["search", "Dealer000", "--limit", "1"],
+            ["search", "Dealer000", "--channel", "all", "--limit", "1"],
             output,
             error,
             cancellationToken);
@@ -103,7 +103,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["search", "dealer", "--limit", value, "--json"],
+            ["search", "dealer", "--channel", "all", "--limit", value, "--json"],
             output,
             error,
             cancellationToken);
@@ -124,7 +124,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var output = new StringWriter();
         using var error = new StringWriter();
 
-        var exitCode = application.Invoke(["source", "source-target"], output, error, cancellationToken);
+        var exitCode = application.Invoke(["source", "source-target", "--channel", "all"], output, error, cancellationToken);
 
         var text = output.ToString();
         Assert.Equal(0, exitCode);
@@ -149,7 +149,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var exactOutput = new StringWriter();
         using var exactError = new StringWriter();
         var exactExit = application.Invoke(
-            ["source", "source-target", "--context", "0"],
+            ["source", "source-target", "--channel", "all", "--context", "0"],
             exactOutput,
             exactError,
             cancellationToken);
@@ -163,7 +163,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var invalidOutput = new StringWriter();
         using var invalidError = new StringWriter();
         var invalidExit = application.Invoke(
-            ["source", "source-target", "--context", "-1", "--json"],
+            ["source", "source-target", "--channel", "all", "--context", "-1", "--json"],
             invalidOutput,
             invalidError,
             cancellationToken);
@@ -185,7 +185,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["source", "source-target", "--file", "--json"],
+            ["source", "source-target", "--channel", "all", "--file", "--json"],
             output,
             error,
             cancellationToken);
@@ -208,7 +208,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["source", "source-target", "--file", "--output", destination],
+            ["source", "source-target", "--channel", "all", "--file", "--output", destination],
             output,
             error,
             cancellationToken);
@@ -232,7 +232,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["source", "source-target", "--file", "--output", destination, "--json"],
+            ["source", "source-target", "--channel", "all", "--file", "--output", destination, "--json"],
             output,
             error,
             cancellationToken);
@@ -343,7 +343,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["refs", "target"],
+            ["refs", "target", "--channel", "all"],
             output,
             error,
             cancellationToken);
@@ -372,7 +372,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var callersOutput = new StringWriter();
         using var callersError = new StringWriter();
         var callersExit = application.Invoke(
-            ["callers", "target"],
+            ["callers", "target", "--channel", "all"],
             callersOutput,
             callersError,
             cancellationToken);
@@ -380,7 +380,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var calleesOutput = new StringWriter();
         using var calleesError = new StringWriter();
         var calleesExit = application.Invoke(
-            ["callees", "target"],
+            ["callees", "target", "--channel", "all"],
             calleesOutput,
             calleesError,
             cancellationToken);
@@ -406,7 +406,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         using var error = new StringWriter();
 
         var exitCode = application.Invoke(
-            ["refs", "service", "--json"],
+            ["refs", "service", "--channel", "all", "--json"],
             output,
             error,
             cancellationToken);

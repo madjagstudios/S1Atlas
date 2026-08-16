@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text;
+using S1Atlas.Application.Authority;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
@@ -13,6 +14,7 @@ internal static class SourceCommand
 
     public static Command Create(
         IndexQueryService service,
+        InstalledBuildAuthorityResolver authorityResolver,
         IAtlasRepository repository,
         string dataRoot,
         TextWriter output,
@@ -22,6 +24,7 @@ internal static class SourceCommand
         var queryArgument = new Argument<string>("query") { Description = "A symbol selector." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
+        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of resolution candidates to consider.",
@@ -46,6 +49,7 @@ internal static class SourceCommand
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
+        command.Options.Add(buildOption);
         command.Options.Add(limitOption);
         command.Options.Add(contextOption);
         command.Options.Add(fileOption);
@@ -57,11 +61,13 @@ internal static class SourceCommand
             return CommandExecution.Run(
                 () => Execute(
                     service,
+                    authorityResolver,
                     repository,
                     dataRoot,
                     parseResult.GetValue(queryArgument)!,
                     parseResult.GetValue(codebaseOption),
                     parseResult.GetValue(channelOption),
+                    parseResult.GetValue(buildOption),
                     parseResult.GetValue(limitOption),
                     parseResult.GetValue(contextOption),
                     parseResult.GetValue(fileOption),
@@ -76,11 +82,13 @@ internal static class SourceCommand
 
     private static int Execute(
         IndexQueryService service,
+        InstalledBuildAuthorityResolver authorityResolver,
         IAtlasRepository repository,
         string dataRoot,
         string query,
         string? codebase,
         string? channel,
+        string? buildId,
         int limit,
         int context,
         bool fullFile,
@@ -95,11 +103,35 @@ internal static class SourceCommand
 
         repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
         var options = IndexQueryCommandFactory.ParseOptions(codebase, channel, limit);
+        if (!string.IsNullOrWhiteSpace(buildId) && !IndexQueryCommandFactory.UsesInstalledScheduleIAuthority(options))
+        {
+            return commandOutput.Failure(
+                1,
+                "InvalidOptionCombination",
+                "--build is only valid with --codebase schedule-i and --channel installed.");
+        }
 
         SourceSnippetResolutionResult resolution;
         try
         {
-            resolution = service.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult();
+            if (IndexQueryCommandFactory.UsesInstalledScheduleIAuthority(options))
+            {
+                var authority = authorityResolver.ResolveAsync(buildId, cancellationToken).GetAwaiter().GetResult();
+                if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
+                {
+                    return commandOutput.Failure(
+                        1,
+                        authority.Status.ToString(),
+                        authority.Message ?? "The requested Schedule I build is unavailable.");
+                }
+
+                resolution = service.SourceInIndexAsync(
+                    authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, query, context, cancellationToken).GetAwaiter().GetResult();
+            }
+            else
+            {
+                resolution = service.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult();
+            }
         }
         catch (FileNotFoundException exception)
         {
