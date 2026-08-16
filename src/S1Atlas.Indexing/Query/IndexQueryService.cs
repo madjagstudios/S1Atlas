@@ -50,20 +50,16 @@ public sealed class IndexQueryService
             var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
             if (run is null) continue;
             completedIndexCount++;
-
-            var kindName = kind?.ToString();
-            var count = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName);
-            totalCount += count;
-            if (count == 0) continue;
-
-            var symbols = await _repository.SearchCompletedSymbolsAsync(
-                run.IndexId,
+            var result = await SearchInRunAsync(
+                run,
+                options.Codebase,
+                channel,
                 query,
                 options.Limit,
-                cancellationToken,
-                kindName);
-            candidates.AddRange(symbols.Select(symbol =>
-                SymbolResolver.ToQueryResult(run.IndexId, options.Codebase, channel, symbol)));
+                kind,
+                cancellationToken);
+            totalCount += result.TotalCount;
+            candidates.AddRange(result.Results);
         }
 
         var results = candidates
@@ -81,6 +77,16 @@ public sealed class IndexQueryService
             completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null);
     }
 
+    public Task<SymbolSearchResult> SearchInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string query,
+        int limit,
+        SymbolKind? kind,
+        CancellationToken cancellationToken) =>
+        SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken);
+
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
         string query,
         SymbolKind kind,
@@ -90,11 +96,32 @@ public sealed class IndexQueryService
         return (await SearchAsync(query, options, cancellationToken, kind)).Results;
     }
 
+    public async Task<IReadOnlyList<SymbolQueryResult>> FindInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string query,
+        SymbolKind kind,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        return (await SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken)).Results;
+    }
+
     public Task<RelationshipQuerySetResult> RefsAsync(
         string selector,
         IndexQueryOptions options,
         CancellationToken cancellationToken) =>
         RelationshipSetAsync(selector, options, RelationshipQueryMode.Refs, cancellationToken);
+
+    public Task<RelationshipQuerySetResult> RefsInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        CancellationToken cancellationToken) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Refs, cancellationToken);
 
     public Task<RelationshipQuerySetResult> CallersAsync(
         string selector,
@@ -102,11 +129,29 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken) =>
         RelationshipSetAsync(selector, options, RelationshipQueryMode.Callers, cancellationToken);
 
+    public Task<RelationshipQuerySetResult> CallersInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        CancellationToken cancellationToken) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken);
+
     public Task<RelationshipQuerySetResult> CalleesAsync(
         string selector,
         IndexQueryOptions options,
         CancellationToken cancellationToken) =>
         RelationshipSetAsync(selector, options, RelationshipQueryMode.Callees, cancellationToken);
+
+    public Task<RelationshipQuerySetResult> CalleesInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        CancellationToken cancellationToken) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken);
 
     private async Task<RelationshipQuerySetResult> RelationshipSetAsync(
         string selector,
@@ -127,13 +172,126 @@ public sealed class IndexQueryService
                 string.Empty);
         }
 
-        var selected = selection.Selected.Value;
+        return await RelationshipSetFromSelectedAsync(
+            selection.Selected.Value,
+            mode,
+            int.MaxValue,
+            cancellationToken);
+    }
+
+    public async Task<SourceSnippetResolutionResult> SourceInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        if (context < 0)
+            throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
+        if (_dataRoot is null)
+            throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
+
+        var selection = await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new SourceSnippetResolutionResult(selection.Resolution, null);
+        return await SourceFromSelectedAsync(selection.Selected.Value, codebase, context, cancellationToken);
+    }
+
+    public async Task<SourceSnippetResolutionResult> SourceAsync(
+        string selector,
+        IndexQueryOptions options,
+        int context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        if (context < 0)
+            throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
+        if (_dataRoot is null)
+            throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
+
+        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new SourceSnippetResolutionResult(selection.Resolution, null);
+        return await SourceFromSelectedAsync(selection.Selected.Value, options.Codebase, context, cancellationToken);
+    }
+
+    private async Task<SymbolSearchResult> SearchInRunAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string query,
+        int limit,
+        SymbolKind? kind,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
+
+        var kindName = kind?.ToString();
+        var totalCount = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName);
+        if (totalCount == 0)
+            return new SymbolSearchResult(0, 0, [], null);
+
+        var symbols = await _repository.SearchCompletedSymbolsAsync(
+            run.IndexId,
+            query,
+            limit,
+            cancellationToken,
+            kindName);
+        var results = symbols
+            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol))
+            .ToArray();
+        return new SymbolSearchResult(totalCount, results.Length, results, null);
+    }
+
+    private async Task<RelationshipQuerySetResult> RelationshipSetInRunAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        RelationshipQueryMode mode,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+
+        var selection = await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+        {
+            return new RelationshipQuerySetResult(
+                selection.Resolution,
+                [],
+                null,
+                mode == RelationshipQueryMode.Callers,
+                string.Empty);
+        }
+
+        return await RelationshipSetFromSelectedAsync(
+            selection.Selected.Value,
+            mode,
+            limit,
+            cancellationToken);
+    }
+
+    private async Task<RelationshipQuerySetResult> RelationshipSetFromSelectedAsync(
+        SelectedSymbol selected,
+        RelationshipQueryMode mode,
+        int limit,
+        CancellationToken cancellationToken)
+    {
         var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
             selected.Run.IndexId,
             selected.Symbol.SymbolId,
             cancellationToken)
             ?? throw new InvalidDataException("The resolved symbol disappeared from the completed index.");
-
+        BodyRecoveryStatus? bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
+            ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
+            : null;
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges;
         if (mode == RelationshipQueryMode.Refs)
         {
@@ -151,6 +309,7 @@ public sealed class IndexQueryService
                 .GroupBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
                 .Select(group => group.First())
                 .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .Take(limit)
                 .ToArray();
         }
         else if (mode == RelationshipQueryMode.Callers)
@@ -163,6 +322,7 @@ public sealed class IndexQueryService
                 .Where(edge => IsCallLike(edge.Kind))
                 .Select(edge => (edge, "Incoming"))
                 .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .Take(limit)
                 .ToArray();
         }
         else
@@ -175,6 +335,7 @@ public sealed class IndexQueryService
                 .Where(edge => IsCallLike(edge.Kind))
                 .Select(edge => (edge, "Outgoing"))
                 .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .Take(limit)
                 .ToArray();
         }
 
@@ -200,37 +361,26 @@ public sealed class IndexQueryService
                 Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId)))
             .ToArray();
 
-        BodyRecoveryStatus? bodyStatus = IsCallable(symbolRecord.Kind)
-            ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
-            : null;
         var notice = mode == RelationshipQueryMode.Refs
             ? string.Empty
-            : CompletenessNotice(bodyStatus, mode == RelationshipQueryMode.Callers);
+            : CompletenessNotice(bodyRecoveryStatus, mode == RelationshipQueryMode.Callers);
         return new RelationshipQuerySetResult(
-            selection.Resolution,
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
             relationships,
-            bodyStatus,
+            bodyRecoveryStatus,
             mode == RelationshipQueryMode.Callers,
             notice);
     }
 
-    public async Task<SourceSnippetResolutionResult> SourceAsync(
-        string selector,
-        IndexQueryOptions options,
+    private async Task<SourceSnippetResolutionResult> SourceFromSelectedAsync(
+        SelectedSymbol selected,
+        CodebaseKind codebase,
         int context,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
-        if (context < 0)
-            throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
         if (_dataRoot is null)
             throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
 
-        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
-        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
-            return new SourceSnippetResolutionResult(selection.Resolution, null);
-
-        var selected = selection.Selected.Value;
         var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
             selected.Run.IndexId,
             selected.Symbol.SymbolId,
@@ -243,7 +393,9 @@ public sealed class IndexQueryService
             .ThenBy(location => location.StartColumn)
             .ToArray();
         if (matchingLocations.Length == 0)
-            return new SourceSnippetResolutionResult(selection.Resolution, null);
+            return new SourceSnippetResolutionResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+                null);
         if (matchingLocations.Length > 1)
             throw new InvalidDataException("The completed index contains multiple source locations for the selected symbol.");
 
@@ -254,7 +406,7 @@ public sealed class IndexQueryService
         if (sourceFile is null)
             throw new InvalidDataException("The selected symbol source location references a missing source file record.");
 
-        var indexRoot = ResolveIndexRoot(_dataRoot, options.Codebase, selected.Channel, selected.Run.IndexId);
+        var indexRoot = ResolveIndexRoot(_dataRoot, codebase, selected.Channel, selected.Run.IndexId);
         var sourcePath = ResolveContainedSourcePath(indexRoot, sourceFile.RelativePath);
         var read = await _sourceSnippetReader.ReadAsync(
             sourcePath,
@@ -282,8 +434,10 @@ public sealed class IndexQueryService
             read.ContextAfter,
             read.Text,
             bodyRecoveryStatus,
-            options.Codebase + ":" + selected.Channel + ":generated");
-        return new SourceSnippetResolutionResult(selection.Resolution, snippet);
+            codebase + ":" + selected.Channel + ":generated");
+        return new SourceSnippetResolutionResult(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+            snippet);
     }
 
     private async Task<ChannelSelection> ResolveAcrossChannelsAsync(
@@ -300,19 +454,15 @@ public sealed class IndexQueryService
             if (run is null) continue;
             completedIndexCount++;
 
-            var resolution = await _symbolResolver.ResolveAsync(
-                run.IndexId,
-                selector,
-                options.Codebase,
-                channel,
-                cancellationToken);
+            var selection = await ResolveInRunAsync(run, options.Codebase, channel, selector, cancellationToken);
+            var resolution = selection.Resolution;
             if (resolution.Status == SymbolResolutionStatus.Ambiguous)
             {
                 ambiguous.AddRange(resolution.Candidates);
                 continue;
             }
-            if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
-                resolved.Add(new SelectedSymbol(channel, run, resolution.Symbol));
+            if (resolution.Status == SymbolResolutionStatus.Resolved && selection.Selected is not null)
+                resolved.Add(selection.Selected.Value);
         }
 
         if (ambiguous.Count > 0 || resolved.Count > 1)
@@ -344,6 +494,27 @@ public sealed class IndexQueryService
         return new ChannelSelection(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, resolved[0].Symbol, []),
             resolved[0]);
+    }
+
+    private async Task<ChannelSelection> ResolveInRunAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+
+        var resolution = await _symbolResolver.ResolveAsync(
+            run.IndexId,
+            selector,
+            codebase,
+            channel,
+            cancellationToken);
+        if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
+            return new ChannelSelection(resolution, new SelectedSymbol(channel, run, resolution.Symbol));
+        return new ChannelSelection(resolution, null);
     }
 
     private static RelationshipEndpointQueryResult Endpoint(
