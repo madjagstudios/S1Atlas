@@ -51,7 +51,7 @@ public sealed record ToolEnvelope<T>(
             build,
             data,
             Array.Empty<object>(),
-            provenance,
+            EnsureFactProvenance(build, provenance),
             null);
 
     public static ToolEnvelope<T> NotFound(
@@ -112,4 +112,39 @@ public sealed record ToolEnvelope<T>(
             Array.Empty<object>(),
             provenance,
             error);
+
+    private static IReadOnlyList<ProvenanceEntry> EnsureFactProvenance(
+        BuildContext? build,
+        IReadOnlyList<ProvenanceEntry> provenance)
+    {
+        if (provenance.Count > 0 && provenance.Any(entry => entry.Classification == ProvenanceClassification.Fact))
+        {
+            return provenance;
+        }
+
+        if (build is null)
+        {
+            return provenance;
+        }
+
+        var fact = new ProvenanceEntry(
+            ProvenanceClassification.Fact,
+            "installed-build-authority",
+            build.ResolvedBuildId ?? build.RequestedBuildId,
+            build.ExtractionId,
+            build.IndexId);
+
+        if (provenance.Count == 0)
+        {
+            return new[] { fact };
+        }
+
+        var entries = new ProvenanceEntry[provenance.Count + 1];
+        entries[0] = fact;
+        for (var i = 0; i < provenance.Count; i++)
+        {
+            entries[i + 1] = provenance[i];
+        }
+        return entries;
+    }
 }

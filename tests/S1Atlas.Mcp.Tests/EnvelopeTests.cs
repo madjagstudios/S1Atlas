@@ -19,16 +19,40 @@ public sealed class EnvelopeTests
     }
 
     [Fact]
-    public void NotFound_CarriesBuildAndNoData()
+    public void Resolved_EmitsFactProvenanceAndEmptyCandidates()
     {
         var build = new BuildContext(null, "b", "e", "i", "ScheduleI", "Installed", true);
-        var envelope = ToolEnvelope<string>.NotFound(
+        var envelope = ToolEnvelope<string>.Resolved(
             build,
+            "data");
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Same(build, envelope.Build);
+        Assert.Equal("data", envelope.Data);
+        Assert.Empty(envelope.Candidates);
+        Assert.NotEmpty(envelope.Provenance);
+        var provenance = Assert.Single(envelope.Provenance);
+        Assert.Equal(ProvenanceClassification.Fact, provenance.Classification);
+        Assert.Equal("installed-build-authority", provenance.Source);
+        Assert.Equal("b", provenance.BuildId);
+        Assert.Equal("e", provenance.ExtractionId);
+        Assert.Equal("i", provenance.IndexId);
+    }
+
+    [Fact]
+    public void Ambiguous_PreservesCandidates()
+    {
+        var build = new BuildContext(null, "b", "e", "i", "ScheduleI", "Installed", true);
+        var candidates = new object[] { "first", "second" };
+
+        var envelope = ToolEnvelope<string>.Ambiguous(
+            build,
+            candidates,
             new ProvenanceEntry(ProvenanceClassification.Derived, "installed-index", "b", "e", "i"));
 
-        Assert.Equal(ToolStatus.NotFound, envelope.Status);
-        Assert.Same(build, envelope.Build);
-        Assert.Null(envelope.Data);
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Same(candidates, envelope.Candidates);
+        Assert.Equal(2, envelope.Candidates.Count);
     }
 
     [Fact]
@@ -47,6 +71,13 @@ public sealed class EnvelopeTests
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Same(authority, envelope.Data);
+        Assert.NotEmpty(envelope.Provenance);
+        var provenance = Assert.Single(envelope.Provenance);
+        Assert.Equal(ProvenanceClassification.Fact, provenance.Classification);
+        Assert.Equal("installed-build-authority", provenance.Source);
+        Assert.Equal("resolved", provenance.BuildId);
+        Assert.Equal("extraction", provenance.ExtractionId);
+        Assert.Equal("index", provenance.IndexId);
     }
 
     [Theory]

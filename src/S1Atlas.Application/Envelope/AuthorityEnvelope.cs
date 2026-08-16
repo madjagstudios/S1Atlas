@@ -22,7 +22,10 @@ public static class AuthorityEnvelope
         return authority.Status switch
         {
             InstalledBuildAuthorityStatus.Resolved =>
-                ToolEnvelope<InstalledBuildAuthority>.Resolved(build, authority),
+                ToolEnvelope<InstalledBuildAuthority>.Resolved(
+                    build,
+                    authority,
+                    CreateFactProvenance(authority)),
             InstalledBuildAuthorityStatus.NoCurrentBuild =>
                 ToolEnvelope<InstalledBuildAuthority>.Unavailable(
                     new ToolError("NoCurrentBuild", authority.Message ?? "No current build."),
@@ -62,4 +65,12 @@ public static class AuthorityEnvelope
             _ => throw new ArgumentOutOfRangeException(nameof(authority))
         };
     }
+
+    private static ProvenanceEntry CreateFactProvenance(InstalledBuildAuthority authority) =>
+        new(
+            ProvenanceClassification.Fact,
+            "installed-build-authority",
+            authority.ResolvedBuildId,
+            authority.ExtractionId,
+            authority.IndexId);
 }

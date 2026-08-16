@@ -71,3 +71,22 @@ dotnet build S1Atlas.sln --no-restore
 ## Concerns
 
 - None.
+
+## Review Fix Round 1
+
+Addressed the two review findings:
+
+- successful `AuthorityEnvelope.From` / `ToolEnvelope.Resolved` now emit at least one `Fact` provenance entry tied to the resolved build, extraction, and index authority
+- regression tests now assert successful fact provenance plus candidate preservation for `Ambiguous` and explicit empty candidates for `Resolved`
+
+### Commands Run
+
+```powershell
+dotnet test tests/S1Atlas.Mcp.Tests --filter EnvelopeTests
+dotnet build tests/S1Atlas.Mcp.Tests --no-restore
+```
+
+### Output
+
+- `dotnet test tests/S1Atlas.Mcp.Tests --filter EnvelopeTests` -> PASS (10 tests)
+- `dotnet build tests/S1Atlas.Mcp.Tests --no-restore` -> PASS
