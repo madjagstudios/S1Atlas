@@ -1,6 +1,6 @@
 # S1Atlas V1 Read-Only MCP Server Design
 
-Status: approved for implementation planning  
+Status: shipped (PR #23, merged as 8e4417c on 2026-08-16)  
 Work item: S1Atlas V1 read-only MCP server  
 Branch: `codex/s1atlas-mcp`
 

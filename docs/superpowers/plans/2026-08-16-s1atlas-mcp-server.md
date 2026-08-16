@@ -1,5 +1,7 @@
 # S1Atlas Read-Only MCP Server Implementation Plan
 
+> **Status:** Shipped — PR #23, merged as 8e4417c on 2026-08-16. Full Release suite green (1,204 tests).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `S1Atlas.Mcp`, a local read-only Model Context Protocol server (stdio) that exposes the same integrity-verified Schedule I Atlas knowledge as the CLI, through a single shared authority path consumed by both surfaces.
