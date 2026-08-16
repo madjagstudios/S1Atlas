@@ -146,7 +146,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             atlas.InputSnapshotIdB,
             "scene-snapshot-b",
             atlas.SceneNameB,
-            includeCodeHandoff: false);
+            includeCodeHandoff: false,
+            recoveryStatus: SceneRecoveryStatus.PartiallyRecovered);
         return atlas;
     }
 
@@ -218,7 +219,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         string inputSnapshotId,
         string sceneSnapshotId,
         string sceneName,
-        bool includeCodeHandoff)
+        bool includeCodeHandoff,
+        SceneRecoveryStatus recoveryStatus = SceneRecoveryStatus.FullyRecovered)
     {
         const string digest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
         var snapshot = new SceneSnapshotRecord(
@@ -232,7 +234,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             "1",
             digest,
             SceneSnapshotStatus.Running,
-            SceneRecoveryStatus.FullyRecovered,
+            recoveryStatus,
             BaseTime.AddMinutes(30).ToString("O"));
         var container = new SceneContainerRecord(
             "container-" + buildId,
@@ -253,7 +255,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             1,
             1,
             1,
-            SceneRecoveryStatus.FullyRecovered);
+            recoveryStatus);
         var prefab = new SceneDocumentRecord(
             "prefab-" + buildId,
             sceneSnapshotId,
@@ -263,7 +265,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             2,
             1,
             1,
-            SceneRecoveryStatus.FullyRecovered);
+            recoveryStatus);
         var gameObject = new SceneGameObjectRecord(
             "game-object-" + buildId,
             scene.SceneId,
@@ -273,7 +275,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             true,
             0,
             "Untagged",
-            SceneRecoveryStatus.FullyRecovered);
+            recoveryStatus);
         var component = new SceneComponentRecord(
             "component-" + buildId,
             gameObject.GameObjectId,
@@ -287,7 +289,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             includeCodeHandoff ? "type-widget" : null,
             includeCodeHandoff ? indexId : null,
             includeCodeHandoff ? SceneResolutionStatus.Resolved : SceneResolutionStatus.NotIndexed,
-            SceneRecoveryStatus.FullyRecovered);
+            recoveryStatus);
 
         await _repository.CreateSceneSnapshotAsync(snapshot, CancellationToken.None);
         await _repository.CompleteSceneSnapshotAsync(

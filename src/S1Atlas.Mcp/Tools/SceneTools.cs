@@ -27,12 +27,14 @@ public sealed class SceneTools
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
         CancellationToken ct = default)
     {
-        try
+        return await WithAuthorityAsync(buildId, ct, async authority =>
         {
-            var boundedLimit = BoundLimit(limit);
-            var parsedKind = ParseKind(kind);
-            return await WithSnapshotAsync(
-                buildId,
+            try
+            {
+                var boundedLimit = BoundLimit(limit);
+                var parsedKind = ParseKind(kind);
+                return await WithSnapshotForAuthorityAsync(
+                authority,
                 sceneSnapshotId,
                 ct,
                 async (authority, snapshot) =>
@@ -41,15 +43,16 @@ public sealed class SceneTools
                         new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit), ct);
                     return FromResult(authority, result.Status, result, [], "scene-list");
                 });
-        }
-        catch (ArgumentOutOfRangeException exception)
-        {
-            return EnvelopeMapper.Invalid<SceneListResult>("InvalidLimit", exception.Message);
-        }
-        catch (ArgumentException exception)
-        {
-            return EnvelopeMapper.Invalid<SceneListResult>("InvalidKind", exception.Message);
-        }
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return Invalid<SceneListResult>(authority, "InvalidLimit", exception.Message);
+            }
+            catch (ArgumentException exception)
+            {
+                return Invalid<SceneListResult>(authority, "InvalidKind", exception.Message);
+            }
+        });
     }
 
     [McpServerTool(Name = "get_scene"), Description("Resolve one indexed Schedule I scene document.")]
@@ -76,21 +79,24 @@ public sealed class SceneTools
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
         CancellationToken ct = default)
     {
-        if (TrySelectorError(selector, out ToolEnvelope<GameObjectQueryResult> error)) return error;
-        try
+        return await WithAuthorityAsync(buildId, ct, async authority =>
         {
-            var boundedLimit = BoundLimit(limit);
-            return await WithSnapshotAsync(buildId, sceneSnapshotId, ct, async (authority, snapshot) =>
+            if (TrySelectorError(selector, authority, out ToolEnvelope<GameObjectQueryResult> error)) return error;
+            try
             {
-                var result = await _services.SceneQueryService.GameObjectAsync(
-                    new GameObjectQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
-                return FromResult(authority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "game-object-query");
-            });
-        }
-        catch (ArgumentOutOfRangeException exception)
-        {
-            return EnvelopeMapper.Invalid<GameObjectQueryResult>("InvalidLimit", exception.Message);
-        }
+                var boundedLimit = BoundLimit(limit);
+                return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
+                {
+                    var result = await _services.SceneQueryService.GameObjectAsync(
+                        new GameObjectQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "game-object-query");
+                });
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return Invalid<GameObjectQueryResult>(authority, "InvalidLimit", exception.Message);
+            }
+        });
     }
 
     [McpServerTool(Name = "get_prefab"), Description("Resolve one indexed Schedule I prefab document.")]
@@ -115,21 +121,24 @@ public sealed class SceneTools
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
         CancellationToken ct = default)
     {
-        if (TrySelectorError(selector, out ToolEnvelope<ComponentQueryResult> error)) return error;
-        try
+        return await WithAuthorityAsync(buildId, ct, async authority =>
         {
-            var boundedLimit = BoundLimit(limit);
-            return await WithSnapshotAsync(buildId, sceneSnapshotId, ct, async (authority, snapshot) =>
+            if (TrySelectorError(selector, authority, out ToolEnvelope<ComponentQueryResult> error)) return error;
+            try
             {
-                var result = await _services.SceneQueryService.ComponentAsync(
-                    new ComponentQueryRequest(snapshot.SceneSnapshotId, selector, includeReferences, includeCode, boundedLimit), ct);
-                return FromResult(authority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query");
-            });
-        }
-        catch (ArgumentOutOfRangeException exception)
-        {
-            return EnvelopeMapper.Invalid<ComponentQueryResult>("InvalidLimit", exception.Message);
-        }
+                var boundedLimit = BoundLimit(limit);
+                return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
+                {
+                    var result = await _services.SceneQueryService.ComponentAsync(
+                        new ComponentQueryRequest(snapshot.SceneSnapshotId, selector, includeReferences, includeCode, boundedLimit), ct);
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query");
+                });
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return Invalid<ComponentQueryResult>(authority, "InvalidLimit", exception.Message);
+            }
+        });
     }
 
     private async Task<ToolEnvelope<SceneDocumentQueryResult>> GetDocumentAsync(
@@ -137,39 +146,49 @@ public sealed class SceneTools
         bool includeChildren, bool includeComponents, bool includeReferences, int limit,
         CancellationToken ct, bool prefab)
     {
-        if (TrySelectorError(selector, out ToolEnvelope<SceneDocumentQueryResult> error)) return error;
-        try
+        return await WithAuthorityAsync(buildId, ct, async authority =>
         {
-            var boundedLimit = BoundLimit(limit);
-            var parsedKind = ParseKind(kind);
-            return await WithSnapshotAsync(buildId, sceneSnapshotId, ct, async (authority, snapshot) =>
+            if (TrySelectorError(selector, authority, out ToolEnvelope<SceneDocumentQueryResult> error)) return error;
+            try
             {
-                var result = prefab
-                    ? await _services.SceneQueryService.PrefabAsync(new PrefabQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct)
-                    : await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
-                return FromResult(authority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query");
-            });
-        }
-        catch (ArgumentOutOfRangeException exception)
-        {
-            return EnvelopeMapper.Invalid<SceneDocumentQueryResult>("InvalidLimit", exception.Message);
-        }
-        catch (ArgumentException exception)
-        {
-            return EnvelopeMapper.Invalid<SceneDocumentQueryResult>("InvalidKind", exception.Message);
-        }
+                var boundedLimit = BoundLimit(limit);
+                var parsedKind = prefab ? SceneDocumentKind.Prefab : ParseSceneKind(kind);
+                return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
+                {
+                    var result = prefab
+                        ? await _services.SceneQueryService.PrefabAsync(new PrefabQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct)
+                        : await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query");
+                });
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return Invalid<SceneDocumentQueryResult>(authority, "InvalidLimit", exception.Message);
+            }
+            catch (ArgumentException exception)
+            {
+                return Invalid<SceneDocumentQueryResult>(authority, "InvalidKind", exception.Message);
+            }
+        });
     }
 
-    private async Task<ToolEnvelope<T>> WithSnapshotAsync<T>(
-        string? buildId, string? sceneSnapshotId, CancellationToken ct,
-        Func<InstalledBuildAuthority, SceneSnapshotRecord, Task<ToolEnvelope<T>>> onResolved) where T : class =>
-        await EnvelopeMapper.WithAuthorityAsync(_services.AuthorityResolver, buildId, ct, async authority =>
-        {
-            var snapshot = await ResolveSnapshotAsync(authority, sceneSnapshotId, ct);
-            return snapshot is null
-                ? SnapshotError<T>(authority, sceneSnapshotId)
-                : await onResolved(authority, snapshot);
-        });
+    private Task<ToolEnvelope<T>> WithAuthorityAsync<T>(
+        string? buildId,
+        CancellationToken ct,
+        Func<InstalledBuildAuthority, Task<ToolEnvelope<T>>> onResolved) where T : class =>
+        EnvelopeMapper.WithAuthorityAsync(_services.AuthorityResolver, buildId, ct, onResolved);
+
+    private async Task<ToolEnvelope<T>> WithSnapshotForAuthorityAsync<T>(
+        InstalledBuildAuthority authority,
+        string? sceneSnapshotId,
+        CancellationToken ct,
+        Func<InstalledBuildAuthority, SceneSnapshotRecord, Task<ToolEnvelope<T>>> onResolved) where T : class
+    {
+        var snapshot = await ResolveSnapshotAsync(authority, sceneSnapshotId, ct);
+        return snapshot is null
+            ? SnapshotError<T>(authority, sceneSnapshotId)
+            : await onResolved(authority, snapshot);
+    }
 
     private async Task<SceneSnapshotRecord?> ResolveSnapshotAsync(InstalledBuildAuthority authority, string? sceneSnapshotId, CancellationToken ct)
     {
@@ -213,7 +232,7 @@ public sealed class SceneTools
         };
     }
 
-    private static bool TrySelectorError<T>(string? selector, out ToolEnvelope<T> error) where T : class
+    private static bool TrySelectorError<T>(string? selector, InstalledBuildAuthority authority, out ToolEnvelope<T> error) where T : class
     {
         if (!string.IsNullOrWhiteSpace(selector))
         {
@@ -221,7 +240,7 @@ public sealed class SceneTools
             return false;
         }
 
-        error = EnvelopeMapper.Invalid<T>("InvalidArguments", "The selector must not be blank or whitespace.");
+        error = Invalid<T>(authority, "InvalidArguments", "The selector must not be blank or whitespace.");
         return true;
     }
 
@@ -237,6 +256,26 @@ public sealed class SceneTools
         if (Enum.TryParse<SceneDocumentKind>(kind, ignoreCase: true, out var parsed)) return parsed;
         throw new ArgumentException("Scene kind must be Scene or Prefab.", nameof(kind));
     }
+
+    private static SceneDocumentKind ParseSceneKind(string? kind)
+    {
+        if (string.IsNullOrWhiteSpace(kind) || string.Equals(kind, nameof(SceneDocumentKind.Scene), StringComparison.OrdinalIgnoreCase))
+        {
+            return SceneDocumentKind.Scene;
+        }
+
+        throw new ArgumentException("Scene kind must be Scene.", nameof(kind));
+    }
+
+    private static ToolEnvelope<T> Invalid<T>(InstalledBuildAuthority authority, string code, string message) where T : class =>
+        ToolEnvelope<T>.Invalid(
+            new ToolError(code, message),
+            EnvelopeMapper.BuildFrom(authority),
+            Fact(authority, "installed-build-authority"),
+            Derived(authority, "tool-argument-validation"));
+
+    private static ProvenanceEntry Fact(InstalledBuildAuthority authority, string source) =>
+        new(ProvenanceClassification.Fact, source, authority.ResolvedBuildId, authority.ExtractionId, authority.IndexId);
 
     private static ProvenanceEntry Derived(InstalledBuildAuthority authority, string source) =>
         new(ProvenanceClassification.Derived, source, authority.ResolvedBuildId, authority.ExtractionId, authority.IndexId);
