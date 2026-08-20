@@ -21,3 +21,5 @@
 - Scene pages remain deferred; the reserved scene path is unwritten and the build page carries the CLI/MCP deferral note.
 - Final verification on `b8bd72f`: `dotnet format S1Atlas.sln --verify-no-changes --no-restore` passed; Release build passed with 0 warnings and 0 errors; Release no-build tests passed across Core (125), Docs (8), Indexing (180), Storage (130), Extraction (549), Integration (158), and MCP (67).
 - Final repository hygiene: code-map check passed and the working tree was clean before this note update.
+- Read-only review follow-up: `f2d36f5` completes relationship endpoint navigation and measured states, cross-build symbol occurrences, current environment facts, diff classifications/links, distinct authority styling, safe file-based search rendering, and manifest-scoped stale-file cleanup.
+- Post-review verification on `f2d36f5`: the exact format gate, Release build (0 warnings/0 errors), and all 1,217 Release no-build tests passed.
