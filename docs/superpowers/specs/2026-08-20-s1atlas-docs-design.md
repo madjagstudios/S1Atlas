@@ -44,6 +44,12 @@ services and an immutable, canonically ordered portal model.
 - The default output is `./s1atlas-docs/`, relative to the invocation directory.
   `--output` overrides it. The output is outside the Atlas data root and
   `s1atlas-docs/` is ignored by Git.
+- Environment pages cover the current resolved Schedule I build only, read from
+  `GetCurrentSnapshotAsync`. Per-build/historical environment pages are out of V1:
+  the storage layer exposes no per-build environment read, and environment snapshots
+  are identity-versioned (a build may have several), so “the environment of a
+  historical build” is ambiguous. Historical build pages state that environment is
+  recorded for the current build only.
 
 ## Command behavior
 
@@ -57,6 +63,11 @@ The command uses the same Atlas data-root resolution as the existing CLI. It bui
 the shared `ReadOnlyAtlasComposition` once and passes its `AtlasReadOnlyServices`
 through the generation pipeline. It does not create or migrate the database and
 does not write anywhere under the Atlas data root.
+
+If the Atlas database is missing, or its schema is not the exact expected version, the
+read-only composition fails to open; the command reports an explicit error advising a
+scan or migration first and produces no site. Generation never migrates or creates
+the database.
 
 For Schedule I, an omitted or explicit requested/current build that cannot resolve
 through `InstalledBuildAuthorityResolver` is a generation error and produces no
@@ -140,14 +151,15 @@ index.html
 search.html
 builds/index.html
 builds/<build-id>.html
-history/schedule-i/symbols/<canonical-slug>-<hash>.html
+history/schedule-i/symbols/<hash-prefix>/<canonical-slug>-<hash>.html
 diffs/<older-build>--<newer-build>.html
-environment/<build-id>.html
+environment/<resolved-build-id>.html
 code/<codebase>/<channel>/index.html
 code/<codebase>/<channel>/namespaces/<namespace-slug>-<hash>.html
-code/<codebase>/<channel>/symbols/<symbol-slug>-<hash>.html
+code/<codebase>/<channel>/symbols/<hash-prefix>/<symbol-slug>-<hash>.html
 assets/site.css
 assets/search.js
+assets/search-index.js
 assets/search-index.json
 ```
 
@@ -182,6 +194,26 @@ has no dependence on the output directory or host filesystem.
 Diff filenames use the older and newer 64-character build IDs in chronological
 order. The pair is canonicalized so one adjacent pair maps to one file.
 
+### Symbol page scope and directory sharding
+
+Standalone pages are generated only for types, methods, and constructors. Fields,
+properties, and events render inline on their containing type page rather than as
+separate files; they still appear in the search index and are addressable via
+deterministic member anchors on the type page. This bounds file count and matches how
+members are read.
+
+The two high-cardinality symbol trees are sharded by a two-hex-character `<hash-prefix>`
+taken from the same SHA-256 used in the slug suffix, so no single directory holds the
+full symbol set:
+
+    code/<codebase>/<channel>/symbols/<hash-prefix>/<symbol-slug>-<hash>.html
+    history/schedule-i/symbols/<hash-prefix>/<canonical-slug>-<hash>.html
+
+Namespace pages remain unsharded (low cardinality). The shard prefix is derived
+deterministically from the exact key and has no dependence on output directory or host
+filesystem. Generation is expected to scale to tens of thousands of symbol pages;
+enumeration uses the bounded paged query seams.
+
 ## Generated pages
 
 - `index.html`: selected Schedule I build, API index summaries, navigation, trust
@@ -195,14 +227,18 @@ order. The pair is canonicalized so one adjacent pair maps to one file.
   modding relevance signals, C# learning context, and provenance.
 - `builds/index.html`: all known game builds with status `indexed + verified`,
   `not indexed`, or `integrity-failed`. Only verified rows link to navigable pages.
-- `builds/<build-id>.html`: build provenance, linked code surface, environment,
-  adjacent diff links, and the explicit deferred-scene note.
+- `builds/<build-id>.html`: build provenance, linked code surface, adjacent diff links,
+  and the explicit deferred-scene note. Only the current resolved build links to an
+  environment page; historical builds state that environment facts are recorded for the
+  current build only.
 - `history/schedule-i/symbols/...`: canonical-key history across resolved
   Schedule I builds, with measured occurrence/missing status per build.
 - `diffs/<older>--<newer>.html`: `BuildDiffService` output for adjacent verified
   builds, counts, classifications, and links to affected symbols.
-- `environment/<build-id>.html`: recorded installation, game/build identifiers,
-  dependency versions, and their FACT provenance.
+- `environment/<resolved-build-id>.html`: the current environment snapshot for the
+  resolved Schedule I build only (read from `GetCurrentSnapshotAsync`) — recorded
+  installation, game/build identifiers, dependency versions, and their FACT provenance.
+  Historical (non-current) builds get no environment page.
 
 There are no static API build-history pages. API pages show their independent
 latest-completed commit/index provenance instead.
@@ -293,9 +329,11 @@ href. Entries are sorted by codebase, channel, qualified name, signature, kind,
 symbol ID, and href using ordinal comparison. JSON uses a fixed property order,
 stable indentation/escaping policy, and LF newlines.
 
-To keep local `file://` use reliable, the search page may consume a deterministic
-inline copy of the same sorted index rather than requiring a fetch. The emitted
-`assets/search-index.json` remains the canonical auditable artifact. If the index
+Because browsers block `fetch()` of a local file under `file://`, the search page MUST
+consume a deterministic inline copy of the same sorted index, emitted as
+`assets/search-index.js` assigning a single frozen constant, rather than fetching. The
+emitted `assets/search-index.json` remains the canonical, auditable artifact and is
+byte-identical in ordering to the inline copy. If the index
 needs chunking for size, chunks use fixed entry-count boundaries from the same global
 sort and a stable manifest; there is no data-dependent or dictionary-insertion-order
 partitioning and no silent result cap.
@@ -335,7 +373,15 @@ game bytes or the network. Coverage includes:
   the no-diff state;
 - generated HTML structure and content, not pixel output;
 - two generations from the same fixture producing byte-identical directory trees;
-- CLI default/override output paths and LF normalization.
+- CLI default/override output paths and LF normalization;
+- environment page generated only for the current resolved build; historical builds
+  show the current-only note and produce no per-build environment file;
+- only types/methods/constructors produce standalone files; field/property/event render
+  inline on the type page and appear in the search index via deterministic anchors;
+- symbol and symbol-history directories are sharded by hash prefix; no single directory
+  holds the full symbol set;
+- the search page returns results from file:// using the inline index constant;
+- a missing or wrong-schema database yields an explicit non-migrating generation error.
 
 The completion gate is always run in full:
 
@@ -353,4 +399,5 @@ dotnet test S1Atlas.sln --configuration Release --no-build
 - No API commit-history browsing or API snapshot pin flags.
 - No arbitrary-pair static diff pages.
 - No multi-build code tree in one generated site.
+- No per-build or historical environment pages in V1 (current resolved build only).
 - No writes into the Atlas data root or mutation of indexed data.
