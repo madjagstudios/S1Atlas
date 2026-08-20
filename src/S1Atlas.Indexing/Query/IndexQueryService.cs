@@ -32,6 +32,21 @@ public sealed class IndexQueryService
         return snapshot is null || symbol is null ? null : SymbolResolver.ToQueryResult(indexId, snapshot.Codebase, snapshot.Channel, symbol);
     }
 
+    public async Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string canonicalKey,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalKey);
+        var symbols = await _repository.GetCompletedSymbolByCanonicalKeyAsync(run.IndexId, canonicalKey, cancellationToken);
+        return symbols
+            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol))
+            .ToArray();
+    }
+
     public async Task<SymbolSearchResult> SearchAsync(
         string query,
         IndexQueryOptions options,
