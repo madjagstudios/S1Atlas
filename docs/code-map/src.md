@@ -7,12 +7,12 @@ Roots: src
 | Directory | Files |
 |---|---|
 | src/S1Atlas.Application/ | 1 |
-| src/S1Atlas.Application/Authority/ | 2 |
+| src/S1Atlas.Application/Authority/ | 3 |
 | src/S1Atlas.Application/Composition/ | 1 |
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 2 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 35 |
+| src/S1Atlas.Cli/Commands/ | 37 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 12 |
 | src/S1Atlas.Cli/Properties/ | 1 |
@@ -28,6 +28,13 @@ Roots: src
 | src/S1Atlas.Core/Scenes/ | 3 |
 | src/S1Atlas.Core/Storage/ | 6 |
 | src/S1Atlas.Core/Tools/ | 14 |
+| src/S1Atlas.Docs/ | 1 |
+| src/S1Atlas.Docs/Content/ | 1 |
+| src/S1Atlas.Docs/Determinism/ | 2 |
+| src/S1Atlas.Docs/Generation/ | 3 |
+| src/S1Atlas.Docs/Identity/ | 2 |
+| src/S1Atlas.Docs/Rendering/ | 4 |
+| src/S1Atlas.Docs/Source/ | 2 |
 | src/S1Atlas.Extraction/ | 5 |
 | src/S1Atlas.Extraction/Attempts/ | 4 |
 | src/S1Atlas.Extraction/Cleanup/ | 6 |
