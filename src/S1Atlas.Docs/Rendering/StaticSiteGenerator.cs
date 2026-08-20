@@ -46,7 +46,10 @@ public sealed class StaticSiteGenerator
             }
             foreach (var symbol in effective.Where(symbol => symbol.IndexId == index.IndexId && IsStandalone(symbol.Kind)))
             {
-                files[symbol.PagePath] = _pages.Render(symbol.PagePath, symbol.QualifiedName, _sections.Provenance(index) + _sections.Symbol(index, symbol, symbol.PagePath));
+                var body = _sections.Provenance(index) + _sections.Symbol(index, symbol, symbol.PagePath);
+                if (symbol.Kind == SymbolKind.Type)
+                    body += InlineMembers(effective, symbol);
+                files[symbol.PagePath] = _pages.Render(symbol.PagePath, symbol.QualifiedName, body);
             }
         }
         foreach (var diff in site.Diffs)
@@ -67,8 +70,17 @@ public sealed class StaticSiteGenerator
         }
     }
 
-    private string Landing(PortalSiteModel site, IReadOnlyList<PortalSymbolModel> symbols, string path) =>
-        $"<section><h2>Resolved game surface</h2><p>FACT: Schedule I Installed build {HtmlPageRenderer.Escape(site.ResolvedBuildId)} is the preferred, integrity-verified authority.</p></section><section><h2>Code surfaces</h2>{string.Join(string.Empty, site.Indexes.Select(index => $"<p><a href=\"{_links.RelativeHref(path, CodePath(index))}\">{index.Codebase}/{index.Channel}</a> — FACT: {HtmlPageRenderer.Escape(index.IndexId)}</p>"))}</section><section><h2>Coverage</h2><p>DERIVED: {symbols.Count} indexed symbols are available in this generated site.</p></section>";
+    private string Landing(PortalSiteModel site, IReadOnlyList<PortalSymbolModel> symbols, string path)
+    {
+        var surfaces = new List<string>();
+        foreach (var index in site.Indexes)
+            surfaces.Add($"<p><a href=\"{_links.RelativeHref(path, CodePath(index))}\">{index.Codebase}/{index.Channel}</a> — FACT: {HtmlPageRenderer.Escape(index.IndexId)}</p>");
+        foreach (var codebase in new[] { CodebaseKind.S1Api, CodebaseKind.S1MApi })
+            foreach (var channel in Enum.GetValues<CodeChannel>())
+                if (!site.Indexes.Any(index => index.Codebase == codebase && index.Channel == channel))
+                    surfaces.Add($"<p>{codebase}/{channel} — FACT: not indexed</p>");
+        return $"<section><h2>Resolved game surface</h2><p>FACT: Schedule I Installed build {HtmlPageRenderer.Escape(site.ResolvedBuildId)} is the preferred, integrity-verified authority.</p></section><section><h2>Code surfaces</h2>{string.Join(string.Empty, surfaces)}</section><section><h2>Coverage</h2><p>DERIVED: {symbols.Count} indexed symbols are available in this generated site.</p></section>";
+    }
 
     private string BuildIndex(PortalSiteModel site, string path) => "<section><h2>All known builds</h2>" + string.Join(string.Empty, site.BuildHistory.Entries.Select(entry => entry.IsNavigable ? $"<p><a href=\"{_links.RelativeHref(path, $"builds/{entry.Build.BuildId}.html")}\">{entry.Build.BuildId}</a> — {entry.Status}</p>" : $"<p>{entry.Build.BuildId} — {entry.Status} (not navigable)</p>")) + "</section>";
 
@@ -84,6 +96,17 @@ public sealed class StaticSiteGenerator
     {
         var slug = _slugs.Create(string.IsNullOrEmpty(name) ? "global" : name);
         return $"code/{index.Codebase.ToString().ToLowerInvariant()}/{index.Channel.ToString().ToLowerInvariant()}/namespaces/{slug.FileStem}.html";
+    }
+
+    private static string InlineMembers(IReadOnlyList<PortalSymbolModel> symbols, PortalSymbolModel type)
+    {
+        var members = symbols
+            .Where(symbol => symbol.PagePath == type.PagePath && !IsStandalone(symbol.Kind))
+            .OrderBy(symbol => symbol.Kind)
+            .ThenBy(symbol => symbol.QualifiedName, StringComparer.Ordinal)
+            .ToArray();
+        if (members.Length == 0) return string.Empty;
+        return "<section><h2>Inline members</h2>" + string.Join(string.Empty, members.Select(member => $"<h3 id=\"{HtmlPageRenderer.Escape(member.Anchor)}\">{HtmlPageRenderer.Escape(member.QualifiedName)}</h3><p>FACT: {HtmlPageRenderer.Escape(member.Kind.ToString())} <code>{HtmlPageRenderer.Escape(member.CanonicalKey)}</code>.</p>")) + "</section>";
     }
 
     private IEnumerable<PortalSymbolModel> EffectiveSymbols(IReadOnlyList<PortalIndexModel> indexes, IReadOnlyList<PortalSymbolModel> symbols)

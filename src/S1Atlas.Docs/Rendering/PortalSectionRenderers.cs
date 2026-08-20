@@ -10,9 +10,10 @@ public sealed class PortalSectionRenderers
 
     public string Provenance(PortalIndexModel index)
     {
+        var commit = index.SourceIdentity.Split(':', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? index.SourceIdentity;
         var authority = index.IsVerifiedAuthority
             ? $"FACT: preferred verified extraction authority; build {index.BuildId}; extraction {index.ExtractionId}; index {index.IndexId}."
-            : $"FACT: latest completed index — {index.Codebase}/{index.Channel} @ commit {index.SourceIdentity}, index {index.IndexId}.";
+            : $"FACT: latest completed index — {index.Codebase}/{index.Channel} @ commit {commit}; source identity {index.SourceIdentity}; index {index.IndexId}.";
         return $"<section class=\"provenance\"><h2>Provenance</h2><p>{HtmlPageRenderer.Escape(authority)}</p></section>";
     }
 
