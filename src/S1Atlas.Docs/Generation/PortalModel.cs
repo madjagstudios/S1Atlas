@@ -14,7 +14,8 @@ public sealed record PortalSiteModel(
     PortalBuildHistoryModel BuildHistory,
     PortalEnvironmentModel? CurrentEnvironment,
     IReadOnlyList<PortalDiffModel> Diffs,
-    IReadOnlyList<PortalStatus> Statuses);
+    IReadOnlyList<PortalStatus> Statuses,
+    IReadOnlyList<PortalSymbolHistoryModel> SymbolHistories = null!);
 
 public sealed record PortalIndexModel(
     IndexRunRecord Run,
@@ -80,6 +81,12 @@ public sealed record PortalDiffModel(
     string AfterBuildId,
     BuildDiffResult Result,
     string PagePath);
+
+public sealed record PortalSymbolHistoryModel(
+    string CanonicalKey,
+    string QualifiedName,
+    string PagePath,
+    IReadOnlyList<SymbolHistoryOccurrence> Occurrences);
 
 public sealed record PortalStatus(string Code, string Label, bool IsError, string? Detail);
 

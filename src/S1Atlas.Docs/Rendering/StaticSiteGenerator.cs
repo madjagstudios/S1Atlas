@@ -17,6 +17,7 @@ public sealed class StaticSiteGenerator
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
         var output = Path.GetFullPath(outputDirectory);
         Directory.CreateDirectory(output);
+        await RemovePreviousGeneratedFilesAsync(output, cancellationToken);
         var allSymbols = site.Indexes.SelectMany(index => index.Namespaces.SelectMany(ns => ns.Symbols)).ToArray();
         var effective = EffectiveSymbols(site.Indexes, allSymbols).ToArray();
         var files = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -53,16 +54,15 @@ public sealed class StaticSiteGenerator
             }
         }
         foreach (var diff in site.Diffs)
-            files[diff.PagePath] = _pages.Render(diff.PagePath, $"Diff {diff.BeforeBuildId} → {diff.AfterBuildId}", $"<section><h2>FACT evidence</h2><p>FACT: adjacent verified Schedule I diff from {diff.BeforeBuildId} to {diff.AfterBuildId}.</p><p>DERIVED: {diff.Result.Changes.Count} changed symbols measured.</p></section>");
-        var historySymbols = effective.Where(symbol => symbol.Codebase == CodebaseKind.ScheduleI && IsStandalone(symbol.Kind)).ToArray();
-        foreach (var symbol in historySymbols)
+            files[diff.PagePath] = _pages.Render(diff.PagePath, $"Diff {diff.BeforeBuildId} → {diff.AfterBuildId}", Diff(site, diff));
+        var historySymbols = site.SymbolHistories ?? [];
+        foreach (var history in historySymbols)
         {
-            var slug = _slugs.Create(symbol.CanonicalKey);
-            var path = $"history/schedule-i/symbols/{slug.HashPrefix}/{slug.FileStem}.html";
-            files[path] = _pages.Render(path, $"History: {symbol.QualifiedName}", $"<section><h2>FACT evidence</h2><p>FACT: Schedule I cross-build history for <code>{HtmlPageRenderer.Escape(symbol.CanonicalKey)}</code>.</p></section>");
+            files[history.PagePath] = _pages.Render(history.PagePath, $"History: {history.QualifiedName}", SymbolHistory(history));
         }
         files["history/schedule-i/index.html"] = _pages.Render("history/schedule-i/index.html", "Schedule I history", "<p>FACT: Schedule I symbol history is cross-build and authority-scoped.</p>");
         foreach (var asset in new StaticAssets().Render(effective)) files[asset.Key] = asset.Value;
+        files[".s1atlas-generated-files"] = string.Join("\n", files.Keys.OrderBy(path => path, StringComparer.Ordinal).Append(".s1atlas-generated-files")) + "\n";
         foreach (var file in files.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -88,7 +88,66 @@ public sealed class StaticSiteGenerator
 
     private string Namespace(PortalIndexModel index, PortalNamespaceModel ns, string path) => "<section><h2>Symbols</h2>" + string.Join(string.Empty, ns.Symbols.Select(symbol => $"<p><a href=\"{_links.RelativeHref(path, symbol.PagePath, symbol.Anchor)}\">{HtmlPageRenderer.Escape(symbol.QualifiedName)}</a> — {symbol.Kind}</p>")) + "</section>";
 
-    private static string Environment(PortalEnvironmentModel environment) => "<section><h2>FACT evidence</h2><p>FACT: environment facts are recorded for the current resolved Schedule I build only.</p><p>FACT: build " + HtmlPageRenderer.Escape(environment.Snapshot.Build.BuildId) + ".</p></section>";
+    private static string Environment(PortalEnvironmentModel environment)
+    {
+        var snapshot = environment.Snapshot;
+        var installation = snapshot.Installation;
+        var facts = new List<string>
+        {
+            Fact("build ID", snapshot.Build.BuildId),
+            Fact("GameAssembly SHA-256", snapshot.Build.GameAssemblySha256),
+            Fact("global-metadata SHA-256", snapshot.Build.MetadataSha256),
+            Fact("build first seen", snapshot.Build.FirstSeenAtUtc.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture)),
+            Fact("installation executable version", installation.ExecutableVersion),
+            Fact("Steam app ID", installation.SteamAppId),
+            Fact("Steam build ID", installation.SteamBuildId),
+            Fact("installation root", installation.InstallationRoot),
+            Fact("GameAssembly path", installation.GameAssemblyPath),
+            Fact("global-metadata path", installation.GlobalMetadataPath),
+            Fact("Atlas version", snapshot.AtlasVersion),
+            Fact("environment identity version", snapshot.IdentityVersion.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        };
+        facts.AddRange(snapshot.Dependencies
+            .OrderBy(dependency => dependency.Kind)
+            .ThenBy(dependency => dependency.Version, StringComparer.Ordinal)
+            .ThenBy(dependency => dependency.Path, StringComparer.Ordinal)
+            .Select(dependency => $"FACT: dependency {HtmlPageRenderer.Escape(dependency.Kind.ToString())}: {HtmlPageRenderer.Escape(dependency.Version ?? "not recorded")} ({HtmlPageRenderer.Escape(dependency.Path ?? "path not recorded")}); installed={dependency.IsInstalled.ToString().ToLowerInvariant()}; SHA-256={HtmlPageRenderer.Escape(dependency.BinarySha256 ?? "not recorded")}."));
+        return "<section><h2>FACT evidence</h2><p>FACT: this is the current resolved Schedule I environment snapshot only.</p><ul>" + string.Join(string.Empty, facts.Select(fact => "<li>" + fact + "</li>")) + "</ul></section>";
+    }
+
+    private string Diff(PortalSiteModel site, PortalDiffModel diff)
+    {
+        var counts = string.Join(string.Empty, Enum.GetValues<DiffClassification>().Select(classification =>
+            $"<li>FACT: {HtmlPageRenderer.Escape(classification.ToString())}: {diff.Result.CountsByClassification.GetValueOrDefault(classification).ToString(System.Globalization.CultureInfo.InvariantCulture)}.</li>"));
+        var scheduleSymbols = site.Indexes
+            .Where(index => index.Codebase == CodebaseKind.ScheduleI && index.Channel == CodeChannel.Installed)
+            .SelectMany(index => index.Namespaces)
+            .SelectMany(namespaceModel => namespaceModel.Symbols)
+            .ToDictionary(symbol => symbol.CanonicalKey, StringComparer.Ordinal);
+        var changes = diff.Result.Changes.Count == 0
+            ? "<p>FACT: no changed symbols in this adjacent pair.</p>"
+            : "<ul>" + string.Join(string.Empty, diff.Result.Changes.Select(change =>
+            {
+                var label = $"{change.QualifiedName} — {change.Classification}";
+                var rendered = scheduleSymbols.TryGetValue(change.CanonicalKey, out var symbol)
+                    ? $"<a href=\"{_links.RelativeHref(diff.PagePath, symbol.PagePath, symbol.Anchor)}\">{HtmlPageRenderer.Escape(label)}</a>"
+                    : HtmlPageRenderer.Escape(label);
+                return $"<li>{rendered} — FACT: canonical key <code>{HtmlPageRenderer.Escape(change.CanonicalKey)}</code>.</li>";
+            })) + "</ul>";
+        return $"<section><h2>FACT evidence</h2><p>FACT: adjacent verified Schedule I diff from {HtmlPageRenderer.Escape(diff.BeforeBuildId)} to {HtmlPageRenderer.Escape(diff.AfterBuildId)}.</p><p>FACT: before index {HtmlPageRenderer.Escape(diff.Result.IndexIdA)}; after index {HtmlPageRenderer.Escape(diff.Result.IndexIdB)}.</p></section><section><h2>Classifications</h2><ul>{counts}</ul></section><section><h2>Changed symbols</h2>{changes}</section>";
+    }
+
+    private static string SymbolHistory(PortalSymbolHistoryModel history)
+    {
+        var occurrences = history.Occurrences.Count == 0
+            ? "<p>FACT: no verified indexed occurrences are available.</p>"
+            : "<ul>" + string.Join(string.Empty, history.Occurrences.Select(occurrence => occurrence.Present
+                ? $"<li>FACT: present in build {HtmlPageRenderer.Escape(occurrence.BuildId)}; index {HtmlPageRenderer.Escape(occurrence.IndexId)}; signature {HtmlPageRenderer.Escape(occurrence.Signature ?? "not recorded")}.</li>"
+                : $"<li>FACT: not present in build {HtmlPageRenderer.Escape(occurrence.BuildId)}.</li>")) + "</ul>";
+        return $"<section id=\"evidence\"><h2>FACT evidence</h2><p>FACT: Schedule I cross-build history for <code>{HtmlPageRenderer.Escape(history.CanonicalKey)}</code>.</p><p>DERIVED: showing {history.Occurrences.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)} verified indexed occurrences.</p>{occurrences}</section>";
+    }
+
+    private static string Fact(string label, string? value) => $"FACT: {HtmlPageRenderer.Escape(label)}: {HtmlPageRenderer.Escape(value ?? "not recorded")}.";
 
     private static string CodePath(PortalIndexModel index) => $"code/{index.Codebase.ToString().ToLowerInvariant()}/{index.Channel.ToString().ToLowerInvariant()}/index.html";
     private PortalSlugService SlugService => _slugs;
@@ -121,6 +180,21 @@ public sealed class StaticSiteGenerator
     }
 
     private static bool IsStandalone(SymbolKind kind) => kind is SymbolKind.Type or SymbolKind.Method or SymbolKind.Constructor;
+
+    private static async Task RemovePreviousGeneratedFilesAsync(string output, CancellationToken cancellationToken)
+    {
+        var manifest = Path.Combine(output, ".s1atlas-generated-files");
+        if (!File.Exists(manifest)) return;
+        var paths = await File.ReadAllLinesAsync(manifest, cancellationToken);
+        foreach (var relativePath in paths)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath)) continue;
+            var segments = relativePath.Split(['/', '\\']);
+            if (segments.Any(segment => segment is "" or "." or "..")) continue;
+            var full = Path.Combine(output, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(full)) File.Delete(full);
+        }
+    }
 
     private static async Task WriteAsync(string output, string relativePath, string contents, CancellationToken cancellationToken)
     {

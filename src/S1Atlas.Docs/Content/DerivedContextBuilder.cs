@@ -18,7 +18,7 @@ public sealed class DerivedContextBuilder
         ArgumentNullException.ThrowIfNull(relationships);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(links);
-        var evidence = links.RelativeHref(symbol.PagePath, symbol.PagePath, "evidence");
+        var evidence = "#evidence";
         var overview = new List<DerivedStatement>
         {
             Derived($"{relationships.CallerTotal} callers in this index.", evidence),

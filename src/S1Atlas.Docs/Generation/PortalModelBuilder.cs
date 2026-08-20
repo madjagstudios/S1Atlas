@@ -88,6 +88,28 @@ public sealed class PortalModelBuilder
                 entry.IsNavigable,
                 entry.IsNavigable ? $"builds/{entry.Build.BuildId}.html" : null))
             .ToArray();
+        var scheduleSymbols = indexes
+            .Where(index => index.Codebase == CodebaseKind.ScheduleI && index.Channel == CodeChannel.Installed)
+            .SelectMany(index => index.Namespaces)
+            .SelectMany(namespaceModel => namespaceModel.Symbols)
+            .Where(symbol => symbol.Kind is SymbolKind.Type or SymbolKind.Method or SymbolKind.Constructor)
+            .OrderBy(symbol => symbol.CanonicalKey, StringComparer.Ordinal)
+            .ToArray();
+        var symbolHistories = new List<PortalSymbolHistoryModel>(scheduleSymbols.Length);
+        var slugService = new PortalSlugService();
+        foreach (var symbol in scheduleSymbols)
+        {
+            var occurrences = await services.InstalledBuildHistoryQueryService.GetSymbolOccurrencesAsync(
+                symbol.CanonicalKey,
+                history.Entries,
+                cancellationToken);
+            var slug = slugService.Create(symbol.CanonicalKey);
+            symbolHistories.Add(new PortalSymbolHistoryModel(
+                symbol.CanonicalKey,
+                symbol.QualifiedName,
+                $"history/schedule-i/symbols/{slug.HashPrefix}/{slug.FileStem}.html",
+                occurrences));
+        }
         var currentEnvironment = await services.Repository.GetCurrentSnapshotAsync(cancellationToken);
         var environment = currentEnvironment is not null &&
                           string.Equals(currentEnvironment.Build.BuildId, authority.ResolvedBuildId, StringComparison.Ordinal)
@@ -108,7 +130,8 @@ public sealed class PortalModelBuilder
             new PortalBuildHistoryModel(entries, diffs),
             environment,
             diffs,
-            statuses);
+            statuses,
+            symbolHistories);
     }
 
     private static async Task<PortalIndexModel> MaterializeIndexAsync(
