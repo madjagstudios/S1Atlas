@@ -23,7 +23,7 @@ Roots: src
 | src/S1Atlas.Core/Extraction/ | 34 |
 | src/S1Atlas.Core/Hashing/ | 1 |
 | src/S1Atlas.Core/Identity/ | 1 |
-| src/S1Atlas.Core/Indexing/ | 13 |
+| src/S1Atlas.Core/Indexing/ | 14 |
 | src/S1Atlas.Core/Properties/ | 1 |
 | src/S1Atlas.Core/Scenes/ | 3 |
 | src/S1Atlas.Core/Storage/ | 6 |
