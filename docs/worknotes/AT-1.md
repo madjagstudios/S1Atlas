@@ -23,3 +23,5 @@
 - Final repository hygiene: code-map check passed and the working tree was clean before this note update.
 - Read-only review follow-up: `f2d36f5` completes relationship endpoint navigation and measured states, cross-build symbol occurrences, current environment facts, diff classifications/links, distinct authority styling, safe file-based search rendering, and manifest-scoped stale-file cleanup.
 - Post-review verification on `f2d36f5`: the exact format gate, Release build (0 warnings/0 errors), and all 1,217 Release no-build tests passed.
+- PR review follow-up on `6db8bce`: rendering now consumes model-owned per-index member paths/anchors; derived counts use `DeterministicText`; model construction calls the namespace bulk seam; canonical-key parsing and relationship edge mapping are shared instead of duplicated.
+- Final verification on `6db8bce`: exact format gate passed, Release build passed with 0 warnings and 0 errors, and all 1,217 Release no-build tests passed.
