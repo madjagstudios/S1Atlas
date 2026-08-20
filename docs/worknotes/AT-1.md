@@ -19,3 +19,5 @@
 - `assets/search-index.js` is mandatory so the prebuilt search works from `file://`; the JSON index remains the canonical auditable artifact.
 - API pages use latest-completed commit/index provenance independently of the Schedule I verified-extraction authority and independently of `--build`.
 - Scene pages remain deferred; the reserved scene path is unwritten and the build page carries the CLI/MCP deferral note.
+- Final verification on `b8bd72f`: `dotnet format S1Atlas.sln --verify-no-changes --no-restore` passed; Release build passed with 0 warnings and 0 errors; Release no-build tests passed across Core (125), Docs (8), Indexing (180), Storage (130), Extraction (549), Integration (158), and MCP (67).
+- Final repository hygiene: code-map check passed and the working tree was clean before this note update.
