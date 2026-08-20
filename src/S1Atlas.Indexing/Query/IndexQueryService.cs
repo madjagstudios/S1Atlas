@@ -129,7 +129,7 @@ public sealed class IndexQueryService
             var records = await _repository.GetCompletedSymbolPageAsync(run.IndexId, offset, pageSize, cancellationToken);
             foreach (var symbol in records)
             {
-                var namespaceName = NamespaceFromCanonicalKey(symbol.CanonicalKey);
+                var namespaceName = CanonicalSymbolKeyParser.NamespaceFrom(symbol.CanonicalKey);
                 if (!string.IsNullOrEmpty(namespaceName)) namespaces.Add(namespaceName);
             }
             if (records.Count == 0) break;
@@ -156,41 +156,26 @@ public sealed class IndexQueryService
         var symbol = await _repository.GetCompletedSymbolByIdAsync(run.IndexId, symbolId, cancellationToken);
         if (symbol is null)
             return new RelationshipEvidenceQueryResult([], 0, [], 0, [], 0, "symbol not found in this index", "symbol not found in this index");
-
-        var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(run.IndexId, symbolId, cancellationToken);
-        var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(run.IndexId, symbolId, cancellationToken);
-        var refs = outgoing.Select(edge => (edge, direction: "Outgoing")).Concat(incoming.Select(edge => (edge, direction: "Incoming")))
-            .GroupBy(item => item.edge.RelationshipId, StringComparer.Ordinal).Select(group => group.First())
-            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal).ToArray();
-        var callers = incoming.Where(edge => IsCallLike(edge.Kind)).Select(edge => (edge, direction: "Incoming"))
-            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal).ToArray();
-        var callees = outgoing.Where(edge => IsCallLike(edge.Kind)).Select(edge => (edge, direction: "Outgoing"))
-            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal).ToArray();
-        var endpointIds = refs.Concat(callers).Concat(callees)
-            .SelectMany(item => item.edge.TargetSymbolId is null ? new[] { item.edge.SourceSymbolId } : new[] { item.edge.SourceSymbolId, item.edge.TargetSymbolId })
-            .Distinct(StringComparer.Ordinal).ToArray();
-        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(run.IndexId, endpointIds, cancellationToken);
-        var byId = endpointSymbols.ToDictionary(item => item.SymbolId, StringComparer.Ordinal);
-        static RelationshipQueryResult Map((IndexRelationshipRecord edge, string direction) item, IReadOnlyDictionary<string, IndexSymbolRecord> byId) =>
-            new(item.edge.RelationshipId, item.edge.Kind, item.edge.Evidence, item.direction,
-                Endpoint(item.edge.SourceSymbolId, null, byId), Endpoint(item.edge.TargetSymbolId, item.edge.TargetText, byId));
+        var selected = new SelectedSymbol(
+            channel,
+            run,
+            SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol));
+        var refs = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Refs, int.MaxValue, cancellationToken);
+        var callers = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callers, int.MaxValue, cancellationToken);
+        var callees = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callees, int.MaxValue, cancellationToken);
+        var mapped = await MapRelationshipEdgesAsync(
+            run,
+            refs.Concat(callers).Concat(callees).DistinctBy(item => (item.Edge.RelationshipId, item.Direction)).ToArray(),
+            cancellationToken);
+        var referenceKeys = refs.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var callerKeys = callers.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var calleeKeys = callees.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
         var bodyStatus = IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : (BodyRecoveryStatus?)null;
         return new RelationshipEvidenceQueryResult(
-            refs.Select(item => Map(item, byId)).Take(128).ToArray(), refs.Length,
-            callers.Select(item => Map(item, byId)).Take(128).ToArray(), callers.Length,
-            callees.Select(item => Map(item, byId)).Take(128).ToArray(), callees.Length,
+            mapped.Where(item => referenceKeys.Contains((item.RelationshipId, item.Direction))).Take(128).ToArray(), refs.Count,
+            mapped.Where(item => callerKeys.Contains((item.RelationshipId, item.Direction))).Take(128).ToArray(), callers.Count,
+            mapped.Where(item => calleeKeys.Contains((item.RelationshipId, item.Direction))).Take(128).ToArray(), callees.Count,
             CompletenessNotice(bodyStatus, callers: true), CompletenessNotice(bodyStatus, callers: false));
-    }
-
-    private static string NamespaceFromCanonicalKey(string canonicalKey)
-    {
-        var parts = canonicalKey.Split(':', 4, StringSplitOptions.None);
-        if (parts.Length < 4) return string.Empty;
-        var symbolKey = parts[3];
-        var separator = symbolKey.IndexOf("::", StringComparison.Ordinal);
-        var name = separator >= 0 ? symbolKey[..separator] : symbolKey;
-        var lastDot = name.LastIndexOf('.');
-        return lastDot > 0 ? name[..lastDot] : string.Empty;
     }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
@@ -398,17 +383,31 @@ public sealed class IndexQueryService
         BodyRecoveryStatus? bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
+        var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken);
+        var relationships = await MapRelationshipEdgesAsync(selected.Run, selectedEdges, cancellationToken);
+
+        var notice = mode == RelationshipQueryMode.Refs
+            ? string.Empty
+            : CompletenessNotice(bodyRecoveryStatus, mode == RelationshipQueryMode.Callers);
+        return new RelationshipQuerySetResult(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+            relationships,
+            bodyRecoveryStatus,
+            mode == RelationshipQueryMode.Callers,
+            notice);
+    }
+
+    private async Task<IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)>> GetSelectedRelationshipEdgesAsync(
+        SelectedSymbol selected,
+        RelationshipQueryMode mode,
+        int limit,
+        CancellationToken cancellationToken)
+    {
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges;
         if (mode == RelationshipQueryMode.Refs)
         {
-            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
-            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
+            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
+            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
             selectedEdges = outgoing
                 .Select(edge => (edge, "Outgoing"))
                 .Concat(incoming.Select(edge => (edge, "Incoming")))
@@ -420,10 +419,7 @@ public sealed class IndexQueryService
         }
         else if (mode == RelationshipQueryMode.Callers)
         {
-            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
+            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
             selectedEdges = incoming
                 .Where(edge => IsCallLike(edge.Kind))
                 .Select(edge => (edge, "Incoming"))
@@ -433,10 +429,7 @@ public sealed class IndexQueryService
         }
         else
         {
-            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
+            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
             selectedEdges = outgoing
                 .Where(edge => IsCallLike(edge.Kind))
                 .Select(edge => (edge, "Outgoing"))
@@ -445,19 +438,23 @@ public sealed class IndexQueryService
                 .ToArray();
         }
 
+        return selectedEdges;
+    }
+
+    private async Task<IReadOnlyList<RelationshipQueryResult>> MapRelationshipEdgesAsync(
+        IndexRunRecord run,
+        IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
+        CancellationToken cancellationToken)
+    {
         var endpointIds = selectedEdges
             .SelectMany(item => item.Edge.TargetSymbolId is null
                 ? new[] { item.Edge.SourceSymbolId }
                 : new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(
-            selected.Run.IndexId,
-            endpointIds,
-            cancellationToken);
+        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(run.IndexId, endpointIds, cancellationToken);
         var byId = endpointSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
-
-        var relationships = selectedEdges
+        return selectedEdges
             .Select(item => new RelationshipQueryResult(
                 item.Edge.RelationshipId,
                 item.Edge.Kind,
@@ -466,16 +463,6 @@ public sealed class IndexQueryService
                 Endpoint(item.Edge.SourceSymbolId, null, byId),
                 Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId)))
             .ToArray();
-
-        var notice = mode == RelationshipQueryMode.Refs
-            ? string.Empty
-            : CompletenessNotice(bodyRecoveryStatus, mode == RelationshipQueryMode.Callers);
-        return new RelationshipQuerySetResult(
-            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-            relationships,
-            bodyRecoveryStatus,
-            mode == RelationshipQueryMode.Callers,
-            notice);
     }
 
     private async Task<SourceSnippetResolutionResult> SourceFromSelectedAsync(

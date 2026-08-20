@@ -168,17 +168,25 @@ public sealed class PortalModelBuilder
             return type is null ? symbol : symbol with { PagePath = type.PagePath, Anchor = slugService.MemberAnchor(symbol.CanonicalKey) };
         }).ToArray();
         var symbolsById = materialized.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
-        var namespaces = all
-            .GroupBy(symbol => NamespaceFromCanonicalKey(symbol.CanonicalKey), StringComparer.Ordinal)
-            .OrderBy(group => group.Key, StringComparer.Ordinal)
-            .Select(group => new PortalNamespaceModel(
-                group.Key,
-                group.OrderBy(symbol => symbol.CanonicalKey, StringComparer.Ordinal)
+        var namespaceResult = await services.IndexQueryService.ListNamespacesInIndexAsync(
+            run, codebase, channel, cancellationToken);
+        var symbolsByNamespace = all
+            .GroupBy(symbol => CanonicalSymbolKeyParser.NamespaceFrom(symbol.CanonicalKey), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        var namespaceNames = namespaceResult.Namespaces.ToList();
+        if (symbolsByNamespace.ContainsKey(string.Empty)) namespaceNames.Add(string.Empty);
+        var namespaces = namespaceNames
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .Select(name => new PortalNamespaceModel(
+                name,
+                symbolsByNamespace.GetValueOrDefault(name, [])
+                    .OrderBy(symbol => symbol.CanonicalKey, StringComparer.Ordinal)
                     .ThenBy(symbol => symbol.Kind, StringComparer.Ordinal)
                     .ThenBy(symbol => symbol.SymbolId, StringComparer.Ordinal)
                     .Select(symbol => symbolsById[symbol.SymbolId])
                     .ToArray(),
-                group.Count()))
+                symbolsByNamespace.GetValueOrDefault(name, []).Length))
             .ToArray();
         var index = new PortalIndexModel(run, codebase, channel, run.IndexId, sourceIdentity, buildId, extractionId, isVerifiedAuthority, namespaces, all.Count);
         var sourceReader = new PortalSourceReader(services.IndexQueryService);
@@ -218,14 +226,4 @@ public sealed class PortalModelBuilder
         return new PortalSymbolModel(symbol.IndexId, codebase, channel, symbol.SymbolId, symbol.CanonicalKey, kind, symbol.QualifiedName, symbol.Signature, symbol.IsBestEffort, symbol.BodyRecoveryStatus, page, slugService.MemberAnchor(symbol.CanonicalKey));
     }
 
-    private static string NamespaceFromCanonicalKey(string canonicalKey)
-    {
-        var parts = canonicalKey.Split(':', 4, StringSplitOptions.None);
-        if (parts.Length < 4) return string.Empty;
-        var symbolKey = parts[3];
-        var separator = symbolKey.IndexOf("::", StringComparison.Ordinal);
-        var name = separator >= 0 ? symbolKey[..separator] : symbolKey;
-        var lastDot = name.LastIndexOf('.');
-        return lastDot > 0 ? name[..lastDot] : string.Empty;
-    }
 }

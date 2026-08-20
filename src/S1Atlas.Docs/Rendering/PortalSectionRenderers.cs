@@ -1,5 +1,6 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Docs.Determinism;
 using S1Atlas.Docs.Generation;
 using S1Atlas.Docs.Identity;
 
@@ -8,6 +9,7 @@ namespace S1Atlas.Docs.Rendering;
 public sealed class PortalSectionRenderers
 {
     private readonly PortalLinkResolver _links = new();
+    private readonly DeterministicText _text = new();
 
     public string Provenance(PortalIndexModel index)
     {
@@ -90,10 +92,10 @@ public sealed class PortalSectionRenderers
         PortalIndexModel index,
         string pagePath)
     {
-        var body = $"<h3>{title}</h3><p>FACT: {total.ToString(System.Globalization.CultureInfo.InvariantCulture)} {plural} in this index.</p>";
+        var body = $"<h3>{title}</h3><p>FACT: {_text.FormatPlural(total, plural.TrimEnd('s'), plural)} in this index.</p>";
         if (total > 0)
         {
-            body += $"<p>DERIVED: showing {results.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)} of the true total {total.ToString(System.Globalization.CultureInfo.InvariantCulture)} {plural}.</p>";
+            body += $"<p>DERIVED: {_text.FormatCoverage(results.Count, total)} the true total {plural}.</p>";
             body += "<ul>" + string.Join(string.Empty, results.Select(result => RelationshipItem(result, index, pagePath))) + "</ul>";
         }
         if (!string.IsNullOrEmpty(completenessNotice))

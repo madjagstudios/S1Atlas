@@ -21,8 +21,8 @@ public sealed class DerivedContextBuilderTests
 
         var context = new DerivedContextBuilder().Build(symbol, relationships, source, new PortalLinkResolver());
 
-        Assert.Contains(context.Overview, statement => statement.Text.Contains("0 callers", StringComparison.Ordinal));
-        Assert.Contains(context.ModderRelevance, statement => statement.Text.Contains("0 callees", StringComparison.Ordinal));
+        Assert.Contains(context.Overview, statement => statement.Text.Contains("zero callers", StringComparison.Ordinal));
+        Assert.Contains(context.ModderRelevance, statement => statement.Text.Contains("zero callees", StringComparison.Ordinal));
         Assert.All(context.Overview.Concat(context.ModderRelevance), statement => Assert.Contains("#", statement.EvidenceHref, StringComparison.Ordinal));
     }
 }

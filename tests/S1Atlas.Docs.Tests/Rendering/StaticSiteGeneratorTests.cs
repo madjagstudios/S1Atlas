@@ -19,6 +19,7 @@ public sealed class StaticSiteGeneratorTests : IAsyncDisposable
         var output = Path.Combine(_root, "site");
         var type = Symbol("index-game", "type", SymbolKind.Type, "Demo.Widget", "ScheduleI:Installed:Type:Demo.Widget", "code/schedule-i/installed/symbols/aa/widget.html");
         var field = Symbol("index-game", "field", SymbolKind.Field, "Demo.Widget.Value", "ScheduleI:Installed:Field:Demo.Widget::Value", type.PagePath);
+        field = field with { Anchor = new PortalSlugService().MemberAnchor(field.CanonicalKey) };
         var relationship = new RelationshipQueryResult(
             "relationship-1",
             "ReadsField",

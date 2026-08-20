@@ -1,4 +1,5 @@
 using S1Atlas.Docs.Generation;
+using S1Atlas.Docs.Determinism;
 using S1Atlas.Docs.Identity;
 using S1Atlas.Docs.Source;
 
@@ -7,6 +8,7 @@ namespace S1Atlas.Docs.Content;
 public sealed class DerivedContextBuilder
 {
     private readonly RoslynLearningConceptDetector _detector = new();
+    private readonly DeterministicText _text = new();
 
     public DerivedContext Build(
         PortalSymbolModel symbol,
@@ -21,13 +23,13 @@ public sealed class DerivedContextBuilder
         var evidence = "#evidence";
         var overview = new List<DerivedStatement>
         {
-            Derived($"{relationships.CallerTotal} callers in this index.", evidence),
-            Derived($"{relationships.CalleeTotal} callees in this index.", evidence),
-            Derived($"{relationships.ReferenceTotal} references in this index.", evidence)
+            Derived($"{_text.FormatPlural(relationships.CallerTotal, "caller", "callers")} in this index.", evidence),
+            Derived($"{_text.FormatPlural(relationships.CalleeTotal, "callee", "callees")} in this index.", evidence),
+            Derived($"{_text.FormatPlural(relationships.ReferenceTotal, "reference", "references")} in this index.", evidence)
         };
         var relevance = new List<DerivedStatement>
         {
-            Derived($"Modder relevance signal: {relationships.CallerTotal} callers and {relationships.CalleeTotal} callees are measured in this index.", evidence)
+            Derived($"Modder relevance signal: {_text.FormatPlural(relationships.CallerTotal, "caller", "callers")} and {_text.FormatPlural(relationships.CalleeTotal, "callee", "callees")} are measured in this index.", evidence)
         };
         if (source.State is PortalSourceState.NoIndexedLocation or PortalSourceState.Unavailable or PortalSourceState.IntegrityFailure)
             relevance.Add(Derived(source.Label, evidence));
