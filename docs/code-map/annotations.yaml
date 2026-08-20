@@ -1,0 +1,22 @@
+# Code Map v2 annotations — the only hand-edited file (see repo standard).
+meta:
+  entry_points: []   # how the app starts/is served, e.g. "web: npm run dev -w apps/web"
+  commands: {}       # real gates, e.g. gate: "npm run build && npx tsc --noEmit"
+  constraints: []    # repo-wide flags rendered atop INDEX.md
+  relationships: []  # optional area->area edges for the GUIDE diagram
+areas:
+  .github:
+    - .github
+  .superpowers:
+    - .superpowers
+  config:
+    - config
+  docs:
+    - docs
+  scripts:
+    - scripts
+  src:
+    - src
+  tests:
+    - tests
+paths: {}            # per-path: desc / flags [CANONICAL, NO-DUPLICATE, GOTCHA: ...] / narrative (GUIDE-only)
