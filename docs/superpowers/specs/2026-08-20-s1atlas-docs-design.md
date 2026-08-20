@@ -1,6 +1,6 @@
 # S1Atlas.Docs static human portal design
 
-**Status:** Approved design; implementation tracked by AT-1.
+**Status:** Approved design; shipped and merged in PR #24 (`cbcb5b6`).
 
 ## Goal
 

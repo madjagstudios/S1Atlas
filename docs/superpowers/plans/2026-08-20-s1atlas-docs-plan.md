@@ -1,5 +1,7 @@
 # S1Atlas.Docs Static Human Portal Implementation Plan
 
+> **Status:** Shipped and merged in PR #24 (`cbcb5b6`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
 **Goal:** Build S1Atlas.Docs and the s1atlas docs generate [--build <id>] [--output <dir>] CLI command as a deterministic, offline static HTML portal over Schedule I Installed, S1API, and S1MAPI indexed data.
