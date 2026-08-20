@@ -1,3 +1,5 @@
+using S1Atlas.Core.Storage;
+
 namespace S1Atlas.Core.Indexing;
 
 public sealed record IndexQueryOptions(
@@ -5,6 +7,55 @@ public sealed record IndexQueryOptions(
     CodeChannel? Channel = CodeChannel.Installed,
     bool AllChannels = false,
     int Limit = 50);
+
+public sealed record IndexPageRequest
+{
+    public IndexPageRequest(int offset, int limit)
+    {
+        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+        if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit));
+        Offset = offset;
+        Limit = limit;
+    }
+
+    public int Offset { get; }
+    public int Limit { get; }
+}
+
+public sealed record IndexedSymbolPageResult(
+    int TotalCount,
+    IReadOnlyList<IndexedSymbolQueryResult> Results,
+    bool HasMore);
+
+public sealed record IndexedSymbolQueryResult(
+    string IndexId,
+    string Codebase,
+    string Channel,
+    string SymbolId,
+    string CanonicalKey,
+    string Kind,
+    string QualifiedName,
+    string Signature,
+    bool IsBestEffort,
+    BodyRecoveryStatus? BodyRecoveryStatus);
+
+public sealed record NamespaceQueryResult(
+    int TotalCount,
+    IReadOnlyList<string> Namespaces);
+
+public sealed record IndexSelectionQueryResult(
+    IndexRunRecord Run,
+    CodeSnapshotRecord Snapshot);
+
+public sealed record RelationshipEvidenceQueryResult(
+    IReadOnlyList<RelationshipQueryResult> References,
+    int ReferenceTotal,
+    IReadOnlyList<RelationshipQueryResult> Callers,
+    int CallerTotal,
+    IReadOnlyList<RelationshipQueryResult> Callees,
+    int CalleeTotal,
+    string CallerCompletenessNotice,
+    string CalleeCompletenessNotice);
 
 public sealed record SymbolQueryResult(
     string IndexId,

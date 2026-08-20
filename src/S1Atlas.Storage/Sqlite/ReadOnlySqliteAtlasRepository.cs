@@ -263,6 +263,49 @@ public sealed class ReadOnlySqliteAtlasRepository :
             return (IReadOnlyList<IndexSymbolRecord>)result;
         }, cancellationToken);
 
+    public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolPageAsync(string indexId, int offset, int limit, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit));
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                       symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                       symbol.body_recovery_status
+                FROM symbols AS symbol
+                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                WHERE run.index_id = $id AND run.status = 'Completed'
+                ORDER BY symbol.canonical_key COLLATE BINARY,
+                         symbol.kind COLLATE BINARY,
+                         symbol.symbol_id COLLATE BINARY
+                LIMIT $limit OFFSET $offset;
+                """;
+            command.Parameters.AddWithValue("$id", indexId);
+            command.Parameters.AddWithValue("$limit", limit);
+            command.Parameters.AddWithValue("$offset", offset);
+            var result = new List<IndexSymbolRecord>(limit);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadSymbol(reader));
+            return (IReadOnlyList<IndexSymbolRecord>)result;
+        }, cancellationToken);
+
+    public Task<int> CountCompletedSymbolsAsync(string indexId, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT COUNT(*)
+                FROM symbols AS symbol
+                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                WHERE run.index_id = $id AND run.status = 'Completed';
+                """;
+            command.Parameters.AddWithValue("$id", indexId);
+            return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+        }, cancellationToken);
+
     public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(string indexId, string canonicalKey, CancellationToken cancellationToken) =>
         WithConnectionAsync(async connection =>
         {

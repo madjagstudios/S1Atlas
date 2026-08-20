@@ -87,6 +87,97 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken) =>
         SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken);
 
+    public async Task<IndexedSymbolPageResult> ListSymbolsInIndexAsync(
+        IndexRunRecord run, CodebaseKind codebase, CodeChannel channel,
+        IndexPageRequest page, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(page);
+        var total = await _repository.CountCompletedSymbolsAsync(run.IndexId, cancellationToken);
+        var records = await _repository.GetCompletedSymbolPageAsync(run.IndexId, page.Offset, page.Limit, cancellationToken);
+        var results = records.Select(symbol => new IndexedSymbolQueryResult(
+            run.IndexId, codebase.ToString(), channel.ToString(), symbol.SymbolId,
+            symbol.CanonicalKey, symbol.Kind, symbol.QualifiedName, symbol.Signature,
+            symbol.IsBestEffort, symbol.BodyRecoveryStatus)).ToArray();
+        return new IndexedSymbolPageResult(total, results, page.Offset + results.Length < total);
+    }
+
+    public async Task<NamespaceQueryResult> ListNamespacesInIndexAsync(
+        IndexRunRecord run, CodebaseKind codebase, CodeChannel channel, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        var namespaces = new HashSet<string>(StringComparer.Ordinal);
+        var total = await _repository.CountCompletedSymbolsAsync(run.IndexId, cancellationToken);
+        const int pageSize = 512;
+        for (var offset = 0; offset < total; offset += pageSize)
+        {
+            var records = await _repository.GetCompletedSymbolPageAsync(run.IndexId, offset, pageSize, cancellationToken);
+            foreach (var symbol in records)
+            {
+                var namespaceName = NamespaceFromCanonicalKey(symbol.CanonicalKey);
+                if (!string.IsNullOrEmpty(namespaceName)) namespaces.Add(namespaceName);
+            }
+            if (records.Count == 0) break;
+        }
+        var ordered = namespaces.OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        return new NamespaceQueryResult(ordered.Length, ordered);
+    }
+
+    public async Task<IndexSelectionQueryResult?> GetLatestCompletedIndexSelectionAsync(
+        CodebaseKind codebase, CodeChannel channel, CancellationToken cancellationToken)
+    {
+        var run = await _repository.GetLatestCompletedIndexAsync(codebase, channel, null, cancellationToken);
+        if (run is null) return null;
+        var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
+        return snapshot is null || snapshot.Codebase != codebase || snapshot.Channel != channel
+            ? null : new IndexSelectionQueryResult(run, snapshot);
+    }
+
+    public async Task<RelationshipEvidenceQueryResult> GetRelationshipEvidenceInIndexAsync(
+        IndexRunRecord run, CodebaseKind codebase, CodeChannel channel, string symbolId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        var symbol = await _repository.GetCompletedSymbolByIdAsync(run.IndexId, symbolId, cancellationToken);
+        if (symbol is null)
+            return new RelationshipEvidenceQueryResult([], 0, [], 0, [], 0, "symbol not found in this index", "symbol not found in this index");
+
+        var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(run.IndexId, symbolId, cancellationToken);
+        var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(run.IndexId, symbolId, cancellationToken);
+        var refs = outgoing.Select(edge => (edge, direction: "Outgoing")).Concat(incoming.Select(edge => (edge, direction: "Incoming")))
+            .GroupBy(item => item.edge.RelationshipId, StringComparer.Ordinal).Select(group => group.First())
+            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal).ToArray();
+        var callers = incoming.Where(edge => IsCallLike(edge.Kind)).Select(edge => (edge, direction: "Incoming"))
+            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal).ToArray();
+        var callees = outgoing.Where(edge => IsCallLike(edge.Kind)).Select(edge => (edge, direction: "Outgoing"))
+            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal).ToArray();
+        var endpointIds = refs.Concat(callers).Concat(callees)
+            .SelectMany(item => item.edge.TargetSymbolId is null ? new[] { item.edge.SourceSymbolId } : new[] { item.edge.SourceSymbolId, item.edge.TargetSymbolId })
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(run.IndexId, endpointIds, cancellationToken);
+        var byId = endpointSymbols.ToDictionary(item => item.SymbolId, StringComparer.Ordinal);
+        static RelationshipQueryResult Map((IndexRelationshipRecord edge, string direction) item, IReadOnlyDictionary<string, IndexSymbolRecord> byId) =>
+            new(item.edge.RelationshipId, item.edge.Kind, item.edge.Evidence, item.direction,
+                Endpoint(item.edge.SourceSymbolId, null, byId), Endpoint(item.edge.TargetSymbolId, item.edge.TargetText, byId));
+        var bodyStatus = IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : (BodyRecoveryStatus?)null;
+        return new RelationshipEvidenceQueryResult(
+            refs.Select(item => Map(item, byId)).Take(128).ToArray(), refs.Length,
+            callers.Select(item => Map(item, byId)).Take(128).ToArray(), callers.Length,
+            callees.Select(item => Map(item, byId)).Take(128).ToArray(), callees.Length,
+            CompletenessNotice(bodyStatus, callers: true), CompletenessNotice(bodyStatus, callers: false));
+    }
+
+    private static string NamespaceFromCanonicalKey(string canonicalKey)
+    {
+        var parts = canonicalKey.Split(':', 4, StringSplitOptions.None);
+        if (parts.Length < 4) return string.Empty;
+        var symbolKey = parts[3];
+        var separator = symbolKey.IndexOf("::", StringComparison.Ordinal);
+        var name = separator >= 0 ? symbolKey[..separator] : symbolKey;
+        var lastDot = name.LastIndexOf('.');
+        return lastDot > 0 ? name[..lastDot] : string.Empty;
+    }
+
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
         string query,
         SymbolKind kind,
