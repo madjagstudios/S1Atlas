@@ -6,6 +6,7 @@
     <ProjectReference Include="..\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
     <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
     <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
+    <ProjectReference Include="..\S1Atlas.Docs\S1Atlas.Docs.csproj" />
     <PackageReference Include="System.CommandLine" Version="2.0.10" />
   </ItemGroup>
   <ItemGroup>
