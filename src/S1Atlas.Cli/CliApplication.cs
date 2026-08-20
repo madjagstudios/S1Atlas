@@ -364,6 +364,7 @@ public sealed class CliApplication
         root.Subcommands.Add(GameObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(PrefabCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ComponentCommand.Create(sceneQueryService, indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(DocsCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(DiffCommand.Create(
             diffService, sqliteRepository, sqliteRepository, sqliteRepository, repository,

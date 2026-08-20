@@ -52,6 +52,7 @@ reconstructed/
 decompiled/
 candidate-output/
 retained-output/
+s1atlas-docs/
 
 # Logs
 logs/

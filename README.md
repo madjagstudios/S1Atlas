@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, the build-diffing milestone, and the read-only MCP server are all complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. The CLI and MCP share the same preferred-verified Schedule I Installed authority path, so human and agent queries have parity. **Generated HTML documentation and the S1Atlas agent skill remain the outstanding V1 milestones.**
+> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, the build-diffing milestone, the read-only MCP server, and the static HTML human portal are all complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. The CLI and MCP share the same preferred-verified Schedule I Installed authority path, so human and agent queries have parity. **The S1Atlas agent skill remains the outstanding V1 milestone.**
 
 ## What the Foundation Can Do
 
@@ -503,7 +503,24 @@ handler. They use no proprietary fixture and make no network request.
 | `prefab <id\|exact-name> [--objects] [--components] [--limit <n>] [--json]` | Inspect one parser-proven prefab document |
 | `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, serialized references, and an exact code-symbol handoff |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
+| `docs generate [--build <id>] [--output <dir>]` | Generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
 | `S1Atlas.Mcp mcp serve` | Launch the read-only Schedule I Installed MCP server over stdio |
+
+Generate and open the static portal locally:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- docs generate
+dotnet run --project src/S1Atlas.Cli -- docs generate --build <build-id> --output .\portal
+```
+
+`--build` pins only the Schedule I Installed pages through the preferred,
+integrity-verified extraction authority. S1API and S1MAPI pages independently
+use each codebase/channel's latest completed index and show its source commit and
+index ID; they are not governed by the game-build pin. Scene pages are deferred
+from the portal in V1 and remain available through the CLI and MCP. The command
+is offline and read-only, writes outside the Atlas data root, and reports a
+scan-or-migration-first error for a missing or wrong-schema database without
+creating or migrating it.
 
 ## Validation Policy
 
@@ -540,10 +557,11 @@ complete. CLI Schedule I queries and MCP use the same shared authority path and
 full integrity-verifying API — never a Phase 3 candidate, retained failure
 output, or an unverified database row.
 
-The remaining V1 milestones are independent design cycles:
+The remaining V1 milestone is an independent design cycle; the static human portal is shipped:
 
-1. **Static human portal** — generate the local, offline HTML exploration site
-   with navigation, search, source viewing, plain-English context, and provenance.
+1. **Static human portal** — shipped as `docs generate`; it generates the local,
+   offline HTML exploration site with navigation, search, source viewing,
+   deterministic plain-English context, and provenance.
 2. **Agent skill** — document correct, evidence-first S1Atlas usage for agents.
 
 Final hardening (documentation and the local installation/use workflow) closes

@@ -14,6 +14,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Indexing", "src\S1A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Application", "src\S1Atlas.Application\S1Atlas.Application.csproj", "{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Docs", "src\S1Atlas.Docs\S1Atlas.Docs.csproj", "{EEEEEEE1-EEEE-4EEE-8EEE-EEEEEEEEEEE1}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Mcp", "src\S1Atlas.Mcp\S1Atlas.Mcp.csproj", "{DDDDDDD1-DDDD-4DDD-8DDD-DDDDDDDDDDD1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Core.Tests", "tests\S1Atlas.Core.Tests\S1Atlas.Core.Tests.csproj", "{55555555-5555-4555-8555-555555555555}"
@@ -29,6 +31,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.FakeCpp2Il", "tests\S1Atlas.FakeCpp2Il\S1Atlas.FakeCpp2Il.csproj", "{99999999-9999-4999-8999-999999999999}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Mcp.Tests", "tests\S1Atlas.Mcp.Tests\S1Atlas.Mcp.Tests.csproj", "{AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.Docs.Tests", "tests\S1Atlas.Docs.Tests\S1Atlas.Docs.Tests.csproj", "{FFFFFFF1-FFFF-4FFF-8FFF-FFFFFFFFFFF1}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{12460D1E-0336-46BF-BD1A-B51D06414D84}"
 EndProject
@@ -66,6 +70,10 @@ Global
 		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CCCCCCC1-CCCC-4CCC-8CCC-CCCCCCCCCCC1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EEEEEEE1-EEEE-4EEE-8EEE-EEEEEEEEEEE1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEEEEEE1-EEEE-4EEE-8EEE-EEEEEEEEEEE1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEEEEEE1-EEEE-4EEE-8EEE-EEEEEEEEEEE1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEEEEEE1-EEEE-4EEE-8EEE-EEEEEEEEEEE1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{DDDDDDD1-DDDD-4DDD-8DDD-DDDDDDDDDDD1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{DDDDDDD1-DDDD-4DDD-8DDD-DDDDDDDDDDD1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DDDDDDD1-DDDD-4DDD-8DDD-DDDDDDDDDDD1}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -98,6 +106,10 @@ Global
 		{AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFFFFFF1-FFFF-4FFF-8FFF-FFFFFFFFFFF1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFFFFFF1-FFFF-4FFF-8FFF-FFFFFFFFFFF1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFFFFFF1-FFFF-4FFF-8FFF-FFFFFFFFFFF1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFFFFFF1-FFFF-4FFF-8FFF-FFFFFFFFFFF1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{910A2258-A186-4C22-8025-5DFC38AF9D8B}.Release|Any CPU.ActiveCfg = Release|Any CPU

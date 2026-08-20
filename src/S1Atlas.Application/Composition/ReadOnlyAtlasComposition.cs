@@ -31,14 +31,16 @@ public static class ReadOnlyAtlasComposition
             repository,
             repository,
             repository);
+        var indexQueryService = new IndexQueryService(repository, paths.RootDirectory);
 
         return new AtlasReadOnlyServices(
             paths,
             repository,
             authorityResolver,
-            new IndexQueryService(repository, paths.RootDirectory),
+            indexQueryService,
             new BuildDiffService(repository),
-            new SceneQueryService(repository, repository));
+            new SceneQueryService(repository, repository),
+            new InstalledBuildHistoryQueryService(repository, repository, indexQueryService, authorityResolver));
     }
 }
 
@@ -48,4 +50,5 @@ public sealed record AtlasReadOnlyServices(
     InstalledBuildAuthorityResolver AuthorityResolver,
     IndexQueryService IndexQueryService,
     BuildDiffService BuildDiffService,
-    SceneQueryService SceneQueryService);
+    SceneQueryService SceneQueryService,
+    InstalledBuildHistoryQueryService InstalledBuildHistoryQueryService);

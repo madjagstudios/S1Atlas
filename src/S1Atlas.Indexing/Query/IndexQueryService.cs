@@ -32,6 +32,21 @@ public sealed class IndexQueryService
         return snapshot is null || symbol is null ? null : SymbolResolver.ToQueryResult(indexId, snapshot.Codebase, snapshot.Channel, symbol);
     }
 
+    public async Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string canonicalKey,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalKey);
+        var symbols = await _repository.GetCompletedSymbolByCanonicalKeyAsync(run.IndexId, canonicalKey, cancellationToken);
+        return symbols
+            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol))
+            .ToArray();
+    }
+
     public async Task<SymbolSearchResult> SearchAsync(
         string query,
         IndexQueryOptions options,
@@ -86,6 +101,82 @@ public sealed class IndexQueryService
         SymbolKind? kind,
         CancellationToken cancellationToken) =>
         SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken);
+
+    public async Task<IndexedSymbolPageResult> ListSymbolsInIndexAsync(
+        IndexRunRecord run, CodebaseKind codebase, CodeChannel channel,
+        IndexPageRequest page, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(page);
+        var total = await _repository.CountCompletedSymbolsAsync(run.IndexId, cancellationToken);
+        var records = await _repository.GetCompletedSymbolPageAsync(run.IndexId, page.Offset, page.Limit, cancellationToken);
+        var results = records.Select(symbol => new IndexedSymbolQueryResult(
+            run.IndexId, codebase.ToString(), channel.ToString(), symbol.SymbolId,
+            symbol.CanonicalKey, symbol.Kind, symbol.QualifiedName, symbol.Signature,
+            symbol.IsBestEffort, symbol.BodyRecoveryStatus)).ToArray();
+        return new IndexedSymbolPageResult(total, results, page.Offset + results.Length < total);
+    }
+
+    public async Task<NamespaceQueryResult> ListNamespacesInIndexAsync(
+        IndexRunRecord run, CodebaseKind codebase, CodeChannel channel, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        var namespaces = new HashSet<string>(StringComparer.Ordinal);
+        var total = await _repository.CountCompletedSymbolsAsync(run.IndexId, cancellationToken);
+        const int pageSize = 512;
+        for (var offset = 0; offset < total; offset += pageSize)
+        {
+            var records = await _repository.GetCompletedSymbolPageAsync(run.IndexId, offset, pageSize, cancellationToken);
+            foreach (var symbol in records)
+            {
+                var namespaceName = CanonicalSymbolKeyParser.NamespaceFrom(symbol.CanonicalKey);
+                if (!string.IsNullOrEmpty(namespaceName)) namespaces.Add(namespaceName);
+            }
+            if (records.Count == 0) break;
+        }
+        var ordered = namespaces.OrderBy(name => name, StringComparer.Ordinal).ToArray();
+        return new NamespaceQueryResult(ordered.Length, ordered);
+    }
+
+    public async Task<IndexSelectionQueryResult?> GetLatestCompletedIndexSelectionAsync(
+        CodebaseKind codebase, CodeChannel channel, CancellationToken cancellationToken)
+    {
+        var run = await _repository.GetLatestCompletedIndexAsync(codebase, channel, null, cancellationToken);
+        if (run is null) return null;
+        var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
+        return snapshot is null || snapshot.Codebase != codebase || snapshot.Channel != channel
+            ? null : new IndexSelectionQueryResult(run, snapshot);
+    }
+
+    public async Task<RelationshipEvidenceQueryResult> GetRelationshipEvidenceInIndexAsync(
+        IndexRunRecord run, CodebaseKind codebase, CodeChannel channel, string symbolId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        var symbol = await _repository.GetCompletedSymbolByIdAsync(run.IndexId, symbolId, cancellationToken);
+        if (symbol is null)
+            return new RelationshipEvidenceQueryResult([], 0, [], 0, [], 0, "symbol not found in this index", "symbol not found in this index");
+        var selected = new SelectedSymbol(
+            channel,
+            run,
+            SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol));
+        var refs = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Refs, int.MaxValue, cancellationToken);
+        var callers = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callers, int.MaxValue, cancellationToken);
+        var callees = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callees, int.MaxValue, cancellationToken);
+        var mapped = await MapRelationshipEdgesAsync(
+            run,
+            refs.Concat(callers).Concat(callees).DistinctBy(item => (item.Edge.RelationshipId, item.Direction)).ToArray(),
+            cancellationToken);
+        var referenceKeys = refs.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var callerKeys = callers.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var calleeKeys = callees.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var bodyStatus = IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : (BodyRecoveryStatus?)null;
+        return new RelationshipEvidenceQueryResult(
+            mapped.Where(item => referenceKeys.Contains((item.RelationshipId, item.Direction))).Take(128).ToArray(), refs.Count,
+            mapped.Where(item => callerKeys.Contains((item.RelationshipId, item.Direction))).Take(128).ToArray(), callers.Count,
+            mapped.Where(item => calleeKeys.Contains((item.RelationshipId, item.Direction))).Take(128).ToArray(), callees.Count,
+            CompletenessNotice(bodyStatus, callers: true), CompletenessNotice(bodyStatus, callers: false));
+    }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
         string query,
@@ -292,17 +383,31 @@ public sealed class IndexQueryService
         BodyRecoveryStatus? bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
+        var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken);
+        var relationships = await MapRelationshipEdgesAsync(selected.Run, selectedEdges, cancellationToken);
+
+        var notice = mode == RelationshipQueryMode.Refs
+            ? string.Empty
+            : CompletenessNotice(bodyRecoveryStatus, mode == RelationshipQueryMode.Callers);
+        return new RelationshipQuerySetResult(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+            relationships,
+            bodyRecoveryStatus,
+            mode == RelationshipQueryMode.Callers,
+            notice);
+    }
+
+    private async Task<IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)>> GetSelectedRelationshipEdgesAsync(
+        SelectedSymbol selected,
+        RelationshipQueryMode mode,
+        int limit,
+        CancellationToken cancellationToken)
+    {
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges;
         if (mode == RelationshipQueryMode.Refs)
         {
-            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
-            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
+            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
+            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
             selectedEdges = outgoing
                 .Select(edge => (edge, "Outgoing"))
                 .Concat(incoming.Select(edge => (edge, "Incoming")))
@@ -314,10 +419,7 @@ public sealed class IndexQueryService
         }
         else if (mode == RelationshipQueryMode.Callers)
         {
-            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
+            var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
             selectedEdges = incoming
                 .Where(edge => IsCallLike(edge.Kind))
                 .Select(edge => (edge, "Incoming"))
@@ -327,10 +429,7 @@ public sealed class IndexQueryService
         }
         else
         {
-            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
-                selected.Run.IndexId,
-                selected.Symbol.SymbolId,
-                cancellationToken);
+            var outgoing = await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(selected.Run.IndexId, selected.Symbol.SymbolId, cancellationToken);
             selectedEdges = outgoing
                 .Where(edge => IsCallLike(edge.Kind))
                 .Select(edge => (edge, "Outgoing"))
@@ -339,19 +438,23 @@ public sealed class IndexQueryService
                 .ToArray();
         }
 
+        return selectedEdges;
+    }
+
+    private async Task<IReadOnlyList<RelationshipQueryResult>> MapRelationshipEdgesAsync(
+        IndexRunRecord run,
+        IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
+        CancellationToken cancellationToken)
+    {
         var endpointIds = selectedEdges
             .SelectMany(item => item.Edge.TargetSymbolId is null
                 ? new[] { item.Edge.SourceSymbolId }
                 : new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(
-            selected.Run.IndexId,
-            endpointIds,
-            cancellationToken);
+        var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(run.IndexId, endpointIds, cancellationToken);
         var byId = endpointSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
-
-        var relationships = selectedEdges
+        return selectedEdges
             .Select(item => new RelationshipQueryResult(
                 item.Edge.RelationshipId,
                 item.Edge.Kind,
@@ -360,16 +463,6 @@ public sealed class IndexQueryService
                 Endpoint(item.Edge.SourceSymbolId, null, byId),
                 Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId)))
             .ToArray();
-
-        var notice = mode == RelationshipQueryMode.Refs
-            ? string.Empty
-            : CompletenessNotice(bodyRecoveryStatus, mode == RelationshipQueryMode.Callers);
-        return new RelationshipQuerySetResult(
-            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-            relationships,
-            bodyRecoveryStatus,
-            mode == RelationshipQueryMode.Callers,
-            notice);
     }
 
     private async Task<SourceSnippetResolutionResult> SourceFromSelectedAsync(

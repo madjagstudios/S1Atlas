@@ -85,6 +85,10 @@ public interface IIndexRepository
     Task<IndexRunRecord?> GetCompletedIndexAsync(string indexId, CancellationToken cancellationToken);
     Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsAsync(string indexId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolPageAsync(string indexId, int offset, int limit, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Bounded symbol paging is not supported by this index repository.");
+    Task<int> CountCompletedSymbolsAsync(string indexId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Completed symbol counting is not supported by this index repository.");
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(
         string indexId,
         string canonicalKey,
