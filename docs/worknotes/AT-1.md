@@ -13,3 +13,9 @@
 - Content policy: FACT and DERIVED labels are mandatory; no V1 INTERPRETATION; learning concepts come from Roslyn syntax analysis over the exact rendered span.
 - Verification: generated/repository-owned fixtures only; run format verify, Release build, and Release no-build tests before completion.
 - Starting-work finding: the repo had no code-map artifacts; generated and verified the branch-local map before planning.
+- Implementation: bulk namespace/symbol paging and measured relationship totals were added to the shared read-only query layer; the portal does not issue portal-specific SQL.
+- Environment is current-only via `GetCurrentSnapshotAsync`; historical build pages state that environment facts are recorded for the current build only.
+- Standalone symbol pages are limited to types, methods, and constructors; fields, properties, and events use deterministic anchors on the containing type page. Symbol trees are hash-sharded.
+- `assets/search-index.js` is mandatory so the prebuilt search works from `file://`; the JSON index remains the canonical auditable artifact.
+- API pages use latest-completed commit/index provenance independently of the Schedule I verified-extraction authority and independently of `--build`.
+- Scene pages remain deferred; the reserved scene path is unwritten and the build page carries the CLI/MCP deferral note.
