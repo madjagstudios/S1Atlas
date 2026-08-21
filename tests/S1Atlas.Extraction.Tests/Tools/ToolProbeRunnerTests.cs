@@ -123,15 +123,10 @@ public sealed class ToolProbeRunnerTests : IAsyncDisposable
         Assert.True(result.StandardOutputTruncated);
     }
 
-    public ValueTask DisposeAsync()
-    {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
-    }
+    public async ValueTask DisposeAsync() =>
+        // A timed-out or canceled probe force-kills the copied executable; Windows
+        // can still hold its image lock for a moment, so delete with bounded retry.
+        await ToolTestFixture.DeleteTemporaryDirectoryAsync(_temporaryDirectory);
 
     private string CopyCommandProcessor()
     {

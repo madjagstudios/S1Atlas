@@ -58,6 +58,43 @@ internal static class ToolTestFixture
         return path;
     }
 
+    /// <summary>
+    /// Deletes a temporary directory, retrying past the transient
+    /// <see cref="IOException"/>/<see cref="UnauthorizedAccessException"/> Windows
+    /// raises while it is still releasing a just-killed process's image lock on an
+    /// executable inside the directory. After the bounded retry window it gives up
+    /// silently: the leftover directory lives under the OS temp path and is
+    /// harmless, and failing test cleanup must never fail the test.
+    /// </summary>
+    public static async ValueTask DeleteTemporaryDirectoryAsync(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+        {
+            return;
+        }
+
+        const int maxAttempts = 20;
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            try
+            {
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception exception) when (
+                (exception is IOException or UnauthorizedAccessException) &&
+                attempt < maxAttempts - 1)
+            {
+                await Task.Delay(50);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
