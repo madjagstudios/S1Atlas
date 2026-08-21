@@ -2,6 +2,8 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
+> **Disclaimer:** S1Atlas is an unofficial, fan-made developer tool. It is not affiliated with, endorsed by, or connected to the developers or publishers of Schedule I. It requires you to supply your own legitimately obtained copy of the game, and it neither includes nor distributes any game assets, binaries, or decompiled output — all generated data stays local on your machine. It is provided for interoperability, modding, and educational purposes under the [MIT License](LICENSE).
+
 > **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, the build-diffing milestone, the read-only MCP server, the static HTML human portal, and the evidence-first S1Atlas agent skill are complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. The CLI and MCP share the same preferred-verified Schedule I Installed authority path, so human and agent queries have parity.
 
 ## What the Foundation Can Do
@@ -377,7 +379,7 @@ By default, Atlas data is stored at:
 Override that location with the `S1ATLAS_HOME` environment variable:
 
 ```powershell
-$env:S1ATLAS_HOME = "C:\Users\david\Documents\S1Atlas Data"
+$env:S1ATLAS_HOME = "C:\S1Atlas Data"
 dotnet run --project src/S1Atlas.Cli -- status
 ```
 
