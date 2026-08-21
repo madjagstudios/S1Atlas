@@ -2,7 +2,7 @@
 
 S1Atlas is a local, version-aware developer-intelligence platform for Schedule I mod development. It is designed to make game internals searchable and understandable for both human developers and coding agents.
 
-> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, the build-diffing milestone, the read-only MCP server, and the static HTML human portal are all complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. The CLI and MCP share the same preferred-verified Schedule I Installed authority path, so human and agent queries have parity. **The S1Atlas agent skill remains the outstanding V1 milestone.**
+> **Current state:** The validated Cpp2IL extraction pipeline (Phases 1–5), the code-index milestone (ILSpy decompilation, Roslyn C# source indexing, symbol/reference/caller/callee indexing over the preferred, integrity-verified extraction), upstream S1API/S1MAPI indexing, the static scene-intelligence milestone, the build-diffing milestone, the read-only MCP server, the static HTML human portal, and the evidence-first S1Atlas agent skill are complete. Phase 3 runs Cpp2IL and produces a non-authoritative candidate; Phase 4 inspects, validates, and immutably promotes that candidate into an integrity-verified extraction, and `extract` reports the authoritative validated extraction rather than a bare candidate. Phase 5 adds conservative, preview-first cleanup and retention, explicit archived-only replay with per-snapshot certification, and a repository-hygiene CI gate. The `index`, `search`, `type`, `method`, `source`, `refs`, `callers`, `callees`, `scenes`/`scene`/`gameobject`/`prefab`/`component`, `upstream`, and `diff` commands query that indexed knowledge offline. The CLI and MCP share the same preferred-verified Schedule I Installed authority path, so human and agent queries have parity.
 
 ## What the Foundation Can Do
 
@@ -344,6 +344,28 @@ install tools, run extraction, launch a game or external process, sync
 upstream data, or expose S1API/S1MAPI channels. Source and scene results read
 only already-indexed Atlas-owned files with existing integrity checks.
 
+### S1Atlas agent skill
+
+The methodology skill is versioned at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
+The verified Claude Code path convention for this repository is a
+project-scoped `.claude/skills/s1atlas/` install or a user-scoped
+`%USERPROFILE%/.claude/skills/s1atlas/` install. From the repo root, a
+project-scoped junction can be created with:
+
+```powershell
+New-Item -ItemType Directory -Force .claude\skills | Out-Null
+New-Item -ItemType Junction -Path .claude\skills\s1atlas -Target (Resolve-Path .\skills\s1atlas)
+```
+
+The repository verification includes identical-byte path resolution and a
+fresh-agent load/trigger check; this host has no `claude` executable, so it does
+not claim a live Claude CLI invocation. When MCP is registered, launch the
+read-only server over stdio with
+`dotnet run --project src/S1Atlas.Mcp -- mcp serve`; otherwise the skill’s CLI
+commands remain the fallback. The skill adds no capability and requires agents
+to cite FACT/DERIVED evidence and build/extraction/index or API commit/index
+identifiers in their own output.
+
 ## Local Data Location
 
 By default, Atlas data is stored at:
@@ -546,7 +568,7 @@ preference when the same recipe produces different bytes. Automated tests use a
 test policy with a tiny managed-byte floor and never modify the production
 `config/validation/*.json`.
 
-## Next Milestone
+## V1 status
 
 The validated Cpp2IL extraction pipeline, the code-index milestone (ILSpy
 decompilation, normalized source and symbol metadata, and the
@@ -557,15 +579,18 @@ complete. CLI Schedule I queries and MCP use the same shared authority path and
 full integrity-verifying API — never a Phase 3 candidate, retained failure
 output, or an unverified database row.
 
-The remaining V1 milestone is an independent design cycle; the static human portal is shipped:
+V1 is complete against the design checklist: the local environment can be
+discovered, builds can be fingerprinted and extracted, artifacts are preserved
+and indexed, symbols/source/relationships/build diffs are queryable, S1API and
+S1MAPI are deep-indexed, dependencies are tracked, the deterministic static
+portal is available through `docs generate`, provenance-aware learning context
+is rendered, the read-only MCP server exposes trusted knowledge, the agent skill
+documents correct Atlas usage, and failed scans preserve the last valid state.
 
-1. **Static human portal** — shipped as `docs generate`; it generates the local,
-   offline HTML exploration site with navigation, search, source viewing,
-   deterministic plain-English context, and provenance.
-2. **Agent skill** — document correct, evidence-first S1Atlas usage for agents.
-
-Final hardening (documentation and the local installation/use workflow) closes
-out V1 once those land.
+The static portal intentionally defers scene HTML; scene intelligence remains
+available through the CLI and MCP. Runtime-specific skill installation and MCP
+registration are deployment steps rather than Atlas data changes; the versioned
+skill documents both the Claude Code paths and the CLI fallback.
 
 ## Project Documents
 
