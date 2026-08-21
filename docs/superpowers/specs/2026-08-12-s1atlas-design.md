@@ -398,9 +398,14 @@ Example: `Fire()` appears to remove the employee from active employment without 
 
 Interpretation is useful and encouraged, but must never masquerade as extracted truth. All information should remain traceable to the relevant Schedule I build.
 
-## 14. Agent Skill
+## 14. Agent Skill (Shipped)
 
 An S1Atlas agent skill complements MCP rather than replacing it. MCP provides information; the skill defines methodology.
+
+The V1 skill is versioned at `skills/s1atlas/SKILL.md`. It is methodology-only:
+it requires evidence-first use of the read-only CLI/MCP surfaces, labels
+FACT/DERIVED/INTERPRETATION, and does not add capabilities or permit bypassing
+the integrity boundary.
 
 The skill should instruct agents working on Schedule I projects to:
 
