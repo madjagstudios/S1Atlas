@@ -251,6 +251,11 @@ dotnet run --project src/S1Atlas.Cli -- extract --json
 
 Each JSON invocation writes exactly one top-level envelope to stdout with `schemaVersion`, `command`, `success`, `exitCode`, `data`, and `error`. Schema version 1 defines that top-level contract. Later command-specific error objects may add fields, so consumers should ignore error properties they do not recognize.
 
+The `scan`, `extract`, and `index` commands also accept `--performance`, which
+writes one phase-timing and counter diagnostics object as JSON to standard
+error. It is opt-in, never changes the command's result or exit code, and is
+independent of `--json` (which controls the stdout result).
+
 Without `--game-path`, S1Atlas checks the standard Steam locations under `Program Files (x86)` and `Program Files`.
 
 ## Generate the static portal
@@ -348,18 +353,18 @@ identifiers in their own output.
 
 | Command | Purpose |
 |---|---|
-| `scan [--game-path <path>]` | Discover and persist the current local environment |
+| `scan [--game-path <path>] [--performance]` | Discover and persist the current local environment |
 | `status [--json]` | Show the current indexed build and installation observation |
 | `env [--json]` | Show the current build, installation paths, and tracked dependencies |
 | `builds [--json]` | List content-derived builds, newest first-seen first |
 | `tools status [tool-id] [--json]` | Inspect pinned managed-tool state offline |
 | `tools install <tool-id> [--repair] [--json]` | Explicitly download, verify, install, or repair a managed tool |
-| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--input-snapshot <id>] [--keep-failed-artifacts] [--json]` | Run offline extraction (from live input or an archived snapshot), then validate and immutably promote an authoritative extraction (or reuse an existing one) |
+| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--input-snapshot <id>] [--keep-failed-artifacts] [--performance] [--json]` | Run offline extraction (from live input or an archived snapshot), then validate and immutably promote an authoritative extraction (or reuse an existing one) |
 | `extractions list [--build <id>] [--include-failed] [--json]` | List validated extractions newest first, optionally with failed attempts |
 | `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
 | `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
 | `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
-| `index [--codebase <id>] [--channel <id>] [--commit <sha>] [--force] [--json]` | Build the installed Schedule I code index (no options) or an S1API/S1MAPI code index |
+| `index [--codebase <id>] [--channel <id>] [--commit <sha>] [--force] [--performance] [--json]` | Build the installed Schedule I code index (no options) or an S1API/S1MAPI code index |
 | `search <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Query the normalized code index across symbols, types, and methods |
 | `type <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed type definitions |
 | `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |

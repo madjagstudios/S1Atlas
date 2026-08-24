@@ -1,4 +1,5 @@
 using S1Atlas.Cli.Output;
+using S1Atlas.Cli.Performance;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Tools;
 
@@ -9,7 +10,8 @@ internal static class CommandExecution
     public static int Run(
         Func<int> action,
         CommandOutput output,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PerformanceMeasurement? performance = null)
     {
         ArgumentNullException.ThrowIfNull(action);
         ArgumentNullException.ThrowIfNull(output);
@@ -50,6 +52,24 @@ internal static class CommandExecution
                 1,
                 "OperationalFailure",
                 $"S1Atlas failed: {exception.Message}");
+        }
+        finally
+        {
+            if (performance is not null)
+            {
+                try
+                {
+                    output.WritePerformanceReport(performance);
+                }
+                catch
+                {
+                    // Diagnostics must never change the command's result.
+                }
+                finally
+                {
+                    performance.Dispose();
+                }
+            }
         }
     }
 }

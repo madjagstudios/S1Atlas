@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Cli.Output;
+using S1Atlas.Cli.Performance;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction;
@@ -14,6 +15,7 @@ internal static class ExtractCommand
     public static Command Create(
         ValidatedExtractionWorkflow workflow,
         IAtlasRepository repository,
+        string dataRoot,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
@@ -56,6 +58,10 @@ internal static class ExtractCommand
         {
             Description = "Retain failed partial output inside the attempt quarantine."
         };
+        var performanceOption = new Option<bool>("--performance")
+        {
+            Description = "Write performance diagnostics JSON to standard error."
+        };
         var jsonOption = CommandOutput.CreateJsonOption();
 
         var command = new Command(
@@ -69,6 +75,7 @@ internal static class ExtractCommand
         command.Options.Add(snapshotInputsOption);
         command.Options.Add(inputSnapshotOption);
         command.Options.Add(keepFailedArtifactsOption);
+        command.Options.Add(performanceOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -77,6 +84,9 @@ internal static class ExtractCommand
                 parseResult.GetValue(jsonOption),
                 output,
                 error);
+            var performance = parseResult.GetValue(performanceOption)
+                ? new PerformanceMeasurement("extract", dataRoot)
+                : null;
             return CommandExecution.Run(
                 () =>
                 {
@@ -91,19 +101,34 @@ internal static class ExtractCommand
                         return failureExitCode;
                     }
 
-                    var result = workflow.RunAsync(
-                            new ExtractionOptions(
-                                parseResult.GetValue(buildOption),
-                                gamePath,
-                                parseResult.GetValue(cpp2IlPathOption),
-                                parseResult.GetValue(profileOption) ?? DefaultProfileId,
-                                retry,
-                                snapshotInputs,
-                                parseResult.GetValue(keepFailedArtifactsOption),
-                                inputSnapshot),
-                            cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
+                    ExtractionWorkflowResult result;
+                    using (performance?.Measure("extraction.workflow"))
+                    {
+                        result = workflow.RunAsync(
+                                new ExtractionOptions(
+                                    parseResult.GetValue(buildOption),
+                                    gamePath,
+                                    parseResult.GetValue(cpp2IlPathOption),
+                                    parseResult.GetValue(profileOption) ?? DefaultProfileId,
+                                    retry,
+                                    snapshotInputs,
+                                    parseResult.GetValue(keepFailedArtifactsOption),
+                                    inputSnapshot),
+                                cancellationToken)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
+
+                    if (performance is not null)
+                    {
+                        performance.SetCounter("process.wasRun", result.ProcessWasRun ? 1 : 0);
+                        performance.SetCounter("validation.wasRun", result.ValidationWasRun ? 1 : 0);
+                        performance.SetCounter("extraction.reused", result.ReusedExistingExtraction ? 1 : 0);
+                        performance.SetCounter("extraction.authoritative", result.IsAuthoritative ? 1 : 0);
+                        performance.SetCounter(
+                            "inputSnapshot.replayVerified",
+                            result.InputSnapshotReplayVerified ? 1 : 0);
+                    }
 
                     if (!result.IsAuthoritative)
                     {
@@ -141,7 +166,8 @@ internal static class ExtractCommand
                         writer => WriteHuman(writer, data));
                 },
                 commandOutput,
-                cancellationToken);
+                cancellationToken,
+                performance);
         });
 
         return command;
