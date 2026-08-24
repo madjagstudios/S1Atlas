@@ -120,7 +120,11 @@ internal sealed class PerformanceMeasurement : IDisposable
         return JsonSerializer.Serialize(report, JsonOptions);
     }
 
-    public void Dispose() => _stopwatch.Stop();
+    public void Dispose()
+    {
+        _stopwatch.Stop();
+        _process.Dispose();
+    }
 
     private FileSystemMeasurement MeasureFiles()
     {
