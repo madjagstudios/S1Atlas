@@ -1,5 +1,7 @@
 using System.CommandLine;
 using S1Atlas.Cli.Output;
+using S1Atlas.Cli.Performance;
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Discovery;
 
@@ -11,6 +13,7 @@ internal static class ScanCommand
         EnvironmentDiscoveryService discovery,
         IAtlasRepository repository,
         string atlasVersion,
+        string dataRoot,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
@@ -19,11 +22,16 @@ internal static class ScanCommand
         {
             Description = "Override the Schedule I installation directory."
         };
+        var performanceOption = new Option<bool>("--performance")
+        {
+            Description = "Write performance diagnostics JSON to standard error."
+        };
 
         var command = new Command(
             "scan",
             "Discover the local Schedule I environment and save a build snapshot.");
         command.Options.Add(gamePathOption);
+        command.Options.Add(performanceOption);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput(
@@ -31,15 +39,26 @@ internal static class ScanCommand
                 json: false,
                 output,
                 error);
+            var performance = parseResult.GetValue(performanceOption)
+                ? new PerformanceMeasurement("scan", dataRoot)
+                : null;
             return CommandExecution.Run(
                 () =>
                 {
-                    repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    using (performance?.Measure("repository.initialize"))
+                    {
+                        repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    }
+
                     var gamePath = parseResult.GetValue(gamePathOption)?.FullName;
-                    var snapshot = discovery
-                        .DiscoverAsync(gamePath, atlasVersion, cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
+                    EnvironmentSnapshot? snapshot;
+                    using (performance?.Measure("environment.discovery"))
+                    {
+                        snapshot = discovery
+                            .DiscoverAsync(gamePath, atlasVersion, cancellationToken)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
 
                     if (snapshot is null)
                     {
@@ -49,10 +68,29 @@ internal static class ScanCommand
                             "Schedule I installation could not be found or is missing required IL2CPP files.");
                     }
 
-                    repository
-                        .SaveSnapshotAsync(snapshot, cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
+                    using (performance?.Measure("snapshot.persisted"))
+                    {
+                        repository
+                            .SaveSnapshotAsync(snapshot, cancellationToken)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
+
+                    if (performance is not null)
+                    {
+                        performance.SetCounter("dependencies.total", snapshot.Dependencies.Count);
+                        performance.SetCounter(
+                            "dependencies.installed",
+                            snapshot.Dependencies.Count(dependency => dependency.IsInstalled));
+                        SetFileSizeCounter(
+                            performance,
+                            "inputs.gameAssembly.bytes",
+                            snapshot.Installation.GameAssemblyPath);
+                        SetFileSizeCounter(
+                            performance,
+                            "inputs.globalMetadata.bytes",
+                            snapshot.Installation.GlobalMetadataPath);
+                    }
 
                     return commandOutput.Success(
                         snapshot.Build.BuildId,
@@ -73,9 +111,21 @@ internal static class ScanCommand
                         });
                 },
                 commandOutput,
-                cancellationToken);
+                cancellationToken,
+                performance);
         });
 
         return command;
+    }
+
+    private static void SetFileSizeCounter(
+        PerformanceMeasurement performance,
+        string counterName,
+        string? path)
+    {
+        if (path is not null && File.Exists(path))
+        {
+            performance.SetCounter(counterName, new FileInfo(path).Length);
+        }
     }
 }

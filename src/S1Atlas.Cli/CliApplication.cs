@@ -312,6 +312,7 @@ public sealed class CliApplication
                 discovery,
                 repository,
                 _atlasVersion,
+                _paths.RootDirectory,
                 output,
                 error,
                 cancellationToken));
@@ -332,6 +333,7 @@ public sealed class CliApplication
             ExtractCommand.Create(
                 workflow,
                 repository,
+                _paths.RootDirectory,
                 output,
                 error,
                 cancellationToken));
@@ -349,6 +351,7 @@ public sealed class CliApplication
                 apiIndexingWorkflow,
                 sceneIndexingWorkflow,
                 repository,
+                _paths.RootDirectory,
                 output,
                 error,
                 cancellationToken));

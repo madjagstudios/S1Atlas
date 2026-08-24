@@ -94,6 +94,32 @@ public sealed class FoundationCliTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Scan_WithPerformance_WritesDiagnosticsJsonToStandardError()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await CreateFakeInstallationAsync(cancellationToken);
+        var application = CreateApplication();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["scan", "--game-path", _gameDirectory, "--performance"],
+            output,
+            error,
+            cancellationToken);
+
+        using var document = JsonDocument.Parse(error.ToString());
+        var root = document.RootElement;
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Indexed Schedule I build", output.ToString(), StringComparison.Ordinal);
+        Assert.Equal("scan", root.GetProperty("command").GetString());
+        Assert.Contains(
+            root.GetProperty("phases").EnumerateArray(),
+            phase => phase.GetProperty("name").GetString() == "environment.discovery");
+        Assert.True(root.GetProperty("counters").GetProperty("dependencies.total").GetInt64() >= 0);
+    }
+
+    [Fact]
     public async Task Scan_WithInvalidOverride_ReturnsFailureWithoutCurrentBuild()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

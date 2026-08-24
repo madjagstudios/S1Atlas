@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Cli.Output;
+using S1Atlas.Cli.Performance;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
@@ -16,6 +17,7 @@ internal static class IndexCommand
         ApiIndexingWorkflow apiWorkflow,
         SceneIndexWorkflow sceneWorkflow,
         IAtlasRepository repository,
+        string dataRoot,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
@@ -26,6 +28,10 @@ internal static class IndexCommand
         var codebaseOption = new Option<string?>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string?>("--channel") { Description = "installed, release, or preview." };
         var commitOption = new Option<string?>("--commit") { Description = "An exact cached upstream commit SHA." };
+        var performanceOption = new Option<bool>("--performance")
+        {
+            Description = "Write performance diagnostics JSON to standard error."
+        };
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command("index", "Build the installed Schedule I source and symbol index.");
         command.Options.Add(forceOption);
@@ -34,14 +40,23 @@ internal static class IndexCommand
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(commitOption);
+        command.Options.Add(performanceOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("index", parseResult.GetValue(jsonOption), output, error);
+            var performance = parseResult.GetValue(performanceOption)
+                ? new PerformanceMeasurement("index", dataRoot)
+                : null;
             return CommandExecution.Run(
                 () =>
                 {
-                    repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    using (performance?.Measure("repository.initialize"))
+                    {
+                        repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                    }
+
+                    using var workflowPhase = performance?.Measure("index.workflow");
                     var sceneIndexRequested = parseResult.GetValue(sceneOption);
                     var requestedBuild = parseResult.GetValue(buildOption);
                     var requestedCodebase = parseResult.GetValue(codebaseOption);
@@ -79,6 +94,15 @@ internal static class IndexCommand
                         catch (SceneIndexFailureException exception)
                         {
                             return commandOutput.Failure(1, exception.Status.ToString(), exception.Message);
+                        }
+                        if (performance is not null)
+                        {
+                            performance.SetCounter("scene.containers", sceneResult.ContainerCount);
+                            performance.SetCounter("scene.documents", sceneResult.SceneCount);
+                            performance.SetCounter("scene.gameObjects", sceneResult.GameObjectCount);
+                            performance.SetCounter("scene.components", sceneResult.ComponentCount);
+                            performance.SetCounter("scene.references", sceneResult.ReferenceCount);
+                            performance.SetCounter("index.reused", sceneResult.Reused ? 1 : 0);
                         }
                         return WriteSceneResult(commandOutput, sceneResult);
                     }
@@ -173,6 +197,13 @@ internal static class IndexCommand
                         result.SourceFileCount,
                         result.RelationshipCount,
                         result.Warnings);
+                    if (performance is not null)
+                    {
+                        performance.SetCounter("index.symbols", result.SymbolCount);
+                        performance.SetCounter("index.sourceFiles", result.SourceFileCount);
+                        performance.SetCounter("index.relationships", result.RelationshipCount);
+                        performance.SetCounter("index.reused", result.Reused ? 1 : 0);
+                    }
                     return commandOutput.Success(
                         data,
                         writer => writer.WriteLine(
@@ -181,7 +212,8 @@ internal static class IndexCommand
                             $" | symbols {result.SymbolCount} | source files {result.SourceFileCount} | relationships {result.RelationshipCount}"));
                 },
                 commandOutput,
-                cancellationToken);
+                cancellationToken,
+                performance);
         });
         return command;
     }

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using S1Atlas.Cli.Performance;
 
 namespace S1Atlas.Cli.Output;
 
@@ -151,6 +152,12 @@ internal sealed class CommandOutput
     {
         Description = "Write one machine-readable JSON result."
     };
+
+    public void WritePerformanceReport(PerformanceMeasurement measurement)
+    {
+        ArgumentNullException.ThrowIfNull(measurement);
+        _standardError.WriteLine(measurement.ToJson(measurement.Complete()));
+    }
 
     private void WriteJson<T>(CliEnvelope<T> envelope)
     {
