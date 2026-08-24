@@ -15,6 +15,7 @@ Roots: src
 | src/S1Atlas.Cli/Commands/ | 37 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 12 |
+| src/S1Atlas.Cli/Performance/ | 1 |
 | src/S1Atlas.Cli/Properties/ | 1 |
 | src/S1Atlas.Core/ | 1 |
 | src/S1Atlas.Core/Builds/ | 2 |

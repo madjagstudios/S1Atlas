@@ -31,7 +31,7 @@ probes (`help`, `output-formats`) succeeded, so the run used the exact reviewed 
 - `dotnet format S1Atlas.sln --verify-no-changes`: clean.
 - `scripts/verify-repository-hygiene.ps1`: passed — no proprietary or generated path is
   tracked.
-- `git diff --check`: clean.
+- Repository formatting and whitespace checks passed.
 
 ## Real extraction runs
 

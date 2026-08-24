@@ -18,6 +18,7 @@ coverage/
 # Isolated development worktrees
 .worktrees/
 worktrees/
+.superpowers/
 
 # S1Atlas generated data
 data/

@@ -7,8 +7,6 @@ meta:
 areas:
   .github:
     - .github
-  .superpowers:
-    - .superpowers
   config:
     - config
   docs:
