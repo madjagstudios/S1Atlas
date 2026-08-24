@@ -143,7 +143,5 @@ test policy with a tiny managed-byte floor and never modify the production
 
 ## Design documents
 
-- [V1 design specification](superpowers/specs/2026-08-12-s1atlas-design.md)
-- [Foundation implementation plan](superpowers/plans/2026-08-12-s1atlas-v1-foundation-plan.md)
-- [Validated Cpp2IL extraction design](superpowers/specs/2026-08-12-cpp2il-extraction-design.md)
-- [Cpp2IL Phase 1 metadata and migration implementation plan](superpowers/plans/2026-08-12-cpp2il-phase1-metadata-migration-plan.md)
+- [V1 design specification](design/2026-08-12-s1atlas-design.md)
+- [Validated Cpp2IL extraction design](design/2026-08-12-cpp2il-extraction-design.md)

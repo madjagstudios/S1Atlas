@@ -5,7 +5,6 @@
 ```mermaid
 graph LR
   -github[".github"]
-  -superpowers[".superpowers"]
   config["config"]
   docs["docs"]
   scripts["scripts"]
@@ -16,11 +15,6 @@ graph LR
 ## .github
 
 Roots: .github
-
-
-## .superpowers
-
-Roots: .superpowers
 
 
 ## config

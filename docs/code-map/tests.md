@@ -36,7 +36,7 @@ Roots: tests
 | tests/S1Atlas.Extraction.Tests/Promotion/ | 5 |
 | tests/S1Atlas.Extraction.Tests/Scene/ | 6 |
 | tests/S1Atlas.Extraction.Tests/Steam/ | 2 |
-| tests/S1Atlas.Extraction.Tests/Tools/ | 13 |
+| tests/S1Atlas.Extraction.Tests/Tools/ | 14 |
 | tests/S1Atlas.Extraction.Tests/Validation/ | 7 |
 | tests/S1Atlas.FakeCpp2Il/ | 2 |
 | tests/S1Atlas.Indexing.Tests/ | 5 |
@@ -57,6 +57,7 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |
 | tests/S1Atlas.IntegrationTests/Indexing/ | 2 |
+| tests/S1Atlas.IntegrationTests/Performance/ | 1 |
 | tests/S1Atlas.IntegrationTests/Repository/ | 1 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
