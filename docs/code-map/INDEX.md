@@ -5,7 +5,6 @@
 | Area | Roots | Map |
 |---|---|---|
 | .github | .github | [.github](-github.md) |
-| .superpowers | .superpowers | [.superpowers](-superpowers.md) |
 | config | config | [config](config.md) |
 | docs | docs | [docs](docs.md) |
 | scripts | scripts | [scripts](scripts.md) |
