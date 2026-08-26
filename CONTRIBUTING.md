@@ -42,6 +42,19 @@ dotnet test S1Atlas.sln --configuration Release --no-build
 - Add tests for new behavior; follow the existing TDD style.
 - Match the surrounding code's conventions and keep files focused.
 
+## Commit messages
+
+Keep commit messages and PR descriptions clean. Do **not** include AI-assistant
+attribution trailers such as `Co-Authored-By: Claude ...` or "Generated with ...".
+A local `commit-msg` hook enforces this — enable it once after cloning:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+The hook lives at [`.githooks/commit-msg`](.githooks/commit-msg) and is local to your
+clone (it does not affect web-UI commits or anyone who hasn't enabled it).
+
 ## Provenance and honesty
 
 S1Atlas reports only what it can prove from the indexed build, and labels every claim

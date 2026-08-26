@@ -1,0 +1,4 @@
+# Git hooks and shell scripts must stay LF, or the shebang breaks on Unix/macOS
+# checkouts when a contributor has core.autocrlf=true.
+.githooks/commit-msg text eol=lf
+*.sh text eol=lf
