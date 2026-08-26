@@ -36,7 +36,7 @@ Roots: src
 | src/S1Atlas.Docs/Identity/ | 2 |
 | src/S1Atlas.Docs/Rendering/ | 4 |
 | src/S1Atlas.Docs/Source/ | 2 |
-| src/S1Atlas.Extraction/ | 5 |
+| src/S1Atlas.Extraction/ | 11 |
 | src/S1Atlas.Extraction/Attempts/ | 4 |
 | src/S1Atlas.Extraction/Cleanup/ | 6 |
 | src/S1Atlas.Extraction/Cpp2Il/ | 2 |
