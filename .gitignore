@@ -23,6 +23,9 @@ coverage/
 worktrees/
 .superpowers/
 
+# Agent working notes — kept local (scratchpad); not published to this public repo
+docs/worknotes/
+
 # S1Atlas generated data
 data/
 scene-indexes/
