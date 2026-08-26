@@ -85,11 +85,11 @@ public sealed partial class SqliteAtlasRepository
             var snapshotId = await GetRunningSnapshotIdAsync(connection, transaction, indexId, cancellationToken)
                 ?? throw new InvalidOperationException($"Index run '{indexId}' is not running.");
 
-            foreach (var sourceFile in writeSet.SourceFiles) await InsertSourceFileAsync(connection, transaction, sourceFile, cancellationToken);
-            foreach (var symbol in writeSet.Symbols) await InsertSymbolAsync(connection, transaction, symbol, cancellationToken);
-            foreach (var location in writeSet.SourceLocations) await InsertSourceLocationAsync(connection, transaction, location, cancellationToken);
-            foreach (var fingerprint in writeSet.Fingerprints) await InsertFingerprintAsync(connection, transaction, fingerprint, cancellationToken);
-            foreach (var relationship in writeSet.Relationships) await InsertRelationshipAsync(connection, transaction, relationship, cancellationToken);
+            await InsertSourceFilesAsync(connection, transaction, writeSet.SourceFiles, cancellationToken);
+            await InsertSymbolsAsync(connection, transaction, writeSet.Symbols, cancellationToken);
+            await InsertSourceLocationsAsync(connection, transaction, writeSet.SourceLocations, cancellationToken);
+            await InsertFingerprintsAsync(connection, transaction, writeSet.Fingerprints, cancellationToken);
+            await InsertRelationshipsAsync(connection, transaction, writeSet.Relationships, cancellationToken);
 
             if (writeSet.Symbols.Any(symbol => !string.Equals(symbol.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
                 writeSet.SourceFiles.Any(file => !string.Equals(file.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
@@ -475,52 +475,131 @@ public sealed partial class SqliteAtlasRepository
         return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
-    private static async Task InsertSymbolAsync(SqliteConnection connection, SqliteTransaction transaction, IndexSymbolRecord symbol, CancellationToken cancellationToken)
+    // Prepared, reusable-command inserts (AT-7). One compiled statement per table, parameter
+    // objects created once and re-valued per row — eliminates the per-row CreateCommand + SQL
+    // re-parse that dominated first-index allocation. Ordering and the enclosing transaction are
+    // unchanged, so output content and atomic publication are identical to the per-row path.
+    private static async Task InsertSymbolsAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<IndexSymbolRecord> symbols, CancellationToken cancellationToken)
     {
+        if (symbols.Count == 0) return;
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort, body_recovery_status) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best,$bodyRecovery);";
-        command.Parameters.AddWithValue("$id", symbol.SymbolId);
-        command.Parameters.AddWithValue("$snapshot", symbol.SnapshotId);
-        command.Parameters.AddWithValue("$key", symbol.CanonicalKey);
-        command.Parameters.AddWithValue("$kind", symbol.Kind);
-        command.Parameters.AddWithValue("$name", symbol.QualifiedName);
-        command.Parameters.AddWithValue("$signature", symbol.Signature);
-        command.Parameters.AddWithValue("$best", symbol.IsBestEffort ? 1 : 0);
-        command.Parameters.AddWithValue("$bodyRecovery", symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var id = command.Parameters.Add("$id", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshot", SqliteType.Text);
+        var key = command.Parameters.Add("$key", SqliteType.Text);
+        var kind = command.Parameters.Add("$kind", SqliteType.Text);
+        var name = command.Parameters.Add("$name", SqliteType.Text);
+        var signature = command.Parameters.Add("$signature", SqliteType.Text);
+        var best = command.Parameters.Add("$best", SqliteType.Integer);
+        var bodyRecovery = command.Parameters.Add("$bodyRecovery", SqliteType.Text);
+        command.Prepare();
+        foreach (var symbol in symbols)
+        {
+            id.Value = symbol.SymbolId;
+            snapshot.Value = symbol.SnapshotId;
+            key.Value = symbol.CanonicalKey;
+            kind.Value = symbol.Kind;
+            name.Value = symbol.QualifiedName;
+            signature.Value = symbol.Signature;
+            best.Value = symbol.IsBestEffort ? 1 : 0;
+            bodyRecovery.Value = symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
-    private static async Task InsertSourceFileAsync(SqliteConnection connection, SqliteTransaction transaction, IndexSourceFileRecord file, CancellationToken cancellationToken)
+    private static async Task InsertSourceFilesAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<IndexSourceFileRecord> files, CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        if (files.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "INSERT INTO source_files(source_file_id, snapshot_id, relative_path, sha256, byte_count) VALUES ($id,$snapshot,$path,$sha,$bytes);";
-        command.Parameters.AddWithValue("$id", file.SourceFileId); command.Parameters.AddWithValue("$snapshot", file.SnapshotId); command.Parameters.AddWithValue("$path", file.RelativePath); command.Parameters.AddWithValue("$sha", file.Sha256); command.Parameters.AddWithValue("$bytes", file.ByteCount);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var id = command.Parameters.Add("$id", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshot", SqliteType.Text);
+        var path = command.Parameters.Add("$path", SqliteType.Text);
+        var sha = command.Parameters.Add("$sha", SqliteType.Text);
+        var bytes = command.Parameters.Add("$bytes", SqliteType.Integer);
+        command.Prepare();
+        foreach (var file in files)
+        {
+            id.Value = file.SourceFileId;
+            snapshot.Value = file.SnapshotId;
+            path.Value = file.RelativePath;
+            sha.Value = file.Sha256;
+            bytes.Value = file.ByteCount;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
-    private static async Task InsertSourceLocationAsync(SqliteConnection connection, SqliteTransaction transaction, IndexSourceLocationRecord location, CancellationToken cancellationToken)
+    private static async Task InsertSourceLocationsAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<IndexSourceLocationRecord> locations, CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        if (locations.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "INSERT INTO source_locations(symbol_id, source_file_id, start_line, start_column, end_line, end_column) VALUES ($symbol,$file,$line,$column,$endLine,$endColumn);";
-        command.Parameters.AddWithValue("$symbol", location.SymbolId); command.Parameters.AddWithValue("$file", location.SourceFileId); command.Parameters.AddWithValue("$line", location.StartLine); command.Parameters.AddWithValue("$column", location.StartColumn); command.Parameters.AddWithValue("$endLine", (object?)location.EndLine ?? DBNull.Value); command.Parameters.AddWithValue("$endColumn", (object?)location.EndColumn ?? DBNull.Value);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var symbol = command.Parameters.Add("$symbol", SqliteType.Text);
+        var file = command.Parameters.Add("$file", SqliteType.Text);
+        var line = command.Parameters.Add("$line", SqliteType.Integer);
+        var column = command.Parameters.Add("$column", SqliteType.Integer);
+        var endLine = command.Parameters.Add("$endLine", SqliteType.Integer);
+        var endColumn = command.Parameters.Add("$endColumn", SqliteType.Integer);
+        command.Prepare();
+        foreach (var location in locations)
+        {
+            symbol.Value = location.SymbolId;
+            file.Value = location.SourceFileId;
+            line.Value = location.StartLine;
+            column.Value = location.StartColumn;
+            endLine.Value = (object?)location.EndLine ?? DBNull.Value;
+            endColumn.Value = (object?)location.EndColumn ?? DBNull.Value;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
-    private static async Task InsertFingerprintAsync(SqliteConnection connection, SqliteTransaction transaction, IndexFingerprintRecord fingerprint, CancellationToken cancellationToken)
+    private static async Task InsertFingerprintsAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<IndexFingerprintRecord> fingerprints, CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        if (fingerprints.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "INSERT INTO symbol_fingerprints(symbol_id, fingerprint_kind, fingerprint) VALUES ($symbol,$kind,$fingerprint);";
-        command.Parameters.AddWithValue("$symbol", fingerprint.SymbolId); command.Parameters.AddWithValue("$kind", fingerprint.Kind); command.Parameters.AddWithValue("$fingerprint", fingerprint.Fingerprint);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var symbol = command.Parameters.Add("$symbol", SqliteType.Text);
+        var kind = command.Parameters.Add("$kind", SqliteType.Text);
+        var fingerprint = command.Parameters.Add("$fingerprint", SqliteType.Text);
+        command.Prepare();
+        foreach (var record in fingerprints)
+        {
+            symbol.Value = record.SymbolId;
+            kind.Value = record.Kind;
+            fingerprint.Value = record.Fingerprint;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
-    private static async Task InsertRelationshipAsync(SqliteConnection connection, SqliteTransaction transaction, IndexRelationshipRecord relationship, CancellationToken cancellationToken)
+    private static async Task InsertRelationshipsAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<IndexRelationshipRecord> relationships, CancellationToken cancellationToken)
     {
-        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        if (relationships.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "INSERT INTO relationships(relationship_id, snapshot_id, source_symbol_id, target_symbol_id, target_text, relationship_kind, evidence) VALUES ($id,$snapshot,$source,$target,$text,$kind,$evidence);";
-        command.Parameters.AddWithValue("$id", relationship.RelationshipId); command.Parameters.AddWithValue("$snapshot", relationship.SnapshotId); command.Parameters.AddWithValue("$source", relationship.SourceSymbolId); command.Parameters.AddWithValue("$target", (object?)relationship.TargetSymbolId ?? DBNull.Value); command.Parameters.AddWithValue("$text", (object?)relationship.TargetText ?? DBNull.Value); command.Parameters.AddWithValue("$kind", relationship.Kind); command.Parameters.AddWithValue("$evidence", relationship.Evidence);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        var id = command.Parameters.Add("$id", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshot", SqliteType.Text);
+        var source = command.Parameters.Add("$source", SqliteType.Text);
+        var target = command.Parameters.Add("$target", SqliteType.Text);
+        var text = command.Parameters.Add("$text", SqliteType.Text);
+        var kind = command.Parameters.Add("$kind", SqliteType.Text);
+        var evidence = command.Parameters.Add("$evidence", SqliteType.Text);
+        command.Prepare();
+        foreach (var relationship in relationships)
+        {
+            id.Value = relationship.RelationshipId;
+            snapshot.Value = relationship.SnapshotId;
+            source.Value = relationship.SourceSymbolId;
+            target.Value = (object?)relationship.TargetSymbolId ?? DBNull.Value;
+            text.Value = (object?)relationship.TargetText ?? DBNull.Value;
+            kind.Value = relationship.Kind;
+            evidence.Value = relationship.Evidence;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     public async Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(

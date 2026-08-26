@@ -6,5 +6,7 @@ Roots: .github
 
 | Directory | Files |
 |---|---|
+| .github/ | 1 |
+| .github/ISSUE_TEMPLATE/ | 2 |
 | .github/workflows/ | 1 |
 

@@ -7,9 +7,11 @@ Top-level paths not covered by any declared area (assign them in annotations.yam
 | Path | Files |
 |---|---|
 | .gitignore | 1 |
+| CHANGELOG.md | 1 |
 | CONTRIBUTING.md | 1 |
 | Directory.Build.props | 1 |
 | LICENSE/ | 1 |
 | README.md | 1 |
 | S1Atlas.sln | 1 |
+| SECURITY.md | 1 |
 | skills/ | 1 |
