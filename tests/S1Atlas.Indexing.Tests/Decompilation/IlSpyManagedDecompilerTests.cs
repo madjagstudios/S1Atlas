@@ -1,4 +1,5 @@
 using S1Atlas.ManagedAssemblyFixture;
+using S1Atlas.InteropAssemblyFixture;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Indexing.Decompilation;
 using Xunit;
@@ -95,5 +96,29 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.False(missing.BodyFacts.HasPhysicalBody);
         Assert.True(missing.BodyFacts.NoBodyByDesign);
         Assert.Equal(BodyRecoveryStatus.NoBodyByDesign, missing.BodyRecoveryStatus);
+    }
+
+    [Fact]
+    public async Task InteropFixtureAssemblyClassifiesRuntimeInvokeWrappers()
+    {
+        var decompiler = new IlSpyManagedDecompiler();
+
+        var result = await decompiler.DecompileAsync(
+            typeof(InteropFixtureRoot).Assembly.Location,
+            CancellationToken.None);
+
+        var type = Assert.Single(result.Types, candidate => candidate.Name == "InteropFixtureRoot");
+        var wrapper = Assert.Single(type.Members, member => member.Name == "InteropWrapper");
+        Assert.True(wrapper.HasBody);
+        Assert.True(wrapper.BodyFacts!.MatchesInteropWrapperPattern);
+        Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, wrapper.BodyRecoveryStatus);
+
+        var convertArgsWrapper = Assert.Single(type.Members, member => member.Name == "InteropWrapperConvertArgs");
+        Assert.True(convertArgsWrapper.BodyFacts!.MatchesInteropWrapperPattern);
+        Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, convertArgsWrapper.BodyRecoveryStatus);
+
+        var falsePositive = Assert.Single(type.Members, member => member.Name == "NotInteropWrapper");
+        Assert.False(falsePositive.BodyFacts!.MatchesInteropWrapperPattern);
+        Assert.Equal(BodyRecoveryStatus.Recovered, falsePositive.BodyRecoveryStatus);
     }
 }

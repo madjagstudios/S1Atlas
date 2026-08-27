@@ -11,6 +11,9 @@ public sealed class BodyRecoveryClassifier
         if (facts.NoBodyByDesign)
             return BodyRecoveryStatus.NoBodyByDesign;
 
+        if (facts.MatchesInteropWrapperPattern)
+            return BodyRecoveryStatus.StubOrUnavailable;
+
         if (!facts.HasPhysicalBody || facts.IlByteCount == 0 || facts.InstructionCount == 0 || facts.MatchesVerifiedStubPattern)
             return BodyRecoveryStatus.StubOrUnavailable;
 

@@ -72,7 +72,9 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string PrefabSelector => "Dealer Prefab";
     public string ComponentSelector => "DealerController";
 
-    public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(string buildId = BuildIdASeed)
+    public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(
+        string buildId = BuildIdASeed,
+        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -85,7 +87,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             buildId,
             recipeId: RecipeIdA,
             indexId: null,
-            compareBodyFingerprint: "compare-body-same");
+            compareBodyFingerprint: "compare-body-same",
+            methodBodyStatus);
         atlas.IndexId = seeded.IndexId;
         atlas.IndexIdA = seeded.IndexId;
         atlas.ExtractionIdA = seeded.ExtractionId;
@@ -303,7 +306,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         string buildId,
         string recipeId,
         string? indexId,
-        string compareBodyFingerprint)
+        string compareBodyFingerprint,
+        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)
     {
         await SeedCurrentBuildAsync(buildId);
         var seeded = await SeedValidatedExtractionAsync(buildId, recipeId);
@@ -320,7 +324,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             seeded.Extraction.ExtractionId,
             buildId,
             resolvedIndexId,
-            compareBodyFingerprint);
+            compareBodyFingerprint,
+            methodBodyStatus);
 
         return new HealthySeed(buildId, seeded.Extraction.ExtractionId, seeded.InputSnapshot.InputSnapshotId, resolvedIndexId);
     }
@@ -428,7 +433,8 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         string extractionId,
         string buildId,
         string indexId,
-        string compareBodyFingerprint)
+        string compareBodyFingerprint,
+        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)
     {
         var ct = CancellationToken.None;
         string Id(string value) => extractionId == NonAuthoritativeExtractionId
@@ -505,7 +511,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Demo.Widget.Run",
                         MethodSelector,
                         false,
-                        BodyRecoveryStatus.Unknown),
+                        methodBodyStatus),
                     new IndexSymbolRecord(
                         Id(CompareSymbolId),
                         snapshotId,

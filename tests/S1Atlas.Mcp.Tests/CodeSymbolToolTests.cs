@@ -242,6 +242,23 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task GetSource_PreservesStubOrUnavailableBodyStatus()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(
+            methodBodyStatus: BodyRecoveryStatus.StubOrUnavailable);
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            atlas.MethodSelector,
+            buildId: null,
+            context: 0,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, envelope.Data!.BodyRecoveryStatus);
+    }
+
+    [Fact]
     public async Task GetSource_TamperedFile_ReturnsSourceIntegrityFailure()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();

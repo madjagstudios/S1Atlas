@@ -154,6 +154,16 @@ dotnet run --project src/S1Atlas.Cli -- callers "<TypeName.MethodName>"
 dotnet run --project src/S1Atlas.Cli -- callees "<TypeName.MethodName>"
 ```
 
+Source results include a `Body recovery` status for callable symbols. `Recovered`
+means the indexed IL provided affirmative body evidence; `NoBodyByDesign` means an
+implementation body is not expected; `StubOrUnavailable` means the displayed text
+must not be used as behavioral evidence. The latter includes Il2CppInterop
+runtime-invoke wrappers, whose generated managed body forwards through
+`IL2CPP.il2cpp_runtime_invoke` instead of containing the game's behavior. Schedule I
+V1 indexes validated Cpp2IL `dll_il_recovery` reconstructed assemblies and decompiles
+them with ILSpy. V1 does not retain a separate ISIL fallback artifact, so a genuinely
+unrecovered body is reported as unavailable rather than presented as authoritative.
+
 Upstream S1API/S1MAPI channels are cached explicitly before a release/preview
 index; `upstream status` is always offline and `upstream sync` is the only
 networked upstream command:
@@ -340,10 +350,8 @@ New-Item -ItemType Directory -Force .claude\skills | Out-Null
 New-Item -ItemType Junction -Path .claude\skills\s1atlas -Target (Resolve-Path .\skills\s1atlas)
 ```
 
-The repository verification includes identical-byte path resolution and a
-fresh-agent load/trigger check; this host has no `claude` executable, so it does
-not claim a live Claude CLI invocation. When MCP is registered, launch the
-read-only server over stdio with
+Verify the installed skill has identical bytes to the repository copy before
+relying on it. When MCP is registered, launch the read-only server over stdio with
 `dotnet run --project src/S1Atlas.Mcp -- mcp serve`; otherwise the skill's CLI
 commands remain the fallback. The skill adds no capability and requires agents
 to cite FACT/DERIVED evidence and build/extraction/index or API commit/index

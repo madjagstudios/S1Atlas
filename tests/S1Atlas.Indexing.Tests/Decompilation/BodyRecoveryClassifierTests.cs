@@ -36,6 +36,14 @@ public sealed class BodyRecoveryClassifierTests
     }
 
     [Fact]
+    public void Il2CppInterop_runtime_invoke_wrapper_is_stub_or_unavailable()
+    {
+        Assert.Equal(
+            BodyRecoveryStatus.StubOrUnavailable,
+            _classifier.Classify(new ManagedMethodBodyFacts(true, false, 24, 8, 3, false, true)));
+    }
+
+    [Fact]
     public void Nontrivial_zero_reference_il_can_be_recovered()
     {
         Assert.Equal(

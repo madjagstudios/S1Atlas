@@ -34,9 +34,7 @@ New-Item -ItemType Junction -Path $userSkill -Target (Resolve-Path .\skills\s1at
 ```
 
 Verify that the installed `SKILL.md` has identical bytes to the repository copy
-and that its frontmatter description matches the task before relying on it. A
-fresh-agent load/trigger check is part of this repository’s verification; this
-host has no `claude` executable, so no live Claude CLI invocation is claimed.
+and that its frontmatter description matches the task before relying on it.
 
 MCP is optional. To register the read-only stdio server with Claude Code, add
 this launch command to the S1Atlas MCP server entry:
