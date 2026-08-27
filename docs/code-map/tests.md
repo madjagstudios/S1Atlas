@@ -6,6 +6,7 @@ Roots: tests
 
 | Directory | Files |
 |---|---|
+| tests/Fixtures/S1Atlas.InteropAssemblyFixture/ | 2 |
 | tests/Fixtures/S1Atlas.ManagedAssemblyFixture/ | 2 |
 | tests/S1Atlas.Core.Tests/ | 2 |
 | tests/S1Atlas.Core.Tests/Builds/ | 1 |

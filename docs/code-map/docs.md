@@ -11,5 +11,4 @@ Roots: docs
 | docs/design/ | 7 |
 | docs/performance/ | 1 |
 | docs/smoke-tests/ | 4 |
-| docs/worknotes/ | 1 |
 
