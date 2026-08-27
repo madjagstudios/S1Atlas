@@ -145,7 +145,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 bodyAnalysis.IlByteCount,
                 bodyAnalysis.InstructionCount,
                 bodyAnalysis.References.Count,
-                bodyAnalysis.MatchesVerifiedStubPattern);
+                bodyAnalysis.MatchesVerifiedStubPattern,
+                bodyAnalysis.MatchesInteropWrapperPattern);
             var bodyRecoveryStatus = BodyClassifier.Classify(bodyFacts);
 
             members.Add(new ManagedMemberFacts(
@@ -224,7 +225,21 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             il.Length,
             opcodes.Count,
             references,
-            MatchesVerifiedThrowStub(opcodes, references));
+            MatchesVerifiedThrowStub(opcodes, references),
+            references.Any(reference =>
+                reference.Kind == ManagedReferenceKind.Calls &&
+                IsInteropRuntimeInvokeTarget(reference.Target)));
+    }
+
+    private static bool IsInteropRuntimeInvokeTarget(string target)
+    {
+        const string marker = "::il2cpp_runtime_invoke";
+        var start = target.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+            return false;
+
+        var end = start + marker.Length;
+        return end == target.Length || target[end] is '(' or '_';
     }
 
     private static bool MatchesVerifiedThrowStub(
@@ -456,8 +471,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         int IlByteCount,
         int InstructionCount,
         IReadOnlyList<ManagedReferenceFact> References,
-        bool MatchesVerifiedStubPattern)
+        bool MatchesVerifiedStubPattern,
+        bool MatchesInteropWrapperPattern)
     {
-        public static BodyAnalysis Empty { get; } = new(0, 0, [], false);
+        public static BodyAnalysis Empty { get; } = new(0, 0, [], false, false);
     }
 }

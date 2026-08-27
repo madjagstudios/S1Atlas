@@ -35,7 +35,8 @@ public sealed record ManagedMethodBodyFacts(
     int IlByteCount,
     int InstructionCount,
     int RecoveredReferenceCount,
-    bool MatchesVerifiedStubPattern);
+    bool MatchesVerifiedStubPattern,
+    bool MatchesInteropWrapperPattern = false);
 
 public enum BodyRecoveryStatus
 {
