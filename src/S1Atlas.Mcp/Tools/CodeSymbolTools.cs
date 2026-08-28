@@ -64,6 +64,10 @@ public sealed class CodeSymbolTools
                 {
                     return scopeError;
                 }
+                var pinned = await PinAuthorityAsync<SymbolSearchResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
                 var result = options.Scope == IndexQueryScope.Game
@@ -154,6 +158,10 @@ public sealed class CodeSymbolTools
                 {
                     return scopeError;
                 }
+                var pinned = await PinAuthorityAsync<SourceSnippetQueryResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
 
                 try
                 {
@@ -266,6 +274,10 @@ public sealed class CodeSymbolTools
                 {
                     return scopeError;
                 }
+                var pinned = await PinAuthorityAsync<RelationshipQuerySetResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
                 var result = options.Scope == IndexQueryScope.Game
@@ -359,6 +371,10 @@ public sealed class CodeSymbolTools
                 {
                     return scopeError;
                 }
+                var pinned = await PinAuthorityAsync<RelationshipQuerySetResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
                 var result = options.Scope == IndexQueryScope.Game
@@ -379,6 +395,74 @@ public sealed class CodeSymbolTools
     }
 
     private enum RelationshipDirection { References, Callers, Callees }
+
+    private async Task<ScopedAuthority<T>> PinAuthorityAsync<T>(
+        S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+        string? requestedBuildId,
+        IndexQueryOptions options,
+        CancellationToken ct) where T : class
+    {
+        if (options.Scope == IndexQueryScope.Game)
+            return new(authority, null);
+
+        var collection = await _services.ReferenceModQueryService.GetCollectionAuthorityAsync(
+            options.ReferenceCollection!,
+            ct);
+        if (collection is null)
+        {
+            return new(
+                authority,
+                ToolEnvelope<T>.NotFound(
+                    EnvelopeMapper.BuildFrom(authority),
+                    new ToolError("NoCompletedIndex", "No completed reference collection exists for the requested scope."),
+                    new ProvenanceEntry(ProvenanceClassification.Derived, "reference-collection-selection", null, null, null)));
+        }
+
+        var baseAuthority = await _services.AuthorityResolver.ResolveAsync(collection.BuildId, ct);
+        if (baseAuthority.Status != S1Atlas.Application.Authority.InstalledBuildAuthorityStatus.Resolved)
+            return new(baseAuthority, AuthorityEnvelope.From<T>(baseAuthority));
+
+        if (!string.IsNullOrWhiteSpace(requestedBuildId) &&
+            !string.Equals(requestedBuildId, collection.BuildId, StringComparison.Ordinal))
+        {
+            return new(
+                baseAuthority,
+                ToolEnvelope<T>.Invalid(
+                    new ToolError(
+                        "ReferenceCollectionBuildMismatch",
+                        "The requested build does not match the reference collection's recorded base build."),
+                    EnvelopeMapper.BuildFrom(baseAuthority),
+                    new ProvenanceEntry(
+                        ProvenanceClassification.Fact,
+                        "reference-collection-base",
+                        collection.BuildId,
+                        baseAuthority.ExtractionId,
+                        collection.BaseIndexId)));
+        }
+
+        if (!string.Equals(baseAuthority.IndexId, collection.BaseIndexId, StringComparison.Ordinal))
+        {
+            return new(
+                baseAuthority,
+                ToolEnvelope<T>.Invalid(
+                    new ToolError(
+                        "ReferenceCollectionBaseIndexMismatch",
+                        "The reference collection's recorded base index is not the authoritative index for its build."),
+                    EnvelopeMapper.BuildFrom(baseAuthority),
+                    new ProvenanceEntry(
+                        ProvenanceClassification.Fact,
+                        "reference-collection-base",
+                        collection.BuildId,
+                        baseAuthority.ExtractionId,
+                        collection.BaseIndexId)));
+        }
+
+        return new(baseAuthority, null);
+    }
+
+    private sealed record ScopedAuthority<T>(
+        S1Atlas.Application.Authority.InstalledBuildAuthority Authority,
+        ToolEnvelope<T>? Error) where T : class;
 
     private static class ToolArguments
     {

@@ -142,6 +142,75 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
+    public async Task<(string StaleIndexId, string NewestIndexId)> SeedTwoCompletedReferenceRunsAsync(string collection)
+    {
+        await _repository.InitializeAsync(CancellationToken.None);
+        await SeedCompletedReferenceCatalogRunAsync(
+            "reference-z-stale",
+            "reference-snapshot-z-stale",
+            collection,
+            "Stale",
+            "2026-08-28T00:01:00.0000000Z",
+            "2026-08-28T00:02:00.0000000Z");
+        await SeedCompletedReferenceCatalogRunAsync(
+            "reference-a-new",
+            "reference-snapshot-a-new",
+            collection,
+            "Fresh",
+            "2026-08-28T00:03:00.0000000Z",
+            "2026-08-28T00:04:00.0000000Z");
+        return ("reference-z-stale", "reference-a-new");
+    }
+
+    private async Task SeedCompletedReferenceCatalogRunAsync(
+        string indexId,
+        string snapshotId,
+        string collection,
+        string symbolName,
+        string startedAtUtc,
+        string completedAtUtc)
+    {
+        var symbolId = indexId + "-symbol";
+        await _repository.CreateCodeSnapshotAsync(
+            new CodeSnapshotRecord(
+                snapshotId,
+                CodebaseKind.ReferenceMod,
+                CodeChannel.Installed,
+                collection,
+                startedAtUtc),
+            CancellationToken.None);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, startedAtUtc),
+            CancellationToken.None);
+        await _repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(
+                [new IndexSymbolRecord(
+                    symbolId,
+                    snapshotId,
+                    "ReferenceMod:Installed:Method:qol/Qol.Mod::" + symbolName + "():System.Void",
+                    "Method",
+                    "qol/Qol.Mod::" + symbolName + "():System.Void",
+                    "qol/Qol.Mod::" + symbolName + "():System.Void",
+                    false)],
+                [],
+                [],
+                [],
+                [],
+                ReferenceIndexContext: new ReferenceIndexContextRecord(indexId, IndexId, BuildIdA),
+                ReferenceMods:
+                [new IndexReferenceModRecord(
+                    "qol",
+                    "Quality of Life",
+                    "1.0.0",
+                    "MIT",
+                    Path.Combine(DataRoot, "reference-input", collection),
+                    indexId + "-content",
+                    [symbolId])]),
+            completedAtUtc,
+            CancellationToken.None);
+    }
+
     public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(
         string buildId = BuildIdASeed,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)

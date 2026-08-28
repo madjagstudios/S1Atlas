@@ -243,6 +243,12 @@ public sealed record ReferenceCollectionListResult(
     int TotalCount,
     IReadOnlyList<ReferenceCollectionQueryResult> Collections);
 
+public sealed record ReferenceCollectionAuthorityQueryResult(
+    string Collection,
+    string ReferenceIndexId,
+    string BuildId,
+    string BaseIndexId);
+
 public sealed record ReferenceCollectionQueryResult(
     string Collection,
     string IndexId,

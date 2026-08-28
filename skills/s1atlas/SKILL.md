@@ -58,7 +58,9 @@ own answer or decision record, never write a citation back to Atlas.
    `find_references`, `find_callers`, `find_callees`, and
    `find_related_types`. Add the reference scope/collection when needed.
    Preserve the reported direction, resolution status, origin, and
-   completeness boundary.
+   completeness boundary. `reference` is isolated to the selected collection;
+   use `all` explicitly when a recorded game endpoint or game relationship is
+   part of the evidence.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
    `scene`, `gameobject`, `prefab`, and `component`, or MCP `list_scenes`,
    `get_scene`, `get_gameobject`, `get_prefab`, and `get_component`. For

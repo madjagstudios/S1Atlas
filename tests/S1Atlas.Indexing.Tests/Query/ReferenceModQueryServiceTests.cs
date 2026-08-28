@@ -227,7 +227,7 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Reference_relationships_cross_to_recorded_game_index_and_keep_unresolved_text()
+    public async Task Reference_relationships_are_isolated_and_all_scope_can_cross_to_recorded_game_index()
     {
         var fixture = await SeedAsync("relationships", "Relationships");
         var service = new ReferenceModQueryService(_repository, _dataRoot);
@@ -235,17 +235,31 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
 
         var callees = await service.CalleesAsync("qol/Qol.Mod::Run():System.Void", options, TestContext.Current.CancellationToken);
         var edge = Assert.Single(callees.Relationships);
-        Assert.Equal("game", edge.Target.Origin);
+        Assert.Null(edge.Target.Origin);
         Assert.Equal(fixture.GameSymbolId, edge.Target.SymbolId);
-        Assert.True(edge.Target.Resolved);
+        Assert.False(edge.Target.Resolved);
 
         var callers = await service.CallersAsync(
             fixture.GameSymbolId,
             options,
             TestContext.Current.CancellationToken);
-        var caller = Assert.Single(callers.Relationships);
+        Assert.Equal(SymbolResolutionStatus.NotFound, callers.Resolution.Status);
+        Assert.Empty(callers.Relationships);
+
+        var all = options with { Scope = IndexQueryScope.All };
+        var allCallers = await service.CallersAsync(
+            fixture.GameSymbolId,
+            all,
+            TestContext.Current.CancellationToken);
+        var caller = Assert.Single(allCallers.Relationships);
         Assert.Equal("reference", caller.Source.Origin);
         Assert.Equal("qol", caller.Source.ReferenceModId);
+
+        var allCallees = await service.CalleesAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            all,
+            TestContext.Current.CancellationToken);
+        Assert.Equal("game", Assert.Single(allCallees.Relationships).Target.Origin);
 
         var unresolved = await service.CalleesAsync("qol/Qol.Mod::Unresolved():System.Void", options, TestContext.Current.CancellationToken);
         var unresolvedEdge = Assert.Single(unresolved.Relationships);

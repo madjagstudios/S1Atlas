@@ -33,19 +33,7 @@ public sealed class ReferenceModQueryService
             return NoCompletedIndex();
 
         var reference = await ResolveInIndexAsync(selection, selector, cancellationToken);
-        if (reference.Status != SymbolResolutionStatus.NotFound)
-            return reference;
-
-        var gameRun = await _repository.GetCompletedIndexAsync(selection.Context.GameIndexId, cancellationToken);
-        if (gameRun is null)
-            return NoCompletedIndex();
-        var game = await _symbolResolver.ResolveAsync(
-            gameRun.IndexId,
-            selector,
-            CodebaseKind.ScheduleI,
-            CodeChannel.Installed,
-            cancellationToken);
-        return DecorateGameResolution(game, selection.Collection);
+        return reference;
     }
 
     public async Task<SymbolSearchResult> SearchAsync(
@@ -94,23 +82,7 @@ public sealed class ReferenceModQueryService
 
         var resolution = await ResolveInIndexAsync(selection, selector, cancellationToken);
         if (resolution.Status == SymbolResolutionStatus.NotFound)
-        {
-            var game = await ResolveAsync(selector, options, cancellationToken);
-            if (game.Status != SymbolResolutionStatus.Resolved || game.Symbol is null)
-                return new SourceSnippetResolutionResult(game, null);
-            var gameResult = await new IndexQueryService(_repository, _dataRoot).SourceAsync(
-                selector,
-                new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed),
-                context,
-                cancellationToken);
-            return gameResult with
-            {
-                Resolution = game,
-                Snippet = gameResult.Snippet is null
-                    ? null
-                    : gameResult.Snippet with { Symbol = game.Symbol }
-            };
-        }
+            return new SourceSnippetResolutionResult(resolution, null);
         if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
             return new SourceSnippetResolutionResult(resolution, null);
 
@@ -245,14 +217,35 @@ public sealed class ReferenceModQueryService
                 mods));
         }
 
+        // GetCompletedReferenceIndexesAsync returns each collection in completion order.
+        // Preserve that repository ordering so catalog selection matches query-by-name.
         var unique = collections
             .GroupBy(collection => collection.Collection, StringComparer.Ordinal)
-            .Select(group => group
-                .OrderByDescending(collection => collection.IndexId, StringComparer.Ordinal)
-                .First())
+            .Select(group => group.First())
             .OrderBy(collection => collection.Collection, StringComparer.Ordinal)
             .ToArray();
         return new ReferenceCollectionListResult(unique.Length, unique);
+    }
+
+    public async Task<ReferenceCollectionAuthorityQueryResult?> GetCollectionAuthorityAsync(
+        string collection,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(collection);
+        var selection = await RequireSelectionAsync(
+            new IndexQueryOptions(
+                CodebaseKind.ReferenceMod,
+                CodeChannel.Installed,
+                Scope: IndexQueryScope.Reference,
+                ReferenceCollection: collection),
+            cancellationToken);
+        return selection is null
+            ? null
+            : new ReferenceCollectionAuthorityQueryResult(
+                selection.Collection,
+                selection.Run.IndexId,
+                selection.Context.BuildId,
+                selection.Context.GameIndexId);
     }
 
     internal async Task<IndexSelection> RequireSelectionForFederationAsync(IndexQueryOptions options, CancellationToken cancellationToken) =>
@@ -271,13 +264,23 @@ public sealed class ReferenceModQueryService
 
         var resolution = await ResolveInIndexAsync(selection, selector, cancellationToken);
         var selectedIsGame = false;
-        if (resolution.Status == SymbolResolutionStatus.NotFound)
+        if (resolution.Status == SymbolResolutionStatus.NotFound && options.Scope == IndexQueryScope.All)
         {
-            var game = await ResolveAsync(selector, options, cancellationToken);
-            if (game.Status != SymbolResolutionStatus.Resolved || game.Symbol is null)
-                return new RelationshipQuerySetResult(game, [], null, mode == RelationshipMode.Callers, string.Empty);
-            resolution = game;
-            selectedIsGame = true;
+            var gameRun = await _repository.GetCompletedIndexAsync(selection.Context.GameIndexId, cancellationToken);
+            if (gameRun is not null)
+            {
+                var game = await _symbolResolver.ResolveAsync(
+                    gameRun.IndexId,
+                    selector,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    cancellationToken);
+                if (game.Status == SymbolResolutionStatus.Resolved && game.Symbol is not null)
+                {
+                    resolution = DecorateGameResolution(game);
+                    selectedIsGame = true;
+                }
+            }
         }
         if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
             return new RelationshipQuerySetResult(resolution, [], null, mode == RelationshipMode.Callers, string.Empty);
@@ -308,7 +311,7 @@ public sealed class ReferenceModQueryService
         BodyRecoveryStatus? bodyStatus = selectedRecord is not null && IsCallable(selectedRecord.Kind)
             ? selectedRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
-        var relationships = await MapRelationshipsAsync(selection, edges, cancellationToken);
+        var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken);
         return new RelationshipQuerySetResult(
             resolution,
             relationships,
@@ -329,6 +332,7 @@ public sealed class ReferenceModQueryService
     private async Task<IReadOnlyList<RelationshipQueryResult>> MapRelationshipsAsync(
         IndexSelection selection,
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> edges,
+        bool includeGameEndpoints,
         CancellationToken cancellationToken)
     {
         var ids = edges.SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
@@ -337,7 +341,9 @@ public sealed class ReferenceModQueryService
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var referenceSymbols = await _repository.GetCompletedSymbolsByIdsAsync(selection.Run.IndexId, ids, cancellationToken);
-        var gameSymbols = await _repository.GetCompletedSymbolsByIdsAsync(selection.Context.GameIndexId, ids, cancellationToken);
+        var gameSymbols = includeGameEndpoints
+            ? await _repository.GetCompletedSymbolsByIdsAsync(selection.Context.GameIndexId, ids, cancellationToken)
+            : [];
         var referenceById = referenceSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
         var gameById = gameSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
         return edges
@@ -459,7 +465,7 @@ public sealed class ReferenceModQueryService
         return sourceFile is null ? (null, null) : (sourceFile.RelativePath, sourceFile.Sha256);
     }
 
-    private static SymbolResolutionResult DecorateGameResolution(SymbolResolutionResult result, string collection) =>
+    private static SymbolResolutionResult DecorateGameResolution(SymbolResolutionResult result) =>
         new(
             result.Status,
             result.Symbol is null ? null : result.Symbol with { Origin = "game", Collection = null },
@@ -512,4 +518,9 @@ public sealed class ReferenceModQueryService
         IReadOnlyList<IndexReferenceModRecord> Mods,
         IReadOnlyList<IndexSourceFileRecord> SourceFiles,
         IReadOnlyList<IndexSourceLocationRecord> SourceLocations);
+
+    internal async Task<IndexSelection?> GetSelectionForFederationAsync(
+        IndexQueryOptions options,
+        CancellationToken cancellationToken) =>
+        await RequireSelectionAsync(options, cancellationToken);
 }

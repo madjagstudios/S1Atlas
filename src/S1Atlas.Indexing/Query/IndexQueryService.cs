@@ -177,6 +177,18 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken) =>
         SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken);
 
+    public async Task<SymbolResolutionResult> ResolveInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        return (await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken)).Resolution;
+    }
+
     public async Task<IndexedSymbolPageResult> ListSymbolsInIndexAsync(
         IndexRunRecord run, CodebaseKind codebase, CodeChannel channel,
         IndexPageRequest page, CancellationToken cancellationToken)

@@ -100,7 +100,7 @@ public sealed class ReferenceModCliTests
 
         var game = atlas.Run("search", "Alpha", "--scope", "game", "--json");
         var reference = atlas.Run("search", "Selected", "--scope", "reference", "--collection", "qol", "--json");
-        var all = atlas.Run("search", "Beta", "--scope", "all", "--collection", "qol", "--json");
+        var all = atlas.Run("search", "Alpha", "--scope", "all", "--collection", "qol", "--json");
 
         Assert.Equal(0, game.ExitCode);
         Assert.Equal(0, reference.ExitCode);

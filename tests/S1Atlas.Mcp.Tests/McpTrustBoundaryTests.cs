@@ -123,6 +123,54 @@ public sealed class McpTrustBoundaryTests
     }
 
     [Fact]
+    public async Task StdioReferenceScopeDoesNotFallThroughForGameOnlySelectors()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var reference = await atlas.SeedReferenceCollectionAsync("qol");
+        var cases = new Dictionary<string, Dictionary<string, object?>>
+        {
+            ["get_source"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["context"] = 0,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            },
+            ["find_callers"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            },
+            ["find_callees"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            },
+            ["find_references"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            }
+        };
+
+        foreach (var (tool, arguments) in cases)
+        {
+            var serialized = await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, tool, arguments);
+            using var result = JsonDocument.Parse(serialized);
+            var root = result.RootElement;
+            Assert.NotEqual("resolved", root.GetProperty("status").GetString());
+            Assert.DoesNotContain("\"origin\":\"game\"", serialized, StringComparison.Ordinal);
+            Assert.True(!root.TryGetProperty("data", out var data) || data.ValueKind is JsonValueKind.Null);
+        }
+    }
+
+    [Fact]
     public async Task CallableSurface_RemainsScheduleIOnly()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();

@@ -33,7 +33,18 @@ public sealed class FederatedIndexQueryService
         if (options.Scope == IndexQueryScope.Reference)
             return await _reference.SearchAsync(query, options with { Scope = IndexQueryScope.Reference }, cancellationToken, kind);
 
-        var game = await _game.SearchAsync(query, GameOptions(options, int.MaxValue), cancellationToken, kind);
+        var selection = await _reference.GetSelectionForFederationAsync(options, cancellationToken);
+        if (selection is null)
+            return new SymbolSearchResult(0, 0, [], SymbolResolutionStatus.NoCompletedIndex);
+
+        var game = await _game.SearchInIndexAsync(
+            selection.GameRun,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            query,
+            int.MaxValue,
+            kind,
+            cancellationToken);
         var reference = await _reference.SearchAsync(query, options with { Scope = IndexQueryScope.Reference, Limit = int.MaxValue }, cancellationToken, kind);
         var results = MergeSymbols(game.Results.Concat(reference.Results), query, options.Limit);
         SymbolResolutionStatus? status = results.Length > 0
@@ -56,7 +67,16 @@ public sealed class FederatedIndexQueryService
         if (options.Scope == IndexQueryScope.Reference)
             return await _reference.ResolveAsync(selector, options, cancellationToken);
 
-        var game = await _gameResolution(selector, options, cancellationToken);
+        var selection = await _reference.GetSelectionForFederationAsync(options, cancellationToken);
+        if (selection is null)
+            return new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []);
+
+        var game = await _game.ResolveInIndexAsync(
+            selection.GameRun,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            selector,
+            cancellationToken);
         var reference = await _reference.ResolveAsync(selector, options with { Scope = IndexQueryScope.Reference }, cancellationToken);
         var candidates = MergeSymbols(
             (game.Status == SymbolResolutionStatus.Ambiguous ? game.Candidates : game.Symbol is null ? [] : [game.Symbol])
@@ -83,12 +103,28 @@ public sealed class FederatedIndexQueryService
         CancellationToken cancellationToken)
     {
         ValidateOptions(options);
+        var selection = options.Scope == IndexQueryScope.Game
+            ? null
+            : await _reference.GetSelectionForFederationAsync(options, cancellationToken);
+        if (options.Scope != IndexQueryScope.Game && selection is null)
+            return new SourceSnippetResolutionResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
+                null);
+
         var resolution = await ResolveAsync(selector, options, cancellationToken);
         if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
             return new SourceSnippetResolutionResult(resolution, null);
         return resolution.Symbol.Origin == "reference"
             ? await _reference.SourceAsync(selector, options with { Scope = IndexQueryScope.Reference }, context, cancellationToken)
-            : await _game.SourceAsync(selector, GameOptions(options, options.Limit), context, cancellationToken);
+            : selection is null
+                ? await _game.SourceAsync(selector, GameOptions(options, options.Limit), context, cancellationToken)
+                : await _game.SourceInIndexAsync(
+                    selection.GameRun,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    selector,
+                    context,
+                    cancellationToken);
     }
 
     public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
@@ -106,6 +142,17 @@ public sealed class FederatedIndexQueryService
         RelationshipKind kind,
         CancellationToken cancellationToken)
     {
+        var selection = options.Scope == IndexQueryScope.All
+            ? await _reference.GetSelectionForFederationAsync(options, cancellationToken)
+            : null;
+        if (options.Scope == IndexQueryScope.All && selection is null)
+            return new RelationshipQuerySetResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
+                [],
+                null,
+                kind == RelationshipKind.Callers,
+                "no completed reference collection");
+
         var resolution = await ResolveAsync(selector, options, cancellationToken);
         if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
             return new RelationshipQuerySetResult(resolution, [], null, kind == RelationshipKind.Callers, string.Empty);
@@ -113,27 +160,39 @@ public sealed class FederatedIndexQueryService
         if (resolution.Symbol.Origin == "reference")
             return await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
 
-        var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken);
+        var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken, selection?.GameRun);
         if (options.Scope != IndexQueryScope.All || string.IsNullOrWhiteSpace(options.ReferenceCollection))
             return game;
         var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
         return MergeRelationships(resolution, game, reference, kind);
     }
 
-    private Task<RelationshipQuerySetResult> GameRelationshipsAsync(string selector, IndexQueryOptions options, RelationshipKind kind, CancellationToken cancellationToken) =>
-        kind switch
-        {
-            RelationshipKind.Refs => _game.RefsAsync(selector, GameOptions(options, options.Limit), cancellationToken),
-            RelationshipKind.Callers => _game.CallersAsync(selector, GameOptions(options, options.Limit), cancellationToken),
-            _ => _game.CalleesAsync(selector, GameOptions(options, options.Limit), cancellationToken)
-        };
+    private Task<RelationshipQuerySetResult> GameRelationshipsAsync(
+        string selector,
+        IndexQueryOptions options,
+        RelationshipKind kind,
+        CancellationToken cancellationToken,
+        IndexRunRecord? pinnedRun = null) =>
+        pinnedRun is null
+            ? kind switch
+            {
+                RelationshipKind.Refs => _game.RefsAsync(selector, GameOptions(options, options.Limit), cancellationToken),
+                RelationshipKind.Callers => _game.CallersAsync(selector, GameOptions(options, options.Limit), cancellationToken),
+                _ => _game.CalleesAsync(selector, GameOptions(options, options.Limit), cancellationToken)
+            }
+            : kind switch
+            {
+                RelationshipKind.Refs => _game.RefsInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken),
+                RelationshipKind.Callers => _game.CallersInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken),
+                _ => _game.CalleesInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken)
+            };
 
     private Task<RelationshipQuerySetResult> ReferenceRelationshipsAsync(string selector, IndexQueryOptions options, RelationshipKind kind, CancellationToken cancellationToken) =>
         kind switch
         {
-            RelationshipKind.Refs => _reference.RefsAsync(selector, options with { Scope = IndexQueryScope.Reference }, cancellationToken),
-            RelationshipKind.Callers => _reference.CallersAsync(selector, options with { Scope = IndexQueryScope.Reference }, cancellationToken),
-            _ => _reference.CalleesAsync(selector, options with { Scope = IndexQueryScope.Reference }, cancellationToken)
+            RelationshipKind.Refs => _reference.RefsAsync(selector, options, cancellationToken),
+            RelationshipKind.Callers => _reference.CallersAsync(selector, options, cancellationToken),
+            _ => _reference.CalleesAsync(selector, options, cancellationToken)
         };
 
     private static RelationshipQuerySetResult MergeRelationships(

@@ -326,8 +326,12 @@ dotnet run --project src/S1Atlas.Cli -- refs "ModEntry.Run" --scope reference --
 The default scope is `game`, preserving the Schedule I behavior. `reference`
 and `all` require a collection; `game` rejects one. `type`, `method`, and
 `callable` remain their existing game/API convenience surfaces. Reference
-results preserve their collection and mod provenance, recorded Schedule I base
-index, ambiguity, unresolved targets, and incomplete/no-completed states.
+scope never falls through to the recorded game index for a game-only selector;
+`all` is the explicit cross-origin mode. Reference results preserve their
+collection and mod provenance, recorded Schedule I base index, ambiguity,
+unresolved targets, and incomplete/no-completed states. Federated MCP queries
+use that recorded base index; an explicit `buildId` that differs from the
+collection base is rejected deterministically.
 Source and indexed document content remain bounded and are returned only after
 the recorded content hash is checked.
 

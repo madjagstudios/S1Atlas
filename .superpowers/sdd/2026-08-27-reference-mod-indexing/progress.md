@@ -65,6 +65,15 @@
 - Existing code-map check reports nine generator-version mismatches; no unrelated code-map regeneration was included.
 - Detailed report: `.superpowers/sdd/2026-08-27-reference-mod-indexing/task-5-report.md`.
 
+## Task 6 review fix round 1
+
+- Cicero Important 1 fixed: collection catalogs preserve repository completion ordering, so the newest completed run is advertised and agrees with collection-name query selection.
+- Cicero Important 2 fixed: `reference` source and relationship queries are isolated to the selected reference index; game endpoint lookup is explicit to `all` federation only. Game-only selector regressions cover source, callers, callees, and refs through stdio.
+- Cicero Important 3 fixed: federated game legs and MCP envelope authority are pinned to the collection's recorded Schedule I base; explicit build mismatches return `ReferenceCollectionBuildMismatch` deterministically.
+- RED: the new review regressions failed for stale catalog selection, latest-build leakage, resolved game-only reference scope, and game endpoint decoration under `reference`.
+- GREEN: focused MCP review regressions 3/3, isolated Indexing regression 1/1, full MCP 78/78, full Indexing 235/235, affected CLI regression 1/1, isolated installer rerun 1/1, and final full solution 1,321/1,321 passed. An intermediate stdio process-lock and the known temporary-directory installer flake were isolated; repository-wide format retains four pre-existing `ReferenceModFileSelector.cs` whitespace diagnostics.
+- Detailed report: `.superpowers/sdd/2026-08-27-reference-mod-indexing/task-6-report.md`.
+
 ### Task 5 review fix round 1
 
 - Peirce Important 1 fixed: reference workflow returns measured combined initial/post-read hash duration; CLI JSON and human output include `InputHashMilliseconds`/`hash ...ms` without affecting other workflow callers.
