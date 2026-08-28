@@ -210,6 +210,51 @@ public sealed class ReferenceModQueryService
             .ToArray();
     }
 
+    public async Task<ReferenceCollectionListResult> ListCollectionsAsync(
+        CancellationToken cancellationToken)
+    {
+        var collections = new List<ReferenceCollectionQueryResult>();
+        foreach (var run in await _repository.GetCompletedReferenceIndexesAsync(cancellationToken))
+        {
+            var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
+            var context = await _repository.GetReferenceIndexContextAsync(run.IndexId, cancellationToken);
+            if (snapshot is null ||
+                context is null ||
+                snapshot.Codebase != CodebaseKind.ReferenceMod ||
+                snapshot.Channel != CodeChannel.Installed)
+            {
+                continue;
+            }
+
+            var mods = (await _repository.GetCompletedReferenceModsAsync(run.IndexId, cancellationToken))
+                .OrderBy(mod => mod.ModId, StringComparer.Ordinal)
+                .Select(mod => new ReferenceCollectionModQueryResult(
+                    mod.ModId,
+                    mod.DisplayName,
+                    mod.Version,
+                    mod.License,
+                    mod.ContentSha256))
+                .ToArray();
+            collections.Add(new ReferenceCollectionQueryResult(
+                snapshot.SourceIdentity,
+                run.IndexId,
+                run.SnapshotId,
+                context.BuildId,
+                context.GameIndexId,
+                mods.Length,
+                mods));
+        }
+
+        var unique = collections
+            .GroupBy(collection => collection.Collection, StringComparer.Ordinal)
+            .Select(group => group
+                .OrderByDescending(collection => collection.IndexId, StringComparer.Ordinal)
+                .First())
+            .OrderBy(collection => collection.Collection, StringComparer.Ordinal)
+            .ToArray();
+        return new ReferenceCollectionListResult(unique.Length, unique);
+    }
+
     internal async Task<IndexSelection> RequireSelectionForFederationAsync(IndexQueryOptions options, CancellationToken cancellationToken) =>
         await RequireSelectionAsync(options, cancellationToken) ?? throw new InvalidOperationException("No completed reference collection is available.");
 

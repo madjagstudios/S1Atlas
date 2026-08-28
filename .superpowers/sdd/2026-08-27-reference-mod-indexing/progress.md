@@ -26,6 +26,13 @@
 - Task 2: completed — implementation `0709483`, review fix `7e025fe`; initial review found three Important findings and fix round 1 addressed all three. Scoped re-review found no new Critical/Important breakage. Focused ReferenceMod suite passed 20/20.
 - Task 3: completed — implementation `2e8af6a`, review fix `17686f0`; initial review found one Critical and two Important findings, and fix round 1 addressed all three. Scoped re-review approved with no new Critical/Important breakage. Focused suite passed 6/6; Indexing 216/216; Storage 142/142. One parallel integration fixture failure passed in isolation and was not changed.
 - Task 4: completed — implementation `59c03a7` plus review fix rounds 1–2; current focused query/provenance tests passed 32/32, indexing 235/235, storage 142/142, core 127/127, full solution 1,294/1,294, and isolated IntegrationTests 161/161. Fix rounds cover game-scope federation isolation, location-backed multi-assembly source provenance, bounded document reads, codebase-derived origins, cross-origin/dedup/collection coverage, and reparse-point safety. The known intermittent ManagedToolCli parallel-suite flake is documented in `task-4-report.md`. No CLI, MCP, or docs-surface code was added.
+- Task 5: completed — implementation `e7fb606`, review fix `55efc6e`; initial review found three Important findings and fix round 1 addressed all three. Scoped re-review approved with no new Critical/Important breakage. Focused CLI passed 19/19; Integration 180/180; serial full solution 1,313/1,313; build clean. Four formatter diagnostics remain pre-existing in `ReferenceModFileSelector.cs`, outside the Task 5 diff.
+- Task 6: completed — read-only MCP reference collection listing and scoped
+  symbol/source/relationship queries are implemented; public usage docs and
+  the S1Atlas skill document the local-only boundary and AT-24/AT-25/AT-26
+  orthogonality. Focused MCP contract tests passed 7/7 and the full solution
+  passed 1,318/1,318. Detailed report:
+  `.superpowers/sdd/2026-08-27-reference-mod-indexing/task-6-report.md`.
 
 ## Task 3 review checkpoint
 
@@ -41,6 +48,12 @@
 - Resource safety: completed-reference document queries apply SQL limits before content materialization; reference roots use ancestor reparse-point validation.
 - Origin correctness: Schedule I is `game`; S1API/S1MAPI results retain nullable non-game origin.
 - Review verdict: approved by Zeno after review fix rounds `a27046d` and `ac69e3c`, with only Minor source-location preload and test-strength observations.
+
+## Task 5 review checkpoint
+
+- CLI collection commands, scope/collection routing, offline indexing, and JSON path hygiene are covered by real integration tests.
+- Hash timing now reports the measured combined pre/post passes; collection provenance is canonical across name and index-ID selectors.
+- Review verdict: approved by Peirce after fix round `55efc6e`; no Critical/Important issues remain. The four whole-solution format diagnostics are pre-existing and outside this diff.
 
 ## Task 5 status
 

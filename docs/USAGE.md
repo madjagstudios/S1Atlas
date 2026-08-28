@@ -298,6 +298,46 @@ scan-or-migration-first error for a missing or wrong-schema database without
 creating or migrating it. The default output is `./s1atlas-docs/`; open its
 `index.html` in any browser.
 
+## Reference collections
+
+Reference mods are user-supplied local inputs. A manifest is the explicit
+selection boundary: S1Atlas reads only the declared roots and selected files,
+does not discover or download mods, and does not certify compatibility, safety,
+or redistribution rights. Validate and index a collection from the CLI:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- reference collections validate <manifest>
+dotnet run --project src/S1Atlas.Cli -- reference index <manifest>
+dotnet run --project src/S1Atlas.Cli -- reference collections list --json
+```
+
+Reference indexing is an explicit offline CLI operation. Query commands accept
+`--scope game|reference|all` and `--collection <name-or-id>` for `search`,
+`source`, `refs`, `callers`, and `callees`:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- search "ModEntry" --scope reference --collection qol
+dotnet run --project src/S1Atlas.Cli -- source "ModEntry.Run" --scope all --collection qol
+dotnet run --project src/S1Atlas.Cli -- callers "Game.Target.Run" --scope all --collection qol
+dotnet run --project src/S1Atlas.Cli -- callees "ModEntry.Run" --scope reference --collection qol
+dotnet run --project src/S1Atlas.Cli -- refs "ModEntry.Run" --scope reference --collection qol
+```
+
+The default scope is `game`, preserving the Schedule I behavior. `reference`
+and `all` require a collection; `game` rejects one. `type`, `method`, and
+`callable` remain their existing game/API convenience surfaces. Reference
+results preserve their collection and mod provenance, recorded Schedule I base
+index, ambiguity, unresolved targets, and incomplete/no-completed states.
+Source and indexed document content remain bounded and are returned only after
+the recorded content hash is checked.
+
+AT-24 body recovery, AT-25 callable-surface evidence, and AT-26 reference
+evidence are orthogonal. Body recovery describes whether decompiled text is
+behavioral evidence; callable surface describes how a Schedule I game member
+can be reached through the local interop projection; reference collections are
+local prior-art evidence. None of these labels certifies a reference mod's
+compatibility, safety, or licensing.
+
 ## Read-only MCP server
 
 Launch the MCP server as a separate executable over stdio:
@@ -313,12 +353,21 @@ database and all Atlas-owned data together. MCP opens the existing database in
 read-only mode; it does not create the root or database, run migrations, or
 change stored data.
 
-V1 exposes only the Schedule I `Installed` surface through these tools:
+The read-only server exposes the Schedule I `Installed` surface and completed
+local reference collections through these tools:
 
 `search_symbols`, `get_type`, `get_method`, `get_source`, `find_callers`,
 `find_references`, `find_related_types`, `compare_symbol`, `list_builds`,
 `get_environment`, `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`,
-and `get_component`.
+and `get_component`, plus `list_reference_collections` and `find_callees`.
+
+`search_symbols`, `get_source`, `find_callers`, `find_callees`,
+`find_references`, and `find_related_types` accept optional `scope` and
+`collection` arguments. `scope` defaults to `game`; `reference` and `all`
+require `collection`, while `game` rejects it. `list_reference_collections`
+reports completed collections, their recorded base index/build, and local-only
+mod metadata. `get_type`, `get_method`, and `get_callable_surface` retain their
+Schedule I-only behavior.
 
 Every symbol and scene query resolves an omitted `buildId` from the current
 environment, while an explicit build ID is used exactly and never silently
@@ -345,10 +394,12 @@ labeled `DERIVED`. Expected failures use stable domain codes such as
 Unexpected failures are logged to stderr and
 returned as safe MCP tool errors without stack traces or raw storage details.
 
-MCP has no write, patch, network, or game-execution capability. It does not
+MCP has no write, patch, network, indexing, or game-execution capability. It does not
 install tools, run extraction, launch a game or external process, sync
-upstream data, or expose S1API/S1MAPI channels. Source and scene results read
-only already-indexed Atlas-owned files with existing integrity checks.
+upstream data, or expose S1API/S1MAPI channels. Reference indexing remains a
+CLI-only operation. Source and scene results read only already-indexed
+Atlas-owned files with existing integrity checks; reference source/document
+results are bounded and retain local-only provenance.
 
 ## Agent skill
 

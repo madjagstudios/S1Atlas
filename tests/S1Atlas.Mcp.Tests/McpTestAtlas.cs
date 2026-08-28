@@ -2,14 +2,19 @@ using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.ReferenceMods;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Manifests;
+using S1Atlas.Indexing.Decompilation;
+using S1Atlas.Indexing.ReferenceMods;
+using S1Atlas.Indexing.Workflow;
 using S1Atlas.Storage.Sqlite;
 using System.Security.Cryptography;
 using System.Text;
+using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
 
@@ -71,6 +76,71 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string GameObjectSelector => "Downtown Root";
     public string PrefabSelector => "Dealer Prefab";
     public string ComponentSelector => "DealerController";
+
+    public async Task<ReferenceSeed> SeedReferenceCollectionAsync(string collection)
+    {
+        var modRoot = Path.Combine(DataRoot, "reference-input", collection);
+        Directory.CreateDirectory(Path.Combine(modRoot, "plugins"));
+        Directory.CreateDirectory(Path.Combine(modRoot, "docs"));
+        var assemblyPath = Path.Combine(modRoot, "plugins", "QolMod.dll");
+        await File.WriteAllTextAsync(assemblyPath, "fixture assembly", CancellationToken.None);
+        await File.WriteAllTextAsync(Path.Combine(modRoot, "docs", "README.md"), new string('x', 20_000), CancellationToken.None);
+
+        var decompilation = new ManagedDecompilation(
+            assemblyPath,
+            "namespace Qol; public class Mod { public void Run() {} }",
+            [new ManagedTypeFacts(
+                "Qol.Mod",
+                "Qol",
+                "Mod",
+                null,
+                [],
+                [new ManagedMemberFacts(
+                    "Run",
+                    ManagedMemberKind.Method,
+                    "Run",
+                    true,
+                    [new ManagedReferenceFact(ManagedReferenceKind.Calls, MethodSelector)],
+                    [],
+                    "System.Void")])]);
+        var definition = new ReferenceCollectionDefinition(
+            BuildIdA,
+            IndexId,
+            [new ReferenceModDefinition(
+                "qol",
+                "Quality of Life",
+                "1.0.0",
+                "MIT",
+                modRoot,
+                "declared-content",
+                ["plugins/**", "docs/**"])],
+            collection,
+            "Quality of Life");
+        var workflow = new ReferenceModIndexWorkflow(
+            DataRoot,
+            _repository,
+            new ReferenceModFileSelector(),
+            new ReferenceModInputHasher(),
+            new ReferenceModIndexSource(new FixtureDecompiler(decompilation)),
+            new ReferenceGameSymbolLoader(_repository));
+        var result = await workflow.RunAsync(BuildIdA, definition, false, CancellationToken.None);
+        return new ReferenceSeed(collection, result.IndexId);
+    }
+
+    public async Task AddReferenceSourceLocationAsync(ReferenceSeed reference)
+    {
+        var symbol = Assert.Single(
+            await _repository.GetCompletedSymbolsAsync(reference.IndexId, CancellationToken.None),
+            candidate => candidate.Signature.Contains("::Run", StringComparison.Ordinal));
+        var sourceFile = Assert.Single(await _repository.GetCompletedSourceFilesAsync(reference.IndexId, CancellationToken.None));
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(DataRoot, "atlas.db")}");
+        await connection.OpenAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO source_locations(symbol_id, source_file_id, start_line, start_column, end_line, end_column) VALUES ($symbol, $file, 1, 1, 1, 1);";
+        command.Parameters.AddWithValue("$symbol", symbol.SymbolId);
+        command.Parameters.AddWithValue("$file", sourceFile.SourceFileId);
+        await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
 
     public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(
         string buildId = BuildIdASeed,
@@ -254,6 +324,14 @@ internal sealed class McpTestAtlas : IAsyncDisposable
         Directory.CreateDirectory(DataRoot);
         await _repository.InitializeAsync(cancellationToken);
         await SeedToolInstanceAsync(cancellationToken);
+    }
+
+    public sealed record ReferenceSeed(string Collection, string IndexId);
+
+    private sealed class FixtureDecompiler(ManagedDecompilation decompilation) : IManagedDecompiler
+    {
+        public Task<ManagedDecompilation> DecompileAsync(string assemblyPath, CancellationToken cancellationToken) =>
+            Task.FromResult(decompilation with { AssemblyPath = assemblyPath });
     }
 
     private async Task SeedNonAuthoritativeCandidatesAsync()

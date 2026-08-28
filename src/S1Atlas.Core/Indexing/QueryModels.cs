@@ -239,6 +239,27 @@ public sealed record ReferenceModQueryResult(
     string? Origin = "reference",
     string Provenance = "LocalOnly");
 
+public sealed record ReferenceCollectionListResult(
+    int TotalCount,
+    IReadOnlyList<ReferenceCollectionQueryResult> Collections);
+
+public sealed record ReferenceCollectionQueryResult(
+    string Collection,
+    string IndexId,
+    string SnapshotId,
+    string BuildId,
+    string BaseIndexId,
+    int ModCount,
+    IReadOnlyList<ReferenceCollectionModQueryResult> Mods);
+
+public sealed record ReferenceCollectionModQueryResult(
+    string ModId,
+    string DisplayName,
+    string Version,
+    string? License,
+    string ContentSha256,
+    string Provenance = "LocalOnly");
+
 public sealed record ReferenceDocumentQueryResult(
     string ModId,
     string RelativePath,

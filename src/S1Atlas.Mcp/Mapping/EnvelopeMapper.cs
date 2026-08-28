@@ -130,6 +130,20 @@ public static class EnvelopeMapper
             Derived(authority, "search-ranking"));
     }
 
+    public static ToolEnvelope<SymbolSearchResult> FromScopedSearch(
+        InstalledBuildAuthority authority,
+        SymbolSearchResult result,
+        string? collection)
+    {
+        var envelope = result.ResolutionStatus == SymbolResolutionStatus.NoCompletedIndex
+            ? ToolEnvelope<SymbolSearchResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("NoCompletedIndex", "No completed index exists for the requested scope."),
+                Derived(authority, "index-selection"))
+            : FromSearch(authority, result);
+        return AddReferenceProvenance(envelope, authority, collection, result.Results);
+    }
+
     public static ToolEnvelope<SymbolQueryResult> FromFind(
         InstalledBuildAuthority authority,
         IReadOnlyList<SymbolQueryResult> results)
@@ -187,6 +201,16 @@ public static class EnvelopeMapper
         };
     }
 
+    public static ToolEnvelope<SourceSnippetQueryResult> FromScopedSource(
+        InstalledBuildAuthority authority,
+        SourceSnippetResolutionResult result,
+        string? collection) =>
+        AddReferenceProvenance(
+            FromSource(authority, result),
+            authority,
+            collection,
+            result.Resolution.Symbol is { } symbol ? [symbol] : result.Resolution.Candidates);
+
     public static ToolEnvelope<RelationshipQuerySetResult> FromRelationships(
         InstalledBuildAuthority authority,
         RelationshipQuerySetResult result)
@@ -214,6 +238,35 @@ public static class EnvelopeMapper
                 Derived(authority, "relationship-direction"))
         };
     }
+
+    public static ToolEnvelope<RelationshipQuerySetResult> FromScopedRelationships(
+        InstalledBuildAuthority authority,
+        RelationshipQuerySetResult result,
+        string? collection) =>
+        AddReferenceProvenance(
+            FromRelationships(authority, result),
+            authority,
+            collection,
+            (result.Resolution.Symbol is { } symbol ? new[] { symbol } : result.Resolution.Candidates)
+                .Concat(result.Relationships.SelectMany(edge => new[] { edge.Source, edge.Target })
+                .Where(endpoint => endpoint.Origin == "reference")
+                .Select(endpoint => new SymbolQueryResult(
+                    string.Empty,
+                    "ReferenceMod",
+                    "Installed",
+                    endpoint.SymbolId ?? string.Empty,
+                    string.Empty,
+                    endpoint.QualifiedName ?? string.Empty,
+                    endpoint.Signature ?? string.Empty,
+                    false,
+                    endpoint.Origin,
+                    endpoint.Collection,
+                    endpoint.ReferenceModId,
+                    endpoint.DisplayName,
+                    endpoint.Version,
+                    endpoint.License,
+                    endpoint.RelativePath,
+                    endpoint.Sha256))));
 
     public static ToolEnvelope<CallableSurfaceQueryResult> FromCallableSurface(
         InstalledBuildAuthority authority,
@@ -263,6 +316,30 @@ public static class EnvelopeMapper
             new ToolError("SourceUnavailable", "The indexed source is unavailable."),
             BuildFrom(authority),
             Derived(authority, "source-selection"));
+
+    private static ToolEnvelope<T> AddReferenceProvenance<T>(
+        ToolEnvelope<T> envelope,
+        InstalledBuildAuthority authority,
+        string? requestedCollection,
+        IEnumerable<SymbolQueryResult> symbols) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(requestedCollection))
+            return envelope;
+
+        var referenceIndexId = symbols
+            .Where(symbol => symbol.Origin == "reference")
+            .Select(symbol => symbol.IndexId)
+            .FirstOrDefault(indexId => !string.IsNullOrWhiteSpace(indexId));
+        var provenance = envelope.Provenance
+            .Append(new ProvenanceEntry(
+                ProvenanceClassification.Fact,
+                "reference-collection",
+                authority.ResolvedBuildId,
+                authority.ExtractionId,
+                referenceIndexId))
+            .ToArray();
+        return envelope with { Provenance = provenance };
+    }
 
     private static ProvenanceEntry Fact(InstalledBuildAuthority authority, string source) =>
         new(

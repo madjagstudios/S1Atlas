@@ -29,13 +29,15 @@ public sealed class CodeSymbolTools
         _services = services;
     }
 
-    [McpServerTool(Name = "search_symbols"), Description("Search the preferred, integrity-verified Schedule I code index for symbols.")]
+    [McpServerTool(Name = "search_symbols"), Description("Search the integrity-verified Schedule I game index or an explicitly selected local reference collection for symbols.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchSymbolsAsync(
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional symbol kind filter.")] string? kind = null,
         [Description("Max results (1-500).")] int limit = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -58,15 +60,27 @@ public sealed class CodeSymbolTools
                     return kindError;
                 }
 
-                var result = await _services.IndexQueryService.SearchInIndexAsync(
-                    authority.IndexRun!,
-                    CodebaseKind.ScheduleI,
-                    CodeChannel.Installed,
-                    query,
-                    boundedLimit,
-                    parsedKind,
-                    ct);
-                return EnvelopeMapper.FromSearch(authority, result);
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<SymbolSearchResult> scopeError))
+                {
+                    return scopeError;
+                }
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.SearchInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        query,
+                        boundedLimit,
+                        parsedKind,
+                        ct)
+                    : await _services.FederatedIndexQueryService.SearchAsync(
+                        query,
+                        options,
+                        ct,
+                        parsedKind);
+                return EnvelopeMapper.FromScopedSearch(authority, result, options.ReferenceCollection);
             });
     }
 
@@ -111,12 +125,14 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "get_source"), Description("Return integrity-checked source for one resolved Schedule I symbol.")]
+    [McpServerTool(Name = "get_source"), Description("Return integrity-checked source for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Source context lines before and after the selected span.")] int context = 5,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -134,16 +150,27 @@ public sealed class CodeSymbolTools
                     return contextError;
                 }
 
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<SourceSnippetQueryResult> scopeError))
+                {
+                    return scopeError;
+                }
+
                 try
                 {
-                    var result = await _services.IndexQueryService.SourceInIndexAsync(
-                        authority.IndexRun!,
-                        CodebaseKind.ScheduleI,
-                        CodeChannel.Installed,
-                        selector,
-                        boundedContext,
-                        ct);
-                    return EnvelopeMapper.FromSource(authority, result);
+                    var result = options.Scope == IndexQueryScope.Game
+                        ? await _services.IndexQueryService.SourceInIndexAsync(
+                            authority.IndexRun!,
+                            CodebaseKind.ScheduleI,
+                            CodeChannel.Installed,
+                            selector,
+                            boundedContext,
+                            ct)
+                        : await _services.FederatedIndexQueryService.SourceAsync(
+                            selector,
+                            options,
+                            boundedContext,
+                            ct);
+                    return EnvelopeMapper.FromScopedSource(authority, result, options.ReferenceCollection);
                 }
                 catch (InvalidDataException)
                 {
@@ -156,33 +183,49 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "find_callers"), Description("Find incoming call-like relationships for one resolved Schedule I symbol.")]
+    [McpServerTool(Name = "find_callers"), Description("Find incoming call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCallersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
-        CancellationToken ct = default) =>
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null) =>
         await FindRelationshipsAsync(
             selector,
             buildId,
             limit,
             ct,
-            static (service, run, selectorValue, boundedLimit, token) =>
-                service.CallersInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, selectorValue, boundedLimit, token));
+            scope,
+            collection,
+            RelationshipDirection.Callers);
 
-    [McpServerTool(Name = "find_references"), Description("Find incoming and outgoing relationships for one resolved Schedule I symbol.")]
+    [McpServerTool(Name = "find_callees"), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
+    public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
+        [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null) =>
+        await FindRelationshipsAsync(selector, buildId, limit, ct, scope, collection, RelationshipDirection.Callees);
+
+    [McpServerTool(Name = "find_references"), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
-        CancellationToken ct = default) =>
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null) =>
         await FindRelationshipsAsync(
             selector,
             buildId,
             limit,
             ct,
-            static (service, run, selectorValue, boundedLimit, token) =>
-                service.RefsInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, selectorValue, boundedLimit, token));
+            scope,
+            collection,
+            RelationshipDirection.References);
 
     [McpServerTool(Name = "find_related_types"), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
@@ -190,7 +233,9 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional type relationship kinds to include.")] string[]? relationKinds = null,
         [Description("Max results (1-500).")] int limit = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -217,13 +262,24 @@ public sealed class CodeSymbolTools
                     return kindError;
                 }
 
-                var result = await _services.IndexQueryService.RefsInIndexAsync(
-                    authority.IndexRun!,
-                    CodebaseKind.ScheduleI,
-                    CodeChannel.Installed,
-                    selector,
-                    500,
-                    ct);
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<RelationshipQuerySetResult> scopeError))
+                {
+                    return scopeError;
+                }
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.RefsInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        selector,
+                        500,
+                        ct)
+                    : await _services.FederatedIndexQueryService.RefsAsync(
+                        selector,
+                        options with { Limit = 500 },
+                        ct);
                 if (result.Resolution.Status == SymbolResolutionStatus.Resolved)
                 {
                     result = result with
@@ -235,7 +291,7 @@ public sealed class CodeSymbolTools
                     };
                 }
 
-                return EnvelopeMapper.FromRelationships(authority, result);
+                return EnvelopeMapper.FromScopedRelationships(authority, result, options.ReferenceCollection);
             });
     }
 
@@ -279,7 +335,9 @@ public sealed class CodeSymbolTools
         string? buildId,
         int limit,
         CancellationToken ct,
-        Func<S1Atlas.Indexing.Query.IndexQueryService, S1Atlas.Core.Storage.IndexRunRecord, string, int, CancellationToken, Task<RelationshipQuerySetResult>> query)
+        string? scope,
+        string? collection,
+        RelationshipDirection direction)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -297,10 +355,30 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                var result = await query(_services.IndexQueryService, authority.IndexRun!, selector, boundedLimit, ct);
-                return EnvelopeMapper.FromRelationships(authority, result);
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<RelationshipQuerySetResult> scopeError))
+                {
+                    return scopeError;
+                }
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? direction switch
+                    {
+                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct),
+                        RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct),
+                        _ => await _services.IndexQueryService.RefsInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct)
+                    }
+                    : direction switch
+                    {
+                        RelationshipDirection.Callers => await _services.FederatedIndexQueryService.CallersAsync(selector, options, ct),
+                        RelationshipDirection.Callees => await _services.FederatedIndexQueryService.CalleesAsync(selector, options, ct),
+                        _ => await _services.FederatedIndexQueryService.RefsAsync(selector, options, ct)
+                    };
+                return EnvelopeMapper.FromScopedRelationships(authority, result, options.ReferenceCollection);
             });
     }
+
+    private enum RelationshipDirection { References, Callers, Callees }
 
     private static class ToolArguments
     {
@@ -384,6 +462,55 @@ public sealed class CodeSymbolTools
                 "InvalidKind",
                 "Symbol kind must be Type, Constructor, Method, Field, Property, or Event.");
             return false;
+        }
+
+        public static bool TryParseScope<T>(
+            string? scope,
+            string? collection,
+            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            out IndexQueryOptions options,
+            out ToolEnvelope<T> error) where T : class
+        {
+            var parsedScope = string.IsNullOrWhiteSpace(scope)
+                ? IndexQueryScope.Game
+                : scope.Trim().ToLowerInvariant() switch
+                {
+                    "game" => IndexQueryScope.Game,
+                    "reference" => IndexQueryScope.Reference,
+                    "all" => IndexQueryScope.All,
+                    _ => (IndexQueryScope?)null
+                };
+            if (parsedScope is null)
+            {
+                options = null!;
+                error = Invalid<T>(authority, "InvalidScope", "Scope must be game, reference, or all.");
+                return false;
+            }
+
+            var normalizedCollection = string.IsNullOrWhiteSpace(collection) ? null : collection.Trim();
+            if (parsedScope == IndexQueryScope.Game && normalizedCollection is not null)
+            {
+                options = null!;
+                error = Invalid<T>(authority, "InvalidCollection", "A collection is valid only for reference or all scope.");
+                return false;
+            }
+
+            if (parsedScope is IndexQueryScope.Reference or IndexQueryScope.All && normalizedCollection is null)
+            {
+                options = null!;
+                error = Invalid<T>(authority, "CollectionRequired", "Reference and all scope require an explicit collection.");
+                return false;
+            }
+
+            options = new IndexQueryOptions(
+                CodebaseKind.ScheduleI,
+                CodeChannel.Installed,
+                false,
+                50,
+                parsedScope.Value,
+                normalizedCollection);
+            error = null!;
+            return true;
         }
 
         public static bool TryParseRelationshipKinds<T>(
