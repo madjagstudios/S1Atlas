@@ -126,6 +126,12 @@ public sealed record RelationshipEndpointQueryResult(
     string? RelativePath = null,
     string? Sha256 = null);
 
+public enum RelationshipTargetTextMatchMode
+{
+    Exact,
+    Prefix
+}
+
 public sealed record RelationshipQueryResult(
     string RelationshipId,
     string Kind,
@@ -156,6 +162,36 @@ public sealed record RelationshipQueryResult(
     public string SourceSymbolId => Source.SymbolId ?? string.Empty;
     public string? TargetSymbolId => Target.SymbolId;
     public string? TargetText => Target.RawText;
+}
+
+public sealed record RelationshipQueryPageResult(
+    int TotalCount,
+    int ReturnedCount,
+    IReadOnlyList<RelationshipQueryResult> Relationships)
+{
+    public int TotalCount { get; init; } = RequireNonnegative(TotalCount, nameof(TotalCount));
+    public int ReturnedCount { get; init; } = RequireNonnegative(ReturnedCount, nameof(ReturnedCount));
+    public IReadOnlyList<RelationshipQueryResult> Relationships { get; init; } = RequireRelationships(TotalCount, ReturnedCount, Relationships);
+
+    private static int RequireNonnegative(int value, string parameterName)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value, parameterName);
+        return value;
+    }
+
+    private static IReadOnlyList<RelationshipQueryResult> RequireRelationships(
+        int totalCount,
+        int returnedCount,
+        IReadOnlyList<RelationshipQueryResult> relationships)
+    {
+        ArgumentNullException.ThrowIfNull(relationships);
+        if (returnedCount != relationships.Count)
+            throw new ArgumentException("ReturnedCount must equal Relationships.Count.", nameof(returnedCount));
+        if (returnedCount > totalCount)
+            throw new ArgumentException("ReturnedCount must not exceed TotalCount.", nameof(returnedCount));
+
+        return relationships;
+    }
 }
 
 public sealed record RelationshipQuerySetResult(

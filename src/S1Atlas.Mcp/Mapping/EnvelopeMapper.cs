@@ -1,6 +1,7 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Indexing.Query;
 
 namespace S1Atlas.Mcp.Mapping;
 
@@ -268,6 +269,69 @@ public static class EnvelopeMapper
                     endpoint.RelativePath,
                     endpoint.Sha256))));
 
+    public static ToolEnvelope<CallSiteQueryResult> FromCallSites(
+        InstalledBuildAuthority authority,
+        CallSiteQueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return ToolEnvelope<CallSiteQueryResult>.Resolved(
+            BuildFrom(authority),
+            result,
+            Fact(authority, "call-site-query"),
+            Derived(authority, "relationship-direction"));
+    }
+
+    public static ToolEnvelope<CallSiteQueryResult> FromScopedCallSites(
+        InstalledBuildAuthority authority,
+        CallSiteQueryResult result,
+        string? collection,
+        string? referenceIndexId) =>
+        AddReferenceCollectionProvenance(
+            FromCallSites(authority, result),
+            authority,
+            collection,
+            referenceIndexId);
+
+    public static ToolEnvelope<FieldReferenceQueryResult> FromFieldReferences(
+        InstalledBuildAuthority authority,
+        FieldReferenceQueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<FieldReferenceQueryResult>.Ambiguous(
+                BuildFrom(authority),
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                Derived(authority, "symbol-selection")),
+            _ => ToolEnvelope<FieldReferenceQueryResult>.Resolved(
+                BuildFrom(authority),
+                result,
+                Fact(authority, "field-reference-query"),
+                Derived(authority, "relationship-direction"))
+        };
+    }
+
+    public static ToolEnvelope<FieldReferenceQueryResult> FromScopedFieldReferences(
+        InstalledBuildAuthority authority,
+        FieldReferenceQueryResult result,
+        string? collection,
+        string? referenceIndexId) =>
+        AddReferenceCollectionProvenance(
+            FromFieldReferences(authority, result),
+            authority,
+            collection,
+            referenceIndexId);
+
     public static ToolEnvelope<CallableSurfaceQueryResult> FromCallableSurface(
         InstalledBuildAuthority authority,
         CallableSurfaceResolutionResult result)
@@ -323,13 +387,22 @@ public static class EnvelopeMapper
         string? requestedCollection,
         IEnumerable<SymbolQueryResult> symbols) where T : class
     {
-        if (string.IsNullOrWhiteSpace(requestedCollection))
-            return envelope;
-
         var referenceIndexId = symbols
             .Where(symbol => symbol.Origin == "reference")
             .Select(symbol => symbol.IndexId)
             .FirstOrDefault(indexId => !string.IsNullOrWhiteSpace(indexId));
+        return AddReferenceCollectionProvenance(envelope, authority, requestedCollection, referenceIndexId);
+    }
+
+    private static ToolEnvelope<T> AddReferenceCollectionProvenance<T>(
+        ToolEnvelope<T> envelope,
+        InstalledBuildAuthority authority,
+        string? requestedCollection,
+        string? referenceIndexId) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(requestedCollection))
+            return envelope;
+
         var provenance = envelope.Provenance
             .Append(new ProvenanceEntry(
                 ProvenanceClassification.Fact,

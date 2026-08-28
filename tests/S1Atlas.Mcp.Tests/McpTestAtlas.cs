@@ -66,6 +66,11 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string MethodSelector => "System.Void Demo.Widget::Run()";
     public string MethodSymbolId => "method-run";
     public string TypeSelector => "Demo.Widget";
+    public string EngineCallSiteSelector => "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink";
+    public string EngineCallSiteTargetText => "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()";
+    public string GameFieldSelector => "Demo.Widget._state";
+    public string ReferenceFieldSelector => "qol/Qol.Config.Setting";
+    public string AmbiguousFieldSelector => "SharedValue";
     public string CompareSelector => CompareSymbolCanonicalKey;
     public string SourceRelativePath => "Assembly-CSharp.cs";
     public string SourcePath => Path.Combine(DataRoot, "builds", BuildIdASeed, "indexes", IndexId, SourceRelativePath);
@@ -125,6 +130,109 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             new ReferenceGameSymbolLoader(_repository));
         var result = await workflow.RunAsync(BuildIdA, definition, false, CancellationToken.None);
         return new ReferenceSeed(collection, result.IndexId);
+    }
+
+    public async Task<ReferenceSeed> SeedTargetQueryReferenceCollectionAsync(string collection)
+    {
+        var snapshotId = "reference-target-query-snapshot-" + collection;
+        var indexId = "reference-target-query-index-" + collection;
+        await _repository.CreateCodeSnapshotAsync(
+            new CodeSnapshotRecord(
+                snapshotId,
+                CodebaseKind.ReferenceMod,
+                CodeChannel.Installed,
+                collection,
+                "2026-08-28T15:00:00Z"),
+            CancellationToken.None);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, "2026-08-28T15:00:00Z"),
+            CancellationToken.None);
+
+        var referenceCallSource = new IndexSymbolRecord(
+            "reference-call-source-" + collection,
+            snapshotId,
+            "ReferenceMod:Installed:Method:qol/Qol.Caller::Run()",
+            "Method",
+            "qol/Qol.Caller.Run",
+            "System.Void qol/Qol.Caller::Run()",
+            false,
+            BodyRecoveryStatus.Recovered);
+        var referenceFieldReader = new IndexSymbolRecord(
+            "reference-field-reader-" + collection,
+            snapshotId,
+            "ReferenceMod:Installed:Method:qol/Qol.Reader::Read()",
+            "Method",
+            "qol/Qol.Reader.Read",
+            "System.Void qol/Qol.Reader::Read()",
+            false,
+            BodyRecoveryStatus.Recovered);
+        var referenceFieldWriter = new IndexSymbolRecord(
+            "reference-field-writer-" + collection,
+            snapshotId,
+            "ReferenceMod:Installed:Method:qol/Qol.Writer::Write()",
+            "Method",
+            "qol/Qol.Writer.Write",
+            "System.Void qol/Qol.Writer::Write()",
+            false,
+            BodyRecoveryStatus.Recovered);
+        var referenceField = new IndexSymbolRecord(
+            "reference-field-" + collection,
+            snapshotId,
+            "ReferenceMod:Installed:Field:qol/Qol.Config::System.Int32 Setting",
+            "Field",
+            ReferenceFieldSelector,
+            "System.Int32 qol/Qol.Config::Setting",
+            false);
+
+        await _repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(
+                [referenceCallSource, referenceFieldReader, referenceFieldWriter, referenceField],
+                [],
+                [],
+                [],
+                [
+                    new IndexRelationshipRecord(
+                        "reference-callsite-" + collection,
+                        snapshotId,
+                        referenceCallSource.SymbolId,
+                        null,
+                        EngineCallSiteTargetText,
+                        "Calls",
+                        "fixture:reference-callsite"),
+                    new IndexRelationshipRecord(
+                        "reference-field-read-" + collection,
+                        snapshotId,
+                        referenceFieldReader.SymbolId,
+                        referenceField.SymbolId,
+                        "qol/Qol.Config::Setting",
+                        "ReadsField",
+                        "fixture:reference-field-read"),
+                    new IndexRelationshipRecord(
+                        "reference-field-write-" + collection,
+                        snapshotId,
+                        referenceFieldWriter.SymbolId,
+                        referenceField.SymbolId,
+                        "qol/Qol.Config::Setting",
+                        "WritesField",
+                        "fixture:reference-field-write")
+                ],
+                ReferenceIndexContext: new ReferenceIndexContextRecord(indexId, IndexId, BuildIdA),
+                ReferenceMods:
+                [
+                    new IndexReferenceModRecord(
+                        "qol",
+                        "Quality of Life",
+                        "1.0.0",
+                        "MIT",
+                        Path.Combine(DataRoot, "reference-input", collection),
+                        "reference-target-query-content-" + collection,
+                        [referenceCallSource.SymbolId, referenceFieldReader.SymbolId, referenceFieldWriter.SymbolId, referenceField.SymbolId])
+                ]),
+            "2026-08-28T15:01:00Z",
+            CancellationToken.None);
+
+        return new ReferenceSeed(collection, indexId);
     }
 
     public async Task AddReferenceSourceLocationAsync(ReferenceSeed reference)
@@ -745,12 +853,37 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         "Demo.Result",
                         false),
                     new IndexSymbolRecord(
+                        Id("engine-complete-off-mesh-link"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()",
+                        "Method",
+                        "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink",
+                        "System.Void UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
                         Id("field-state"),
                         snapshotId,
                         "ScheduleI:Installed:Field:Demo.Widget::System.Int32 _state",
                         "Field",
                         "Demo.Widget._state",
                         "System.Int32 Demo.Widget::_state",
+                        false),
+                    new IndexSymbolRecord(
+                        Id("field-shared-alpha"),
+                        snapshotId,
+                        "ScheduleI:Installed:Field:Alpha.State::System.Int32 SharedValue",
+                        "Field",
+                        "Alpha.State.SharedValue",
+                        "System.Int32 Alpha.State::SharedValue",
+                        false),
+                    new IndexSymbolRecord(
+                        Id("field-shared-beta"),
+                        snapshotId,
+                        "ScheduleI:Installed:Field:Beta.State::System.Int32 SharedValue",
+                        "Field",
+                        "Beta.State.SharedValue",
+                        "System.Int32 Beta.State::SharedValue",
                         false)
                 ],
                 [sourceFile],
@@ -813,7 +946,39 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         Id("field-state"),
                         null,
                         "ReadsField",
-                        "fixture:reads-field")
+                        "fixture:reads-field"),
+                    new IndexRelationshipRecord(
+                        Id("writes-widget-field"),
+                        snapshotId,
+                        Id("method-service-execute"),
+                        Id("field-state"),
+                        null,
+                        "WritesField",
+                        "fixture:writes-field"),
+                    new IndexRelationshipRecord(
+                        Id("callsite-001"),
+                        snapshotId,
+                        Id("method-caller"),
+                        null,
+                        EngineCallSiteTargetText,
+                        "Calls",
+                        "fixture:callsite-unresolved"),
+                    new IndexRelationshipRecord(
+                        Id("callsite-002"),
+                        snapshotId,
+                        Id("method-service-execute"),
+                        Id("engine-complete-off-mesh-link"),
+                        EngineCallSiteTargetText,
+                        "Calls",
+                        "fixture:callsite-resolved"),
+                    new IndexRelationshipRecord(
+                        Id("callsite-003"),
+                        snapshotId,
+                        Id("method-caller"),
+                        null,
+                        "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink(System.Boolean)",
+                        "Calls",
+                        "fixture:callsite-overload")
                 ],
                 [new IndexCallableSurfaceRecord(
                     Id("callable-method"),

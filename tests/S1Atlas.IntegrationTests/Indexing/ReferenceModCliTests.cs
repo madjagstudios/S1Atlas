@@ -217,6 +217,8 @@ public sealed class ReferenceModCliTests
     [InlineData("callers")]
     [InlineData("callees")]
     [InlineData("refs")]
+    [InlineData("callsites")]
+    [InlineData("fieldrefs")]
     public async Task Reference_scoped_queries_require_collection_and_game_scope_rejects_one(string command)
     {
         await using var atlas = await ReferenceCliFixture.CreateAsync();
@@ -228,6 +230,87 @@ public sealed class ReferenceModCliTests
         Assert.Equal(1, rejected.ExitCode);
         Assert.Contains("InvalidOptionCombination", missing.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("InvalidOptionCombination", rejected.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Scoped_target_relationship_queries_reject_mismatched_explicit_builds()
+    {
+        await using var atlas = await ReferenceCliFixture.CreateAsync();
+        var indexed = atlas.Run("reference", "index", atlas.ManifestPath, "--json");
+        Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
+
+        var result = atlas.Run(
+            "callsites",
+            "Game.Target::Run():System.Void",
+            "--scope",
+            "all",
+            "--collection",
+            "qol",
+            "--build",
+            CliParityAtlas.ExplicitBuildId,
+            "--json");
+
+        Assert.Equal(1, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal(
+            "ReferenceCollectionBuildMismatch",
+            document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("callsites", "Game.Target::Run():System.Void")]
+    [InlineData("fieldrefs", "Demo.State.Value")]
+    public async Task Scoped_target_relationship_queries_reject_reference_collection_base_index_mismatch(
+        string command,
+        string query)
+    {
+        await using var atlas = await ReferenceCliFixture.CreateAsync();
+        var indexed = atlas.Run("reference", "index", atlas.ManifestPath, "--json");
+        Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
+        using var indexedJson = JsonDocument.Parse(indexed.StandardOutput);
+        var referenceIndexId = indexedJson.RootElement.GetProperty("data").GetProperty("indexId").GetString()!;
+        await atlas.SetReferenceBaseIndexAsync(referenceIndexId, "index-newer", "snapshot-index-newer");
+
+        var result = atlas.Run(
+            command,
+            query,
+            "--scope",
+            "all",
+            "--collection",
+            "qol",
+            "--json");
+
+        Assert.Equal(1, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal(
+            "ReferenceCollectionBaseIndexMismatch",
+            document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("callsites")]
+    [InlineData("fieldrefs")]
+    public async Task Scoped_target_relationship_queries_describe_build_validation_for_game_scope(string command)
+    {
+        await using var atlas = await ReferenceCliFixture.CreateAsync();
+
+        var result = atlas.Run(
+            command,
+            "Alpha",
+            "--scope",
+            "game",
+            "--codebase",
+            "s1api",
+            "--build",
+            CliParityAtlas.ExplicitBuildId,
+            "--json");
+
+        Assert.Equal(1, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal("InvalidOptionCombination", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(
+            "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.",
+            document.RootElement.GetProperty("error").GetProperty("message").GetString());
     }
 
     [Theory]
@@ -293,6 +376,23 @@ internal sealed class ReferenceCliFixture : IAsyncDisposable
         command.Parameters.AddWithValue("$indexId", indexId);
         command.Parameters.AddWithValue("$symbolId", symbolId);
         await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+    }
+
+    public async Task SetReferenceBaseIndexAsync(string referenceIndexId, string baseIndexId, string baseSnapshotId)
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_atlas.DataRoot}/atlas.db");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE reference_index_context
+            SET game_index_id = $baseIndexId,
+                game_snapshot_id = $baseSnapshotId
+            WHERE reference_index_id = $referenceIndexId;
+            """;
+        command.Parameters.AddWithValue("$baseIndexId", baseIndexId);
+        command.Parameters.AddWithValue("$baseSnapshotId", baseSnapshotId);
+        command.Parameters.AddWithValue("$referenceIndexId", referenceIndexId);
+        Assert.Equal(1, await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken));
     }
 
     public static async Task<ReferenceCliFixture> CreateAsync()

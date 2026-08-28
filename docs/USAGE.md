@@ -73,23 +73,12 @@ certification is idempotent and preserves the first certification timestamp. Eve
 process-backed `extract` reports the input source, the input snapshot ID (when
 one applies), and whether that snapshot is replay-verified.
 
-`extract` is always offline: it never installs or downloads a tool. Without
-`--cpp2il-path`, it requires the exact managed pin to be freshly verified and
-reports `ManagedPinned` trust. An explicit executable is freshly hashed and
-capability-probed, remains outside the managed tools root, and reports
-`CustomOverride` trust.
-
-A successful `extract` reports an **authoritative validated extraction**: it
-prints the extraction ID and root, the validation outcome, tool trust, whether
-the output is the preferred one for the build, and whether the process,
-validation, and reuse ran. It exits `0` only when the extraction is authoritative
-(validation outcome `Valid` or `ValidWithWarnings` and full integrity proven). A
-candidate that runs the process but fails validation is never authoritative and
-exits `1` without a `complete.marker` or preference change. When a matching
-validated extraction already exists, `extract` reuses it after a full integrity
-check without rerunning Cpp2IL (`reusedExistingExtraction` is `true`,
-`processWasRun` is `false`); `--retry` is the only path that deliberately forces a
-new Cpp2IL process.
+`extract` is always offline and never installs or downloads a tool. It reports
+the input, extraction, validation, trust, preference, and reuse state. Exit `0`
+means an authoritative validated extraction; failed candidates remain
+non-authoritative. A matching validated extraction is reused after an integrity
+check unless `--retry` requests a new process. See
+**[docs/REFERENCE.md](REFERENCE.md)** for the lifecycle and integrity rules.
 
 Inspect validated extraction history and manage the preferred output:
 
@@ -105,36 +94,16 @@ dotnet run --project src/S1Atlas.Cli -- extractions cleanup --older-than 30d --a
 dotnet run --project src/S1Atlas.Cli -- extractions cleanup --json
 ```
 
-`extractions` commands never issue a network request. `list` shows validated
-extractions newest first and, with `--include-failed`, also folds in failed,
-canceled, abandoned, and candidate attempts. `show` accepts a 64-character
-extraction ID (and performs a fresh full integrity check, reporting an
-operational failure without exposing the root if the output no longer matches) or
-a 32-character attempt ID (returning its lifecycle, validation, and result
-facts). `promote` is explicit and non-interactive: it verifies integrity and the
-current policy, records a `ManualPromotion` audit, is idempotent when the
-extraction is already preferred, and rejects attempt IDs. Known history states
-exit `0`; unknown IDs and integrity failures exit `1`; cancellation exits `2`.
+`extractions` commands never issue a network request. `list` and `show` report
+validated extraction history and attempt state; `promote` explicitly verifies
+and selects a validated extraction. Known states exit `0`, invalid or failed
+operations exit `1`, and cancellation exits `2`.
 
-`cleanup` is **preview-first and never automatic**: without `--apply` it only
-reports what it would remove and deletes nothing. `--older-than` takes a positive
-lower-case integer followed by `m`, `h`, or `d` (default `30d`, maximum `36500d`),
-and an item is eligible only when its controlling timestamp is strictly earlier
-than the cutoff. Cleanup may remove only proven Atlas-owned, age-eligible data:
-`Failed`, `Canceled`, or `Abandoned` attempts and their bounded logs, validation
-documents, and retained output; recoverably stale extraction, input, and tool
-staging; and old quarantined managed-tool installations. It **never** removes a
-`ProcessCompleted` candidate, a `Succeeded` attempt or one referenced by a
-validated extraction, a validated extraction, an input snapshot (verified or not),
-the current managed-tool installation, or any active or ambiguous evidence, and it
-never follows a reparse point or enumerates inside a validated extraction or input
-snapshot. It runs recovery first, refuses to run while an extraction lock is held,
-re-observes every candidate immediately before deletion (a changed candidate is
-preserved), and deletes files before the matching database row so an interrupted
-run stays truthful and idempotently retryable. Preview exits `0` even with blocked
-evidence; `--apply` exits `0` only when nothing remained blocked or failed,
-`1` when any did, and `2` on cancellation. `extractions cleanup` issues no network
-request.
+`cleanup` is preview-first and never automatic. Without `--apply` it reports
+eligible data without deleting anything; `--apply` removes only proven
+Atlas-owned stale attempts and staging. It never removes validated extractions,
+input snapshots, current tools, or uncertain evidence. See
+**[docs/REFERENCE.md](REFERENCE.md)** for the full safety and recovery rules.
 
 Build and query the code index once the current build has a preferred,
 integrity-verified extraction. The index decompiles the reconstructed assemblies
@@ -153,6 +122,8 @@ dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --file --
 dotnet run --project src/S1Atlas.Cli -- refs "<TypeName.MethodName>" --json
 dotnet run --project src/S1Atlas.Cli -- callers "<TypeName.MethodName>"
 dotnet run --project src/S1Atlas.Cli -- callees "<TypeName.MethodName>"
+dotnet run --project src/S1Atlas.Cli -- callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+dotnet run --project src/S1Atlas.Cli -- fieldrefs "Demo.State.Value" --readers
 dotnet run --project src/S1Atlas.Cli -- callable "<TypeName.MethodName>"
 ```
 
@@ -176,6 +147,19 @@ route, not behavioral evidence: its body forwards through `il2cpp_runtime_invoke
 The optional `--interop-path` override is valid only for the default installed
 Schedule I index; otherwise the standard path is derived from the persisted
 installation root.
+
+`callsites` finds static recovered-IL call-site edges for either a resolved
+game member selector or canonical raw target text such as
+`UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()`. `fieldrefs` resolves one
+field and reports incoming `ReadsField` and/or `WritesField` relationships; use
+`--readers` or `--writers` to filter, and never both together. Both commands are
+bounded, deterministic, and preserve unresolved raw target text and
+reference-collection provenance. Call-site queries fall back to raw-target
+matching when selector resolution is not resolved, so they do not expose symbol
+ambiguity as a separate call-site result state; field-selector ambiguity remains
+explicit. They are static relationship evidence only:
+they do not prove runtime behavior, scene or geometry behavior, lifecycle
+ordering, or call order.
 
 Upstream S1API/S1MAPI channels are cached explicitly before a release/preview
 index; `upstream status` is always offline and `upstream sync` is the only
@@ -313,13 +297,15 @@ dotnet run --project src/S1Atlas.Cli -- reference collections list --json
 
 Reference indexing is an explicit offline CLI operation. Query commands accept
 `--scope game|reference|all` and `--collection <name-or-id>` for `search`,
-`source`, `refs`, `callers`, and `callees`:
+`source`, `refs`, `callers`, `callees`, `callsites`, and `fieldrefs`:
 
 ```powershell
 dotnet run --project src/S1Atlas.Cli -- search "ModEntry" --scope reference --collection qol
 dotnet run --project src/S1Atlas.Cli -- source "ModEntry.Run" --scope all --collection qol
 dotnet run --project src/S1Atlas.Cli -- callers "Game.Target.Run" --scope all --collection qol
 dotnet run --project src/S1Atlas.Cli -- callees "ModEntry.Run" --scope reference --collection qol
+dotnet run --project src/S1Atlas.Cli -- callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
+dotnet run --project src/S1Atlas.Cli -- fieldrefs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
 dotnet run --project src/S1Atlas.Cli -- refs "ModEntry.Run" --scope reference --collection qol
 ```
 
@@ -335,8 +321,8 @@ collection base is rejected deterministically.
 Source and indexed document content remain bounded and are returned only after
 the recorded content hash is checked.
 
-AT-24 body recovery, AT-25 callable-surface evidence, and AT-26 reference
-evidence are orthogonal. Body recovery describes whether decompiled text is
+Body recovery, callable-surface evidence, and reference evidence are orthogonal.
+Body recovery describes whether decompiled text is
 behavioral evidence; callable surface describes how a Schedule I game member
 can be reached through the local interop projection; reference collections are
 local prior-art evidence. None of these labels certifies a reference mod's
@@ -361,42 +347,38 @@ The read-only server exposes the Schedule I `Installed` surface and completed
 local reference collections through these tools:
 
 `search_symbols`, `get_type`, `get_method`, `get_source`, `find_callers`,
+`find_callees`, `find_call_sites`, `find_field_references`,
 `find_references`, `find_related_types`, `compare_symbol`, `list_builds`,
 `get_environment`, `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`,
-and `get_component`, plus `list_reference_collections` and `find_callees`.
+`get_component`, and `list_reference_collections`.
 
 `search_symbols`, `get_source`, `find_callers`, `find_callees`,
-`find_references`, and `find_related_types` accept optional `scope` and
-`collection` arguments. `scope` defaults to `game`; `reference` and `all`
-require `collection`, while `game` rejects it. `list_reference_collections`
-reports completed collections, their recorded base index/build, and local-only
-mod metadata. `get_type`, `get_method`, and `get_callable_surface` retain their
+`find_call_sites`, `find_field_references`, `find_references`, and
+`find_related_types` accept optional `scope` and `collection` arguments.
+`scope` defaults to `game`; `reference` and `all` require `collection`, while
+`game` rejects it. `find_field_references` also accepts `readers` and `writers`
+filters, which are mutually exclusive. `list_reference_collections` reports
+completed collections, their recorded base index/build, and local-only mod
+metadata. `get_type`, `get_method`, and `get_callable_surface` retain their
 Schedule I-only behavior.
 
-Every symbol and scene query resolves an omitted `buildId` from the current
-environment, while an explicit build ID is used exactly and never silently
-replaced. The selected build must have a preferred, integrity-verified
-extraction and a completed matching Installed index; MCP never returns a Phase
-3 candidate, retained failure output, unverified extraction, or unchecked index
-row. `compare_symbol` requires two explicit build IDs. Tool responses include
-status, requested and resolved build context, extraction/index provenance,
-integrity state, data, candidates where applicable, and structured errors.
-`get_environment` returns only the current environment snapshot when `buildId`
-is omitted. With an explicit non-current build ID it returns `unavailable` with
-`NoMatchingEnvironmentSnapshot`; it never returns historical environment facts.
-Facts are labeled `FACT`; deterministic selection, ranking, counts,
-relationship direction, completeness boundaries, and diff classifications are
-labeled `DERIVED`. Expected failures use stable domain codes such as
-`AtlasUnavailable`, `InvalidArguments`, `InvalidLimit`, `InvalidKind`,
-`NoAtlasState`, `NoCurrentBuild`, `BuildNotFound`,
-`NoPreferredVerifiedExtraction`, `ExtractionIntegrityFailure`,
-`NoCompletedIndex`, `IndexBuildMismatch`, `SymbolNotFound`,
-`AmbiguousSymbol`, `SourceUnavailable`, `SourceIntegrityFailure`,
-`NoMatchingEnvironmentSnapshot`, `NoCompletedSceneIndex`,
-`SceneSnapshotNotFound`, `SceneNotFound`, `GameObjectNotFound`,
-`UnresolvedCodeSymbol`, `PartialRecovery`, and `UnresolvedSceneReference`.
-Unexpected failures are logged to stderr and
-returned as safe MCP tool errors without stack traces or raw storage details.
+Queries use the current environment when `buildId` is omitted and honor an
+explicit build ID exactly. The selected build must have a preferred,
+integrity-verified extraction and a completed matching Installed index. Responses
+include status, build and index context, provenance, data, candidates where
+applicable, and structured errors. `compare_symbol` requires two explicit build
+IDs; `get_environment` reports only the current snapshot and returns
+`NoMatchingEnvironmentSnapshot` for a historical request. Facts are labeled
+`FACT`, while deterministic selections and counts are labeled `DERIVED`.
+Expected failures use stable domain codes; unexpected failures are logged to
+stderr and returned without stack traces or raw storage details.
+
+`find_call_sites` and `find_field_references` return recovered-IL static
+relationship evidence. `find_call_sites` falls back to raw-target matching when
+selector resolution is not resolved, while `find_field_references` preserves
+field-selector ambiguity. Both preserve unresolved raw target text, bounded
+totals, and reference collection provenance, but they do not prove runtime
+behavior, scene or geometry behavior, lifecycle ordering, or call order.
 
 MCP has no write, patch, network, indexing, or game-execution capability. It does not
 install tools, run extraction, launch a game or external process, sync
@@ -440,6 +422,8 @@ identifiers in their own output.
 | `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed references to a resolved symbol |
 | `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callers of a resolved method |
 | `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callees of a resolved method |
+| `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
+| `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL field readers and writers for one resolved field |
 | `upstream status [--codebase <s1api\|s1mapi>] [--json]` | Show cached upstream API status without network access |
 | `upstream sync <s1api\|s1mapi> --commit <sha> [--json]` | Fetch and cache one exact upstream commit for later indexing |
 | `index --scene [--build <id>] [--force] [--json]` | Build or reuse an offline, integrity-verified scene snapshot for the selected build |

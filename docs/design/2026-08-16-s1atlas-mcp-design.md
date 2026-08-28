@@ -210,6 +210,33 @@ JSON-friendly names and enums while mapping to the existing Core models.
 - `find_callers(selector, buildId?, limit?)`
   - Delegates to the caller relationship query and preserves the completeness
     notice when target resolution bounds the result.
+- `find_callees(selector, buildId?, limit?, scope?, collection?)`
+  - Defaults to the authoritative Schedule I game index (`scope=game`).
+  - `scope=reference` or `scope=all` requires `collection` to name an
+    explicitly selected completed local reference collection or its completed
+    reference index, bound to the selected game build; the authority envelope
+    preserves that collection binding and rejects missing or mismatched
+    authority.
+  - Delegates to the callee relationship query and preserves unresolved
+    endpoints and evidence. The recovered-IL relationships are static
+    evidence only; they do not establish runtime behavior, lifecycle ordering,
+    or call order.
+- `find_call_sites(selector, buildId?, limit?, scope?, collection?)`
+  - Delegates to the static recovered-IL call-site query.
+  - Accepts either a resolved game-member selector or canonical raw target text
+    when the target has no indexed symbol row.
+  - Preserves unresolved raw target text, bounded totals, and reference
+    collection provenance.
+  - Does not claim runtime behavior, scene/geometry behavior, lifecycle
+    ordering, or call order.
+- `find_field_references(selector, buildId?, readers?, writers?, limit?, scope?, collection?)`
+  - Delegates to the static recovered-IL field read/write query.
+  - Resolves one field and reports incoming `ReadsField` and/or `WritesField`
+    relationships, with mutually exclusive direction filters.
+  - Preserves ambiguity, bounded totals, and cross-origin reference
+    provenance.
+  - Does not claim runtime behavior, scene/geometry behavior, lifecycle
+    ordering, or call order.
 - `find_references(selector, buildId?, limit?)`
   - Delegates to the reference relationship query and preserves unresolved
     endpoints and evidence.

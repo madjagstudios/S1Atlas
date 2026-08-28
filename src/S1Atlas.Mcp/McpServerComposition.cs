@@ -13,7 +13,7 @@ public static class McpServerComposition
     {
         var services = ReadOnlyAtlasComposition.BuildReadOnlyServices(dataDirectory);
         var referenceQueryService = new ReferenceModQueryService(services.Repository, services.Paths.RootDirectory);
-        var federatedQueryService = new FederatedIndexQueryService(services.IndexQueryService, referenceQueryService);
+        var federatedQueryService = new FederatedIndexQueryService(services.Repository, services.Paths.RootDirectory);
 
         return new McpReadOnlyServices(
             services.Paths.RootDirectory,

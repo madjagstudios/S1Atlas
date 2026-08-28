@@ -15,19 +15,7 @@ internal static class RefsCommand
             var result = options.Scope == IndexQueryScope.Game
                 ? await service.RefsAsync(query, options, ct)
                 : await federatedService.RefsAsync(query, options, ct);
-            return new IndexQueryOutput(
-                [],
-                result.Relationships,
-                [],
-                Resolution: result.Resolution,
-                BodyRecoveryStatus: result.BodyRecoveryStatus,
-                CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
-                CompletenessNotice: result.CompletenessNotice);
-        }, async (query, run, limit, ct) => ToOutput(await service.RefsInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct)),
+            return IndexQueryCommandFactory.ToOutput(result);
+        }, async (query, run, limit, ct) => IndexQueryCommandFactory.ToOutput(await service.RefsInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct)),
         includeScopeOptions: true);
-
-    private static IndexQueryOutput ToOutput(RelationshipQuerySetResult result) => new([], result.Relationships, [],
-        Resolution: result.Resolution, BodyRecoveryStatus: result.BodyRecoveryStatus,
-        CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
-        CompletenessNotice: result.CompletenessNotice);
 }

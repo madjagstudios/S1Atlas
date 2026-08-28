@@ -300,7 +300,8 @@ public sealed class CliApplication
             sqliteRepository,
             new IlSpyManagedDecompiler());
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
-        var federatedIndexQueryService = new FederatedIndexQueryService(indexQueryService, new ReferenceModQueryService(sqliteRepository, _paths.RootDirectory));
+        var referenceQueryService = new ReferenceModQueryService(sqliteRepository, _paths.RootDirectory);
+        var federatedIndexQueryService = new FederatedIndexQueryService(sqliteRepository, _paths.RootDirectory);
         var authorityResolver = new InstalledBuildAuthorityResolver(
             new PreferredVerifiedExtractionResolver(_paths.RootDirectory, sqliteRepository, integrityVerifier),
             sqliteRepository,
@@ -386,6 +387,8 @@ public sealed class CliApplication
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(CallSitesCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(FieldRefsCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallableCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScenesCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(SceneCommand.Create(sceneQueryService, repository, output, error, cancellationToken));

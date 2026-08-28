@@ -20,7 +20,9 @@ internal static class IndexQueryCommandFactory
         Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>> execute,
         Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>> executeInIndex,
         Func<IndexQueryOptions, string?>? validateOptions = null,
-        bool includeScopeOptions = false)
+        bool includeScopeOptions = false,
+        ReferenceModQueryService? referenceService = null,
+        Func<string, IndexQueryOptions, string, CancellationToken, Task<IndexQueryOutput>>? executeWithReferenceIndex = null)
     {
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
@@ -78,61 +80,32 @@ internal static class IndexQueryCommandFactory
                     if (optionError is not null)
                         return commandOutput.Failure(1, "InvalidOptionCombination", optionError);
                     var buildId = parseResult.GetValue(buildOption);
-                    if (!string.IsNullOrWhiteSpace(buildId) && !UsesInstalledScheduleIAuthority(options))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidOptionCombination",
-                            "--build is only valid with --codebase schedule-i and --channel installed or all.");
-                    }
+                    var authority = ResolveExecutionAuthority(
+                        authorityResolver,
+                        referenceService,
+                        options,
+                        buildId,
+                        cancellationToken);
+                    if (authority.ErrorCode is not null)
+                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
 
                     IndexQueryOutput data;
-                    if (UsesInstalledScheduleIAuthority(options))
+                    if (authority.Run is not null)
                     {
-                        var authority = authorityResolver.ResolveAsync(buildId, cancellationToken).GetAwaiter().GetResult();
-                        if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
-                        {
-                            return commandOutput.Failure(
-                                1,
-                                authority.Status.ToString(),
-                                authority.Message ?? "The requested Schedule I build is unavailable.");
-                        }
-
                         data = executeInIndex(
-                            parseResult.GetValue(queryArgument)!, authority.IndexRun!, limit, cancellationToken).GetAwaiter().GetResult();
+                            parseResult.GetValue(queryArgument)!,
+                            authority.Run,
+                            limit,
+                            cancellationToken).GetAwaiter().GetResult();
                     }
                     else
                     {
-                        data = execute(parseResult.GetValue(queryArgument)!, options, cancellationToken).GetAwaiter().GetResult();
+                        var query = parseResult.GetValue(queryArgument)!;
+                        data = executeWithReferenceIndex is not null && authority.ReferenceIndexId is not null
+                            ? executeWithReferenceIndex(query, options, authority.ReferenceIndexId, cancellationToken).GetAwaiter().GetResult()
+                            : execute(query, options, cancellationToken).GetAwaiter().GetResult();
                     }
-                    if (data.Resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "AmbiguousSymbol",
-                            "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
-                            new IndexQueryFailureData(ambiguous.Candidates));
-                    }
-
-                    if (data.Resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "NoCompletedIndex",
-                            "No completed index exists for the requested codebase and channel.",
-                            new IndexQueryFailureData([]));
-                    }
-
-                    if (data.Resolution is { Status: SymbolResolutionStatus.NotFound })
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "SymbolNotFound",
-                            "No indexed symbol matched the selector.",
-                            new IndexQueryFailureData([]));
-                    }
-
-                    return commandOutput.Success(data, writer => WriteHuman(data, writer));
+                    return Complete(commandOutput, data);
                 },
                 commandOutput,
                 cancellationToken);
@@ -140,7 +113,65 @@ internal static class IndexQueryCommandFactory
         return command;
     }
 
-    private static void WriteHuman(IndexQueryOutput data, TextWriter writer)
+    internal static int Complete(CommandOutput commandOutput, IndexQueryOutput data)
+    {
+        if (data.Resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
+        {
+            return commandOutput.Failure(
+                1,
+                "AmbiguousSymbol",
+                "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
+                new IndexQueryFailureData(ambiguous.Candidates));
+        }
+
+        if (data.Resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
+        {
+            return commandOutput.Failure(
+                1,
+                "NoCompletedIndex",
+                "No completed index exists for the requested codebase and channel.",
+                new IndexQueryFailureData([]));
+        }
+
+        if (data.Resolution is { Status: SymbolResolutionStatus.NotFound })
+        {
+            return commandOutput.Failure(
+                1,
+                "SymbolNotFound",
+                "No indexed symbol matched the selector.",
+                new IndexQueryFailureData([]));
+        }
+
+        return commandOutput.Success(data, writer => WriteHuman(data, writer));
+    }
+
+    internal static IndexQueryOutput ToOutput(RelationshipQuerySetResult result) => new(
+        [],
+        result.Relationships,
+        [],
+        Resolution: result.Resolution,
+        BodyRecoveryStatus: result.BodyRecoveryStatus,
+        CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
+        CompletenessNotice: result.CompletenessNotice);
+
+    internal static IndexQueryOutput ToOutput(CallSiteQueryResult result) => new(
+        [],
+        result.Relationships,
+        [],
+        TotalCount: result.TotalCount,
+        ReturnedCount: result.ReturnedCount,
+        CompletenessNotice: result.CompletenessNotice);
+
+    internal static IndexQueryOutput ToOutput(FieldReferenceQueryResult result) => new(
+        [],
+        result.Relationships,
+        [],
+        TotalCount: result.TotalCount,
+        ReturnedCount: result.ReturnedCount,
+        Resolution: result.Resolution,
+        CompletenessNotice: result.CompletenessNotice);
+
+    internal static void WriteHuman(IndexQueryOutput data, TextWriter writer)
     {
         if (data.TotalCount is int totalCount && data.ReturnedCount is int returnedCount)
             writer.WriteLine($"Found {totalCount} matches. Showing {returnedCount}.");
@@ -238,4 +269,80 @@ internal static class IndexQueryCommandFactory
         options.Channel == CodeChannel.Installed &&
         options.Scope == IndexQueryScope.Game &&
         !options.AllChannels;
+
+    internal static ExecutionAuthority ResolveExecutionAuthority(
+        InstalledBuildAuthorityResolver authorityResolver,
+        ReferenceModQueryService? referenceService,
+        IndexQueryOptions options,
+        string? buildId,
+        CancellationToken cancellationToken)
+    {
+        if (UsesInstalledScheduleIAuthority(options))
+        {
+            var authority = authorityResolver.ResolveAsync(buildId, cancellationToken).GetAwaiter().GetResult();
+            return authority.Status == InstalledBuildAuthorityStatus.Resolved
+                ? new ExecutionAuthority(authority.IndexRun, null, null)
+                : new ExecutionAuthority(null, authority.Status.ToString(), authority.Message ?? "The requested Schedule I build is unavailable.");
+        }
+
+        var allowsScopedAuthority = referenceService is not null &&
+            options.Scope is IndexQueryScope.Reference or IndexQueryScope.All;
+        if (!string.IsNullOrWhiteSpace(buildId) && !allowsScopedAuthority)
+        {
+            return new ExecutionAuthority(
+                null,
+                "InvalidOptionCombination",
+                referenceService is null
+                    ? "--build is only valid with --codebase schedule-i and --channel installed or all."
+                    : "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.");
+        }
+
+        if (!allowsScopedAuthority)
+            return new ExecutionAuthority(null, null, null);
+
+        var collection = referenceService!.GetCollectionAuthorityAsync(options.ReferenceCollection!, cancellationToken)
+            .GetAwaiter()
+            .GetResult();
+        if (collection is null)
+        {
+            return new ExecutionAuthority(
+                null,
+                "NoCompletedIndex",
+                "No completed reference collection exists for the requested scope.");
+        }
+
+        var baseAuthority = authorityResolver.ResolveAsync(collection.BuildId, cancellationToken).GetAwaiter().GetResult();
+        if (baseAuthority.Status != InstalledBuildAuthorityStatus.Resolved)
+        {
+            return new ExecutionAuthority(
+                null,
+                baseAuthority.Status.ToString(),
+                baseAuthority.Message ?? "The requested Schedule I build is unavailable.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(buildId) &&
+            !string.Equals(buildId, collection.BuildId, StringComparison.Ordinal))
+        {
+            return new ExecutionAuthority(
+                null,
+                "ReferenceCollectionBuildMismatch",
+                "The requested build does not match the reference collection's recorded base build.");
+        }
+
+        if (!string.Equals(baseAuthority.IndexId, collection.BaseIndexId, StringComparison.Ordinal))
+        {
+            return new ExecutionAuthority(
+                null,
+                "ReferenceCollectionBaseIndexMismatch",
+                "The reference collection's recorded base index is not the authoritative index for its build.");
+        }
+
+        return new ExecutionAuthority(null, null, null, collection.ReferenceIndexId);
+    }
+
+    internal readonly record struct ExecutionAuthority(
+        IndexRunRecord? Run,
+        string? ErrorCode,
+        string? ErrorMessage,
+        string? ReferenceIndexId = null);
 }

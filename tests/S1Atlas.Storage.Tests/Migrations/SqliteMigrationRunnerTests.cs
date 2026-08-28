@@ -23,7 +23,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesV1ThroughV10WithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesV1ThroughV11WithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(
@@ -38,7 +38,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             SqliteOpenMode.ReadOnly,
             cancellationToken);
         Assert.Equal(
-            10L,
+            11L,
             await ScalarInt64Async(
                 connection,
                 "SELECT COUNT(*) FROM schema_migrations;",
@@ -80,6 +80,16 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             "symbols",
             "body_recovery_status",
             cancellationToken));
+        Assert.True(await TableExistsAsync(
+            connection,
+            "relationships",
+            cancellationToken));
+        Assert.Equal(
+            1L,
+            await ScalarInt64Async(
+                connection,
+                "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'ix_relationships_snapshot_kind_target_text';",
+                cancellationToken));
         Assert.Equal(
             1L,
             await ScalarInt64Async(
@@ -113,7 +123,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             cancellationToken))
         {
             Assert.Equal(
-                10L,
+                11L,
                 await ScalarInt64Async(
                     connection,
                     "SELECT COUNT(*) FROM schema_migrations;",

@@ -394,6 +394,204 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task FindCallSites_ReturnsBoundedRecoveredIlEvidenceWithoutClaimingRuntimeOrder()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallSitesAsync(
+            atlas.EngineCallSiteSelector,
+            buildId: null,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(atlas.BuildIdValue, envelope.Build?.ResolvedBuildId);
+        Assert.Equal(atlas.IndexId, envelope.Build?.IndexId);
+        Assert.Equal(3, envelope.Data!.TotalCount);
+        Assert.Equal(1, envelope.Data.ReturnedCount);
+        var relationship = Assert.Single(envelope.Data.Relationships);
+        Assert.Equal("callsite-001", relationship.RelationshipId);
+        Assert.True(relationship.Source.Resolved);
+        Assert.False(relationship.Target.Resolved);
+        Assert.Equal(atlas.EngineCallSiteTargetText, relationship.Target.RawText);
+        Assert.Contains("recovered IL references", envelope.Data.CompletenessNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not prove runtime behavior", envelope.Data.CompletenessNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("execution order", envelope.Data.CompletenessNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.All(envelope.Provenance, entry => Assert.NotEqual(ProvenanceClassification.Interpretation, entry.Classification));
+    }
+
+    [Fact]
+    public async Task FindCallSites_ReferenceScope_PreservesCollectionBindingAndProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var reference = await atlas.SeedTargetQueryReferenceCollectionAsync("qol-targets");
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallSitesAsync(
+            atlas.EngineCallSiteSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            scope: "reference",
+            collection: reference.Collection);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(atlas.BuildIdA, envelope.Build?.ResolvedBuildId);
+        Assert.Equal(atlas.IndexIdA, envelope.Build?.IndexId);
+        var collectionProvenance = Assert.Single(envelope.Provenance, entry => entry.Source == "reference-collection");
+        Assert.Equal(reference.IndexId, collectionProvenance.IndexId);
+        var relationship = Assert.Single(envelope.Data!.Relationships);
+        Assert.Equal("reference-callsite-qol-targets", relationship.RelationshipId);
+        Assert.Equal("reference", relationship.Source.Origin);
+        Assert.Equal(reference.Collection, relationship.Source.Collection);
+        Assert.Equal("qol", relationship.Source.ReferenceModId);
+        Assert.False(relationship.Target.Resolved);
+        Assert.Equal(atlas.EngineCallSiteTargetText, relationship.Target.RawText);
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_SeparatesReaderAndWriterFilters()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var readers = await tools.FindFieldReferencesAsync(
+            atlas.GameFieldSelector,
+            buildId: null,
+            readers: true,
+            writers: false,
+            limit: 50,
+            ct: CancellationToken.None);
+        var writers = await tools.FindFieldReferencesAsync(
+            atlas.GameFieldSelector,
+            buildId: null,
+            readers: false,
+            writers: true,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, readers.Status);
+        Assert.Equal(["reads-widget-field"], readers.Data!.Relationships.Select(edge => edge.RelationshipId));
+        Assert.All(readers.Data.Relationships, edge => Assert.Equal("ReadsField", edge.Kind));
+        Assert.Contains("recovered IL references", readers.Data.CompletenessNotice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lifecycle ordering", readers.Data.CompletenessNotice, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal(ToolStatus.Resolved, writers.Status);
+        Assert.Equal(["writes-widget-field"], writers.Data!.Relationships.Select(edge => edge.RelationshipId));
+        Assert.All(writers.Data.Relationships, edge => Assert.Equal("WritesField", edge.Kind));
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_RespectsBoundedLimit()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindFieldReferencesAsync(
+            atlas.GameFieldSelector,
+            buildId: null,
+            readers: false,
+            writers: false,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(2, envelope.Data!.TotalCount);
+        Assert.Equal(1, envelope.Data.ReturnedCount);
+        Assert.Single(envelope.Data.Relationships);
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_InvalidLimit_ReturnsSelectedBuild()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindFieldReferencesAsync(
+            atlas.GameFieldSelector,
+            buildId: null,
+            readers: false,
+            writers: false,
+            limit: 0,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidLimit", envelope.Error?.Code);
+        Assert.Equal(atlas.IndexId, envelope.Build?.IndexId);
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_ReferenceScope_PreservesCollectionBindingAndTargetProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var reference = await atlas.SeedTargetQueryReferenceCollectionAsync("qol-targets");
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindFieldReferencesAsync(
+            atlas.ReferenceFieldSelector,
+            buildId: null,
+            readers: false,
+            writers: true,
+            limit: 50,
+            ct: CancellationToken.None,
+            scope: "reference",
+            collection: reference.Collection);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(atlas.BuildIdA, envelope.Build?.ResolvedBuildId);
+        Assert.Equal(atlas.IndexIdA, envelope.Build?.IndexId);
+        var collectionProvenance = Assert.Single(envelope.Provenance, entry => entry.Source == "reference-collection");
+        Assert.Equal(reference.IndexId, collectionProvenance.IndexId);
+        Assert.Equal("reference", envelope.Data!.Resolution.Symbol!.Origin);
+        Assert.Equal(reference.Collection, envelope.Data.Resolution.Symbol.Collection);
+        var relationship = Assert.Single(envelope.Data.Relationships);
+        Assert.Equal("reference-field-write-qol-targets", relationship.RelationshipId);
+        Assert.Equal("WritesField", relationship.Kind);
+        Assert.Equal("reference", relationship.Source.Origin);
+        Assert.Equal(reference.Collection, relationship.Source.Collection);
+        Assert.Equal("reference", relationship.Target.Origin);
+        Assert.Equal(reference.Collection, relationship.Target.Collection);
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_AmbiguousSelector_ReturnsCandidatesWithoutRelationships()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindFieldReferencesAsync(
+            atlas.AmbiguousFieldSelector,
+            buildId: null,
+            readers: false,
+            writers: false,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Equal(2, envelope.Candidates.Count);
+        Assert.Null(envelope.Data);
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_RejectsMutuallyExclusiveDirectionFlags()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindFieldReferencesAsync(
+            atlas.GameFieldSelector,
+            buildId: null,
+            readers: true,
+            writers: true,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidOptionCombination", envelope.Error?.Code);
+    }
+
+    [Fact]
     public async Task FindRelatedTypes_FiltersToTypeRelations()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
