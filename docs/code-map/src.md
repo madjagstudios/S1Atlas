@@ -12,7 +12,7 @@ Roots: src
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 2 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 37 |
+| src/S1Atlas.Cli/Commands/ | 38 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 12 |
 | src/S1Atlas.Cli/Performance/ | 1 |
@@ -55,7 +55,7 @@ Roots: src
 | src/S1Atlas.Extraction/Validation/ | 8 |
 | src/S1Atlas.Indexing/ | 2 |
 | src/S1Atlas.Indexing/Authority/ | 2 |
-| src/S1Atlas.Indexing/Decompilation/ | 3 |
+| src/S1Atlas.Indexing/Decompilation/ | 4 |
 | src/S1Atlas.Indexing/Diff/ | 1 |
 | src/S1Atlas.Indexing/Fingerprints/ | 1 |
 | src/S1Atlas.Indexing/Paths/ | 2 |

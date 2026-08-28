@@ -4,6 +4,7 @@ using ICSharpCode.Decompiler.CSharp;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Authority;
+using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.Fingerprints;
 using S1Atlas.Indexing.Paths;
 using S1Atlas.Indexing.Source;
@@ -18,11 +19,12 @@ public sealed record IndexingWorkflowResult(
     int SymbolCount,
     int SourceFileCount,
     int RelationshipCount,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    int CallableSurfaceCount = 0);
 
 public sealed class IndexingWorkflow
 {
-    public const int IndexSchemaVersion = 8;
+    public const int IndexSchemaVersion = 9;
     private const string DecompilerPackage = "ICSharpCode.Decompiler";
     private static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
@@ -35,38 +37,60 @@ public sealed class IndexingWorkflow
     private readonly RoslynSourceIndexer _sourceIndexer = new();
     private readonly SymbolFingerprintService _fingerprints = new();
     private readonly RelationshipExtractor _relationships = new();
+    private readonly IAtlasRepository? _atlasRepository;
 
     public IndexingWorkflow(
         string dataRoot,
         IIndexRepository repository,
         Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> authorityResolver,
-        ScheduleOneIndexSource source)
+        ScheduleOneIndexSource source,
+        IAtlasRepository? atlasRepository = null)
     {
         _dataRoot = Path.GetFullPath(dataRoot ?? throw new ArgumentNullException(nameof(dataRoot)));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _authorityResolver = authorityResolver ?? throw new ArgumentNullException(nameof(authorityResolver));
         _source = source ?? throw new ArgumentNullException(nameof(source));
+        _atlasRepository = atlasRepository;
     }
 
-    public static string CreateIndexId(string extractionId, string package, string version, string settings, int schemaVersion)
+    public static string CreateIndexId(
+        string extractionId,
+        string package,
+        string version,
+        string settings,
+        int schemaVersion,
+        string? interopInputSha256 = null)
     {
-        var input = string.Join("\n", extractionId, package, version, settings, schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var input = string.Join(
+            "\n",
+            extractionId,
+            package,
+            version,
+            settings,
+            schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            interopInputSha256 ?? "none");
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input))).ToLowerInvariant();
     }
 
     public async Task<IndexingWorkflowResult> RunScheduleOneAsync(
         string buildId,
         bool force,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? interopPath = null)
     {
         var authority = await _authorityResolver(buildId, cancellationToken)
             ?? throw new InvalidOperationException("No preferred integrity-verified extraction is available.");
+        var selectedInteropPath = await ResolveInteropPathAsync(buildId, interopPath, cancellationToken);
+        var interopInputSha256 = selectedInteropPath is null
+            ? null
+            : await HashFileAsync(selectedInteropPath, cancellationToken);
         var indexId = CreateIndexId(
             authority.Extraction.ExtractionId,
             DecompilerPackage,
             DecompilerVersion,
             force ? "default:forced:" + Guid.NewGuid().ToString("N") : "default",
-            IndexSchemaVersion);
+            IndexSchemaVersion,
+            interopInputSha256);
         var snapshotId = "schedule-i:" + authority.Extraction.ExtractionId + ":" + indexId;
 
         var existingSnapshot = await _repository.GetCodeSnapshotAsync(snapshotId, cancellationToken);
@@ -85,7 +109,8 @@ public sealed class IndexingWorkflow
                 var symbols = await _repository.GetCompletedSymbolsAsync(indexId, cancellationToken);
                 var relationships = await _repository.GetCompletedRelationshipsAsync(indexId, cancellationToken);
                 var sourceFiles = await _repository.GetCompletedSourceFilesAsync(indexId, cancellationToken);
-                return new IndexingWorkflowResult(indexId, snapshotId, true, symbols.Count, sourceFiles.Count, relationships.Count, []);
+                var callableSurface = await _repository.GetCompletedCallableSurfaceAsync(indexId, cancellationToken);
+                return new IndexingWorkflowResult(indexId, snapshotId, true, symbols.Count, sourceFiles.Count, relationships.Count, [], callableSurface.Count);
             }
         }
 
@@ -103,7 +128,30 @@ public sealed class IndexingWorkflow
             if (finalAuthority is null || finalAuthority.Extraction.ExtractionId != authority.Extraction.ExtractionId)
                 throw new InvalidOperationException("The preferred extraction changed during indexing.");
             var sourceFile = await _sourceWriter.WriteAsync(paths.StagingRoot, "Assembly-CSharp.cs", decompilation.SourceText, snapshotId, cancellationToken);
+            ManagedDecompilation? interopDecompilation = null;
+            IndexSourceFileRecord? interopSourceFile = null;
+            if (selectedInteropPath is not null)
+            {
+                interopDecompilation = await _source.ReadInteropAsync(selectedInteropPath, cancellationToken);
+                var finalInteropHash = await HashFileAsync(selectedInteropPath, cancellationToken);
+                if (!string.Equals(interopInputSha256, finalInteropHash, StringComparison.Ordinal))
+                    throw new InvalidDataException("The interop assembly changed during indexing.");
+                interopSourceFile = await _sourceWriter.WriteAsync(
+                    paths.StagingRoot,
+                    "interop/Assembly-CSharp.cs",
+                    interopDecompilation.SourceText,
+                    snapshotId,
+                    cancellationToken);
+            }
             var symbols = BuildSymbols(decompilation, snapshotId);
+            var callableSurface = BuildCallableSurface(
+                decompilation,
+                interopDecompilation,
+                symbols,
+                indexId,
+                snapshotId,
+                selectedInteropPath,
+                interopInputSha256);
             var sourceSymbols = _sourceIndexer.Index(decompilation.SourceText, CodebaseKind.ScheduleI, CodeChannel.Installed, sourceFile.RelativePath);
             var sourceLocations = BuildSourceLocations(sourceSymbols, symbols, sourceFile);
             var fingerprints = _fingerprints.Create(
@@ -117,12 +165,16 @@ public sealed class IndexingWorkflow
             if (!string.Equals(writtenHash, sourceFile.Sha256, StringComparison.Ordinal))
                 throw new InvalidDataException("Generated source hash validation failed.");
 
-            await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [sourceFile], sourceLocations, fingerprints, relationships), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
+            var sourceFiles = interopSourceFile is null ? new[] { sourceFile } : new[] { sourceFile, interopSourceFile };
+            await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, sourceFiles, sourceLocations, fingerprints, relationships, callableSurface), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
             databaseCompleted = true;
             if (Directory.Exists(paths.FinalRoot)) Directory.Delete(paths.FinalRoot, recursive: true);
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
             await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, cancellationToken);
-            return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, 1, relationships.Count, []);
+            var warnings = selectedInteropPath is null
+                ? new[] { "InteropSurfaceUnavailable: no usable Il2CppInterop Assembly-CSharp.dll was found; wrapper-dependent members are unavailable." }
+                : Array.Empty<string>();
+            return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, sourceFiles.Length, relationships.Count, warnings, callableSurface.Count);
         }
         catch (Exception exception)
         {
@@ -133,6 +185,81 @@ public sealed class IndexingWorkflow
             if (Directory.Exists(paths.StagingRoot)) Directory.Delete(paths.StagingRoot, recursive: true);
             throw;
         }
+    }
+
+    private async Task<string?> ResolveInteropPathAsync(
+        string buildId,
+        string? overridePath,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(overridePath))
+            return ResolveInteropPath(overridePath);
+
+        if (_atlasRepository is null)
+            return null;
+        var current = await _atlasRepository.GetCurrentSnapshotAsync(cancellationToken);
+        if (current is null || !string.Equals(current.Build.BuildId, buildId, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(current.Installation.InstallationRoot))
+            return null;
+        return ResolveInteropPath(Path.Combine(
+            current.Installation.InstallationRoot,
+            "MelonLoader",
+            "Il2CppAssemblies",
+            "Assembly-CSharp.dll"));
+    }
+
+    private static string? ResolveInteropPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (Directory.Exists(fullPath))
+            fullPath = Path.Combine(fullPath, "Il2CppAssemblies", "Assembly-CSharp.dll");
+        return File.Exists(fullPath) ? fullPath : null;
+    }
+
+    private static async Task<string> HashFileAsync(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        return Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)).ToLowerInvariant();
+    }
+
+    private static IReadOnlyList<IndexCallableSurfaceRecord> BuildCallableSurface(
+        ManagedDecompilation game,
+        ManagedDecompilation? interop,
+        IReadOnlyList<IndexSymbolRecord> symbols,
+        string indexId,
+        string snapshotId,
+        string? interopPath,
+        string? interopInputSha256)
+    {
+        var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol, StringComparer.Ordinal);
+        var matches = new InteropCallableSurfaceMatcher().Match(game, interop);
+        var assemblyName = interopPath is null ? "Assembly-CSharp.dll" : Path.GetFileName(interopPath);
+        return matches
+            .Select(match =>
+            {
+                var memberName = ManagedMemberIdentity.Render(match.GameTypeName, match.GameMember);
+                var key = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, ToSymbolKind(match.GameMember.Kind), memberName).CanonicalKey;
+                return symbolIds.TryGetValue(key, out var symbol)
+                    ? new IndexCallableSurfaceRecord(
+                        HashId(indexId + "\n" + symbol.SymbolId),
+                        indexId,
+                        snapshotId,
+                        symbol.SymbolId,
+                        symbol.CanonicalKey,
+                        assemblyName,
+                        interopInputSha256,
+                        match.InteropSignature,
+                        match.Kind,
+                        match.RequiresReflection,
+                        match.Status,
+                        InteropInputTrust.LocalOnly,
+                        match.Evidence)
+                    : null;
+            })
+            .Where(record => record is not null)
+            .Cast<IndexCallableSurfaceRecord>()
+            .OrderBy(record => record.GameCanonicalKey, StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static IReadOnlyList<IndexSymbolRecord> BuildSymbols(ManagedDecompilation decompilation, string snapshotId)
@@ -150,7 +277,16 @@ public sealed class IndexingWorkflow
                 var bodyRecoveryStatus = member.Kind is ManagedMemberKind.Constructor or ManagedMemberKind.Method
                     ? member.BodyRecoveryStatus
                     : null;
-                symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + key), snapshotId, key, kind, memberName, member.Signature, false, bodyRecoveryStatus));
+                symbols.Add(new IndexSymbolRecord(
+                    HashId(snapshotId + "\n" + key),
+                    snapshotId,
+                    key,
+                    kind,
+                    memberName,
+                    member.Signature,
+                    false,
+                    bodyRecoveryStatus,
+                    member.IsPublic));
             }
         }
         return symbols

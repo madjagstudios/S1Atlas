@@ -18,7 +18,8 @@ internal static class IndexQueryCommandFactory
         TextWriter error,
         CancellationToken cancellationToken,
         Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>> execute,
-        Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>> executeInIndex)
+        Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>> executeInIndex,
+        Func<IndexQueryOptions, string?>? validateOptions = null)
     {
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
@@ -55,6 +56,9 @@ internal static class IndexQueryCommandFactory
                         parseResult.GetValue(codebaseOption),
                         parseResult.GetValue(channelOption),
                         limit);
+                    var optionError = validateOptions?.Invoke(options);
+                    if (optionError is not null)
+                        return commandOutput.Failure(1, "InvalidOptionCombination", optionError);
                     var buildId = parseResult.GetValue(buildOption);
                     if (!string.IsNullOrWhiteSpace(buildId) && !UsesInstalledScheduleIAuthority(options))
                     {
@@ -131,6 +135,15 @@ internal static class IndexQueryCommandFactory
             writer.WriteLine(
                 $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
                 $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+        }
+
+        if (data.CallableSurface?.CallableSurface is { } callable)
+        {
+            writer.WriteLine($"Callable: {callable.Status} | {callable.Kind} | reflection required: {callable.RequiresReflection}");
+            writer.WriteLine($"Game member: {callable.GameCanonicalKey}");
+            writer.WriteLine($"Interop: {callable.InteropSignature ?? "unavailable"}");
+            writer.WriteLine($"Evidence: {callable.Evidence}");
+            writer.WriteLine($"Interop input trust: {callable.InteropInputTrust} (not cross-validated to the selected game build)");
         }
 
         if (!string.IsNullOrWhiteSpace(data.CompletenessNotice))

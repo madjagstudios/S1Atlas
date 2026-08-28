@@ -86,6 +86,31 @@ public sealed class CodeSymbolTools
         CancellationToken ct = default) =>
         await GetSymbolAsync(selector, buildId, SymbolKind.Method, limit, ct);
 
+    [McpServerTool(Name = "get_callable_surface"), Description("Resolve how one Schedule I game member is callable through its local Il2CppInterop projection.")]
+    public async Task<ToolEnvelope<CallableSurfaceQueryResult>> GetCallableSurfaceAsync(
+        [Description("Exact or fuzzy game-member selector.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        CancellationToken ct = default)
+    {
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(selector, authority, out ToolEnvelope<CallableSurfaceQueryResult> selectorError))
+                    return selectorError;
+
+                var result = await _services.IndexQueryService.GetCallableSurfaceInIndexAsync(
+                    authority.IndexRun!,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    selector,
+                    ct);
+                return EnvelopeMapper.FromCallableSurface(authority, result);
+            });
+    }
+
     [McpServerTool(Name = "get_source"), Description("Return integrity-checked source for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,

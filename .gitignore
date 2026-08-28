@@ -21,9 +21,8 @@ coverage/
 # Isolated development worktrees
 .worktrees/
 worktrees/
-.superpowers/
 
-# Agent working notes — kept local (scratchpad); not published to this public repo
+# Local working notes
 docs/worknotes/
 
 # S1Atlas generated data

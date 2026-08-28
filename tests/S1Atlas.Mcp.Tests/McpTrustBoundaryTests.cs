@@ -26,6 +26,7 @@ public sealed class McpTrustBoundaryTests
                 "find_callers",
                 "find_references",
                 "find_related_types",
+                "get_callable_surface",
                 "get_component",
                 "get_environment",
                 "get_gameobject",

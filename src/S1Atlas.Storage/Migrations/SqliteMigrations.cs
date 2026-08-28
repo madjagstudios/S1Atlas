@@ -633,6 +633,37 @@ internal static class SqliteMigrations
         ON serialized_refs(target_symbol_id);
         """;
 
+    private const string CallableSurfaceV9Sql = """
+        ALTER TABLE symbols
+        ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0
+        CHECK (is_public IN (0, 1));
+
+        CREATE TABLE callable_surface (
+            callable_surface_id TEXT NOT NULL PRIMARY KEY,
+            index_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            game_symbol_id TEXT NOT NULL,
+            game_canonical_key TEXT NOT NULL,
+            interop_assembly_name TEXT NOT NULL,
+            interop_input_sha256 TEXT NULL,
+            interop_signature TEXT NULL,
+            callable_kind TEXT NOT NULL CHECK (callable_kind IN ('DirectGameMember', 'PublicMethodWrapper', 'PublicFieldAccessor', 'PublicPropertyAccessor', 'NonPublicWrapper')),
+            requires_reflection INTEGER NOT NULL CHECK (requires_reflection IN (0, 1)),
+            status TEXT NOT NULL CHECK (status IN ('Resolved', 'Ambiguous', 'Unavailable')),
+            interop_input_trust TEXT NOT NULL CHECK (interop_input_trust IN ('LocalOnly')),
+            evidence TEXT NOT NULL,
+            FOREIGN KEY (index_id) REFERENCES index_runs(index_id),
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id),
+            FOREIGN KEY (game_symbol_id) REFERENCES symbols(symbol_id)
+        );
+
+        CREATE UNIQUE INDEX ux_callable_surface_index_symbol
+        ON callable_surface(index_id, game_symbol_id);
+
+        CREATE INDEX ix_callable_surface_index_status
+        ON callable_surface(index_id, status);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -642,6 +673,7 @@ internal static class SqliteMigrations
         new(5, "validated-extractions-v5", ValidatedExtractionsV5Sql),
         new(6, "indexing-v6", IndexingV6Sql),
         new(7, "body-recovery-v7", BodyRecoveryV7Sql),
-        new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql)
+        new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql),
+        new(9, "callable-surface-v9", CallableSurfaceV9Sql)
     ];
 }

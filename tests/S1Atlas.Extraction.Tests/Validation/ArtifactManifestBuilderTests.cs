@@ -64,10 +64,10 @@ public sealed class ArtifactManifestBuilderTests : IDisposable
         var assembly = Assert.Single(result.Statistics.Assemblies);
         Assert.Equal("Assembly-CSharp", assembly.AssemblyName);
         Assert.Equal(2, assembly.FileCount);
-        Assert.Equal(12, assembly.TypeDefinitionCount);
-        Assert.Equal(46, assembly.MethodDefinitionCount);
-        Assert.Equal(14, assembly.FieldDefinitionCount);
-        Assert.Equal(8, assembly.PropertyDefinitionCount);
+        Assert.Equal(14, assembly.TypeDefinitionCount);
+        Assert.Equal(56, assembly.MethodDefinitionCount);
+        Assert.Equal(18, assembly.FieldDefinitionCount);
+        Assert.Equal(10, assembly.PropertyDefinitionCount);
         Assert.Equal(4, assembly.EventDefinitionCount);
 
         var issue = Assert.Single(result.Issues);

@@ -11,7 +11,8 @@ internal sealed record IndexQueryOutput(
     SymbolResolutionResult? Resolution = null,
     BodyRecoveryStatus? BodyRecoveryStatus = null,
     bool? CallerCompletenessBoundedByTargetResolution = null,
-    string? CompletenessNotice = null)
+    string? CompletenessNotice = null,
+    CallableSurfaceResolutionResult? CallableSurface = null)
 {
     public IReadOnlyList<SymbolQueryResult> Results => Symbols;
 }

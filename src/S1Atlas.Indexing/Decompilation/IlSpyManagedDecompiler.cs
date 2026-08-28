@@ -84,7 +84,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 CanonicalSignatureRenderer.RenderType(valueType) + " " + metadata.GetString(field.Name),
                 false,
                 [],
-                ValueType: valueType));
+                ValueType: valueType,
+                IsPublic: IsPublic(field.Attributes)));
         }
 
         foreach (var propertyHandle in definition.GetProperties())
@@ -100,7 +101,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 false,
                 [],
                 ParameterTypes: parameterTypes,
-                ValueType: signature.ReturnType));
+                ValueType: signature.ReturnType,
+                IsPublic: IsPublic(metadata, property.GetAccessors().Getter, property.GetAccessors().Setter)));
         }
 
         foreach (var eventHandle in definition.GetEvents())
@@ -114,7 +116,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 CanonicalSignatureRenderer.RenderType(valueType) + " " + eventName,
                 false,
                 [],
-                ValueType: valueType));
+                ValueType: valueType,
+                IsPublic: IsPublic(metadata, @event.GetAccessors().Adder, @event.GetAccessors().Remover, @event.GetAccessors().Raiser)));
         }
 
         foreach (var methodHandle in definition.GetMethods())
@@ -159,7 +162,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 methodSignature.ReturnType,
                 GenericParameterCount: genericParameterCount,
                 BodyFacts: bodyFacts,
-                BodyRecoveryStatus: bodyRecoveryStatus));
+                BodyRecoveryStatus: bodyRecoveryStatus,
+                IsPublic: IsPublic(method.Attributes)));
         }
 
         return new ManagedTypeFacts(fullName, @namespace, name, baseType, interfaces, members);
@@ -170,6 +174,18 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         (method.Attributes & MethodAttributes.PinvokeImpl) != 0 ||
         (method.ImplAttributes & MethodImplAttributes.Runtime) != 0 ||
         (method.ImplAttributes & MethodImplAttributes.InternalCall) != 0;
+
+    private static bool IsPublic(FieldAttributes attributes) =>
+        (attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Public;
+
+    private static bool IsPublic(MethodAttributes attributes) =>
+        (attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public;
+
+    private static bool IsPublic(
+        MetadataReader metadata,
+        params MethodDefinitionHandle[] accessors) =>
+        accessors.Any(accessor =>
+            !accessor.IsNil && IsPublic(metadata.GetMethodDefinition(accessor).Attributes));
 
     private static string CanonicalPropertySignature(string name, string valueType, IReadOnlyList<string> parameterTypes) =>
         parameterTypes.Count == 0

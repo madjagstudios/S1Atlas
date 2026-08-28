@@ -667,7 +667,21 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         null,
                         "ReadsField",
                         "fixture:reads-field")
-                ]),
+                ],
+                [new IndexCallableSurfaceRecord(
+                    Id("callable-method"),
+                    indexId,
+                    snapshotId,
+                    Id(MethodSymbolId),
+                    "ScheduleI:Installed:Method:Demo.Widget::Run()",
+                    "Assembly-CSharp.dll",
+                    "fixture-interop-hash",
+                    MethodSelector,
+                    CallableSurfaceKind.PublicMethodWrapper,
+                    false,
+                    CallableSurfaceStatus.Resolved,
+                    InteropInputTrust.LocalOnly,
+                    "wrapper forwards through il2cpp_runtime_invoke")]),
             BaseTime.AddMinutes(21).ToString("O"),
             ct);
     }

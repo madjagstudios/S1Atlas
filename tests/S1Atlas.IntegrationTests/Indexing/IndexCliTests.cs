@@ -29,6 +29,24 @@ public sealed class IndexCliTests : IAsyncDisposable
     }
 
     [Fact]
+    public void Interop_path_rejects_api_indexing_options()
+    {
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["index", "--codebase", "s1api", "--channel", "installed", "--interop-path", "interop.dll", "--json"],
+            output,
+            error,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.Contains("InvalidOptionCombination", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Index_installed_s1api_uses_the_current_snapshot_dependency_and_persists_provenance()
     {
         var assemblyPath = Path.Combine(_dataDirectory, "inputs", "S1API.dll");

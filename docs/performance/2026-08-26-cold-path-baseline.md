@@ -19,7 +19,7 @@ game-derived content. This is **real-install** evidence, not fixture data.
 | Game build | `1f1e5669…0990c` (exe 2022.3.62.7762112, Steam build 24705572) |
 | Inputs | GameAssembly.dll 65.9 MB · global-metadata.dat 18.4 MB |
 
-### ⚠️ Cache-state caveat (read before trusting extract)
+### Cache-state caveat
 
 This machine was **not a clean-cold environment**. `%LOCALAPPDATA%\S1Atlas` already
 held a prior authoritative extraction for build `1f1e5669…` (plus an older build

@@ -24,7 +24,8 @@ public sealed record ManagedMemberFacts(
     string? ValueType = null,
     int GenericParameterCount = 0,
     ManagedMethodBodyFacts? BodyFacts = null,
-    BodyRecoveryStatus? BodyRecoveryStatus = null)
+    BodyRecoveryStatus? BodyRecoveryStatus = null,
+    bool IsPublic = false)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
 }
