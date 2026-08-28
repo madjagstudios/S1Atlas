@@ -20,13 +20,16 @@ public sealed record IndexingWorkflowResult(
     int SourceFileCount,
     int RelationshipCount,
     IReadOnlyList<string> Warnings,
-    int CallableSurfaceCount = 0);
+    int CallableSurfaceCount = 0,
+    int? ReferenceModCount = null,
+    int? ReferenceDocumentCount = null,
+    int? ReferenceSymbolCount = null);
 
 public sealed class IndexingWorkflow
 {
     public const int IndexSchemaVersion = 9;
-    private const string DecompilerPackage = "ICSharpCode.Decompiler";
-    private static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
+    internal const string DecompilerPackage = "ICSharpCode.Decompiler";
+    internal static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
 
     private readonly string _dataRoot;
@@ -296,7 +299,7 @@ public sealed class IndexingWorkflow
             .ToArray();
     }
 
-    private static string HashId(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+    internal static string HashId(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
     private static IReadOnlyList<IndexSourceLocationRecord> BuildSourceLocations(
         IReadOnlyList<NormalizedSymbol> sourceSymbols,

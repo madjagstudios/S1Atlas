@@ -253,6 +253,7 @@ internal static class ReferenceModPathSafety
         {
             "README" => "Readme",
             "CHANGELOG" => "Changelog",
+            "DEVLOG" => "Devlog",
             _ when fileName.Contains("guide", StringComparison.OrdinalIgnoreCase) => "Guide",
             _ => "Document"
         };
