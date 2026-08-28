@@ -10,10 +10,16 @@ public sealed class ReferenceRelationshipResolver
     public static (string Origin, string Type, string Name, int Arity, string Signature) CreateLookupKey(string origin, string signature)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(origin);
+        var identity = CreateIdentityLookupKey(signature);
+        return (origin, identity.Type, identity.Name, identity.Arity, identity.Signature);
+    }
+
+    private static (string Type, string Name, int Arity, string Signature) CreateIdentityLookupKey(string signature)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(signature);
         var separator = signature.IndexOf("::", StringComparison.Ordinal);
         if (separator < 1)
-            return (origin, string.Empty, signature, 0, signature);
+            return (string.Empty, signature, 0, signature);
 
         var type = signature[..separator];
         var member = signature[(separator + 2)..];
@@ -21,7 +27,7 @@ public sealed class ReferenceRelationshipResolver
         var name = nameEnd < 0 ? member : member[..nameEnd];
         var tick = name.LastIndexOf('`');
         var arity = tick >= 0 && int.TryParse(name[(tick + 1)..], out var parsedArity) ? parsedArity : 0;
-        return (origin, type, name, arity, signature);
+        return (type, name, arity, signature);
     }
 
     public IReadOnlyList<IndexRelationshipRecord> Resolve(
@@ -30,6 +36,19 @@ public sealed class ReferenceRelationshipResolver
     {
         ArgumentNullException.ThrowIfNull(mods);
         ArgumentNullException.ThrowIfNull(symbols);
+        var targetLookup = new Dictionary<(string Type, string Name, int Arity, string Signature), List<IndexSymbolRecord>>();
+        foreach (var pair in symbols)
+        {
+            var targetKey = (pair.Key.Type, pair.Key.Name, pair.Key.Arity, pair.Key.Signature);
+            if (!targetLookup.TryGetValue(targetKey, out var candidates))
+            {
+                candidates = [];
+                targetLookup[targetKey] = candidates;
+            }
+
+            candidates.Add(pair.Value);
+        }
+
         var result = new List<IndexRelationshipRecord>();
         foreach (var mod in mods)
         {
@@ -50,16 +69,10 @@ public sealed class ReferenceRelationshipResolver
                             ManagedReferenceKind.WritesField => RelationshipKind.WritesField,
                             _ => throw new ArgumentOutOfRangeException()
                         };
-                        var targetKey = CreateLookupKey("target", reference.Target);
-                        var candidates = symbols
-                            .Where(pair =>
-                                string.Equals(pair.Key.Type, targetKey.Type, StringComparison.Ordinal) &&
-                                string.Equals(pair.Key.Name, targetKey.Name, StringComparison.Ordinal) &&
-                                pair.Key.Arity == targetKey.Arity &&
-                                string.Equals(pair.Key.Signature, targetKey.Signature, StringComparison.Ordinal))
-                            .Select(pair => pair.Value)
-                            .DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal)
-                            .ToArray();
+                        var targetKey = CreateIdentityLookupKey(reference.Target);
+                        var candidates = targetLookup.TryGetValue(targetKey, out var matchingSymbols)
+                            ? matchingSymbols.DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal).ToArray()
+                            : [];
                         var target = candidates.Length == 1 ? candidates[0] : null;
                         result.Add(new IndexRelationshipRecord(
                             Indexing.Workflow.IndexingWorkflow.HashId(source.SymbolId + "\n" + kind + "\n" + reference.Target),
