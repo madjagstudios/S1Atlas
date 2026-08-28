@@ -26,8 +26,9 @@ Roots: src
 | src/S1Atlas.Core/Identity/ | 1 |
 | src/S1Atlas.Core/Indexing/ | 14 |
 | src/S1Atlas.Core/Properties/ | 1 |
+| src/S1Atlas.Core/ReferenceMods/ | 1 |
 | src/S1Atlas.Core/Scenes/ | 3 |
-| src/S1Atlas.Core/Storage/ | 6 |
+| src/S1Atlas.Core/Storage/ | 7 |
 | src/S1Atlas.Core/Tools/ | 14 |
 | src/S1Atlas.Docs/ | 1 |
 | src/S1Atlas.Docs/Content/ | 1 |

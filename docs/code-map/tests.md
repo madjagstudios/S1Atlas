@@ -65,7 +65,7 @@ Roots: tests
 | tests/S1Atlas.Mcp.Tests/ | 9 |
 | tests/S1Atlas.Storage.Tests/ | 4 |
 | tests/S1Atlas.Storage.Tests/Indexing/ | 1 |
-| tests/S1Atlas.Storage.Tests/Migrations/ | 8 |
+| tests/S1Atlas.Storage.Tests/Migrations/ | 9 |
 | tests/S1Atlas.Storage.Tests/Scene/ | 2 |
-| tests/S1Atlas.Storage.Tests/Sqlite/ | 9 |
+| tests/S1Atlas.Storage.Tests/Sqlite/ | 10 |
 
