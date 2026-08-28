@@ -146,29 +146,25 @@ public interface IIndexRepository
         string targetText,
         RelationshipTargetTextMatchMode matchMode,
         string relationshipKind,
-        CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Target-text relationship counting is not supported by this index repository.");
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetTextAsync(
         string indexId,
         string targetText,
         RelationshipTargetTextMatchMode matchMode,
         string relationshipKind,
         int limit,
-        CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Target-text relationship lookup is not supported by this index repository.");
+        CancellationToken cancellationToken);
     Task<int> CountCompletedRelationshipsByTargetSymbolIdAsync(
         string indexId,
         string symbolId,
         string relationshipKind,
-        CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Relationship counting by target symbol and kind is not supported by this index repository.");
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(
         string indexId,
         string symbolId,
         string relationshipKind,
         int limit,
-        CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Relationship lookup by target symbol and kind is not supported by this index repository.");
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken);
