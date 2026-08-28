@@ -42,10 +42,10 @@ public sealed class ReferenceModFileSelector
 
                 foreach (var file in Directory.EnumerateFiles(current))
                 {
-            if (!ReferenceModPathSafety.TryCreateInputFile(root, mod.ModId, file, out var inputFile))
-            {
-                continue;
-            }
+                    if (!ReferenceModPathSafety.TryCreateInputFile(root, mod.ModId, file, out var inputFile))
+                    {
+                        continue;
+                    }
 
                     if (!Matches(mod.Include, inputFile.RelativePath) ||
                         Matches(mod.Exclude, inputFile.RelativePath))
