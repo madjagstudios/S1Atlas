@@ -54,13 +54,16 @@ own answer or decision record, never write a citation back to Atlas.
    `get_source`. Add `--scope`/`--collection` or the matching MCP arguments
    for reference evidence. A method name or an old mod guide is not behavior
    evidence.
-4. **Trace relationships.** Use CLI `refs`, `callers`, and `callees`, or MCP
-   `find_references`, `find_callers`, `find_callees`, and
+4. **Trace relationships.** Use CLI `refs`, `callers`, `callees`,
+   `callsites`, and `fieldrefs`, or MCP `find_references`, `find_callers`,
+   `find_callees`, `find_call_sites`, `find_field_references`, and
    `find_related_types`. Add the reference scope/collection when needed.
-   Preserve the reported direction, resolution status, origin, and
-   completeness boundary. `reference` is isolated to the selected collection;
-   use `all` explicitly when a recorded game endpoint or game relationship is
-   part of the evidence.
+   Preserve the reported direction, resolution status, origin, unresolved raw
+   target text, and completeness boundary. `reference` is isolated to the
+   selected collection; use `all` explicitly when a recorded game endpoint or
+   game relationship is part of the evidence. `callsites` and `fieldrefs` are
+   recovered-IL static evidence only: they do not prove runtime behavior,
+   lifecycle ordering, scene behavior, geometry behavior, or call order.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
    `scene`, `gameobject`, `prefab`, and `component`, or MCP `list_scenes`,
    `get_scene`, `get_gameobject`, `get_prefab`, and `get_component`. For
@@ -85,6 +88,8 @@ own answer or decision record, never write a citation back to Atlas.
 | Callable surface | `callable <game-member>` | `get_callable_surface` |
 | Behavior/source | `source <query> --context <n> --json` | `get_source` |
 | Callers/references | `callers`, `callees`, `refs` with `--scope`/`--collection` as needed | `find_callers`, `find_callees`, `find_references`, `find_related_types` with `scope`/`collection` as needed |
+| Static engine/BCL call sites | `callsites <target>` with `--scope`/`--collection` as needed | `find_call_sites` with `scope`/`collection` as needed |
+| Field readers/writers | `fieldrefs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
 | Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component` | `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component` |
@@ -95,8 +100,8 @@ Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.
 not evidence until a completed index exists and its query result reports the
 commit and index provenance.
 
-AT-24 body recovery, AT-25 callable-surface evidence, and AT-26 reference
-evidence are orthogonal. Body recovery establishes whether indexed decompiled
+Body recovery, callable-surface evidence, and reference evidence are orthogonal.
+Body recovery establishes whether indexed decompiled
 text is available for behavioral inspection; callable-surface evidence
 describes how a Schedule I member is reached through the local interop
 projection; reference collections provide local prior-art evidence. None of
@@ -162,17 +167,6 @@ turning it into a behavioral certainty the source does not prove. For example:
 > **INTERPRETATION:** this may be the employment-state transition; persistence
 > still needs evidence from the surrounding save/load symbols.
 
-## Common mistakes — stop and correct them
-
-| Temptation | Correction |
-|---|---|
-| Answer from a symbol name or old guide | Resolve the current symbol and inspect `get_source`/`source`. |
-| Use MCP when it is not registered | Fall back to the CLI and report the unavailable server. |
-| Treat zero or missing data as proof of absence | State the exact zero/unavailable/not-indexed boundary. |
-| Recommend a direct patch before checking APIs | Query S1API/S1MAPI first, then inspect Schedule I evidence. |
-| Cite “the current build” without IDs | Include the returned build, extraction, index, or API commit/index identifiers. |
-| Reuse pre-update modding knowledge after an update | Run `diff`/`compare_symbol` and re-query affected source and relationships. |
-| Write findings into Atlas | Keep the skill read-only; cite results in your own output only. |
-
-If any of these red flags appears, stop the recommendation and return to the
-evidence loop.
+If a result is unavailable, ambiguous, or incomplete, return to the evidence
+loop rather than filling the gap from memory. Keep the skill read-only and cite
+the returned build, extraction, index, or API commit identifiers in your output.

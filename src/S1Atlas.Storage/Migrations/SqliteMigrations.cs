@@ -812,6 +812,11 @@ internal static class SqliteMigrations
         PRAGMA foreign_keys = ON;
         """;
 
+    private const string RelationshipQueryTargetTextV11Sql = """
+        CREATE INDEX ix_relationships_snapshot_kind_target_text
+        ON relationships(snapshot_id, relationship_kind, target_text, relationship_id);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -823,6 +828,7 @@ internal static class SqliteMigrations
         new(7, "body-recovery-v7", BodyRecoveryV7Sql),
         new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql),
         new(9, "callable-surface-v9", CallableSurfaceV9Sql),
-        new(10, "reference-mods-v10", ReferenceModsV10Sql, RequiresTransaction: false)
+        new(10, "reference-mods-v10", ReferenceModsV10Sql, RequiresTransaction: false),
+        new(11, "relationship-query-target-text-v11", RelationshipQueryTargetTextV11Sql)
     ];
 }

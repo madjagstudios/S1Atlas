@@ -3,6 +3,7 @@ using System.IO;
 using ModelContextProtocol.Server;
 using S1Atlas.Application.Envelope;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Indexing.Query;
 using S1Atlas.Mcp.Mapping;
 
 namespace S1Atlas.Mcp.Tools;
@@ -235,6 +236,126 @@ public sealed class CodeSymbolTools
             collection,
             RelationshipDirection.References);
 
+    [McpServerTool(Name = "find_call_sites"), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
+    public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
+        [Description("Resolved game-member selector or canonical raw target text.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+    {
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(selector, authority, out ToolEnvelope<CallSiteQueryResult> selectorError))
+                {
+                    return selectorError;
+                }
+
+                if (!ToolArguments.TryBoundLimit(limit, authority, out var boundedLimit, out ToolEnvelope<CallSiteQueryResult> limitError))
+                {
+                    return limitError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<CallSiteQueryResult> scopeError))
+                {
+                    return scopeError;
+                }
+
+                var pinned = await PinAuthorityAsync<CallSiteQueryResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.CallSitesInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        selector,
+                        boundedLimit,
+                        ct)
+                    : await _services.FederatedIndexQueryService.CallSitesAsync(
+                        selector,
+                        options,
+                        ct,
+                        pinned.ReferenceCollection?.ReferenceIndexId);
+                return EnvelopeMapper.FromScopedCallSites(authority, result, options.ReferenceCollection, pinned.ReferenceCollection?.ReferenceIndexId);
+            });
+    }
+
+    [McpServerTool(Name = "find_field_references"), Description("Find recovered-IL static field readers and writers for one resolved game or local reference field; results do not prove lifecycle ordering or runtime behavior.")]
+    public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindFieldReferencesAsync(
+        [Description("Exact or fuzzy field selector.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Return only field readers.")] bool readers = false,
+        [Description("Return only field writers.")] bool writers = false,
+        [Description("Max results (1-500).")] int limit = 50,
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+    {
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(selector, authority, out ToolEnvelope<FieldReferenceQueryResult> selectorError))
+                {
+                    return selectorError;
+                }
+
+                if (!ToolArguments.TryParseFieldReferenceFilter(
+                        readers,
+                        writers,
+                        authority,
+                        out var filter,
+                        out ToolEnvelope<FieldReferenceQueryResult> filterError))
+                {
+                    return filterError;
+                }
+
+                if (!ToolArguments.TryBoundLimit(limit, authority, out var boundedLimit, out ToolEnvelope<FieldReferenceQueryResult> limitError))
+                {
+                    return limitError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<FieldReferenceQueryResult> scopeError))
+                {
+                    return scopeError;
+                }
+
+                var pinned = await PinAuthorityAsync<FieldReferenceQueryResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.FieldReferencesInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        selector,
+                        boundedLimit,
+                        filter,
+                        ct)
+                    : await _services.FederatedIndexQueryService.FieldReferencesAsync(
+                        selector,
+                        options,
+                        filter,
+                        ct,
+                        pinned.ReferenceCollection?.ReferenceIndexId);
+                return EnvelopeMapper.FromScopedFieldReferences(authority, result, options.ReferenceCollection, pinned.ReferenceCollection?.ReferenceIndexId);
+            });
+    }
+
     [McpServerTool(Name = "find_related_types"), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
@@ -457,12 +578,13 @@ public sealed class CodeSymbolTools
                         collection.BaseIndexId)));
         }
 
-        return new(baseAuthority, null);
+        return new(baseAuthority, null, collection);
     }
 
     private sealed record ScopedAuthority<T>(
         S1Atlas.Application.Authority.InstalledBuildAuthority Authority,
-        ToolEnvelope<T>? Error) where T : class;
+        ToolEnvelope<T>? Error,
+        ReferenceCollectionAuthorityQueryResult? ReferenceCollection = null) where T : class;
 
     private static class ToolArguments
     {
@@ -627,6 +749,32 @@ public sealed class CodeSymbolTools
             }
 
             parsed = selected;
+            error = null!;
+            return true;
+        }
+
+        public static bool TryParseFieldReferenceFilter<T>(
+            bool readers,
+            bool writers,
+            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            out FieldReferenceFilter filter,
+            out ToolEnvelope<T> error) where T : class
+        {
+            if (readers && writers)
+            {
+                filter = default;
+                error = Invalid<T>(
+                    authority,
+                    "InvalidOptionCombination",
+                    "--readers and --writers are mutually exclusive.");
+                return false;
+            }
+
+            filter = readers
+                ? FieldReferenceFilter.Readers
+                : writers
+                    ? FieldReferenceFilter.Writers
+                    : FieldReferenceFilter.All;
             error = null!;
             return true;
         }

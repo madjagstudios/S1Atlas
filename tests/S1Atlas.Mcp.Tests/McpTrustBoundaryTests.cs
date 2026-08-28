@@ -23,8 +23,10 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(
             [
                 "compare_symbol",
+                "find_call_sites",
                 "find_callees",
                 "find_callers",
+                "find_field_references",
                 "find_references",
                 "find_related_types",
                 "get_callable_surface",
@@ -88,6 +90,11 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["get_source"], ["selector", "buildId", "context", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(
+            schemas["find_field_references"],
+            ["selector", "buildId", "readers", "writers", "limit", "scope", "collection"],
+            ["selector"]);
         AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(
             schemas["find_related_types"],
@@ -433,6 +440,11 @@ internal static class McpTestHost
         await code.FindCallersAsync(" ", null, 50, ct);
         await code.FindCalleesAsync(atlas.MethodSelector, null, 50, ct);
         await code.FindCalleesAsync(" ", null, 50, ct);
+        await code.FindCallSitesAsync(atlas.EngineCallSiteSelector, null, 50, ct);
+        await code.FindCallSitesAsync(" ", null, 50, ct);
+        await code.FindFieldReferencesAsync(atlas.GameFieldSelector, null, true, false, 50, ct);
+        await code.FindFieldReferencesAsync(atlas.GameFieldSelector, null, false, true, 50, ct);
+        await code.FindFieldReferencesAsync(" ", null, false, false, 50, ct);
         await code.FindReferencesAsync(atlas.MethodSelector, null, 50, ct);
         await code.FindReferencesAsync(" ", null, 50, ct);
         await code.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
@@ -467,6 +479,8 @@ internal static class McpTestHost
         var method = await tools.GetMethodAsync(atlas.MethodSelector, null, ct: ct);
         var source = await tools.GetSourceAsync(atlas.MethodSelector, null, 0, ct);
         var callers = await tools.FindCallersAsync(atlas.MethodSelector, null, 50, ct);
+        var callSites = await tools.FindCallSitesAsync(atlas.EngineCallSiteSelector, null, 50, ct);
+        var fieldReferences = await tools.FindFieldReferencesAsync(atlas.GameFieldSelector, null, false, false, 50, ct);
         var references = await tools.FindReferencesAsync(atlas.MethodSelector, null, 50, ct);
         var relatedTypes = await tools.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
         return
@@ -476,6 +490,8 @@ internal static class McpTestHost
             Observe(method, SymbolIndexIds(method)),
             Observe(source, [source.Build!.IndexId!]),
             Observe(callers, [callers.Data!.Resolution.Symbol!.IndexId]),
+            Observe(callSites, [callSites.Build!.IndexId!]),
+            Observe(fieldReferences, [fieldReferences.Data!.Resolution.Symbol!.IndexId]),
             Observe(references, [references.Data!.Resolution.Symbol!.IndexId]),
             Observe(relatedTypes, [relatedTypes.Data!.Resolution.Symbol!.IndexId])
         ];

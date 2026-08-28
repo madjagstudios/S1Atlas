@@ -141,6 +141,34 @@ public interface IIndexRepository
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsBySourceSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
+    Task<int> CountCompletedRelationshipsByTargetTextAsync(
+        string indexId,
+        string targetText,
+        RelationshipTargetTextMatchMode matchMode,
+        string relationshipKind,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Target-text relationship counting is not supported by this index repository.");
+    Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetTextAsync(
+        string indexId,
+        string targetText,
+        RelationshipTargetTextMatchMode matchMode,
+        string relationshipKind,
+        int limit,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Target-text relationship lookup is not supported by this index repository.");
+    Task<int> CountCompletedRelationshipsByTargetSymbolIdAsync(
+        string indexId,
+        string symbolId,
+        string relationshipKind,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Relationship counting by target symbol and kind is not supported by this index repository.");
+    Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(
+        string indexId,
+        string symbolId,
+        string relationshipKind,
+        int limit,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Relationship lookup by target symbol and kind is not supported by this index repository.");
     Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken);

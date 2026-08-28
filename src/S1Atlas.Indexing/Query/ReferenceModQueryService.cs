@@ -404,7 +404,13 @@ public sealed class ReferenceModQueryService
             .ToArray();
     }
 
-    private async Task<IndexSelection?> RequireSelectionAsync(IndexQueryOptions options, CancellationToken cancellationToken)
+    private Task<IndexSelection?> RequireSelectionAsync(IndexQueryOptions options, CancellationToken cancellationToken) =>
+        RequireSelectionAsync(options, null, cancellationToken);
+
+    private async Task<IndexSelection?> RequireSelectionAsync(
+        IndexQueryOptions options,
+        string? referenceIndexId,
+        CancellationToken cancellationToken)
     {
         if (options.Scope == IndexQueryScope.Game)
             throw new ArgumentException("Reference queries require Reference or All scope.", nameof(options));
@@ -412,11 +418,18 @@ public sealed class ReferenceModQueryService
             throw new ArgumentException("Reference queries require an explicit collection.", nameof(options));
 
         var collection = options.ReferenceCollection.Trim();
-        var run = await _repository.GetLatestCompletedReferenceIndexAsync(collection, cancellationToken);
+        var run = string.IsNullOrWhiteSpace(referenceIndexId)
+            ? await _repository.GetLatestCompletedReferenceIndexAsync(collection, cancellationToken)
+            : await _repository.GetCompletedIndexAsync(referenceIndexId, cancellationToken);
         if (run is null) return null;
         var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
         var context = await _repository.GetReferenceIndexContextAsync(run.IndexId, cancellationToken);
-        if (snapshot is null || snapshot.Codebase != CodebaseKind.ReferenceMod || snapshot.Channel != CodeChannel.Installed || context is null)
+        if (snapshot is null ||
+            snapshot.Codebase != CodebaseKind.ReferenceMod ||
+            snapshot.Channel != CodeChannel.Installed ||
+            (!string.Equals(run.IndexId, collection, StringComparison.Ordinal) &&
+             !string.Equals(snapshot.SourceIdentity, collection, StringComparison.Ordinal)) ||
+            context is null)
             return null;
         var gameRun = await _repository.GetCompletedIndexAsync(context.GameIndexId, cancellationToken);
         if (gameRun is null) return null;
@@ -523,4 +536,10 @@ public sealed class ReferenceModQueryService
         IndexQueryOptions options,
         CancellationToken cancellationToken) =>
         await RequireSelectionAsync(options, cancellationToken);
+
+    internal async Task<IndexSelection?> GetSelectionForFederationAsync(
+        IndexQueryOptions options,
+        string? referenceIndexId,
+        CancellationToken cancellationToken) =>
+        await RequireSelectionAsync(options, referenceIndexId, cancellationToken);
 }

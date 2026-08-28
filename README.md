@@ -11,6 +11,7 @@ Point S1Atlas at your installed copy of Schedule I and it:
 - **Fingerprints the build** and tracks every version you scan, immutably.
 - **Extracts and decompiles** the IL2CPP game assemblies through a verified Cpp2IL + ILSpy pipeline.
 - **Indexes** every type, method, field, and relationship — searchable by name, with decompiled source, callers, callees, and references.
+- **Traces static engine/BCL relationships** so you can ask who calls a Unity or framework API and who reads or writes a field, across the verified game index and explicitly selected local reference collections.
 - **Diffs builds** so you can see exactly what a game update changed.
 - **Deep-indexes S1API and S1MAPI** so you can check the modding API before patching the game directly.
 - **Indexes explicitly selected local reference-mod collections** so prior-art symbols and relationships can be queried beside the verified game index.
@@ -53,6 +54,8 @@ dotnet run --project src/S1Atlas.Cli -- scan --game-path "C:\Program Files (x86)
 dotnet run --project src/S1Atlas.Cli -- extract
 dotnet run --project src/S1Atlas.Cli -- index
 dotnet run --project src/S1Atlas.Cli -- search "Player" --limit 20
+dotnet run --project src/S1Atlas.Cli -- callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+dotnet run --project src/S1Atlas.Cli -- fieldrefs "MoneyManager.cashBalance" --writers
 
 # validate and index a local reference-mod collection selected by a manifest
 dotnet run --project src/S1Atlas.Cli -- reference collections validate "C:\path\to\reference-manifest.json"
@@ -67,7 +70,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 
 ## Interfaces
 
-- **CLI** — `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `docs generate`.
+- **CLI** — `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `docs generate`.
 - **Read-only MCP server** — the Schedule I Installed surface plus completed local reference-collection queries, for coding agents (`dotnet run --project src/S1Atlas.Mcp -- mcp serve`).
 - **Static portal** — `docs generate` builds a deterministic, fully offline, provenance-labeled HTML site.
 - **Agent skill** — an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
@@ -86,7 +89,9 @@ S1Atlas.Mcp         Read-only MCP stdio server for Schedule I Installed and comp
 
 S1Atlas treats the game install and Steam manifest as **read-only input**. Extraction runs Cpp2IL in isolation and promotes only results that pass the validation policy. CLI, MCP, and portal queries use the same verified index.
 
-Reference collections are local and CLI-indexed. Each completed collection records its selected mods, hashes, and Schedule I base index; MCP exposes the resulting read-only queries and collection list. `reference` stays within one collection, while `all` is the explicit cross-origin view. Body recovery, callability, and reference prior art are separate evidence dimensions: AT-24 addresses decompiled-body confidence, AT-25 describes the local interop projection, and AT-26 records selected reference material. None establishes the others.
+Reference collections are local and CLI-indexed. Each completed collection records its selected mods, hashes, and Schedule I base index; MCP exposes the resulting read-only queries and collection list. `reference` stays within one collection, while `all` is the explicit cross-origin view. Body recovery, callability, and reference prior art are separate evidence dimensions, and none establishes the others.
+
+`callsites` and `fieldrefs`, in both CLI and MCP form, are static recovered-IL relationship evidence. They can prove that the indexed code references a target or field in the recovered body set; they do not prove runtime scene behavior, geometry behavior, lifecycle sequencing, or call order.
 
 Deep internals — on-disk data layout, the pinned Cpp2IL definition, the validation policy, and build/environment identity — are documented in **[docs/REFERENCE.md](docs/REFERENCE.md)**.
 

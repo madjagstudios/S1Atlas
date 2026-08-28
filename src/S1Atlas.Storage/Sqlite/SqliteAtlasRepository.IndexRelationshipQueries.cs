@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 
 namespace S1Atlas.Storage.Sqlite;
@@ -67,6 +68,180 @@ public sealed partial class SqliteAtlasRepository
         CancellationToken cancellationToken) =>
         GetCompletedRelationshipsByEndpointAsync(indexId, symbolId, source: false, cancellationToken);
 
+    public async Task<int> CountCompletedRelationshipsByTargetTextAsync(
+        string indexId,
+        string targetText,
+        RelationshipTargetTextMatchMode matchMode,
+        string relationshipKind,
+        CancellationToken cancellationToken)
+    {
+        ValidateTargetTextRelationshipQuery(indexId, targetText, matchMode, relationshipKind);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = matchMode == RelationshipTargetTextMatchMode.Exact
+            ? """
+              SELECT COUNT(*)
+              FROM index_runs AS run
+              INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
+                  ON relationship.snapshot_id = run.snapshot_id
+              WHERE run.index_id = $indexId
+                AND run.status = 'Completed'
+                AND relationship.relationship_kind = $relationshipKind
+                AND relationship.target_text = $targetText COLLATE BINARY;
+              """
+            : """
+              SELECT COUNT(*)
+              FROM index_runs AS run
+              INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
+                  ON relationship.snapshot_id = run.snapshot_id
+              WHERE run.index_id = $indexId
+                AND run.status = 'Completed'
+                AND relationship.relationship_kind = $relationshipKind
+                AND (
+                    relationship.target_text = $targetText COLLATE BINARY
+                    OR (
+                        relationship.target_text >= $prefixLower COLLATE BINARY
+                        AND relationship.target_text < $prefixUpper COLLATE BINARY
+                    )
+                );
+              """;
+        AddTargetTextRelationshipParameters(command, indexId, targetText, relationshipKind, matchMode);
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetTextAsync(
+        string indexId,
+        string targetText,
+        RelationshipTargetTextMatchMode matchMode,
+        string relationshipKind,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ValidateTargetTextRelationshipQuery(indexId, targetText, matchMode, relationshipKind);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = matchMode == RelationshipTargetTextMatchMode.Exact
+            ? """
+              SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
+                     relationship.target_symbol_id, relationship.target_text,
+                     relationship.relationship_kind, relationship.evidence
+              FROM index_runs AS run
+              INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
+                  ON relationship.snapshot_id = run.snapshot_id
+              WHERE run.index_id = $indexId
+                AND run.status = 'Completed'
+                AND relationship.relationship_kind = $relationshipKind
+                AND relationship.target_text = $targetText COLLATE BINARY
+              ORDER BY relationship.target_text COLLATE BINARY,
+                       relationship.relationship_id COLLATE BINARY
+              LIMIT $limit;
+              """
+            : """
+              SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
+                     relationship.target_symbol_id, relationship.target_text,
+                     relationship.relationship_kind, relationship.evidence
+              FROM index_runs AS run
+              INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
+                  ON relationship.snapshot_id = run.snapshot_id
+              WHERE run.index_id = $indexId
+                AND run.status = 'Completed'
+                AND relationship.relationship_kind = $relationshipKind
+                AND (
+                    relationship.target_text = $targetText COLLATE BINARY
+                    OR (
+                        relationship.target_text >= $prefixLower COLLATE BINARY
+                        AND relationship.target_text < $prefixUpper COLLATE BINARY
+                    )
+                )
+              ORDER BY relationship.target_text COLLATE BINARY,
+                       relationship.relationship_id COLLATE BINARY
+              LIMIT $limit;
+              """;
+        AddTargetTextRelationshipParameters(command, indexId, targetText, relationshipKind, matchMode);
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var result = new List<IndexRelationshipRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadRelationshipQueryRecord(reader));
+        return result;
+    }
+
+    public async Task<int> CountCompletedRelationshipsByTargetSymbolIdAsync(
+        string indexId,
+        string symbolId,
+        string relationshipKind,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relationshipKind);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM index_runs AS run
+            INNER JOIN relationships AS relationship INDEXED BY ix_relationships_target_kind
+                ON relationship.snapshot_id = run.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND relationship.target_symbol_id = $symbolId
+              AND relationship.relationship_kind = $relationshipKind;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$symbolId", symbolId);
+        command.Parameters.AddWithValue("$relationshipKind", relationshipKind);
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(
+        string indexId,
+        string symbolId,
+        string relationshipKind,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relationshipKind);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
+                   relationship.target_symbol_id, relationship.target_text,
+                   relationship.relationship_kind, relationship.evidence
+            FROM index_runs AS run
+            INNER JOIN relationships AS relationship INDEXED BY ix_relationships_target_kind
+                ON relationship.snapshot_id = run.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND relationship.target_symbol_id = $symbolId
+              AND relationship.relationship_kind = $relationshipKind
+            ORDER BY relationship.relationship_id COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$symbolId", symbolId);
+        command.Parameters.AddWithValue("$relationshipKind", relationshipKind);
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var result = new List<IndexRelationshipRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadRelationshipQueryRecord(reader));
+        return result;
+    }
+
     private async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByEndpointAsync(
         string indexId,
         string symbolId,
@@ -97,6 +272,37 @@ public sealed partial class SqliteAtlasRepository
         while (await reader.ReadAsync(cancellationToken))
             result.Add(ReadRelationshipQueryRecord(reader));
         return result;
+    }
+
+    private static void ValidateTargetTextRelationshipQuery(
+        string indexId,
+        string targetText,
+        RelationshipTargetTextMatchMode matchMode,
+        string relationshipKind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetText);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relationshipKind);
+        if (!Enum.IsDefined(matchMode))
+            throw new ArgumentOutOfRangeException(nameof(matchMode));
+    }
+
+    private static void AddTargetTextRelationshipParameters(
+        SqliteCommand command,
+        string indexId,
+        string targetText,
+        string relationshipKind,
+        RelationshipTargetTextMatchMode matchMode)
+    {
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$targetText", targetText);
+        command.Parameters.AddWithValue("$relationshipKind", relationshipKind);
+        if (matchMode == RelationshipTargetTextMatchMode.Prefix)
+        {
+            var prefixLower = targetText.EndsWith(')') ? targetText : targetText + "(";
+            command.Parameters.AddWithValue("$prefixLower", prefixLower);
+            command.Parameters.AddWithValue("$prefixUpper", prefixLower + "\uffff");
+        }
     }
 
     private static IndexRelationshipRecord ReadRelationshipQueryRecord(SqliteDataReader reader) =>

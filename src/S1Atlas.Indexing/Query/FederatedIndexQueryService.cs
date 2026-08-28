@@ -5,12 +5,17 @@ namespace S1Atlas.Indexing.Query;
 
 public sealed class FederatedIndexQueryService
 {
+    private const string CallSiteCompletenessNotice = TargetRelationshipQueryNotices.CallSites;
+    private readonly IIndexRepository? _repository;
+    private readonly SymbolResolver? _symbolResolver;
     private readonly IndexQueryService _game;
     private readonly ReferenceModQueryService _reference;
 
     public FederatedIndexQueryService(IIndexRepository repository, string? dataRoot = null)
         : this(new IndexQueryService(repository, dataRoot), new ReferenceModQueryService(repository, dataRoot))
     {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _symbolResolver = new SymbolResolver(_repository);
     }
 
     public FederatedIndexQueryService(IndexQueryService game, ReferenceModQueryService reference)
@@ -58,7 +63,8 @@ public sealed class FederatedIndexQueryService
     public async Task<SymbolResolutionResult> ResolveAsync(
         string selector,
         IndexQueryOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         ValidateOptions(options);
@@ -67,7 +73,7 @@ public sealed class FederatedIndexQueryService
         if (options.Scope == IndexQueryScope.Reference)
             return await _reference.ResolveAsync(selector, options, cancellationToken);
 
-        var selection = await _reference.GetSelectionForFederationAsync(options, cancellationToken);
+        var selection = await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
         if (selection is null)
             return new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []);
 
@@ -77,7 +83,7 @@ public sealed class FederatedIndexQueryService
             CodeChannel.Installed,
             selector,
             cancellationToken);
-        var reference = await _reference.ResolveAsync(selector, options with { Scope = IndexQueryScope.Reference }, cancellationToken);
+        var reference = await ResolveReferenceInSelectionAsync(selection, selector, cancellationToken);
         var candidates = MergeSymbols(
             (game.Status == SymbolResolutionStatus.Ambiguous ? game.Candidates : game.Symbol is null ? [] : [game.Symbol])
                 .Concat(reference.Status == SymbolResolutionStatus.Ambiguous ? reference.Candidates : reference.Symbol is null ? [] : [reference.Symbol]),
@@ -135,6 +141,98 @@ public sealed class FederatedIndexQueryService
 
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipsAsync(selector, options, RelationshipKind.Callees, cancellationToken);
+
+    public async Task<CallSiteQueryResult> CallSitesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateOptions(options);
+        ValidateLimit(options.Limit);
+
+        if (options.Scope == IndexQueryScope.Game)
+            return await _game.CallSitesAsync(selector, GameOptions(options, options.Limit), cancellationToken);
+
+        var selection = await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
+        if (selection is null)
+            return new CallSiteQueryResult(new RelationshipQueryPageResult(0, 0, []), CallSiteCompletenessNotice);
+
+        if (options.Scope == IndexQueryScope.Reference)
+            return await ReferenceCallSitesAsync(selector, selection, options.Limit, cancellationToken);
+
+        var targetQuery = await ResolveCallSiteTargetQueryAsync(
+            selection.GameRun,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            selector,
+            cancellationToken);
+        var game = await _game.CallSitesInIndexAsync(
+            selection.GameRun,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            selector,
+            options.Limit,
+            cancellationToken);
+        var reference = await ReferenceCallSitesAsync(
+            selector,
+            selection,
+            options.Limit,
+            cancellationToken,
+            targetQuery);
+        return new CallSiteQueryResult(
+            MergeRelationshipPages(game.Page, reference.Page, options.Limit),
+            CallSiteCompletenessNotice);
+    }
+
+    public async Task<FieldReferenceQueryResult> FieldReferencesAsync(
+        string selector,
+        IndexQueryOptions options,
+        FieldReferenceFilter filter,
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateOptions(options);
+        ValidateLimit(options.Limit);
+
+        if (options.Scope == IndexQueryScope.Game)
+            return await _game.FieldReferencesAsync(selector, GameOptions(options, options.Limit), filter, cancellationToken);
+
+        var selection = await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
+        if (selection is null)
+            return new FieldReferenceQueryResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
+                new RelationshipQueryPageResult(0, 0, []));
+
+        var resolution = options.Scope == IndexQueryScope.Reference
+            ? await ResolveReferenceInSelectionAsync(selection, selector, cancellationToken)
+            : await ResolveAsync(selector, options, cancellationToken, referenceIndexId);
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return new FieldReferenceQueryResult(resolution, new RelationshipQueryPageResult(0, 0, []));
+
+        if (resolution.Symbol.Origin == "reference")
+            return await ReferenceFieldReferencesAsync(selection, resolution, filter, options.Limit, cancellationToken);
+
+        var game = await _game.FieldReferencesInIndexAsync(
+            selection.GameRun,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            selector,
+            options.Limit,
+            filter,
+            cancellationToken);
+        var reference = await ReferenceFieldReferencesForTargetSymbolAsync(
+            selection,
+            resolution.Symbol.SymbolId,
+            filter,
+            options.Limit,
+            cancellationToken);
+        return new FieldReferenceQueryResult(
+            resolution,
+            MergeRelationshipPages(game.Page, reference, options.Limit));
+    }
 
     private async Task<RelationshipQuerySetResult> RelationshipsAsync(
         string selector,
@@ -195,6 +293,95 @@ public sealed class FederatedIndexQueryService
             _ => _reference.CalleesAsync(selector, options, cancellationToken)
         };
 
+    private async Task<CallSiteQueryResult> ReferenceCallSitesAsync(
+        string selector,
+        ReferenceModQueryService.IndexSelection selection,
+        int limit,
+        CancellationToken cancellationToken,
+        CallSiteTargetQuery? targetQuery = null)
+    {
+        var query = targetQuery ?? await ResolveCallSiteTargetQueryAsync(
+            selection.Run,
+            CodebaseKind.ReferenceMod,
+            CodeChannel.Installed,
+            selector,
+            cancellationToken);
+        var totalCount = await Repository.CountCompletedRelationshipsByTargetTextAsync(
+            selection.Run.IndexId,
+            query.TargetText,
+            query.MatchMode,
+            "Calls",
+            cancellationToken);
+        if (totalCount == 0)
+            return new CallSiteQueryResult(new RelationshipQueryPageResult(0, 0, []), CallSiteCompletenessNotice);
+
+        var edges = await Repository.GetCompletedRelationshipsByTargetTextAsync(
+            selection.Run.IndexId,
+            query.TargetText,
+            query.MatchMode,
+            "Calls",
+            limit,
+            cancellationToken);
+        var page = await MapReferenceRelationshipPageAsync(
+            selection,
+            edges.Select(edge => (edge, "Incoming")).ToArray(),
+            totalCount,
+            includeGameEndpoints: true,
+            cancellationToken);
+        return new CallSiteQueryResult(page, CallSiteCompletenessNotice);
+    }
+
+    private async Task<FieldReferenceQueryResult> ReferenceFieldReferencesAsync(
+        ReferenceModQueryService.IndexSelection selection,
+        SymbolResolutionResult resolution,
+        FieldReferenceFilter filter,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var page = await ReferenceFieldReferencesForTargetSymbolAsync(
+            selection,
+            resolution.Symbol!.SymbolId,
+            filter,
+            limit,
+            cancellationToken);
+        return new FieldReferenceQueryResult(resolution, page);
+    }
+
+    private async Task<RelationshipQueryPageResult> ReferenceFieldReferencesForTargetSymbolAsync(
+        ReferenceModQueryService.IndexSelection selection,
+        string targetSymbolId,
+        FieldReferenceFilter filter,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var totalCount = 0;
+        var edges = new List<IndexRelationshipRecord>();
+        foreach (var kind in FieldRelationshipKinds(filter))
+        {
+            totalCount += await Repository.CountCompletedRelationshipsByTargetSymbolIdAsync(
+                selection.Run.IndexId,
+                targetSymbolId,
+                kind,
+                cancellationToken);
+            edges.AddRange(await Repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+                selection.Run.IndexId,
+                targetSymbolId,
+                kind,
+                limit,
+                cancellationToken));
+        }
+
+        return await MapReferenceRelationshipPageAsync(
+            selection,
+            edges.Select(edge => (edge, "Incoming"))
+                .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .Take(limit)
+                .ToArray(),
+            totalCount,
+            includeGameEndpoints: true,
+            cancellationToken);
+    }
+
     private static RelationshipQuerySetResult MergeRelationships(
         SymbolResolutionResult resolution,
         RelationshipQuerySetResult game,
@@ -223,6 +410,41 @@ public sealed class FederatedIndexQueryService
             game.CompletenessNotice + reference.CompletenessNotice);
     }
 
+    private async Task<RelationshipQueryPageResult> MapReferenceRelationshipPageAsync(
+        ReferenceModQueryService.IndexSelection selection,
+        IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
+        int totalCount,
+        bool includeGameEndpoints,
+        CancellationToken cancellationToken)
+    {
+        var ordered = selectedEdges
+            .OrderBy(item => item.Edge.RelationshipId, StringComparer.Ordinal)
+            .ThenBy(item => item.Direction, StringComparer.Ordinal)
+            .ToArray();
+        var ids = ordered
+            .SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
+            .Where(id => id is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var referenceSymbols = await Repository.GetCompletedSymbolsByIdsAsync(selection.Run.IndexId, ids, cancellationToken);
+        var gameSymbols = includeGameEndpoints
+            ? await Repository.GetCompletedSymbolsByIdsAsync(selection.Context.GameIndexId, ids, cancellationToken)
+            : [];
+        var referenceById = referenceSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var gameById = gameSymbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var relationships = ordered
+            .Select(item => new RelationshipQueryResult(
+                item.Edge.RelationshipId,
+                item.Edge.Kind,
+                item.Edge.Evidence,
+                item.Direction,
+                MapReferenceEndpoint(item.Edge.SourceSymbolId, null, referenceById, gameById, selection),
+                MapReferenceEndpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, referenceById, gameById, selection)))
+            .ToArray();
+        return new RelationshipQueryPageResult(totalCount, relationships.Length, relationships);
+    }
+
     private static SymbolQueryResult[] MergeSymbols(IEnumerable<SymbolQueryResult> candidates, string query, int limit) =>
         candidates
             .GroupBy(candidate => (candidate.Origin ?? string.Empty, candidate.ReferenceModId ?? string.Empty, candidate.SymbolId))
@@ -235,6 +457,36 @@ public sealed class FederatedIndexQueryService
             .ThenBy(candidate => candidate.SymbolId, StringComparer.Ordinal)
             .Take(limit)
             .ToArray();
+
+    private static RelationshipQueryPageResult MergeRelationshipPages(
+        RelationshipQueryPageResult first,
+        RelationshipQueryPageResult second,
+        int limit)
+    {
+        var relationships = first.Relationships
+            .Concat(second.Relationships)
+            .GroupBy(edge => (
+                edge.RelationshipId,
+                edge.Direction,
+                SourceOrigin: edge.Source.Origin ?? string.Empty,
+                SourceModId: edge.Source.ReferenceModId ?? string.Empty,
+                SourceSymbolId: edge.Source.SymbolId ?? string.Empty,
+                TargetOrigin: edge.Target.Origin ?? string.Empty,
+                TargetSymbolId: edge.Target.SymbolId ?? string.Empty,
+                TargetRawText: edge.Target.RawText ?? string.Empty))
+            .Select(group => group.First())
+            .OrderBy(edge => edge.RelationshipId, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Direction, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Source.Origin, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Source.ReferenceModId, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Source.SymbolId, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Target.Origin, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Target.SymbolId, StringComparer.Ordinal)
+            .ThenBy(edge => edge.Target.RawText, StringComparer.Ordinal)
+            .Take(limit)
+            .ToArray();
+        return new RelationshipQueryPageResult(first.TotalCount + second.TotalCount, relationships.Length, relationships);
+    }
 
     private static int Rank(SymbolQueryResult result, string query)
     {
@@ -255,8 +507,200 @@ public sealed class FederatedIndexQueryService
             throw new ArgumentException("ReferenceCollection is valid only for All or Reference scope.", nameof(options));
     }
 
+    private static void ValidateLimit(int limit)
+    {
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
+    }
+
     private Task<SymbolResolutionResult> _gameResolution(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         _game.ResolveAsync(selector, GameOptions(options, options.Limit), cancellationToken);
 
+    private async Task<SymbolResolutionResult> ResolveReferenceInSelectionAsync(
+        ReferenceModQueryService.IndexSelection selection,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        var result = await SymbolResolver.ResolveAsync(
+            selection.Run.IndexId,
+            selector,
+            CodebaseKind.ReferenceMod,
+            CodeChannel.Installed,
+            cancellationToken);
+        return new SymbolResolutionResult(
+            result.Status,
+            result.Symbol is null ? null : DecorateReferenceQuerySymbol(selection, result.Symbol),
+            result.Candidates.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray());
+    }
+
+    private async Task<CallSiteTargetQuery> ResolveCallSiteTargetQueryAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        var resolution = await SymbolResolver.ResolveAsync(run.IndexId, selector, codebase, channel, cancellationToken);
+        if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
+        {
+            var resolvedTarget = TargetTextFromResolvedSymbol(resolution.Symbol);
+            return HasExplicitCallSiteParameters(selector)
+                ? new CallSiteTargetQuery(resolvedTarget, RelationshipTargetTextMatchMode.Prefix)
+                : new CallSiteTargetQuery(StripParameterList(resolvedTarget), RelationshipTargetTextMatchMode.Prefix);
+        }
+
+        var normalized = NormalizeCallSiteSelector(selector);
+        return HasExplicitCallSiteParameters(normalized)
+            ? new CallSiteTargetQuery(normalized, RelationshipTargetTextMatchMode.Prefix)
+            : new CallSiteTargetQuery(StripParameterList(normalized), RelationshipTargetTextMatchMode.Prefix);
+    }
+
+    private RelationshipEndpointQueryResult MapReferenceEndpoint(
+        string? symbolId,
+        string? rawText,
+        IReadOnlyDictionary<string, IndexSymbolRecord> referenceById,
+        IReadOnlyDictionary<string, IndexSymbolRecord> gameById,
+        ReferenceModQueryService.IndexSelection selection)
+    {
+        if (symbolId is not null && referenceById.TryGetValue(symbolId, out var reference))
+        {
+            var symbol = DecorateReferenceSymbol(selection, reference);
+            return new RelationshipEndpointQueryResult(
+                symbol.SymbolId,
+                symbol.QualifiedName,
+                symbol.Signature,
+                null,
+                true,
+                symbol.Origin,
+                symbol.Collection,
+                symbol.ReferenceModId,
+                symbol.DisplayName,
+                symbol.Version,
+                symbol.License,
+                symbol.RelativePath,
+                symbol.Sha256);
+        }
+
+        if (symbolId is not null && gameById.TryGetValue(symbolId, out var game))
+        {
+            var symbol = SymbolResolver.ToQueryResult(selection.Context.GameIndexId, CodebaseKind.ScheduleI, CodeChannel.Installed, game, "game");
+            return new RelationshipEndpointQueryResult(
+                symbol.SymbolId,
+                symbol.QualifiedName,
+                symbol.Signature,
+                null,
+                true,
+                symbol.Origin,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+        }
+
+        return new RelationshipEndpointQueryResult(symbolId, null, null, rawText, false);
+    }
+
+    private SymbolQueryResult DecorateReferenceSymbol(
+        ReferenceModQueryService.IndexSelection selection,
+        IndexSymbolRecord symbol) =>
+        DecorateReferenceQuerySymbol(
+            selection,
+            SymbolResolver.ToQueryResult(selection.Run.IndexId, CodebaseKind.ReferenceMod, CodeChannel.Installed, symbol, "reference", selection.Collection));
+
+    private SymbolQueryResult DecorateReferenceQuerySymbol(
+        ReferenceModQueryService.IndexSelection selection,
+        SymbolQueryResult result)
+    {
+        var mod = selection.Mods.FirstOrDefault(candidate => candidate.SymbolIds.Contains(result.SymbolId, StringComparer.Ordinal));
+        var source = SourceProvenance(selection, result.SymbolId);
+        return result with
+        {
+            Origin = "reference",
+            Collection = selection.Collection,
+            ReferenceModId = mod?.ModId,
+            DisplayName = mod?.DisplayName,
+            Version = mod?.Version,
+            License = mod?.License,
+            RelativePath = source.RelativePath,
+            Sha256 = source.Sha256
+        };
+    }
+
+    private static (string? RelativePath, string? Sha256) SourceProvenance(
+        ReferenceModQueryService.IndexSelection selection,
+        string symbolId)
+    {
+        var locations = selection.SourceLocations
+            .Where(location => string.Equals(location.SymbolId, symbolId, StringComparison.Ordinal))
+            .ToArray();
+        if (locations.Length != 1)
+            return (null, null);
+
+        var sourceFile = selection.SourceFiles.SingleOrDefault(file =>
+            string.Equals(file.SourceFileId, locations[0].SourceFileId, StringComparison.Ordinal));
+        return sourceFile is null ? (null, null) : (sourceFile.RelativePath, sourceFile.Sha256);
+    }
+
+    private static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) => filter switch
+    {
+        FieldReferenceFilter.All => ["ReadsField", "WritesField"],
+        FieldReferenceFilter.Readers => ["ReadsField"],
+        FieldReferenceFilter.Writers => ["WritesField"],
+        _ => throw new ArgumentOutOfRangeException(nameof(filter))
+    };
+
+    private static bool HasExplicitCallSiteParameters(string selector) =>
+        selector.IndexOf('(') >= 0;
+
+    private static string StripParameterList(string selector)
+    {
+        var separator = selector.IndexOf('(');
+        return separator >= 0 ? selector[..separator] : selector;
+    }
+
+    private static string NormalizeCallSiteSelector(string selector)
+    {
+        var trimmed = selector.Trim();
+        var parameterSeparator = trimmed.IndexOf('(');
+        var head = parameterSeparator >= 0 ? trimmed[..parameterSeparator] : trimmed;
+        if (head.Contains("::", StringComparison.Ordinal))
+            return trimmed;
+
+        var lastDot = head.LastIndexOf('.');
+        if (lastDot < 0)
+            return trimmed;
+
+        var normalizedHead = head[..lastDot] + "::" + head[(lastDot + 1)..];
+        return parameterSeparator >= 0
+            ? normalizedHead + trimmed[parameterSeparator..]
+            : normalizedHead;
+    }
+
+    private static string TargetTextFromResolvedSymbol(SymbolQueryResult symbol)
+    {
+        var signature = symbol.Signature;
+        var memberSeparator = signature.IndexOf("::", StringComparison.Ordinal);
+        if (memberSeparator <= 0)
+            return signature;
+
+        var returnSeparator = signature.LastIndexOf(' ', memberSeparator);
+        return returnSeparator >= 0 && returnSeparator + 1 < signature.Length
+            ? signature[(returnSeparator + 1)..]
+            : signature;
+    }
+
+    private IIndexRepository Repository =>
+        _repository ?? throw new InvalidOperationException("Target-relationship federation requires a repository-backed federated query service.");
+
+    private SymbolResolver SymbolResolver =>
+        _symbolResolver ?? throw new InvalidOperationException("Target-relationship federation requires a repository-backed federated query service.");
+
     private enum RelationshipKind { Refs, Callers, Callees }
+
+    private readonly record struct CallSiteTargetQuery(
+        string TargetText,
+        RelationshipTargetTextMatchMode MatchMode);
 }

@@ -18,17 +18,19 @@ public sealed class ReferenceModMigrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Fresh_database_migrates_to_v10_reference_mod_schema()
+    public async Task Fresh_database_migrates_to_v11_reference_mod_schema()
     {
         await new SqliteMigrationRunner(_databasePath, _backupDirectory).MigrateAsync(
             TestContext.Current.CancellationToken);
 
         await using var connection = await OpenAsync(SqliteOpenMode.ReadWrite, TestContext.Current.CancellationToken);
-        Assert.Equal(10L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
-        Assert.Equal(10, SqliteMigrations.All.Count);
+        Assert.Equal(11L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+        Assert.Equal(11, SqliteMigrations.All.Count);
         Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 10 AND name = 'reference-mods-v10';"));
+        Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 11 AND name = 'relationship-query-target-text-v11';"));
         foreach (var table in new[] { "reference_index_context", "reference_mods", "reference_documents", "reference_symbol_owners" })
             Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = $name;", ("$name", table)));
+        Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'ix_relationships_snapshot_kind_target_text';"));
 
         await ExecuteAsync(
             connection,

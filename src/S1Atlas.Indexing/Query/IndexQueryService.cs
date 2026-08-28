@@ -5,6 +5,7 @@ namespace S1Atlas.Indexing.Query;
 
 public sealed class IndexQueryService
 {
+    private const string CallSiteCompletenessNotice = "Call-site results are evidence of recovered IL references and do not prove runtime behavior or execution order.";
     private readonly IIndexRepository _repository;
     private readonly string? _dataRoot;
     private readonly SymbolResolver _symbolResolver;
@@ -332,6 +333,94 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken) =>
         RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken);
 
+    public async Task<CallSiteQueryResult> CallSitesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateQueryLimit(options.Limit, nameof(options));
+
+        var totalCount = 0;
+        var candidates = new List<RelationshipQueryResult>();
+        foreach (var channel in Channels(options))
+        {
+            var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
+            if (run is null) continue;
+
+            var page = await CallSitesInIndexAsync(run, options.Codebase, channel, selector, options.Limit, cancellationToken);
+            totalCount += page.TotalCount;
+            candidates.AddRange(page.Relationships);
+        }
+
+        var relationships = candidates
+            .OrderBy(edge => edge.RelationshipId, StringComparer.Ordinal)
+            .Take(options.Limit)
+            .ToArray();
+        return new CallSiteQueryResult(
+            new RelationshipQueryPageResult(totalCount, relationships.Length, relationships),
+            CallSiteCompletenessNotice);
+    }
+
+    public async Task<CallSiteQueryResult> CallSitesInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateQueryLimit(limit, nameof(limit));
+
+        var targetQuery = await ResolveCallSiteTargetQueryAsync(run, codebase, channel, selector, cancellationToken);
+        var totalCount = await _repository.CountCompletedRelationshipsByTargetTextAsync(
+            run.IndexId,
+            targetQuery.TargetText,
+            targetQuery.MatchMode,
+            "Calls",
+            cancellationToken);
+        if (totalCount == 0)
+        {
+            return new CallSiteQueryResult(
+                new RelationshipQueryPageResult(0, 0, []),
+                CallSiteCompletenessNotice);
+        }
+
+        var edges = await _repository.GetCompletedRelationshipsByTargetTextAsync(
+            run.IndexId,
+            targetQuery.TargetText,
+            targetQuery.MatchMode,
+            "Calls",
+            limit,
+            cancellationToken);
+        var relationships = await MapRelationshipPageAsync(
+            run,
+            edges.Select(edge => (edge, "Incoming")).ToArray(),
+            totalCount,
+            SymbolResolver.OriginFor(codebase),
+            cancellationToken);
+        return new CallSiteQueryResult(relationships, CallSiteCompletenessNotice);
+    }
+
+    public Task<FieldReferenceQueryResult> FieldReferencesAsync(
+        string selector,
+        IndexQueryOptions options,
+        FieldReferenceFilter filter,
+        CancellationToken cancellationToken) =>
+        FieldReferencesAcrossChannelsAsync(selector, options, filter, cancellationToken);
+
+    public Task<FieldReferenceQueryResult> FieldReferencesInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        FieldReferenceFilter filter,
+        CancellationToken cancellationToken) =>
+        FieldReferencesInRunAsync(run, codebase, channel, selector, limit, filter, cancellationToken);
+
     private async Task<RelationshipQuerySetResult> RelationshipSetAsync(
         string selector,
         IndexQueryOptions options,
@@ -355,6 +444,26 @@ public sealed class IndexQueryService
             selection.Selected.Value,
             mode,
             int.MaxValue,
+            cancellationToken);
+    }
+
+    private async Task<FieldReferenceQueryResult> FieldReferencesAcrossChannelsAsync(
+        string selector,
+        IndexQueryOptions options,
+        FieldReferenceFilter filter,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateQueryLimit(options.Limit, nameof(options));
+
+        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new FieldReferenceQueryResult(selection.Resolution, new RelationshipQueryPageResult(0, 0, []));
+
+        return await FieldReferencesFromSelectedAsync(
+            selection.Selected.Value,
+            options.Limit,
+            filter,
             cancellationToken);
     }
 
@@ -526,7 +635,12 @@ public sealed class IndexQueryService
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken);
-        var relationships = await MapRelationshipEdgesAsync(selected.Run, selectedEdges, selected.Symbol.Origin, cancellationToken);
+        var relationships = (await MapRelationshipPageAsync(
+            selected.Run,
+            selectedEdges,
+            selectedEdges.Count,
+            selected.Symbol.Origin,
+            cancellationToken)).Relationships;
 
         var notice = mode == RelationshipQueryMode.Refs
             ? string.Empty
@@ -537,6 +651,64 @@ public sealed class IndexQueryService
             bodyRecoveryStatus,
             mode == RelationshipQueryMode.Callers,
             notice);
+    }
+
+    private async Task<FieldReferenceQueryResult> FieldReferencesInRunAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        FieldReferenceFilter filter,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateQueryLimit(limit, nameof(limit));
+
+        var selection = await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new FieldReferenceQueryResult(selection.Resolution, new RelationshipQueryPageResult(0, 0, []));
+
+        return await FieldReferencesFromSelectedAsync(selection.Selected.Value, limit, filter, cancellationToken);
+    }
+
+    private async Task<FieldReferenceQueryResult> FieldReferencesFromSelectedAsync(
+        SelectedSymbol selected,
+        int limit,
+        FieldReferenceFilter filter,
+        CancellationToken cancellationToken)
+    {
+        var kinds = FieldRelationshipKinds(filter);
+        var totalCount = 0;
+        var edges = new List<IndexRelationshipRecord>();
+        foreach (var kind in kinds)
+        {
+            totalCount += await _repository.CountCompletedRelationshipsByTargetSymbolIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                kind,
+                cancellationToken);
+            edges.AddRange(await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                kind,
+                limit,
+                cancellationToken));
+        }
+
+        var page = await MapRelationshipPageAsync(
+            selected.Run,
+            edges.Select(edge => (edge, "Incoming"))
+                .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+                .Take(limit)
+                .ToArray(),
+            totalCount,
+            selected.Symbol.Origin,
+            cancellationToken);
+        return new FieldReferenceQueryResult(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+            page);
     }
 
     private async Task<IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)>> GetSelectedRelationshipEdgesAsync(
@@ -606,6 +778,43 @@ public sealed class IndexQueryService
                 Endpoint(item.Edge.SourceSymbolId, null, byId, origin),
                 Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId, origin)))
             .ToArray();
+    }
+
+    private async Task<RelationshipQueryPageResult> MapRelationshipPageAsync(
+        IndexRunRecord run,
+        IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
+        int totalCount,
+        string? origin,
+        CancellationToken cancellationToken)
+    {
+        var ordered = selectedEdges
+            .OrderBy(item => item.Edge.RelationshipId, StringComparer.Ordinal)
+            .ThenBy(item => item.Direction, StringComparer.Ordinal)
+            .ToArray();
+        var relationships = await MapRelationshipEdgesAsync(run, ordered, origin, cancellationToken);
+        return new RelationshipQueryPageResult(totalCount, relationships.Count, relationships);
+    }
+
+    private async Task<CallSiteTargetQuery> ResolveCallSiteTargetQueryAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        var resolution = await _symbolResolver.ResolveAsync(run.IndexId, selector, codebase, channel, cancellationToken);
+        if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
+        {
+            var resolvedTarget = TargetTextFromResolvedSymbol(resolution.Symbol);
+            return HasExplicitCallSiteParameters(selector)
+                ? new CallSiteTargetQuery(resolvedTarget, RelationshipTargetTextMatchMode.Prefix)
+                : new CallSiteTargetQuery(StripParameterList(resolvedTarget), RelationshipTargetTextMatchMode.Prefix);
+        }
+
+        var normalized = NormalizeCallSiteSelector(selector);
+        return HasExplicitCallSiteParameters(normalized)
+            ? new CallSiteTargetQuery(normalized, RelationshipTargetTextMatchMode.Prefix)
+            : new CallSiteTargetQuery(StripParameterList(normalized), RelationshipTargetTextMatchMode.Prefix);
     }
 
     private async Task<SourceSnippetResolutionResult> SourceFromSelectedAsync(
@@ -781,6 +990,60 @@ public sealed class IndexQueryService
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
 
+    private static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) => filter switch
+    {
+        FieldReferenceFilter.All => ["ReadsField", "WritesField"],
+        FieldReferenceFilter.Readers => ["ReadsField"],
+        FieldReferenceFilter.Writers => ["WritesField"],
+        _ => throw new ArgumentOutOfRangeException(nameof(filter))
+    };
+
+    private static void ValidateQueryLimit(int limit, string parameterName)
+    {
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(parameterName, "The query result limit must be positive.");
+    }
+
+    private static bool HasExplicitCallSiteParameters(string selector) =>
+        selector.IndexOf('(') >= 0;
+
+    private static string StripParameterList(string selector)
+    {
+        var separator = selector.IndexOf('(');
+        return separator >= 0 ? selector[..separator] : selector;
+    }
+
+    private static string NormalizeCallSiteSelector(string selector)
+    {
+        var trimmed = selector.Trim();
+        var parameterSeparator = trimmed.IndexOf('(');
+        var head = parameterSeparator >= 0 ? trimmed[..parameterSeparator] : trimmed;
+        if (head.Contains("::", StringComparison.Ordinal))
+            return trimmed;
+
+        var lastDot = head.LastIndexOf('.');
+        if (lastDot < 0)
+            return trimmed;
+
+        var normalizedHead = head[..lastDot] + "::" + head[(lastDot + 1)..];
+        return parameterSeparator >= 0
+            ? normalizedHead + trimmed[parameterSeparator..]
+            : normalizedHead;
+    }
+
+    private static string TargetTextFromResolvedSymbol(SymbolQueryResult symbol)
+    {
+        var signature = symbol.Signature;
+        var memberSeparator = signature.IndexOf("::", StringComparison.Ordinal);
+        if (memberSeparator <= 0)
+            return signature;
+
+        var returnSeparator = signature.LastIndexOf(' ', memberSeparator);
+        return returnSeparator >= 0 && returnSeparator + 1 < signature.Length
+            ? signature[(returnSeparator + 1)..]
+            : signature;
+    }
+
     private static string CompletenessNotice(BodyRecoveryStatus? status, bool callers)
     {
         var bodyNotice = status switch
@@ -906,4 +1169,8 @@ public sealed class IndexQueryService
     private readonly record struct ChannelSelection(
         SymbolResolutionResult Resolution,
         SelectedSymbol? Selected);
+
+    private readonly record struct CallSiteTargetQuery(
+        string TargetText,
+        RelationshipTargetTextMatchMode MatchMode);
 }

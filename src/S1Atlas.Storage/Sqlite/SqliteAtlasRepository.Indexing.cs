@@ -509,7 +509,7 @@ public sealed partial class SqliteAtlasRepository
             : null;
     }
 
-    // Prepared, reusable-command inserts (AT-7). One compiled statement per table, parameter
+    // Prepared, reusable-command inserts. One compiled statement per table, parameter
     // objects created once and re-valued per row — eliminates the per-row CreateCommand + SQL
     // re-parse that dominated first-index allocation. Ordering and the enclosing transaction are
     // unchanged, so output content and atomic publication are identical to the per-row path.

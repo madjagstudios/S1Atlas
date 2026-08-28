@@ -33,7 +33,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_V4Database_AddsValidatedExtractionTablesAndOneSchema10Backup()
+    public async Task MigrateAsync_V4Database_AddsValidatedExtractionTablesAndOneSchema11Backup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await CreateVersionFourDatabaseWithRealisticAttemptAsync(cancellationToken);
@@ -42,7 +42,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], migrationVersions);
         Assert.True(await TableExistsAsync("validated_extractions", cancellationToken));
         Assert.True(await TableExistsAsync("extraction_artifacts", cancellationToken));
         Assert.True(await TableExistsAsync("extraction_validation_results", cancellationToken));
@@ -57,11 +57,12 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
             "symbols",
             "body_recovery_status",
             cancellationToken));
-        Assert.Single(GetSchemaTenBackups());
+        Assert.True(await IndexExistsAsync("ix_relationships_snapshot_kind_target_text", cancellationToken));
+        Assert.Single(GetSchemaElevenBackups());
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesTenMigrationsWithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesElevenMigrationsWithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(_databasePath, _backupDirectory, _timeProvider);
@@ -69,7 +70,7 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         await runner.MigrateAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], migrationVersions);
         Assert.False(Directory.Exists(_backupDirectory));
     }
 
@@ -294,11 +295,11 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         return attempt;
     }
 
-    private string[] GetSchemaTenBackups() =>
+    private string[] GetSchemaElevenBackups() =>
         Directory.Exists(_backupDirectory)
             ? Directory.GetFiles(
                 _backupDirectory,
-                "atlas-before-schema-10-*.db",
+                "atlas-before-schema-11-*.db",
                 SearchOption.TopDirectoryOnly)
             : [];
 
@@ -353,6 +354,23 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
         }
 
         return false;
+    }
+
+    private async Task<bool> IndexExistsAsync(
+        string indexName,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(SqliteOpenMode.ReadOnly, cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM sqlite_schema
+            WHERE type = 'index' AND name = $name;
+            """;
+        command.Parameters.AddWithValue("$name", indexName);
+        return Convert.ToInt64(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture) == 1;
     }
 
     private async Task<SqliteConnection> OpenAsync(
