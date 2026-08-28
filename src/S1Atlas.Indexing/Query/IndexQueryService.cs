@@ -92,6 +92,15 @@ public sealed class IndexQueryService
             completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null);
     }
 
+    public async Task<SymbolResolutionResult> ResolveAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        return (await ResolveAcrossChannelsAsync(selector, options, cancellationToken)).Resolution;
+    }
+
     public async Task<CallableSurfaceResolutionResult> GetCallableSurfaceAsync(
         string selector,
         IndexQueryOptions options,
@@ -647,7 +656,8 @@ public sealed class IndexQueryService
             read.ContextAfter,
             read.Text,
             bodyRecoveryStatus,
-            codebase + ":" + selected.Channel + ":generated");
+            codebase + ":" + selected.Channel + ":generated",
+            "game");
         return new SourceSnippetResolutionResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
             snippet);
@@ -741,7 +751,8 @@ public sealed class IndexQueryService
                 symbol.QualifiedName,
                 symbol.Signature,
                 null,
-                true);
+                true,
+                "game");
 
         return new RelationshipEndpointQueryResult(
             symbolId,

@@ -153,6 +153,8 @@ public interface IIndexRepository
         Task.FromResult<IReadOnlyList<IndexCallableSurfaceRecord>>([]);
     Task<ReferenceIndexContextRecord?> GetReferenceIndexContextAsync(string indexId, CancellationToken cancellationToken) =>
         Task.FromResult<ReferenceIndexContextRecord?>(null);
+    Task<IndexRunRecord?> GetLatestCompletedReferenceIndexAsync(string collection, CancellationToken cancellationToken) =>
+        GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind.ReferenceMod, CodeChannel.Installed, collection, cancellationToken);
     Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(string indexId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<IndexReferenceModRecord>>([]);
     Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(string indexId, CancellationToken cancellationToken) =>

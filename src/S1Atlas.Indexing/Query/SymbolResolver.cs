@@ -125,7 +125,15 @@ public sealed class SymbolResolver
         string indexId,
         CodebaseKind codebase,
         CodeChannel channel,
-        IndexSymbolRecord record) =>
+        IndexSymbolRecord record,
+        string? origin = "game",
+        string? collection = null,
+        string? referenceModId = null,
+        string? displayName = null,
+        string? version = null,
+        string? license = null,
+        string? relativePath = null,
+        string? sha256 = null) =>
         new(
             indexId,
             codebase.ToString(),
@@ -134,5 +142,13 @@ public sealed class SymbolResolver
             record.Kind,
             record.QualifiedName,
             record.Signature,
-            record.IsBestEffort);
+            record.IsBestEffort,
+            origin,
+            collection,
+            referenceModId,
+            displayName,
+            version,
+            license,
+            relativePath,
+            sha256);
 }

@@ -1,0 +1,64 @@
+# Task 4 — Reference-mod query and federation report
+
+## Changed files
+
+- `src/S1Atlas.Core/Indexing/QueryModels.cs` — additive query scope and nullable provenance fields.
+- `src/S1Atlas.Core/Storage/IIndexRepository.cs` — additive completed-reference collection lookup seam.
+- `src/S1Atlas.Indexing/Query/ReferenceModQueryService.cs` — completed reference collection selection, symbol/search/source/document/relationship queries, provenance, bounded document reads, and hash verification.
+- `src/S1Atlas.Indexing/Query/FederatedIndexQueryService.cs` — game/reference/all aggregation, ambiguity preservation, cross-origin relationship federation, and exact-identity deduplication.
+- `src/S1Atlas.Indexing/Query/IndexQueryService.cs` — public resolver seam and game provenance on source/relationship results.
+- `src/S1Atlas.Indexing/Query/SymbolResolver.cs` — additive provenance projection parameters.
+- `src/S1Atlas.Storage/Sqlite/ReadOnlySqliteAtlasRepository.cs` — read-only completed reference collection lookup.
+- `src/S1Atlas.Storage/Sqlite/SqliteAtlasRepository.Indexing.cs` — writable-repository completed reference collection lookup.
+- `tests/S1Atlas.Indexing.Tests/Query/ReferenceModQueryServiceTests.cs` — focused real-SQLite query/federation coverage.
+
+## Test-first evidence
+
+Initial RED command, before the Task 4 production types existed:
+
+```text
+dotnet test tests/S1Atlas.Indexing.Tests/S1Atlas.Indexing.Tests.csproj --filter "FullyQualifiedName~ReferenceModQueryServiceTests"
+...
+ReferenceModQueryServiceTests.cs(...): error CS0246: The type or namespace name 'ReferenceModQueryService' could not be found
+ReferenceModQueryServiceTests.cs(...): error CS0103: The name 'IndexQueryScope' does not exist in the current context
+```
+
+GREEN focused query verification:
+
+```text
+dotnet test tests/S1Atlas.Indexing.Tests/S1Atlas.Indexing.Tests.csproj --filter "FullyQualifiedName~ReferenceModQueryServiceTests"
+Passed!  - Failed:     0, Passed:     7, Skipped:     0, Total:     7
+```
+
+Additional requested suite verification:
+
+```text
+dotnet test tests/S1Atlas.Indexing.Tests/S1Atlas.Indexing.Tests.csproj --no-restore
+Passed!  - Failed:     0, Passed:   223, Skipped:     0, Total:   223
+
+dotnet test tests/S1Atlas.Storage.Tests/S1Atlas.Storage.Tests.csproj --no-restore
+Passed!  - Failed:     0, Passed:   142, Skipped:     0, Total:   142
+
+dotnet test tests/S1Atlas.Core.Tests/S1Atlas.Core.Tests.csproj --no-restore
+Passed!  - Failed:     0, Passed:   127, Skipped:     0, Total:   127
+
+dotnet test S1Atlas.sln --no-restore
+Core 127, Docs 8, Indexing 223, Extraction 551, Storage 142, Integration 161, MCP 70 (1,282 total); all failed: 0.
+
+git diff --check
+Exit code: 0
+```
+
+## Coverage
+
+- Game, reference, and all scopes use additive `IndexQueryOptions` fields; reference/all calls require an explicit collection selector.
+- Only completed `ReferenceMod`/`Installed` runs with a valid recorded completed Schedule I base index are queried. Empty completed collections return `NotFound`; missing/incomplete collections return `NoCompletedIndex`/empty results.
+- Reference symbol, source, document, and relationship results retain origin, collection, mod ID, display metadata, relative path, and SHA-256 where persisted evidence provides them.
+- Search uses the existing escaped case-insensitive SQLite matching and deterministic ordinal tie-breaks. Same-name reference candidates remain ambiguous and ordered by provenance.
+- Generated reference source is hash-verified before returning; documents are hash-verified against persisted input bytes and capped at `MaxDocumentExcerptCharacters`.
+- Callers/callees and references cross from reference symbols to the recorded game index and preserve unresolved target text without guessing.
+- Federation retains game/reference ambiguity, aggregates both origins without score suppression, and deduplicates only exact `(origin, referenceModId, symbolId)` identities.
+
+## Concern
+
+Migration 10 does not persist a standalone collection-name column. The query seam therefore resolves a collection by its stable reference index ID or persisted snapshot source identity. The current Task 3 workflow persists collection identity in the reference index identity/source-identity path; adding a human-readable collection-name query would require a later schema/workflow change outside Task 4.
