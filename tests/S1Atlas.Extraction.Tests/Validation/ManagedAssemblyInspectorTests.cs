@@ -35,10 +35,10 @@ public sealed class ManagedAssemblyInspectorTests : IDisposable
         Assert.True(result.IsValid);
         Assert.Equal("Assembly-CSharp", result.AssemblyName);
         Assert.Equal("Assembly-CSharp.dll", result.ModuleName);
-        Assert.Equal(6, result.TypeDefinitionCount);
-        Assert.Equal(23, result.MethodDefinitionCount);
-        Assert.Equal(7, result.FieldDefinitionCount);
-        Assert.Equal(4, result.PropertyDefinitionCount);
+        Assert.Equal(7, result.TypeDefinitionCount);
+        Assert.Equal(28, result.MethodDefinitionCount);
+        Assert.Equal(9, result.FieldDefinitionCount);
+        Assert.Equal(5, result.PropertyDefinitionCount);
         Assert.Equal(2, result.EventDefinitionCount);
         Assert.Null(result.FailureCode);
         Assert.Null(result.FailureMessage);

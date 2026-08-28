@@ -249,6 +249,29 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         Assert.Null(type.Snippet?.BodyRecoveryStatus);
     }
 
+    [Fact]
+    public async Task Callable_surface_resolves_symbol_and_preserves_local_only_wrapper_evidence()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = await SeedScheduleOneSourceAsync(BodyRecoveryStatus.StubOrUnavailable, cancellationToken);
+        var service = new IndexQueryService(_repository, _dataRoot);
+        var run = new IndexRunRecord(fixture.IndexId, "snapshot-source", IndexRunStatus.Completed, "2026-08-14T05:00:00Z");
+
+        var result = await service.GetCallableSurfaceInIndexAsync(
+            run,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            fixture.Selected.SymbolId,
+            cancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
+        var callable = Assert.IsType<CallableSurfaceQueryResult>(result.CallableSurface);
+        Assert.Equal(CallableSurfaceStatus.Resolved.ToString(), callable.Status);
+        Assert.Equal(CallableSurfaceKind.PublicMethodWrapper.ToString(), callable.Kind);
+        Assert.Equal(InteropInputTrust.LocalOnly.ToString(), callable.InteropInputTrust);
+        Assert.Contains("il2cpp_runtime_invoke", callable.Evidence, StringComparison.Ordinal);
+    }
+
     private async Task SeedChannelAsync(
         CodeChannel channel,
         IReadOnlyList<IndexSymbolRecord> symbols,
@@ -363,7 +386,21 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
                 [sourceFile, unrelatedSourceFile],
                 [methodLocation, typeLocation],
                 [],
-                []),
+                [],
+                [new IndexCallableSurfaceRecord(
+                    "surface-source",
+                    indexId,
+                    snapshotId,
+                    selected.SymbolId,
+                    selected.CanonicalKey,
+                    "Assembly-CSharp.dll",
+                    "interop-source-hash",
+                    "public void Demo.Widget::Run()",
+                    CallableSurfaceKind.PublicMethodWrapper,
+                    false,
+                    CallableSurfaceStatus.Resolved,
+                    InteropInputTrust.LocalOnly,
+                    "wrapper forwards through il2cpp_runtime_invoke")]),
             "2026-08-14T05:01:00Z",
             cancellationToken);
 

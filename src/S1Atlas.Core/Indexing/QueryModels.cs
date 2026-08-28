@@ -163,3 +163,22 @@ public sealed record SourceSnippetQueryResult(
 public sealed record SourceSnippetResolutionResult(
     SymbolResolutionResult Resolution,
     SourceSnippetQueryResult? Snippet);
+
+public sealed record CallableSurfaceQueryResult(
+    string IndexId,
+    string Codebase,
+    string Channel,
+    string GameSymbolId,
+    string GameCanonicalKey,
+    string Kind,
+    string Status,
+    bool RequiresReflection,
+    string? InteropAssemblyName,
+    string? InteropInputSha256,
+    string? InteropSignature,
+    string InteropInputTrust,
+    string Evidence);
+
+public sealed record CallableSurfaceResolutionResult(
+    SymbolResolutionResult Resolution,
+    CallableSurfaceQueryResult? CallableSurface);

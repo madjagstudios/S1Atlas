@@ -215,6 +215,38 @@ public static class EnvelopeMapper
         };
     }
 
+    public static ToolEnvelope<CallableSurfaceQueryResult> FromCallableSurface(
+        InstalledBuildAuthority authority,
+        CallableSurfaceResolutionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<CallableSurfaceQueryResult>.Ambiguous(
+                BuildFrom(authority),
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                Derived(authority, "symbol-selection")),
+            _ when result.CallableSurface is null => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("CallableSurfaceUnavailable", "The selected symbol has no callable-surface result."),
+                Derived(authority, "callable-surface-selection")),
+            _ => ToolEnvelope<CallableSurfaceQueryResult>.Resolved(
+                BuildFrom(authority),
+                result.CallableSurface,
+                Fact(authority, "index-callable-surface"),
+                Derived(authority, "callable-surface-selection"))
+        };
+    }
+
     public static ToolEnvelope<T> Invalid<T>(string code, string message) where T : class =>
         ToolEnvelope<T>.Invalid(new ToolError(code, message));
 

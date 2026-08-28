@@ -21,4 +21,12 @@ public sealed class ScheduleOneIndexSource
         var assemblyPath = Path.Combine(authority.Extraction.RootPath, "reconstructed", "Assembly-CSharp.dll");
         return _decompiler.DecompileAsync(assemblyPath, cancellationToken);
     }
+
+    public Task<ManagedDecompilation> ReadInteropAsync(
+        string assemblyPath,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(assemblyPath);
+        return _decompiler.DecompileAsync(assemblyPath, cancellationToken);
+    }
 }

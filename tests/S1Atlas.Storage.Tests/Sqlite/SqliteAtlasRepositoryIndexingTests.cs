@@ -64,7 +64,7 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
 
         var symbols = new[]
         {
-            new IndexSymbolRecord("type", snapshot.SnapshotId, "ScheduleI:Installed:Type:Demo.Widget", "Type", "Demo.Widget", "Demo.Widget", false, null),
+            new IndexSymbolRecord("type", snapshot.SnapshotId, "ScheduleI:Installed:Type:Demo.Widget", "Type", "Demo.Widget", "Demo.Widget", false, null, true),
             new IndexSymbolRecord("no-body", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Abstract()", "Method", "Demo.Widget.Abstract", "System.Void Demo.Widget::Abstract()", false, BodyRecoveryStatus.NoBodyByDesign),
             new IndexSymbolRecord("recovered", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Recovered()", "Method", "Demo.Widget.Recovered", "System.Void Demo.Widget::Recovered()", false, BodyRecoveryStatus.Recovered),
             new IndexSymbolRecord("stub", snapshot.SnapshotId, "ScheduleI:Installed:Method:Demo.Widget::Stub()", "Method", "Demo.Widget.Stub", "System.Void Demo.Widget::Stub()", true, BodyRecoveryStatus.StubOrUnavailable),
@@ -73,13 +73,96 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
 
         await _repository.CompleteIndexRunAsync(
             "index-body",
-            new IndexWriteSet(symbols, [], [], [], []),
+            new IndexWriteSet(
+                symbols,
+                [],
+                [],
+                [],
+                [],
+                [new IndexCallableSurfaceRecord(
+                    "surface-body",
+                    "index-body",
+                    snapshot.SnapshotId,
+                    "recovered",
+                    "ScheduleI:Installed:Method:Demo.Widget::Recovered()",
+                    "Assembly-CSharp.dll",
+                    "interop-hash",
+                    "public void Demo.Widget::Recovered()",
+                    CallableSurfaceKind.PublicMethodWrapper,
+                    false,
+                    CallableSurfaceStatus.Resolved,
+                    InteropInputTrust.LocalOnly,
+                    "matched interop wrapper")]),
             "2026-08-14T00:01:00Z",
             cancellationToken);
 
         var roundTripped = await _repository.GetCompletedSymbolsAsync("index-body", cancellationToken);
         Assert.Equal(symbols.OrderBy(symbol => symbol.CanonicalKey, StringComparer.Ordinal), roundTripped);
+        Assert.True(Assert.Single(roundTripped, symbol => symbol.SymbolId == "type").IsPublic);
         Assert.Null(Assert.Single(roundTripped, symbol => symbol.SymbolId == "type").BodyRecoveryStatus);
+        var callable = Assert.Single(await _repository.GetCompletedCallableSurfaceAsync("index-body", cancellationToken));
+        Assert.Equal(CallableSurfaceStatus.Resolved, callable.Status);
+        Assert.Equal(InteropInputTrust.LocalOnly, callable.InteropInputTrust);
+        Assert.Equal(
+            callable,
+            Assert.Single(await _repository.GetCompletedCallableSurfaceByGameSymbolIdAsync(
+                "index-body",
+                "recovered",
+                cancellationToken)));
+    }
+
+    [Fact]
+    public async Task Callable_surface_write_rejects_a_symbol_from_another_snapshot()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord(
+            "snapshot-ownership",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "extraction-ownership",
+            "2026-08-14T00:02:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-ownership", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbol = new IndexSymbolRecord(
+            "owned-symbol",
+            snapshot.SnapshotId,
+            "ScheduleI:Installed:Method:Demo.Widget::Run()",
+            "Method",
+            "Demo.Widget.Run",
+            "System.Void Demo.Widget::Run()",
+            false);
+        var callable = new IndexCallableSurfaceRecord(
+            "surface-ownership",
+            "index-ownership",
+            snapshot.SnapshotId,
+            "owned-symbol",
+            "ScheduleI:Installed:Method:Demo.Widget::Other()",
+            "Assembly-CSharp.dll",
+            "interop-hash",
+            "System.Void Demo.Widget::Run()",
+            CallableSurfaceKind.PublicMethodWrapper,
+            false,
+            CallableSurfaceStatus.Resolved,
+            InteropInputTrust.LocalOnly,
+            "matched wrapper");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.CompleteIndexRunAsync(
+                "index-ownership",
+                new IndexWriteSet([symbol], [], [], [], [], [callable]),
+                "2026-08-14T00:03:00Z",
+                cancellationToken));
+
+        await _repository.FailIndexRunAsync(
+            "index-ownership",
+            "test cleanup",
+            "2026-08-14T00:04:00Z",
+            cancellationToken);
+        Assert.Empty(await _repository.GetCompletedCallableSurfaceAsync("index-ownership", cancellationToken));
     }
 
     [Fact]

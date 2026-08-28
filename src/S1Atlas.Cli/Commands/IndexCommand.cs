@@ -28,6 +28,7 @@ internal static class IndexCommand
         var codebaseOption = new Option<string?>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string?>("--channel") { Description = "installed, release, or preview." };
         var commitOption = new Option<string?>("--commit") { Description = "An exact cached upstream commit SHA." };
+        var interopPathOption = new Option<string?>("--interop-path") { Description = "A generated Il2CppInterop Assembly-CSharp.dll or its directory." };
         var performanceOption = new Option<bool>("--performance")
         {
             Description = "Write performance diagnostics JSON to standard error."
@@ -40,6 +41,7 @@ internal static class IndexCommand
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(commitOption);
+        command.Options.Add(interopPathOption);
         command.Options.Add(performanceOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
@@ -62,6 +64,15 @@ internal static class IndexCommand
                     var requestedCodebase = parseResult.GetValue(codebaseOption);
                     var requestedChannel = parseResult.GetValue(channelOption);
                     var requestedCommit = parseResult.GetValue(commitOption);
+                    var requestedInteropPath = parseResult.GetValue(interopPathOption);
+                    if (requestedInteropPath is not null &&
+                        (sceneIndexRequested || requestedBuild is not null || requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "InvalidOptionCombination",
+                            "--interop-path is valid only for the default installed Schedule I code index.");
+                    }
                     if (sceneIndexRequested && (requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
                     {
                         return commandOutput.Failure(
@@ -117,7 +128,8 @@ internal static class IndexCommand
                         result = workflow.RunScheduleOneAsync(
                             snapshot.Build.BuildId,
                             parseResult.GetValue(forceOption),
-                            cancellationToken).GetAwaiter().GetResult();
+                            cancellationToken,
+                            requestedInteropPath).GetAwaiter().GetResult();
                         codebase = "ScheduleI";
                         channel = "Installed";
                     }

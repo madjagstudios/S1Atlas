@@ -1,6 +1,7 @@
 using S1Atlas.ManagedAssemblyFixture;
 using S1Atlas.InteropAssemblyFixture;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Decompilation;
 using Xunit;
 
@@ -96,6 +97,12 @@ public sealed class IlSpyManagedDecompilerTests
         Assert.False(missing.BodyFacts.HasPhysicalBody);
         Assert.True(missing.BodyFacts.NoBodyByDesign);
         Assert.Equal(BodyRecoveryStatus.NoBodyByDesign, missing.BodyRecoveryStatus);
+
+        var dock = Assert.Single(result.Types, candidate => candidate.Name == "LoadingDock");
+        Assert.False(Assert.Single(dock.Members, member => member.Name == "SetOccupant").IsPublic);
+        Assert.False(Assert.Single(dock.Members, member => member.Name == "ResetOccupant").IsPublic);
+        Assert.True(Assert.Single(dock.Members, member => member.Name == "X").IsPublic);
+        Assert.Contains(dock.Members, member => member.Name == "<X>k__BackingField" && !member.IsPublic);
     }
 
     [Fact]
@@ -120,5 +127,142 @@ public sealed class IlSpyManagedDecompilerTests
         var falsePositive = Assert.Single(type.Members, member => member.Name == "NotInteropWrapper");
         Assert.False(falsePositive.BodyFacts!.MatchesInteropWrapperPattern);
         Assert.Equal(BodyRecoveryStatus.Recovered, falsePositive.BodyRecoveryStatus);
+    }
+
+    [Fact]
+    public async Task CallableMatcherBridgesPrivateMembersAndSanitizedBackingFields()
+    {
+        var decompiler = new IlSpyManagedDecompiler();
+        var game = await decompiler.DecompileAsync(typeof(FixtureRoot).Assembly.Location, CancellationToken.None);
+        var interop = await decompiler.DecompileAsync(typeof(InteropFixtureRoot).Assembly.Location, CancellationToken.None);
+
+        var matches = new InteropCallableSurfaceMatcher().Match(game, interop);
+        var setOccupant = Assert.Single(matches, match => match.GameMember.Name == "SetOccupant");
+        Assert.Equal(CallableSurfaceStatus.Resolved, setOccupant.Status);
+        Assert.Equal(CallableSurfaceKind.PublicMethodWrapper, setOccupant.Kind);
+        Assert.False(setOccupant.RequiresReflection);
+        Assert.Contains("il2cpp_runtime_invoke", setOccupant.Evidence, StringComparison.Ordinal);
+
+        var resetOccupant = Assert.Single(matches, match => match.GameMember.Name == "ResetOccupant");
+        Assert.Equal(CallableSurfaceKind.NonPublicWrapper, resetOccupant.Kind);
+        Assert.True(resetOccupant.RequiresReflection);
+
+        var backingField = Assert.Single(matches, match => match.GameMember.Name == "<X>k__BackingField");
+        Assert.Equal(CallableSurfaceStatus.Resolved, backingField.Status);
+        Assert.Equal(CallableSurfaceKind.PublicFieldAccessor, backingField.Kind);
+        Assert.Contains("X_k__BackingField", backingField.InteropSignature, StringComparison.Ordinal);
+
+        var publicMember = Assert.Single(matches, match => match.GameMember.Name == "X" && match.GameMember.Kind == ManagedMemberKind.Property);
+        Assert.Equal(CallableSurfaceKind.DirectGameMember, publicMember.Kind);
+        Assert.False(publicMember.RequiresReflection);
+    }
+
+    [Fact]
+    public void CallableMatcherReportsAmbiguousFallbacksAndMissingInterop()
+    {
+        var gameMember = new ManagedMemberFacts(
+            "Run",
+            ManagedMemberKind.Method,
+            "Demo::Run(System.Int32):System.Void",
+            true,
+            [],
+            ["System.Int32"],
+            "System.Void");
+        var gameType = new ManagedTypeFacts("Demo", "", "Demo", null, [], [gameMember]);
+        var game = new ManagedDecompilation("game.dll", "", [gameType]);
+        var interopType = new ManagedTypeFacts(
+            "Demo",
+            "",
+            "Demo",
+            null,
+            [],
+            [
+                new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Demo::Run(System.String):System.Void", true, [], ["System.Int32"], "System.Void", IsPublic: true),
+                new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Demo::Run(System.Double):System.Void", true, [], ["System.Int32"], "System.Void", IsPublic: true)
+            ]);
+
+        var ambiguous = Assert.Single(new InteropCallableSurfaceMatcher().Match(
+            game,
+            new ManagedDecompilation("interop.dll", "", [interopType])));
+        Assert.Equal(CallableSurfaceStatus.Ambiguous, ambiguous.Status);
+
+        var unavailable = Assert.Single(new InteropCallableSurfaceMatcher().Match(game, null));
+        Assert.Equal(CallableSurfaceStatus.Unavailable, unavailable.Status);
+        Assert.Equal(CallableSurfaceKind.NonPublicWrapper, unavailable.Kind);
+    }
+
+    [Fact]
+    public void CallableMatcherDoesNotResolveAnIncompatibleSignatureByNameAndArityAlone()
+    {
+        var gameMember = new ManagedMemberFacts(
+            "Run",
+            ManagedMemberKind.Method,
+            "Demo::Run(System.Int32):System.Void",
+            true,
+            [],
+            ["System.Int32"],
+            "System.Void");
+        var game = new ManagedDecompilation(
+            "game.dll",
+            "",
+            [new ManagedTypeFacts("Demo", "", "Demo", null, [], [gameMember])]);
+        var interop = new ManagedDecompilation(
+            "interop.dll",
+            "",
+            [new ManagedTypeFacts(
+                "Demo",
+                "",
+                "Demo",
+                null,
+                [],
+                [new ManagedMemberFacts(
+                    "Run",
+                    ManagedMemberKind.Method,
+                    "Demo::Run(System.String):System.Void",
+                    true,
+                    [],
+                    ["System.String"],
+                    "System.Void",
+                    IsPublic: true)])]);
+
+        var result = Assert.Single(new InteropCallableSurfaceMatcher().Match(game, interop));
+        Assert.Equal(CallableSurfaceStatus.Unavailable, result.Status);
+        Assert.Null(result.InteropMember);
+    }
+
+    [Fact]
+    public void CallableMatcherDoesNotTreatAnUnrelatedMangledFieldAsAPropertyBridge()
+    {
+        var field = new ManagedMemberFacts(
+            "<X>k__BackingField",
+            ManagedMemberKind.Field,
+            "Demo::<X>k__BackingField:System.Int32",
+            false,
+            [],
+            ValueType: "System.Int32");
+        var game = new ManagedDecompilation(
+            "game.dll",
+            "",
+            [new ManagedTypeFacts("Demo", "", "Demo", null, [], [field])]);
+        var interop = new ManagedDecompilation(
+            "interop.dll",
+            "",
+            [new ManagedTypeFacts(
+                "Demo",
+                "",
+                "Demo",
+                null,
+                [],
+                [new ManagedMemberFacts(
+                    "X_k__BackingField",
+                    ManagedMemberKind.Field,
+                    "Demo::X_k__BackingField:System.Int32",
+                    false,
+                    [],
+                    ValueType: "System.Int32",
+                    IsPublic: true)])]);
+
+        var result = Assert.Single(new InteropCallableSurfaceMatcher().Match(game, interop));
+        Assert.Equal(CallableSurfaceStatus.Unavailable, result.Status);
     }
 }

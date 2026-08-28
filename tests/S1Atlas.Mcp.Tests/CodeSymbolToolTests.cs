@@ -1,5 +1,6 @@
 using S1Atlas.Application.Envelope;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Storage;
 using S1Atlas.Mcp.Mapping;
 using S1Atlas.Mcp.Tools;
 using Xunit;
@@ -35,6 +36,40 @@ public sealed class CodeSymbolToolTests
             "   ",
             buildId: null,
             ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidArguments", envelope.Error?.Code);
+    }
+
+    [Fact]
+    public async Task GetCallableSurface_ReturnsResolvedLocalOnlyWrapperEvidence()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetCallableSurfaceAsync(
+            atlas.MethodSelector,
+            buildId: null,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(CallableSurfaceStatus.Resolved.ToString(), envelope.Data!.Status);
+        Assert.Equal(CallableSurfaceKind.PublicMethodWrapper.ToString(), envelope.Data.Kind);
+        Assert.Equal(InteropInputTrust.LocalOnly.ToString(), envelope.Data.InteropInputTrust);
+        Assert.Contains("il2cpp_runtime_invoke", envelope.Data.Evidence, StringComparison.Ordinal);
+        Assert.All(envelope.Provenance, entry => Assert.NotEqual(ProvenanceClassification.Interpretation, entry.Classification));
+    }
+
+    [Fact]
+    public async Task GetCallableSurface_BlankSelector_ReturnsInvalidArguments()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetCallableSurfaceAsync(
+            "   ",
+            buildId: null,
+            CancellationToken.None);
 
         Assert.Equal(ToolStatus.Invalid, envelope.Status);
         Assert.Equal("InvalidArguments", envelope.Error?.Code);

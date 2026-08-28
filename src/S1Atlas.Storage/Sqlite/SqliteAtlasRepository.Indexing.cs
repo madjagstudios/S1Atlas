@@ -85,11 +85,14 @@ public sealed partial class SqliteAtlasRepository
             var snapshotId = await GetRunningSnapshotIdAsync(connection, transaction, indexId, cancellationToken)
                 ?? throw new InvalidOperationException($"Index run '{indexId}' is not running.");
 
+            ValidateCallableSurfaceOwnership(indexId, snapshotId, writeSet.Symbols, writeSet.CallableSurface ?? []);
+
             await InsertSourceFilesAsync(connection, transaction, writeSet.SourceFiles, cancellationToken);
             await InsertSymbolsAsync(connection, transaction, writeSet.Symbols, cancellationToken);
             await InsertSourceLocationsAsync(connection, transaction, writeSet.SourceLocations, cancellationToken);
             await InsertFingerprintsAsync(connection, transaction, writeSet.Fingerprints, cancellationToken);
             await InsertRelationshipsAsync(connection, transaction, writeSet.Relationships, cancellationToken);
+            await InsertCallableSurfaceAsync(connection, transaction, writeSet.CallableSurface ?? [], cancellationToken);
 
             if (writeSet.Symbols.Any(symbol => !string.Equals(symbol.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
                 writeSet.SourceFiles.Any(file => !string.Equals(file.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
@@ -188,7 +191,7 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                    symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                   symbol.body_recovery_status
+                   symbol.body_recovery_status, symbol.is_public
             FROM symbols AS symbol
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $id AND run.status = 'Completed'
@@ -213,7 +216,7 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                    symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                   symbol.body_recovery_status
+                   symbol.body_recovery_status, symbol.is_public
             FROM symbols AS symbol
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $id AND run.status = 'Completed'
@@ -258,7 +261,7 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                    symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                   symbol.body_recovery_status
+                   symbol.body_recovery_status, symbol.is_public
             FROM index_runs AS run
             INNER JOIN symbols AS symbol INDEXED BY ux_symbols_snapshot_key
                 ON symbol.snapshot_id = run.snapshot_id
@@ -290,7 +293,7 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                    symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                   symbol.body_recovery_status
+                   symbol.body_recovery_status, symbol.is_public
             FROM symbols AS symbol
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
@@ -352,7 +355,7 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = """
             SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                    symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                   symbol.body_recovery_status
+                   symbol.body_recovery_status, symbol.is_public
             FROM symbols AS symbol
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
@@ -484,7 +487,7 @@ public sealed partial class SqliteAtlasRepository
         if (symbols.Count == 0) return;
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort, body_recovery_status) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best,$bodyRecovery);";
+        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort, body_recovery_status, is_public) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best,$bodyRecovery,$isPublic);";
         var id = command.Parameters.Add("$id", SqliteType.Text);
         var snapshot = command.Parameters.Add("$snapshot", SqliteType.Text);
         var key = command.Parameters.Add("$key", SqliteType.Text);
@@ -493,6 +496,7 @@ public sealed partial class SqliteAtlasRepository
         var signature = command.Parameters.Add("$signature", SqliteType.Text);
         var best = command.Parameters.Add("$best", SqliteType.Integer);
         var bodyRecovery = command.Parameters.Add("$bodyRecovery", SqliteType.Text);
+        var isPublic = command.Parameters.Add("$isPublic", SqliteType.Integer);
         command.Prepare();
         foreach (var symbol in symbols)
         {
@@ -504,7 +508,71 @@ public sealed partial class SqliteAtlasRepository
             signature.Value = symbol.Signature;
             best.Value = symbol.IsBestEffort ? 1 : 0;
             bodyRecovery.Value = symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value;
+            isPublic.Value = symbol.IsPublic ? 1 : 0;
             await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task InsertCallableSurfaceAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IReadOnlyList<IndexCallableSurfaceRecord> records,
+        CancellationToken cancellationToken)
+    {
+        if (records.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO callable_surface(callable_surface_id, index_id, snapshot_id, game_symbol_id, game_canonical_key, interop_assembly_name, interop_input_sha256, interop_signature, callable_kind, requires_reflection, status, interop_input_trust, evidence) VALUES ($id,$index,$snapshot,$symbol,$key,$assembly,$hash,$signature,$kind,$reflection,$status,$trust,$evidence);";
+        var id = command.Parameters.Add("$id", SqliteType.Text);
+        var index = command.Parameters.Add("$index", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshot", SqliteType.Text);
+        var symbol = command.Parameters.Add("$symbol", SqliteType.Text);
+        var key = command.Parameters.Add("$key", SqliteType.Text);
+        var assembly = command.Parameters.Add("$assembly", SqliteType.Text);
+        var hash = command.Parameters.Add("$hash", SqliteType.Text);
+        var signature = command.Parameters.Add("$signature", SqliteType.Text);
+        var kind = command.Parameters.Add("$kind", SqliteType.Text);
+        var reflection = command.Parameters.Add("$reflection", SqliteType.Integer);
+        var status = command.Parameters.Add("$status", SqliteType.Text);
+        var trust = command.Parameters.Add("$trust", SqliteType.Text);
+        var evidence = command.Parameters.Add("$evidence", SqliteType.Text);
+        command.Prepare();
+        foreach (var record in records)
+        {
+            id.Value = record.CallableSurfaceId;
+            index.Value = record.IndexId;
+            snapshot.Value = record.SnapshotId;
+            symbol.Value = record.GameSymbolId;
+            key.Value = record.GameCanonicalKey;
+            assembly.Value = record.InteropAssemblyName;
+            hash.Value = (object?)record.InteropInputSha256 ?? DBNull.Value;
+            signature.Value = (object?)record.InteropSignature ?? DBNull.Value;
+            kind.Value = record.Kind.ToString();
+            reflection.Value = record.RequiresReflection ? 1 : 0;
+            status.Value = record.Status.ToString();
+            trust.Value = record.InteropInputTrust.ToString();
+            evidence.Value = record.Evidence;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static void ValidateCallableSurfaceOwnership(
+        string indexId,
+        string snapshotId,
+        IReadOnlyList<IndexSymbolRecord> symbols,
+        IReadOnlyList<IndexCallableSurfaceRecord> records)
+    {
+        var symbolsById = symbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+        foreach (var record in records)
+        {
+            if (!string.Equals(record.IndexId, indexId, StringComparison.Ordinal) ||
+                !string.Equals(record.SnapshotId, snapshotId, StringComparison.Ordinal))
+                throw new InvalidOperationException("Callable-surface rows must belong to the running index and snapshot.");
+
+            if (!symbolsById.TryGetValue(record.GameSymbolId, out var symbol) ||
+                !string.Equals(symbol.SnapshotId, snapshotId, StringComparison.Ordinal) ||
+                !string.Equals(symbol.CanonicalKey, record.GameCanonicalKey, StringComparison.Ordinal))
+                throw new InvalidOperationException("Callable-surface rows must reference a matching symbol in the running snapshot.");
         }
     }
 
@@ -625,6 +693,66 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<IndexCallableSurfaceRecord>> GetCompletedCallableSurfaceAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT callable.callable_surface_id, callable.index_id, callable.snapshot_id,
+                   callable.game_symbol_id, callable.game_canonical_key, callable.interop_assembly_name,
+                   callable.interop_input_sha256, callable.interop_signature, callable.callable_kind,
+                   callable.requires_reflection, callable.status, callable.interop_input_trust, callable.evidence
+            FROM callable_surface AS callable
+            INNER JOIN index_runs AS run ON run.index_id = callable.index_id
+            WHERE callable.index_id = $id AND run.status = 'Completed'
+            ORDER BY callable.game_canonical_key COLLATE BINARY, callable.callable_surface_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$id", indexId);
+        var result = new List<IndexCallableSurfaceRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(ReadCallableSurface(reader));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexCallableSurfaceRecord>> GetCompletedCallableSurfaceByGameSymbolIdAsync(
+        string indexId,
+        string gameSymbolId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameSymbolId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT callable.callable_surface_id, callable.index_id, callable.snapshot_id,
+                   callable.game_symbol_id, callable.game_canonical_key, callable.interop_assembly_name,
+                   callable.interop_input_sha256, callable.interop_signature, callable.callable_kind,
+                   callable.requires_reflection, callable.status, callable.interop_input_trust, callable.evidence
+            FROM callable_surface AS callable
+            INNER JOIN index_runs AS run
+                ON run.index_id = callable.index_id
+               AND run.snapshot_id = callable.snapshot_id
+            INNER JOIN symbols AS symbol
+                ON symbol.symbol_id = callable.game_symbol_id
+               AND symbol.snapshot_id = run.snapshot_id
+               AND symbol.canonical_key = callable.game_canonical_key
+            WHERE callable.index_id = $indexId
+              AND callable.game_symbol_id = $gameSymbolId
+              AND run.status = 'Completed'
+            ORDER BY callable.callable_surface_id COLLATE BINARY
+            LIMIT 2;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$gameSymbolId", gameSymbolId);
+        var result = new List<IndexCallableSurfaceRecord>(2);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(ReadCallableSurface(reader));
+        return result;
+    }
+
     public async Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(
         CodebaseKind codebase,
         CodeChannel channel,
@@ -717,5 +845,22 @@ public sealed partial class SqliteAtlasRepository
             reader.GetString(4),
             reader.GetString(5),
             reader.GetInt64(6) != 0,
-            reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)));
+            reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)),
+            reader.GetInt64(8) != 0);
+
+    private static IndexCallableSurfaceRecord ReadCallableSurface(SqliteDataReader reader) =>
+        new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.IsDBNull(6) ? null : reader.GetString(6),
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            Enum.Parse<CallableSurfaceKind>(reader.GetString(8)),
+            reader.GetInt64(9) != 0,
+            Enum.Parse<CallableSurfaceStatus>(reader.GetString(10)),
+            Enum.Parse<InteropInputTrust>(reader.GetString(11)),
+            reader.GetString(12));
 }

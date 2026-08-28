@@ -92,6 +92,72 @@ public sealed class IndexQueryService
             completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null);
     }
 
+    public async Task<CallableSurfaceResolutionResult> GetCallableSurfaceAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        if (options.Codebase != CodebaseKind.ScheduleI || options.Channel != CodeChannel.Installed || options.AllChannels)
+            throw new ArgumentException("Callable surface is available only for the installed Schedule I index.", nameof(options));
+
+        var run = await _repository.GetLatestCompletedIndexAsync(
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            null,
+            cancellationToken);
+        return run is null
+            ? new CallableSurfaceResolutionResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
+                null)
+            : await GetCallableSurfaceInIndexAsync(
+                run,
+                CodebaseKind.ScheduleI,
+                CodeChannel.Installed,
+                selector,
+                cancellationToken);
+    }
+
+    public async Task<CallableSurfaceResolutionResult> GetCallableSurfaceInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        var resolution = await _symbolResolver.ResolveAsync(run.IndexId, selector, codebase, channel, cancellationToken);
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return new CallableSurfaceResolutionResult(resolution, null);
+
+        var symbol = await _repository.GetCompletedSymbolByIdAsync(run.IndexId, resolution.Symbol.SymbolId, cancellationToken);
+        if (symbol is null)
+            return new CallableSurfaceResolutionResult(resolution, null);
+
+        var records = await _repository.GetCompletedCallableSurfaceByGameSymbolIdAsync(
+            run.IndexId,
+            symbol.SymbolId,
+            cancellationToken);
+        if (records.Count > 1)
+        {
+            return new CallableSurfaceResolutionResult(
+                resolution,
+                ToCallableSurfaceQueryResult(
+                    run.IndexId,
+                    codebase,
+                    channel,
+                    CreateAmbiguousCallableSurface(run, symbol)));
+        }
+
+        var record = records.Count == 1
+            ? records[0]
+            : CreateLegacyCallableSurface(run, symbol);
+        return new CallableSurfaceResolutionResult(
+            resolution,
+            ToCallableSurfaceQueryResult(run.IndexId, codebase, channel, record));
+    }
+
     public Task<SymbolSearchResult> SearchInIndexAsync(
         IndexRunRecord run,
         CodebaseKind codebase,
@@ -338,6 +404,60 @@ public sealed class IndexQueryService
             .ToArray();
         return new SymbolSearchResult(totalCount, results.Length, results, null);
     }
+
+    private static IndexCallableSurfaceRecord CreateLegacyCallableSurface(IndexRunRecord run, IndexSymbolRecord symbol) =>
+        new(
+            "legacy-" + symbol.SymbolId,
+            run.IndexId,
+            run.SnapshotId,
+            symbol.SymbolId,
+            symbol.CanonicalKey,
+            "Assembly-CSharp.dll",
+            null,
+            null,
+            symbol.IsPublic ? CallableSurfaceKind.DirectGameMember : CallableSurfaceKind.NonPublicWrapper,
+            false,
+            symbol.IsPublic ? CallableSurfaceStatus.Resolved : CallableSurfaceStatus.Unavailable,
+            InteropInputTrust.LocalOnly,
+            symbol.IsPublic
+                ? "public game member is directly callable; no interop input was indexed"
+                : "no callable-surface mapping was retained by this legacy index");
+
+    private static IndexCallableSurfaceRecord CreateAmbiguousCallableSurface(IndexRunRecord run, IndexSymbolRecord symbol) =>
+        new(
+            "ambiguous-" + symbol.SymbolId,
+            run.IndexId,
+            run.SnapshotId,
+            symbol.SymbolId,
+            symbol.CanonicalKey,
+            "Assembly-CSharp.dll",
+            null,
+            null,
+            CallableSurfaceKind.NonPublicWrapper,
+            false,
+            CallableSurfaceStatus.Ambiguous,
+            InteropInputTrust.LocalOnly,
+            "multiple callable-surface mappings were retained for this game member");
+
+    private static CallableSurfaceQueryResult ToCallableSurfaceQueryResult(
+        string indexId,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        IndexCallableSurfaceRecord record) =>
+        new(
+            indexId,
+            codebase.ToString(),
+            channel.ToString(),
+            record.GameSymbolId,
+            record.GameCanonicalKey,
+            record.Kind.ToString(),
+            record.Status.ToString(),
+            record.RequiresReflection,
+            record.InteropAssemblyName,
+            record.InteropInputSha256,
+            record.InteropSignature,
+            record.InteropInputTrust.ToString(),
+            record.Evidence);
 
     private async Task<RelationshipQuerySetResult> RelationshipSetInRunAsync(
         IndexRunRecord run,

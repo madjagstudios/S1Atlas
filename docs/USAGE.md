@@ -143,6 +143,7 @@ queries entirely offline:
 
 ```powershell
 dotnet run --project src/S1Atlas.Cli -- index
+dotnet run --project src/S1Atlas.Cli -- index --interop-path "C:\path\to\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll"
 dotnet run --project src/S1Atlas.Cli -- index --codebase s1api --channel installed
 dotnet run --project src/S1Atlas.Cli -- search "<name-fragment>" --limit 25
 dotnet run --project src/S1Atlas.Cli -- type "<Namespace.TypeName>"
@@ -152,6 +153,7 @@ dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --file --
 dotnet run --project src/S1Atlas.Cli -- refs "<TypeName.MethodName>" --json
 dotnet run --project src/S1Atlas.Cli -- callers "<TypeName.MethodName>"
 dotnet run --project src/S1Atlas.Cli -- callees "<TypeName.MethodName>"
+dotnet run --project src/S1Atlas.Cli -- callable "<TypeName.MethodName>"
 ```
 
 Source results include a `Body recovery` status for callable symbols. `Recovered`
@@ -163,6 +165,17 @@ runtime-invoke wrappers, whose generated managed body forwards through
 V1 indexes validated Cpp2IL `dll_il_recovery` reconstructed assemblies and decompiles
 them with ILSpy. V1 does not retain a separate ISIL fallback artifact, so a genuinely
 unrecovered body is reported as unavailable rather than presented as authoritative.
+
+`callable` answers whether a Schedule I game member is directly callable through
+the locally observed Il2CppInterop projection. Public game members are reported
+as direct callables even when no interop assembly is present. Private or protected
+members require a resolved wrapper; an ambiguous or missing wrapper remains
+explicitly unavailable. The interop input is local-only and is not cross-validated
+to the selected game build. A resolved runtime-invoke wrapper is an invocation
+route, not behavioral evidence: its body forwards through `il2cpp_runtime_invoke`.
+The optional `--interop-path` override is valid only for the default installed
+Schedule I index; otherwise the standard path is derived from the persisted
+installation root.
 
 Upstream S1API/S1MAPI channels are cached explicitly before a release/preview
 index; `upstream status` is always offline and `upstream sync` is the only
@@ -340,18 +353,10 @@ only already-indexed Atlas-owned files with existing integrity checks.
 ## Agent skill
 
 The methodology skill is versioned at [`skills/s1atlas/SKILL.md`](../skills/s1atlas/SKILL.md).
-The verified Claude Code path convention for this repository is a
-project-scoped `.claude/skills/s1atlas/` install or a user-scoped
-`%USERPROFILE%/.claude/skills/s1atlas/` install. From the repo root, a
-project-scoped junction can be created with:
-
-```powershell
-New-Item -ItemType Directory -Force .claude\skills | Out-Null
-New-Item -ItemType Junction -Path .claude\skills\s1atlas -Target (Resolve-Path .\skills\s1atlas)
-```
-
-Verify the installed skill has identical bytes to the repository copy before
-relying on it. When MCP is registered, launch the read-only server over stdio with
+Install it using the skill mechanism supported by your agent host, keeping the
+repository copy as the source of truth. Verify the installed skill has identical
+bytes to the repository copy before relying on it. When MCP is registered, launch
+the read-only server over stdio with
 `dotnet run --project src/S1Atlas.Mcp -- mcp serve`; otherwise the skill's CLI
 commands remain the fallback. The skill adds no capability and requires agents
 to cite FACT/DERIVED evidence and build/extraction/index or API commit/index

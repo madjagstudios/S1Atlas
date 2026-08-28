@@ -36,7 +36,7 @@ public sealed partial class SqliteAtlasRepository
             command.CommandText = $"""
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status
+                       symbol.body_recovery_status, symbol.is_public
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId

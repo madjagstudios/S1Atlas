@@ -21,6 +21,20 @@ public sealed class FixtureRoot
     public void RaiseSignal() => Signal?.Invoke(this, EventArgs.Empty);
 }
 
+public class LoadingDock
+{
+    private string _occupant = string.Empty;
+
+    public int X { get; private set; }
+
+    private void SetOccupant(string occupant)
+    {
+        _occupant = occupant;
+    }
+
+    protected void ResetOccupant() => _occupant = string.Empty;
+}
+
 public interface IFixtureContract
 {
     int ContractValue { get; }

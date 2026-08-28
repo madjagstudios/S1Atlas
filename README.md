@@ -86,7 +86,7 @@ Deep internals — on-disk data layout, the pinned Cpp2IL definition, the valida
 
 **V1 is complete.** The environment can be discovered; builds can be fingerprinted, extracted, and indexed; symbols, source, relationships, and build diffs are queryable; S1API and S1MAPI are deep-indexed; the static portal, read-only MCP server, and agent skill all ship; and a failed scan never damages the last valid state. The static portal intentionally defers scene HTML in V1 — scene intelligence remains available through the CLI and MCP.
 
-Post-V1 work and known issues are tracked in [Issues](https://github.com/madjagstudios/S1Atlas/issues).
+Post-V1 work and known issues are tracked in [Issues](../../issues).
 
 ## Contributing
 

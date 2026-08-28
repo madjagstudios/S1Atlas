@@ -16,7 +16,7 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Fresh_database_migrates_to_v8_scene_intelligence_database_schema()
+    public async Task Fresh_database_migrates_to_v9_callable_surface_database_schema()
     {
         await new SqliteMigrationRunner(_databasePath, Path.Combine(_root, "backups")).MigrateAsync(
             TestContext.Current.CancellationToken);
@@ -24,11 +24,13 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
         await using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
         {
             await connection.OpenAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(8L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
-            Assert.Equal(8, SqliteMigrations.All.Count);
+            Assert.Equal(9L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+            Assert.Equal(9, SqliteMigrations.All.Count);
             foreach (var table in new[] { "code_snapshots", "index_runs", "symbols", "source_files", "source_locations", "symbol_fingerprints", "relationships", "upstream_repositories", "upstream_snapshots", "upstream_state" })
                 Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=$name;", ("$name", table)));
             Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('symbols') WHERE name='body_recovery_status';"));
+            Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('symbols') WHERE name='is_public';"));
+            Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name='callable_surface';"));
             foreach (var table in new[] { "scene_snapshots", "scene_containers", "scenes", "game_objects", "transforms", "components", "serialized_refs" })
                 Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=$name;", ("$name", table)));
             Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('scene_snapshots') WHERE name='published_at_utc';"));

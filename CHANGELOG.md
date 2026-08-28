@@ -27,4 +27,4 @@ First complete version. All V1 "Definition of Done" criteria met.
 - **Agent skill** (`skills/s1atlas/`) for evidence-first modding workflows.
 - Provenance labeling throughout — `FACT` (extracted) and `DERIVED` (computed).
 
-[Unreleased]: https://github.com/madjagstudios/S1Atlas/compare/main...HEAD
+[Unreleased]: ../../compare/main...HEAD

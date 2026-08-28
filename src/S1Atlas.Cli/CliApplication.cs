@@ -282,7 +282,8 @@ public sealed class CliApplication
                 _paths.RootDirectory,
                 sqliteRepository,
                 integrityVerifier).ResolveAsync(buildId, ct),
-            new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+            new ScheduleOneIndexSource(new IlSpyManagedDecompiler()),
+            repository);
         var apiIndexingWorkflow = new ApiIndexingWorkflow(
             _paths.RootDirectory,
             sqliteRepository,
@@ -362,6 +363,7 @@ public sealed class CliApplication
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(CallableCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScenesCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(SceneCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(GameObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));

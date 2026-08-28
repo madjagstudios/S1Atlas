@@ -13,28 +13,10 @@ always-available fallback and the only S1API/S1MAPI query surface.
 ## Install and prerequisites
 
 The versioned source of truth is `skills/s1atlas/SKILL.md` in the S1Atlas repo.
-The verified Claude Code path convention for this repository is a project skill
-at `.claude/skills/s1atlas/SKILL.md` or a user skill at
-`%USERPROFILE%/.claude/skills/s1atlas/SKILL.md`. Install the directory (prefer a
-junction or symlink so the source stays versioned):
-
-```powershell
-New-Item -ItemType Directory -Force .claude\skills | Out-Null
-New-Item -ItemType Junction -Path .claude\skills\s1atlas -Target (Resolve-Path .\skills\s1atlas)
-```
-
-For user-wide installation, create the same junction under
-`$env:USERPROFILE\.claude\skills`:
-
-```powershell
-$userSkill = Join-Path $env:USERPROFILE '.claude\skills\s1atlas'
-if (Test-Path -LiteralPath $userSkill) { throw "Inspect existing skill path first: $userSkill" }
-New-Item -ItemType Directory -Force (Split-Path -Parent $userSkill) | Out-Null
-New-Item -ItemType Junction -Path $userSkill -Target (Resolve-Path .\skills\s1atlas)
-```
-
-Verify that the installed `SKILL.md` has identical bytes to the repository copy
-and that its frontmatter description matches the task before relying on it.
+Install the directory using the skill mechanism supported by your agent host;
+prefer a junction or symlink so the source stays versioned. Verify that the
+installed `SKILL.md` has identical bytes to the repository copy and that its
+frontmatter description matches the task before relying on it.
 
 MCP is optional. To register the read-only stdio server with Claude Code, add
 this launch command to the S1Atlas MCP server entry:
@@ -59,8 +41,9 @@ own answer or decision record, never write a citation back to Atlas.
    game-build dimension: query their selected `--codebase` and `--channel`, and
    cite the completed index’s commit SHA and index ID.
 2. **Find the exact symbol.** Resolve names before reasoning from them. Use
-   `search`, `type`, or `method` on the CLI; use `search_symbols`, `get_type`, or
-   `get_method` through MCP. Qualify ambiguous matches instead of choosing one.
+   `search`, `type`, `method`, or `callable` on the CLI; use `search_symbols`,
+   `get_type`, `get_method`, or `get_callable_surface` through MCP. Qualify
+   ambiguous matches instead of choosing one.
 3. **Inspect behavior.** When behavior, side effects, ownership, lifetime, or
    persistence matters, inspect the decompiled span first: CLI `source` or MCP
    `get_source`. A method name or an old mod guide is not behavior evidence.
@@ -87,6 +70,7 @@ own answer or decision record, never write a citation back to Atlas.
 | Evidence need | CLI, always available | MCP, when registered |
 |---|---|---|
 | Locate a symbol | `search`, `type`, `method` with `--json` and, for Schedule I, `--build` | `search_symbols`, `get_type`, `get_method` |
+| Callable surface | `callable <game-member>` | `get_callable_surface` |
 | Behavior/source | `source <query> --context <n> --json` | `get_source` |
 | Callers/references | `callers`, `callees`, `refs` | `find_callers`, `find_references`, `find_related_types` |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |

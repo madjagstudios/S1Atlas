@@ -33,7 +33,44 @@ public sealed record IndexSymbolRecord(
     string QualifiedName,
     string Signature,
     bool IsBestEffort,
-    BodyRecoveryStatus? BodyRecoveryStatus = null);
+    BodyRecoveryStatus? BodyRecoveryStatus = null,
+    bool IsPublic = false);
+
+public enum CallableSurfaceKind
+{
+    DirectGameMember,
+    PublicMethodWrapper,
+    PublicFieldAccessor,
+    PublicPropertyAccessor,
+    NonPublicWrapper
+}
+
+public enum CallableSurfaceStatus
+{
+    Resolved,
+    Ambiguous,
+    Unavailable
+}
+
+public enum InteropInputTrust
+{
+    LocalOnly
+}
+
+public sealed record IndexCallableSurfaceRecord(
+    string CallableSurfaceId,
+    string IndexId,
+    string SnapshotId,
+    string GameSymbolId,
+    string GameCanonicalKey,
+    string InteropAssemblyName,
+    string? InteropInputSha256,
+    string? InteropSignature,
+    CallableSurfaceKind Kind,
+    bool RequiresReflection,
+    CallableSurfaceStatus Status,
+    InteropInputTrust InteropInputTrust,
+    string Evidence);
 
 public sealed record IndexSourceFileRecord(
     string SourceFileId,
@@ -69,7 +106,8 @@ public sealed record IndexWriteSet(
     IReadOnlyList<IndexSourceFileRecord> SourceFiles,
     IReadOnlyList<IndexSourceLocationRecord> SourceLocations,
     IReadOnlyList<IndexFingerprintRecord> Fingerprints,
-    IReadOnlyList<IndexRelationshipRecord> Relationships);
+    IReadOnlyList<IndexRelationshipRecord> Relationships,
+    IReadOnlyList<IndexCallableSurfaceRecord>? CallableSurface = null);
 
 public interface IIndexRepository
 {
@@ -103,6 +141,13 @@ public interface IIndexRepository
     Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<IndexCallableSurfaceRecord>> GetCompletedCallableSurfaceAsync(string indexId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexCallableSurfaceRecord>>([]);
+    Task<IReadOnlyList<IndexCallableSurfaceRecord>> GetCompletedCallableSurfaceByGameSymbolIdAsync(
+        string indexId,
+        string gameSymbolId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexCallableSurfaceRecord>>([]);
     Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken);
     Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken);
     Task<string?> GetCompletedIndexBuildIdAsync(string indexId, CancellationToken cancellationToken) =>

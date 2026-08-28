@@ -250,7 +250,7 @@ public sealed class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status
+                       symbol.body_recovery_status, symbol.is_public
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $id AND run.status = 'Completed'
@@ -273,7 +273,7 @@ public sealed class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status
+                       symbol.body_recovery_status, symbol.is_public
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $id AND run.status = 'Completed'
@@ -315,7 +315,7 @@ public sealed class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status
+                       symbol.body_recovery_status, symbol.is_public
                 FROM index_runs AS run
                 INNER JOIN symbols AS symbol INDEXED BY ux_symbols_snapshot_key
                     ON symbol.snapshot_id = run.snapshot_id
@@ -342,7 +342,7 @@ public sealed class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status
+                       symbol.body_recovery_status, symbol.is_public
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
@@ -378,7 +378,7 @@ public sealed class ReadOnlySqliteAtlasRepository :
                 command.CommandText = $"""
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status
+                           symbol.body_recovery_status, symbol.is_public
                     FROM symbols AS symbol
                     INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                     WHERE run.index_id = $indexId
@@ -427,7 +427,7 @@ public sealed class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status
+                       symbol.body_recovery_status, symbol.is_public
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
@@ -564,6 +564,64 @@ public sealed class ReadOnlySqliteAtlasRepository :
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) result.Add(new IndexFingerprintRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
             return (IReadOnlyList<IndexFingerprintRecord>)result;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexCallableSurfaceRecord>> GetCompletedCallableSurfaceAsync(string indexId, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT callable.callable_surface_id, callable.index_id, callable.snapshot_id,
+                       callable.game_symbol_id, callable.game_canonical_key, callable.interop_assembly_name,
+                       callable.interop_input_sha256, callable.interop_signature, callable.callable_kind,
+                       callable.requires_reflection, callable.status, callable.interop_input_trust, callable.evidence
+                FROM callable_surface AS callable
+                INNER JOIN index_runs AS run ON run.index_id = callable.index_id
+                WHERE callable.index_id = $id AND run.status = 'Completed'
+                ORDER BY callable.game_canonical_key COLLATE BINARY, callable.callable_surface_id COLLATE BINARY;
+                """;
+            command.Parameters.AddWithValue("$id", indexId);
+            var result = new List<IndexCallableSurfaceRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadCallableSurface(reader));
+            return (IReadOnlyList<IndexCallableSurfaceRecord>)result;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexCallableSurfaceRecord>> GetCompletedCallableSurfaceByGameSymbolIdAsync(
+        string indexId,
+        string gameSymbolId,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(gameSymbolId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT callable.callable_surface_id, callable.index_id, callable.snapshot_id,
+                       callable.game_symbol_id, callable.game_canonical_key, callable.interop_assembly_name,
+                       callable.interop_input_sha256, callable.interop_signature, callable.callable_kind,
+                       callable.requires_reflection, callable.status, callable.interop_input_trust, callable.evidence
+                FROM callable_surface AS callable
+                INNER JOIN index_runs AS run
+                    ON run.index_id = callable.index_id
+                   AND run.snapshot_id = callable.snapshot_id
+                INNER JOIN symbols AS symbol
+                    ON symbol.symbol_id = callable.game_symbol_id
+                   AND symbol.snapshot_id = run.snapshot_id
+                   AND symbol.canonical_key = callable.game_canonical_key
+                WHERE callable.index_id = $indexId
+                  AND callable.game_symbol_id = $gameSymbolId
+                  AND run.status = 'Completed'
+                ORDER BY callable.callable_surface_id COLLATE BINARY
+                LIMIT 2;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            command.Parameters.AddWithValue("$gameSymbolId", gameSymbolId);
+            var result = new List<IndexCallableSurfaceRecord>(2);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadCallableSurface(reader));
+            return (IReadOnlyList<IndexCallableSurfaceRecord>)result;
         }, cancellationToken);
 
     public Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken) =>
@@ -1292,7 +1350,23 @@ public sealed class ReadOnlySqliteAtlasRepository :
         new(reader.GetString(0), reader.GetString(1), Enum.Parse<IndexRunStatus>(reader.GetString(2)), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 
     private static IndexSymbolRecord ReadSymbol(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)));
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)), reader.GetInt64(8) != 0);
+
+    private static IndexCallableSurfaceRecord ReadCallableSurface(SqliteDataReader reader) =>
+        new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetString(4),
+            reader.GetString(5),
+            reader.IsDBNull(6) ? null : reader.GetString(6),
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            Enum.Parse<CallableSurfaceKind>(reader.GetString(8)),
+            reader.GetInt64(9) != 0,
+            Enum.Parse<CallableSurfaceStatus>(reader.GetString(10)),
+            Enum.Parse<InteropInputTrust>(reader.GetString(11)),
+            reader.GetString(12));
 
     private static IndexRelationshipRecord ReadRelationship(SqliteDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6));
