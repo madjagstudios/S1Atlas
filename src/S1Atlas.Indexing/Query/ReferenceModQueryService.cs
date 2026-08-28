@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
+using S1Atlas.Indexing.Paths;
 
 namespace S1Atlas.Indexing.Query;
 
@@ -122,46 +123,7 @@ public sealed class ReferenceModQueryService
             .ToArray();
         var sourceFiles = await _repository.GetCompletedSourceFilesAsync(selection.Run.IndexId, cancellationToken);
         if (locations.Length == 0)
-        {
-            var fallbackFile = sourceFiles
-                .Where(file => file.RelativePath.StartsWith((resolution.Symbol.ReferenceModId ?? string.Empty) + "/", StringComparison.Ordinal))
-                .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
-                .FirstOrDefault();
-            if (fallbackFile is null)
-                return new SourceSnippetResolutionResult(resolution, null);
-            if (_dataRoot is null)
-                throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
-            var fallbackRoot = ResolveReferenceIndexRoot(_dataRoot, selection.Run.IndexId);
-            var fallbackPath = ResolveContainedPath(fallbackRoot, fallbackFile.RelativePath);
-            var bytes = await _sourceSnippetReader.ReadVerifiedBytesAsync(fallbackPath, fallbackFile.Sha256, cancellationToken);
-            var text = Encoding.UTF8.GetString(bytes).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-            var fallbackLines = text.Split('\n');
-            var fallbackLocation = new SourceLocationQueryResult(
-                resolution.Symbol.SymbolId,
-                1,
-                1,
-                Math.Max(1, fallbackLines.Length),
-                Math.Max(1, fallbackLines[^1].Length + 1));
-            var fallbackSnippet = new SourceSnippetQueryResult(
-                resolution.Symbol,
-                selection.Run.IndexId,
-                fallbackFile.RelativePath,
-                fallbackFile.Sha256,
-                fallbackFile.ByteCount,
-                fallbackLocation,
-                0,
-                0,
-                text,
-                IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : null,
-                "ReferenceMod:Installed:generated",
-                "reference",
-                selection.Collection,
-                resolution.Symbol.ReferenceModId,
-                resolution.Symbol.DisplayName,
-                resolution.Symbol.Version,
-                resolution.Symbol.License);
-            return new SourceSnippetResolutionResult(resolution, fallbackSnippet);
-        }
+            return new SourceSnippetResolutionResult(resolution, null);
         if (locations.Length > 1)
             throw new InvalidDataException("The completed reference index contains multiple source locations for the selected symbol.");
 
@@ -203,11 +165,12 @@ public sealed class ReferenceModQueryService
         IndexQueryOptions options,
         CancellationToken cancellationToken)
     {
+        ValidateLimit(options.Limit);
         var selection = await RequireSelectionAsync(options, cancellationToken);
         if (selection is null) return [];
         return await MapDocumentsAsync(
             selection,
-            await _repository.GetCompletedReferenceDocumentsAsync(selection.Run.IndexId, cancellationToken),
+            await _repository.GetCompletedReferenceDocumentsAsync(selection.Run.IndexId, options.Limit, cancellationToken),
             cancellationToken);
     }
 
@@ -475,9 +438,8 @@ public sealed class ReferenceModQueryService
 
     private static string ResolveReferenceIndexRoot(string dataRoot, string indexId)
     {
-        var root = Path.GetFullPath(Path.Combine(dataRoot, "reference", indexId));
+        var root = OwnedIndexPaths.ForReferenceMod(dataRoot, indexId).FinalRoot;
         if (!Directory.Exists(root)) throw new FileNotFoundException("The completed reference index source root was not found.", root);
-        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("The reference index source root is a reparse point.");
         return root;
     }
 

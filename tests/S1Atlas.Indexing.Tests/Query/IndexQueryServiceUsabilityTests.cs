@@ -94,6 +94,28 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
                 cancellationToken));
     }
 
+    [Theory]
+    [InlineData(CodebaseKind.S1Api)]
+    [InlineData(CodebaseKind.S1MApi)]
+    public async Task Search_does_not_label_api_symbols_as_game(CodebaseKind codebase)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        await SeedChannelAsync(
+            CodeChannel.Installed,
+            [Symbol("api-symbol", CodeChannel.Installed, "Api.Widget", codebase)],
+            cancellationToken,
+            codebase);
+        var service = new IndexQueryService(_repository);
+
+        var result = await service.SearchAsync(
+            "Api.Widget",
+            new IndexQueryOptions(codebase, CodeChannel.Installed),
+            cancellationToken);
+
+        Assert.Null(Assert.Single(result.Results).Origin);
+    }
+
     [Fact]
     public async Task Find_applies_kind_filter_before_the_bounded_limit()
     {
@@ -275,13 +297,14 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
     private async Task SeedChannelAsync(
         CodeChannel channel,
         IReadOnlyList<IndexSymbolRecord> symbols,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CodebaseKind codebase = CodebaseKind.S1Api)
     {
         var snapshotId = "snapshot-" + channel;
         var indexId = "index-" + channel;
         var snapshot = new CodeSnapshotRecord(
             snapshotId,
-            CodebaseKind.S1Api,
+            codebase,
             channel,
             "source-" + channel,
             "2026-08-14T04:00:00Z");
@@ -425,11 +448,11 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
             methodLocation);
     }
 
-    private static IndexSymbolRecord Symbol(string id, CodeChannel channel, string qualifiedName) =>
+    private static IndexSymbolRecord Symbol(string id, CodeChannel channel, string qualifiedName, CodebaseKind codebase = CodebaseKind.S1Api) =>
         new(
             id,
             "snapshot-" + channel,
-            "S1Api:" + channel + ":Type:" + qualifiedName,
+            codebase + ":" + channel + ":Type:" + qualifiedName,
             "Type",
             qualifiedName,
             qualifiedName,

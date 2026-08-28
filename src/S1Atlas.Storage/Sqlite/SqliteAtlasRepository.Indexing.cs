@@ -1046,6 +1046,38 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(
+        string indexId,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The reference document limit must be positive.");
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                   document.byte_count, document.content
+            FROM reference_documents AS document
+            INNER JOIN index_runs AS run
+                ON run.index_id = document.index_id
+               AND run.snapshot_id = document.snapshot_id
+            WHERE document.index_id = $indexId
+              AND run.status = 'Completed'
+            ORDER BY document.mod_id COLLATE BINARY, document.relative_path COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$limit", limit);
+        var result = new List<IndexReferenceDocumentRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadReferenceDocument(reader));
+        return result;
+    }
+
     public async Task<IReadOnlyList<IndexReferenceDocumentRecord>> SearchCompletedReferenceDocumentsAsync(
         string indexId,
         string query,

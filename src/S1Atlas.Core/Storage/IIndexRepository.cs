@@ -159,6 +159,14 @@ public interface IIndexRepository
         Task.FromResult<IReadOnlyList<IndexReferenceModRecord>>([]);
     Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(string indexId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<IndexReferenceDocumentRecord>>([]);
+    async Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(
+        string indexId,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit));
+        return (await GetCompletedReferenceDocumentsAsync(indexId, cancellationToken)).Take(limit).ToArray();
+    }
     Task<IReadOnlyList<IndexReferenceDocumentRecord>> SearchCompletedReferenceDocumentsAsync(
         string indexId,
         string query,

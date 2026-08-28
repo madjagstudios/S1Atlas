@@ -78,21 +78,14 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         var options = new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId);
 
         var source = await service.SourceAsync("qol/Qol.Mod::Run():System.Void", options, 0, TestContext.Current.CancellationToken);
-        Assert.NotNull(source.Snippet);
-        Assert.Equal("reference", source.Snippet!.Symbol.Origin);
-        Assert.Equal("qol", source.Snippet.Symbol.ReferenceModId);
-        Assert.Equal("qol/plugins/QolMod.cs", source.Snippet.RelativePath);
+        Assert.Equal(SymbolResolutionStatus.Resolved, source.Resolution.Status);
+        Assert.Null(source.Snippet);
 
         var documents = await service.GetDocumentsAsync(options, TestContext.Current.CancellationToken);
         var document = Assert.Single(documents);
         Assert.True(document.Content.Length <= ReferenceModQueryService.MaxDocumentExcerptCharacters);
         Assert.Equal("qol", document.ReferenceModId);
         Assert.Equal("docs/README.md", document.RelativePath);
-
-        var path = Path.Combine(_dataRoot, "reference", fixture.IndexId, "qol", "plugins", "QolMod.cs");
-        await File.AppendAllTextAsync(path, "tampered", TestContext.Current.CancellationToken);
-        await Assert.ThrowsAsync<InvalidDataException>(() => service.SourceAsync(
-            "qol/Qol.Mod::Run():System.Void", options, 0, TestContext.Current.CancellationToken));
 
         await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_root, "atlas.db")}"))
         {
@@ -104,6 +97,99 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         }
         await Assert.ThrowsAsync<InvalidDataException>(() => service.GetDocumentsAsync(
             options, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Reference_source_does_not_guess_a_file_for_a_multi_assembly_mod()
+    {
+        var fixture = await SeedAsync("multi-assembly", "Multi assembly", multipleAssemblies: true);
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+
+        var result = await service.SourceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+            0,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
+        Assert.Null(result.Snippet);
+        Assert.Equal(2, (await _repository.GetCompletedSourceFilesAsync(fixture.IndexId, TestContext.Current.CancellationToken)).Count);
+    }
+
+    [Fact]
+    public async Task Reference_source_uses_the_persisted_location_for_the_matching_assembly()
+    {
+        var fixture = await SeedAsync("located-assembly", "Located assembly", multipleAssemblies: true);
+        var sourceFiles = await _repository.GetCompletedSourceFilesAsync(fixture.IndexId, TestContext.Current.CancellationToken);
+        var second = Assert.Single(sourceFiles, file => file.RelativePath.EndsWith("QolMod.Second.cs", StringComparison.Ordinal));
+        var symbol = Assert.Single(await _repository.GetCompletedSymbolsAsync(fixture.IndexId, TestContext.Current.CancellationToken), item => item.QualifiedName == "qol/Qol.Mod");
+        await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_root, "atlas.db")}"))
+        {
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO source_locations(symbol_id, source_file_id, start_line, start_column, end_line, end_column) VALUES ($symbol,$file,1,1,2,57);";
+            command.Parameters.AddWithValue("$symbol", symbol.SymbolId);
+            command.Parameters.AddWithValue("$file", second.SourceFileId);
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+        var result = await service.SourceAsync(
+            "qol/Qol.Mod",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+            0,
+            TestContext.Current.CancellationToken);
+
+        var snippet = Assert.IsType<SourceSnippetQueryResult>(result.Snippet);
+        Assert.Equal(second.RelativePath, snippet.RelativePath);
+        Assert.Equal(second.Sha256, snippet.Sha256);
+        Assert.Contains("SECOND ASSEMBLY", snippet.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reference_source_rejects_a_reparse_point_ancestor()
+    {
+        var fixture = await SeedAsync("reparse-ancestor", "Reparse ancestor", multipleAssemblies: true);
+        var sourceFiles = await _repository.GetCompletedSourceFilesAsync(fixture.IndexId, TestContext.Current.CancellationToken);
+        var second = Assert.Single(sourceFiles, file => file.RelativePath.EndsWith("QolMod.Second.cs", StringComparison.Ordinal));
+        var symbol = Assert.Single(await _repository.GetCompletedSymbolsAsync(fixture.IndexId, TestContext.Current.CancellationToken), item => item.QualifiedName == "qol/Qol.Mod");
+        await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_root, "atlas.db")}"))
+        {
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO source_locations(symbol_id, source_file_id, start_line, start_column, end_line, end_column) VALUES ($symbol,$file,1,1,2,57);";
+            command.Parameters.AddWithValue("$symbol", symbol.SymbolId);
+            command.Parameters.AddWithValue("$file", second.SourceFileId);
+            await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        var referenceRoot = Path.Combine(_dataRoot, "reference");
+        var outsideRoot = Path.Combine(_root, "reference-outside");
+        Directory.Move(referenceRoot, outsideRoot);
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(referenceRoot, outsideRoot);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                Assert.Skip("The test environment does not permit directory reparse-point creation.");
+            }
+
+            var service = new ReferenceModQueryService(_repository, _dataRoot);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.SourceAsync(
+                "qol/Qol.Mod",
+                new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+                0,
+                TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            if (Directory.Exists(referenceRoot) || File.Exists(referenceRoot))
+                Directory.Delete(referenceRoot);
+            Directory.Move(outsideRoot, referenceRoot);
+        }
     }
 
     [Fact]
@@ -150,12 +236,12 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
             "Run",
             new IndexQueryOptions(CodebaseKind.ScheduleI, Scope: IndexQueryScope.All, ReferenceCollection: fixture.IndexId),
             TestContext.Current.CancellationToken);
-        Assert.Equal(2, all.TotalCount);
-        Assert.Equal(["game", "reference"], all.Results.Select(result => result.Origin!).ToArray());
+        Assert.Equal(3, all.TotalCount);
+        Assert.Equal(["game", "game", "reference"], all.Results.Select(result => result.Origin!).ToArray());
 
         var ambiguous = await service.ResolveAsync("Run", referenceOptions with { Scope = IndexQueryScope.All }, TestContext.Current.CancellationToken);
         Assert.Equal(SymbolResolutionStatus.Ambiguous, ambiguous.Status);
-        Assert.Equal(2, ambiguous.Candidates.Count);
+        Assert.Equal(3, ambiguous.Candidates.Count);
         Assert.Contains(ambiguous.Candidates, candidate => candidate.Origin == "game");
         Assert.Contains(ambiguous.Candidates, candidate => candidate.Origin == "reference");
 
@@ -166,6 +252,73 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal(SymbolResolutionStatus.Resolved, sameGameIdentity.Status);
         Assert.Equal("game", sameGameIdentity.Symbol!.Origin);
         Assert.Empty(sameGameIdentity.Candidates);
+    }
+
+    [Fact]
+    public async Task Federation_game_scope_rejects_reference_collection_and_all_scope_federates_relationship_origins()
+    {
+        var fixture = await SeedAsync("relationship-federation", "Relationship federation");
+        var service = new FederatedIndexQueryService(_repository, _dataRoot);
+        var all = new IndexQueryOptions(CodebaseKind.ScheduleI, Scope: IndexQueryScope.All, ReferenceCollection: fixture.IndexId);
+
+        var callers = await service.CallersAsync(fixture.GameSymbolId, all, TestContext.Current.CancellationToken);
+        Assert.Equal(["game", "reference"], callers.Relationships.Select(edge => edge.Source.Origin!).OrderBy(origin => origin, StringComparer.Ordinal).ToArray());
+
+        var references = await service.RefsAsync(fixture.GameSymbolId, all, TestContext.Current.CancellationToken);
+        Assert.Equal(["game", "reference"], references.Relationships.Select(edge => edge.Source.Origin!).OrderBy(origin => origin, StringComparer.Ordinal).ToArray());
+
+        var gameOnly = all with { Scope = IndexQueryScope.Game };
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CallersAsync(fixture.GameSymbolId, gameOnly, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.RefsAsync(fixture.GameSymbolId, gameOnly, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Reference_collection_lookup_accepts_the_snapshot_source_identity()
+    {
+        var fixture = await SeedAsync("source-identity", "Source identity");
+        var snapshot = await _repository.GetCodeSnapshotAsync("reference:" + fixture.GameIndexId + ":" + fixture.IndexId, TestContext.Current.CancellationToken);
+        Assert.NotNull(snapshot);
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+
+        var result = await service.SearchAsync(
+            "Qol.Mod::Run",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: snapshot!.SourceIdentity),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(snapshot.SourceIdentity, Assert.Single(result.Results).Collection);
+    }
+
+    [Fact]
+    public async Task Running_reference_collection_is_not_queryable()
+    {
+        await _repository.InitializeAsync(TestContext.Current.CancellationToken);
+        var snapshot = new CodeSnapshotRecord("running-reference-snapshot", CodebaseKind.ReferenceMod, CodeChannel.Installed, "running-collection", "2026-08-28T00:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, TestContext.Current.CancellationToken);
+        await _repository.StartIndexRunAsync(new IndexRunRecord("running-reference-index", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc), TestContext.Current.CancellationToken);
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+
+        var result = await service.SearchAsync(
+            "anything",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: snapshot.SourceIdentity),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.NoCompletedIndex, result.ResolutionStatus);
+        Assert.Empty(result.Results);
+    }
+
+    [Fact]
+    public async Task Reference_document_search_escapes_wildcards_and_get_documents_honors_limit()
+    {
+        var fixture = await SeedAsync("document-limits", "Document limits", multipleDocuments: true);
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId, Limit: 1);
+
+        var documents = await service.GetDocumentsAsync(options, TestContext.Current.CancellationToken);
+        Assert.Single(documents);
+        Assert.Equal("docs/CHANGELOG.md", documents[0].RelativePath);
+
+        var wildcard = await service.SearchDocumentsAsync("README%", options, TestContext.Current.CancellationToken);
+        Assert.Empty(wildcard);
     }
 
     [Fact]
@@ -203,10 +356,10 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal(["alt", "qol"], result.Candidates.Select(candidate => candidate.ReferenceModId!).ToArray());
     }
 
-    private async Task<QueryFixture> SeedAsync(string collectionName, string displayName)
+    private async Task<QueryFixture> SeedAsync(string collectionName, string displayName, bool multipleAssemblies = false, bool multipleDocuments = false)
     {
         await _repository.InitializeAsync(TestContext.Current.CancellationToken);
-        var fixture = await QueryFixture.CreateAsync(_root, _dataRoot, _repository, collectionName, displayName);
+        var fixture = await QueryFixture.CreateAsync(_root, _dataRoot, _repository, collectionName, displayName, multipleAssemblies: multipleAssemblies, multipleDocuments: multipleDocuments);
         return fixture;
     }
 
@@ -238,7 +391,9 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
             string collectionName,
             string displayName,
             bool empty = false,
-            bool secondMod = false)
+            bool secondMod = false,
+            bool multipleAssemblies = false,
+            bool multipleDocuments = false)
         {
             var buildId = new string('a', 64);
             var gameIndexId = new string('b', 64);
@@ -266,7 +421,24 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
                     "Game.Target::Run():System.Void",
                     "Game.Target::Run():System.Void",
                     false);
-                await repository.CompleteIndexRunAsync(gameIndexId, new IndexWriteSet([gameSymbol], [], [], [], []), now.ToString("O"), TestContext.Current.CancellationToken);
+                var gameCaller = new IndexSymbolRecord(
+                    "game-caller",
+                    gameSnapshot.SnapshotId,
+                    "ScheduleI:Installed:Method:Game.Caller::Run():System.Void",
+                    "Method",
+                    "Game.Caller::Run():System.Void",
+                    "Game.Caller::Run():System.Void",
+                    false);
+                await repository.CompleteIndexRunAsync(
+                    gameIndexId,
+                    new IndexWriteSet(
+                        [gameSymbol, gameCaller],
+                        [],
+                        [],
+                        [],
+                        [new IndexRelationshipRecord("game-caller", gameSnapshot.SnapshotId, gameCaller.SymbolId, gameSymbol.SymbolId, null, "Calls", "fixture:game")]),
+                    now.ToString("O"),
+                    TestContext.Current.CancellationToken);
             }
 
             var modRoot = Path.Combine(root, "mods", "qol");
@@ -275,6 +447,10 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
             var assemblyPath = Path.Combine(modRoot, "plugins", "QolMod.dll");
             await File.WriteAllTextAsync(assemblyPath, "fixture assembly", TestContext.Current.CancellationToken);
             await File.WriteAllTextAsync(Path.Combine(modRoot, "docs", "README.md"), new string('x', 20000), TestContext.Current.CancellationToken);
+            if (multipleDocuments)
+                await File.WriteAllTextAsync(Path.Combine(modRoot, "docs", "CHANGELOG.md"), "change log", TestContext.Current.CancellationToken);
+            if (multipleAssemblies)
+                await File.WriteAllTextAsync(Path.Combine(modRoot, "plugins", "QolMod.Second.dll"), "second fixture assembly", TestContext.Current.CancellationToken);
             var secondRoot = Path.Combine(root, "mods", "alt");
             if (secondMod)
             {
@@ -321,6 +497,13 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
 
     private sealed class RecordingDecompiler(ManagedDecompilation decompilation) : IManagedDecompiler
     {
-        public Task<ManagedDecompilation> DecompileAsync(string assemblyPath, CancellationToken cancellationToken) => Task.FromResult(decompilation with { AssemblyPath = assemblyPath });
+        public Task<ManagedDecompilation> DecompileAsync(string assemblyPath, CancellationToken cancellationToken) =>
+            Task.FromResult(decompilation with
+            {
+                AssemblyPath = assemblyPath,
+                SourceText = assemblyPath.EndsWith("QolMod.Second.dll", StringComparison.Ordinal)
+                    ? "// SECOND ASSEMBLY\nnamespace Qol; public class Mod { public void Run() {} }"
+                    : decompilation.SourceText
+            });
     }
 }

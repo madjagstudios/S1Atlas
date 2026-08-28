@@ -25,7 +25,7 @@ public sealed class SymbolResolver
 
         var byId = await _repository.GetCompletedSymbolByIdAsync(indexId, selector, cancellationToken);
         if (byId is not null)
-            return Resolved(ToQueryResult(indexId, codebase, channel, byId));
+            return Resolved(ToQueryResult(indexId, codebase, channel, byId, OriginFor(codebase)));
 
         var searchQuery = SearchQueryForSelector(selector, codebase, channel);
         var records = await _repository.SearchCompletedSymbolsAsync(
@@ -40,7 +40,7 @@ public sealed class SymbolResolver
             .Where(record => string.Equals(record.CanonicalKey, selector, StringComparison.Ordinal))
             .ToArray();
         if (exactCanonical.Length == 1)
-            return Resolved(ToQueryResult(indexId, codebase, channel, exactCanonical[0]));
+            return Resolved(ToQueryResult(indexId, codebase, channel, exactCanonical[0], OriginFor(codebase)));
         if (exactCanonical.Length > 1)
             return Ambiguous(indexId, codebase, channel, exactCanonical);
 
@@ -48,7 +48,7 @@ public sealed class SymbolResolver
             .Where(record => string.Equals(record.Signature, selector, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         if (exactSignature.Length == 1)
-            return Resolved(ToQueryResult(indexId, codebase, channel, exactSignature[0]));
+            return Resolved(ToQueryResult(indexId, codebase, channel, exactSignature[0], OriginFor(codebase)));
         if (exactSignature.Length > 1)
             return Ambiguous(indexId, codebase, channel, exactSignature);
 
@@ -56,7 +56,7 @@ public sealed class SymbolResolver
             .Where(record => string.Equals(record.QualifiedName, selector, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         if (exactQualifiedName.Length == 1)
-            return Resolved(ToQueryResult(indexId, codebase, channel, exactQualifiedName[0]));
+            return Resolved(ToQueryResult(indexId, codebase, channel, exactQualifiedName[0], OriginFor(codebase)));
         if (exactQualifiedName.Length > 1)
             return Ambiguous(indexId, codebase, channel, exactQualifiedName);
 
@@ -65,7 +65,7 @@ public sealed class SymbolResolver
             .TakeWhile(record => Rank(record, searchQuery) == bestRank)
             .ToArray();
         return best.Length == 1
-            ? Resolved(ToQueryResult(indexId, codebase, channel, best[0]))
+            ? Resolved(ToQueryResult(indexId, codebase, channel, best[0], OriginFor(codebase)))
             : Ambiguous(indexId, codebase, channel, best);
     }
 
@@ -115,7 +115,7 @@ public sealed class SymbolResolver
             SymbolResolutionStatus.Ambiguous,
             null,
             records
-                .Select(record => ToQueryResult(indexId, codebase, channel, record))
+                .Select(record => ToQueryResult(indexId, codebase, channel, record, OriginFor(codebase)))
                 .OrderBy(result => result.QualifiedName, StringComparer.Ordinal)
                 .ThenBy(result => result.Signature, StringComparer.Ordinal)
                 .ThenBy(result => result.SymbolId, StringComparer.Ordinal)
@@ -126,7 +126,7 @@ public sealed class SymbolResolver
         CodebaseKind codebase,
         CodeChannel channel,
         IndexSymbolRecord record,
-        string? origin = "game",
+        string? origin = null,
         string? collection = null,
         string? referenceModId = null,
         string? displayName = null,
@@ -151,4 +151,7 @@ public sealed class SymbolResolver
             license,
             relativePath,
             sha256);
+
+    internal static string? OriginFor(CodebaseKind codebase) =>
+        codebase == CodebaseKind.ScheduleI ? "game" : null;
 }

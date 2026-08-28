@@ -25,7 +25,7 @@
 
 - Task 2: completed — implementation `0709483`, review fix `7e025fe`; initial review found three Important findings and fix round 1 addressed all three. Scoped re-review found no new Critical/Important breakage. Focused ReferenceMod suite passed 20/20.
 - Task 3: completed — implementation `2e8af6a`, review fix `17686f0`; initial review found one Critical and two Important findings, and fix round 1 addressed all three. Scoped re-review approved with no new Critical/Important breakage. Focused suite passed 6/6; Indexing 216/216; Storage 142/142. One parallel integration fixture failure passed in isolation and was not changed.
-- Task 4: completed — local implementation adds scoped reference queries and cross-origin federation; focused query suite passed 7/7, indexing 223/223, storage 142/142, core 127/127, and full solution 1,282/1,282. No CLI, MCP, or docs-surface code was added. See `task-4-report.md`.
+- Task 4: completed — implementation `59c03a7` plus review fix round 1; focused query/provenance tests passed 29/29, indexing 232/232, storage 142/142, and core 127/127. Fix round covers game-scope federation isolation, honest multi-assembly source provenance, bounded document reads, codebase-derived origins, collection/running/wildcard/dedup coverage, and reparse-point safety. No CLI, MCP, or docs-surface code was added. See `task-4-report.md`.
 
 ## Task 3 review checkpoint
 

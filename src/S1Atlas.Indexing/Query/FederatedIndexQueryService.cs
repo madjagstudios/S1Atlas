@@ -26,6 +26,7 @@ public sealed class FederatedIndexQueryService
         SymbolKind? kind = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ValidateOptions(options);
         if (options.Limit <= 0) throw new ArgumentOutOfRangeException(nameof(options));
         if (options.Scope == IndexQueryScope.Game)
             return await _game.SearchAsync(query, options with { Scope = IndexQueryScope.Game }, cancellationToken, kind);
@@ -49,6 +50,7 @@ public sealed class FederatedIndexQueryService
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateOptions(options);
         if (options.Scope == IndexQueryScope.Game)
             return await _gameResolution(selector, options, cancellationToken);
         if (options.Scope == IndexQueryScope.Reference)
@@ -80,6 +82,7 @@ public sealed class FederatedIndexQueryService
         int context,
         CancellationToken cancellationToken)
     {
+        ValidateOptions(options);
         var resolution = await ResolveAsync(selector, options, cancellationToken);
         if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
             return new SourceSnippetResolutionResult(resolution, null);
@@ -111,7 +114,7 @@ public sealed class FederatedIndexQueryService
             return await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
 
         var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken);
-        if (string.IsNullOrWhiteSpace(options.ReferenceCollection))
+        if (options.Scope != IndexQueryScope.All || string.IsNullOrWhiteSpace(options.ReferenceCollection))
             return game;
         var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
         return MergeRelationships(resolution, game, reference, kind);
@@ -186,6 +189,12 @@ public sealed class FederatedIndexQueryService
 
     private static IndexQueryOptions GameOptions(IndexQueryOptions options, int limit) =>
         options with { Codebase = CodebaseKind.ScheduleI, Scope = IndexQueryScope.Game, ReferenceCollection = null, Limit = limit };
+
+    private static void ValidateOptions(IndexQueryOptions options)
+    {
+        if (options.Scope == IndexQueryScope.Game && !string.IsNullOrWhiteSpace(options.ReferenceCollection))
+            throw new ArgumentException("ReferenceCollection is valid only for All or Reference scope.", nameof(options));
+    }
 
     private Task<SymbolResolutionResult> _gameResolution(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         _game.ResolveAsync(selector, GameOptions(options, options.Limit), cancellationToken);

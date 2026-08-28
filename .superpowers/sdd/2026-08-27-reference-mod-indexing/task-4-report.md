@@ -62,3 +62,26 @@ Exit code: 0
 ## Concern
 
 Migration 10 does not persist a standalone collection-name column. The query seam therefore resolves a collection by its stable reference index ID or persisted snapshot source identity. The current Task 3 workflow persists collection identity in the reference index identity/source-identity path; adding a human-readable collection-name query would require a later schema/workflow change outside Task 4.
+
+## Review fix round 1 — RED/GREEN evidence
+
+Zeno findings were reproduced with focused tests before production changes. The RED run showed the multi-assembly source query returning the first generated file without a persisted location, `GetDocumentsAsync` returning two rows for `Limit: 1`, and federation returning reference-origin relationships for game-scoped options; the initial test edit also exposed the existing game-caller fixture changing the expected federation candidate count.
+
+The GREEN fix set:
+
+- rejects `ReferenceCollection` with `Scope=Game` and only federates reference relationships for `Scope=All`;
+- returns source unavailable when a reference symbol has no persisted location, while selecting the correct generated file/hash/content when a persisted location identifies a second assembly;
+- adds bounded completed-reference-document repository reads with SQL `LIMIT` before content materialization;
+- derives origin from `CodebaseKind` (`game` only for Schedule I, null for S1API/S1MAPI), including source and relationship endpoints;
+- covers source-identity collection lookup, running/empty collections, escaped wildcards, exact-identity federation deduplication, cross-origin callers/references, and a reparse-point ancestor;
+- reuses `OwnedIndexPaths.ForReferenceMod` for reference source-root safety.
+
+Verification after the fixes:
+
+```text
+Focused query/provenance tests: 29/29 passed
+Indexing: 232/232 passed
+Storage: 142/142 passed
+Core: 127/127 passed
+Full solution: 1,291/1,291 passed
+```

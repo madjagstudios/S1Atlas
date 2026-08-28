@@ -29,7 +29,7 @@ public sealed class IndexQueryService
         if (run is null) return null;
         var snapshot = await _repository.GetCodeSnapshotAsync(run.SnapshotId, cancellationToken);
         var symbol = await _repository.GetCompletedSymbolByIdAsync(indexId, symbolId, cancellationToken);
-        return snapshot is null || symbol is null ? null : SymbolResolver.ToQueryResult(indexId, snapshot.Codebase, snapshot.Channel, symbol);
+        return snapshot is null || symbol is null ? null : SymbolResolver.ToQueryResult(indexId, snapshot.Codebase, snapshot.Channel, symbol, SymbolResolver.OriginFor(snapshot.Codebase));
     }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsInIndexAsync(
@@ -43,7 +43,7 @@ public sealed class IndexQueryService
         ArgumentException.ThrowIfNullOrWhiteSpace(canonicalKey);
         var symbols = await _repository.GetCompletedSymbolByCanonicalKeyAsync(run.IndexId, canonicalKey, cancellationToken);
         return symbols
-            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol))
+            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
             .ToArray();
     }
 
@@ -234,13 +234,14 @@ public sealed class IndexQueryService
         var selected = new SelectedSymbol(
             channel,
             run,
-            SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol));
+            SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)));
         var refs = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Refs, int.MaxValue, cancellationToken);
         var callers = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callers, int.MaxValue, cancellationToken);
         var callees = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callees, int.MaxValue, cancellationToken);
         var mapped = await MapRelationshipEdgesAsync(
             run,
             refs.Concat(callers).Concat(callees).DistinctBy(item => (item.Edge.RelationshipId, item.Direction)).ToArray(),
+            SymbolResolver.OriginFor(codebase),
             cancellationToken);
         var referenceKeys = refs.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
         var callerKeys = callers.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
@@ -409,7 +410,7 @@ public sealed class IndexQueryService
             cancellationToken,
             kindName);
         var results = symbols
-            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol))
+            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
             .ToArray();
         return new SymbolSearchResult(totalCount, results.Length, results, null);
     }
@@ -513,7 +514,7 @@ public sealed class IndexQueryService
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken);
-        var relationships = await MapRelationshipEdgesAsync(selected.Run, selectedEdges, cancellationToken);
+        var relationships = await MapRelationshipEdgesAsync(selected.Run, selectedEdges, selected.Symbol.Origin, cancellationToken);
 
         var notice = mode == RelationshipQueryMode.Refs
             ? string.Empty
@@ -573,6 +574,7 @@ public sealed class IndexQueryService
     private async Task<IReadOnlyList<RelationshipQueryResult>> MapRelationshipEdgesAsync(
         IndexRunRecord run,
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
+        string? origin,
         CancellationToken cancellationToken)
     {
         var endpointIds = selectedEdges
@@ -589,8 +591,8 @@ public sealed class IndexQueryService
                 item.Edge.Kind,
                 item.Edge.Evidence,
                 item.Direction,
-                Endpoint(item.Edge.SourceSymbolId, null, byId),
-                Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId)))
+                Endpoint(item.Edge.SourceSymbolId, null, byId, origin),
+                Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId, origin)))
             .ToArray();
     }
 
@@ -657,7 +659,7 @@ public sealed class IndexQueryService
             read.Text,
             bodyRecoveryStatus,
             codebase + ":" + selected.Channel + ":generated",
-            "game");
+            SymbolResolver.OriginFor(codebase));
         return new SourceSnippetResolutionResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
             snippet);
@@ -743,7 +745,8 @@ public sealed class IndexQueryService
     private static RelationshipEndpointQueryResult Endpoint(
         string? symbolId,
         string? rawText,
-        IReadOnlyDictionary<string, IndexSymbolRecord> byId)
+        IReadOnlyDictionary<string, IndexSymbolRecord> byId,
+        string? origin)
     {
         if (symbolId is not null && byId.TryGetValue(symbolId, out var symbol))
             return new RelationshipEndpointQueryResult(
@@ -752,7 +755,7 @@ public sealed class IndexQueryService
                 symbol.Signature,
                 null,
                 true,
-                "game");
+                origin);
 
         return new RelationshipEndpointQueryResult(
             symbolId,
