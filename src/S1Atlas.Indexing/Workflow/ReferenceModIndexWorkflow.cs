@@ -62,11 +62,9 @@ public sealed class ReferenceModIndexWorkflow
             throw new InvalidOperationException("The requested build does not match the reference collection.");
 
         var game = await _gameSymbols.LoadAsync(collection.GameIndexId, cancellationToken);
-        if (!string.Equals(game.BuildId, buildId, StringComparison.Ordinal))
-            throw new InvalidOperationException("The reference collection build does not match the completed base game index.");
         var selected = _selector.Select(collection.Mods);
         var initialHash = await _hasher.HashAsync(selected, cancellationToken);
-        var collectionHash = ComputeCollectionHash(collection, initialHash.CollectionContentSha256);
+        var collectionHash = CreateCollectionHash(collection, initialHash.CollectionContentSha256);
         var settings = force ? "reference:forced:" + Guid.NewGuid().ToString("N") : "reference";
         var indexId = CreateIndexId(game.IndexId, game.VerifiedExtractionIdentity, collectionHash, settings, IndexingWorkflow.IndexSchemaVersion);
         var snapshotId = "reference:" + game.IndexId + ":" + indexId;
@@ -243,7 +241,7 @@ public sealed class ReferenceModIndexWorkflow
         return separator > 0 ? qualifiedName[..separator] : throw new InvalidOperationException("Reference symbol lacks a mod identity prefix.");
     }
 
-    private static string ComputeCollectionHash(ReferenceCollectionDefinition collection, string inputHash)
+    public static string CreateCollectionHash(ReferenceCollectionDefinition collection, string inputHash)
     {
         var values = new List<string> { collection.CollectionId, collection.CollectionName ?? string.Empty, collection.BuildId, collection.GameIndexId, inputHash };
         foreach (var mod in collection.Mods.OrderBy(mod => mod.ModId, StringComparer.Ordinal))
@@ -252,6 +250,7 @@ public sealed class ReferenceModIndexWorkflow
             values.Add(mod.DisplayName);
             values.Add(mod.Version);
             values.Add(mod.License ?? string.Empty);
+            values.Add(mod.ContentSha256);
             values.AddRange(mod.Include.Order(StringComparer.Ordinal));
             values.AddRange(mod.Exclude.Order(StringComparer.Ordinal));
         }

@@ -16,7 +16,7 @@ public sealed class ReferenceModIndexWorkflowTests
     [Fact]
     public async Task Indexes_only_selected_local_mods_and_reuses_persisted_game_symbols()
     {
-        await using var fixture = await ReferenceWorkflowFixture.CreateAsync();
+        await using var fixture = await ReferenceWorkflowFixture.CreateAsync(includeEnvironmentLink: false);
         var selectedAssembly = fixture.CreateInput("qol", "plugins/QolMod.dll", "selected");
         fixture.CreateInput("qol", "README.md", "local readme");
         fixture.CreateInput("qol", "notes/DEVLOG.md", "local development log");
@@ -62,11 +62,18 @@ public sealed class ReferenceModIndexWorkflowTests
 
         var first = await workflow.RunAsync(fixture.BuildId, collection, false, TestContext.Current.CancellationToken);
         var reused = await workflow.RunAsync(fixture.BuildId, collection, false, TestContext.Current.CancellationToken);
+        var changedManifest = collection with
+        {
+            Mods = [collection.Mods[0] with { ContentSha256 = "changed-declared-content-sha" }]
+        };
+        var changed = await workflow.RunAsync(fixture.BuildId, changedManifest, false, TestContext.Current.CancellationToken);
         var forced = await workflow.RunAsync(fixture.BuildId, collection, true, TestContext.Current.CancellationToken);
 
         Assert.False(first.Reused);
         Assert.True(reused.Reused);
         Assert.Equal(first.IndexId, reused.IndexId);
+        Assert.False(changed.Reused);
+        Assert.NotEqual(first.IndexId, changed.IndexId);
         Assert.False(forced.Reused);
         Assert.NotEqual(first.IndexId, forced.IndexId);
     }
@@ -83,8 +90,10 @@ public sealed class ReferenceModIndexWorkflowTests
         var firstHash = await hasher.HashAsync(new ReferenceModFileSelector().Select([new ReferenceModDefinition("qol", "Quality of Life", "1.0.0", null, first.ModRoot("qol"), "qol-content", ["plugins/**"])]), TestContext.Current.CancellationToken);
         var secondHash = await hasher.HashAsync(new ReferenceModFileSelector().Select([new ReferenceModDefinition("qol", "Quality of Life", "1.0.0", null, second.ModRoot("qol"), "qol-content", ["plugins/**"])]), TestContext.Current.CancellationToken);
 
-        var firstId = ReferenceModIndexWorkflow.CreateIndexId(first.GameIndexId, first.ExtractionIdentity, firstHash.CollectionContentSha256, "default", IndexingWorkflow.IndexSchemaVersion);
-        var secondId = ReferenceModIndexWorkflow.CreateIndexId(second.GameIndexId, second.ExtractionIdentity, secondHash.CollectionContentSha256, "default", IndexingWorkflow.IndexSchemaVersion);
+        var firstCollection = first.Collection(new ReferenceModDefinition("qol", "Quality of Life", "1.0.0", null, first.ModRoot("qol"), "declared-content-sha", ["plugins/**"]));
+        var secondCollection = second.Collection(new ReferenceModDefinition("qol", "Quality of Life", "1.0.0", null, second.ModRoot("qol"), "declared-content-sha", ["plugins/**"]));
+        var firstId = ReferenceModIndexWorkflow.CreateIndexId(first.GameIndexId, first.ExtractionIdentity, ReferenceModIndexWorkflow.CreateCollectionHash(firstCollection, firstHash.CollectionContentSha256), "reference", IndexingWorkflow.IndexSchemaVersion);
+        var secondId = ReferenceModIndexWorkflow.CreateIndexId(second.GameIndexId, second.ExtractionIdentity, ReferenceModIndexWorkflow.CreateCollectionHash(secondCollection, secondHash.CollectionContentSha256), "reference", IndexingWorkflow.IndexSchemaVersion);
 
         Assert.Equal(firstId, secondId);
     }
@@ -98,12 +107,25 @@ public sealed class ReferenceModIndexWorkflowTests
         var workflow = fixture.CreateWorkflow(decompiler);
         var collection = fixture.Collection(new ReferenceModDefinition("qol", "Quality of Life", "1.0.0", null, fixture.ModRoot("qol"), "qol-content", ["plugins/**"]));
         var inputHash = await new ReferenceModInputHasher().HashAsync(new ReferenceModFileSelector().Select(collection.Mods), TestContext.Current.CancellationToken);
-        var indexId = ReferenceModIndexWorkflow.CreateIndexId(fixture.GameIndexId, fixture.ExtractionIdentity, inputHash.CollectionContentSha256, "default", IndexingWorkflow.IndexSchemaVersion);
+        var indexId = ReferenceModIndexWorkflow.CreateIndexId(fixture.GameIndexId, fixture.ExtractionIdentity, ReferenceModIndexWorkflow.CreateCollectionHash(collection, inputHash.CollectionContentSha256), "reference", IndexingWorkflow.IndexSchemaVersion);
 
         await Assert.ThrowsAsync<InvalidDataException>(() => workflow.RunAsync(fixture.BuildId, collection, false, TestContext.Current.CancellationToken));
 
         Assert.False(Directory.Exists(Path.Combine(fixture.Root, "reference", indexId + ".staging")));
         Assert.Null(await fixture.Repository.GetCompletedIndexAsync(indexId, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Loads_normal_completed_schedule_one_symbols_without_an_environment_link()
+    {
+        await using var fixture = await ReferenceWorkflowFixture.CreateAsync(includeEnvironmentLink: false);
+
+        var loaded = await new ReferenceGameSymbolLoader(fixture.Repository)
+            .LoadAsync(fixture.GameIndexId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(fixture.GameIndexId, loaded.IndexId);
+        Assert.Equal([fixture.GameSymbolId], loaded.Symbols.Select(symbol => symbol.SymbolId));
+        Assert.Equal(fixture.ExtractionIdentity, loaded.VerifiedExtractionIdentity);
     }
 
     private sealed class RecordingDecompiler : IManagedDecompiler
@@ -142,7 +164,7 @@ public sealed class ReferenceModIndexWorkflowTests
         public string Root { get; }
         public SqliteAtlasRepository Repository { get; }
 
-        public static async Task<ReferenceWorkflowFixture> CreateAsync()
+        public static async Task<ReferenceWorkflowFixture> CreateAsync(bool includeEnvironmentLink = true)
         {
             var root = Path.Combine(Path.GetTempPath(), "s1atlas-reference-workflow-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -151,7 +173,7 @@ public sealed class ReferenceModIndexWorkflowTests
             var now = DateTimeOffset.UtcNow;
             var environment = new EnvironmentSnapshot(2, new GameBuild(fixture.BuildId, "assembly", "metadata", now, true), new InstallationObservation("1", "2", "fixture", root, null, null), [], "test", now);
             await fixture.Repository.SaveSnapshotAsync(environment, TestContext.Current.CancellationToken);
-            var environmentId = EnvironmentSnapshotId.Create(environment);
+            string? environmentId = includeEnvironmentLink ? EnvironmentSnapshotId.Create(environment) : null;
             var snapshot = new CodeSnapshotRecord("game-snapshot", CodebaseKind.ScheduleI, CodeChannel.Installed, fixture.ExtractionIdentity, now.ToString("O"), environmentId);
             await fixture.Repository.CreateCodeSnapshotAsync(snapshot, TestContext.Current.CancellationToken);
             await fixture.Repository.StartIndexRunAsync(new IndexRunRecord(fixture.GameIndexId, snapshot.SnapshotId, IndexRunStatus.Running, now.ToString("O")), TestContext.Current.CancellationToken);

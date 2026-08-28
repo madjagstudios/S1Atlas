@@ -1225,7 +1225,7 @@ public sealed partial class SqliteAtlasRepository
             cancellationToken) ?? throw new InvalidOperationException("Reference-mod indexes require a completed base game index.");
         if (gameIndex.Codebase != CodebaseKind.ScheduleI || gameIndex.Channel != CodeChannel.Installed)
             throw new InvalidOperationException("Reference-mod indexes must target a completed installed Schedule I index.");
-        if (!string.Equals(gameIndex.BuildId, context.BuildId, StringComparison.Ordinal))
+        if (gameIndex.BuildId is not null && !string.Equals(gameIndex.BuildId, context.BuildId, StringComparison.Ordinal))
             throw new InvalidOperationException("Reference index context build id must match the completed base game index build.");
 
         var referenceBuildId = await GetBuildIdForEnvironmentSnapshotAsync(
