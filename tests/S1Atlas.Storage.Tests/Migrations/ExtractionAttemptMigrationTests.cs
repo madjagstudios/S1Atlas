@@ -36,7 +36,7 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
         await repository.InitializeAsync(cancellationToken);
 
         var migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], migrationVersions);
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], migrationVersions);
         Assert.True(await TableExistsAsync("extraction_attempts", cancellationToken));
         Assert.True(await TableExistsAsync("input_snapshots", cancellationToken));
         Assert.True(await TableExistsAsync("input_snapshot_files", cancellationToken));
@@ -63,13 +63,13 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             "test-version",
             "win-x64",
             cancellationToken));
-        Assert.Single(GetVersionNineBackups());
+        Assert.Single(GetVersionTenBackups());
 
         await repository.InitializeAsync(cancellationToken);
 
         migrationVersions = await ReadMigrationVersionsAsync(cancellationToken);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], migrationVersions);
-        Assert.Single(GetVersionNineBackups());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], migrationVersions);
+        Assert.Single(GetVersionTenBackups());
     }
 
     [Fact]
@@ -230,11 +230,11 @@ public sealed class ExtractionAttemptMigrationTests : IAsyncDisposable
             cancellationToken);
     }
 
-    private string[] GetVersionNineBackups() =>
+    private string[] GetVersionTenBackups() =>
         Directory.Exists(_backupDirectory)
             ? Directory.GetFiles(
                 _backupDirectory,
-                "atlas-before-schema-9-*.db",
+                "atlas-before-schema-10-*.db",
                 SearchOption.TopDirectoryOnly)
             : [];
 

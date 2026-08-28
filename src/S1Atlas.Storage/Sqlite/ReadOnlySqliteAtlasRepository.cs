@@ -624,6 +624,139 @@ public sealed class ReadOnlySqliteAtlasRepository :
             return (IReadOnlyList<IndexCallableSurfaceRecord>)result;
         }, cancellationToken);
 
+    public Task<ReferenceIndexContextRecord?> GetReferenceIndexContextAsync(
+        string indexId,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT context.reference_index_id, context.game_index_id, context.build_id
+                FROM reference_index_context AS context
+                INNER JOIN index_runs AS run
+                    ON run.index_id = context.reference_index_id
+                   AND run.snapshot_id = context.reference_snapshot_id
+                WHERE context.reference_index_id = $indexId
+                  AND run.status = 'Completed'
+                LIMIT 1;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            await using var reader = await command.ExecuteReaderAsync();
+            return await reader.ReadAsync()
+                ? new ReferenceIndexContextRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+                : null;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(
+        string indexId,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            var ownedSymbols = await LoadReferenceSymbolOwnersByModAsync(connection, indexId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT mod.mod_id, mod.display_name, mod.version, mod.license, mod.root_path, mod.content_sha256
+                FROM reference_mods AS mod
+                INNER JOIN index_runs AS run
+                    ON run.index_id = mod.index_id
+                   AND run.snapshot_id = mod.snapshot_id
+                WHERE mod.index_id = $indexId
+                  AND run.status = 'Completed'
+                ORDER BY mod.mod_id COLLATE BINARY;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            var result = new List<IndexReferenceModRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var modId = reader.GetString(0);
+                result.Add(new IndexReferenceModRecord(
+                    modId,
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    reader.GetString(4),
+                    reader.GetString(5),
+                    ownedSymbols.TryGetValue(modId, out var symbolIds) ? symbolIds : []));
+            }
+
+            return (IReadOnlyList<IndexReferenceModRecord>)result;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(
+        string indexId,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                       document.byte_count, document.content
+                FROM reference_documents AS document
+                INNER JOIN index_runs AS run
+                    ON run.index_id = document.index_id
+                   AND run.snapshot_id = document.snapshot_id
+                WHERE document.index_id = $indexId
+                  AND run.status = 'Completed'
+                ORDER BY document.mod_id COLLATE BINARY, document.relative_path COLLATE BINARY;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            var result = new List<IndexReferenceDocumentRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadReferenceDocument(reader));
+            return (IReadOnlyList<IndexReferenceDocumentRecord>)result;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexReferenceDocumentRecord>> SearchCompletedReferenceDocumentsAsync(
+        string indexId,
+        string query,
+        int limit,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(query);
+            if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit), "The reference document search limit must be positive.");
+            var escaped = EscapeLikePattern(query);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                       document.byte_count, document.content
+                FROM reference_documents AS document
+                INNER JOIN index_runs AS run
+                    ON run.index_id = document.index_id
+                   AND run.snapshot_id = document.snapshot_id
+                WHERE document.index_id = $indexId
+                  AND run.status = 'Completed'
+                  AND (
+                      document.relative_path LIKE $contains ESCAPE '\' COLLATE NOCASE
+                      OR document.content LIKE $contains ESCAPE '\' COLLATE NOCASE
+                  )
+                ORDER BY
+                    CASE
+                        WHEN document.relative_path = $query COLLATE NOCASE THEN 0
+                        WHEN document.relative_path LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 1
+                        WHEN document.relative_path LIKE $contains ESCAPE '\' COLLATE NOCASE THEN 2
+                        ELSE 3
+                    END,
+                    document.relative_path COLLATE BINARY,
+                    document.mod_id COLLATE BINARY
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            command.Parameters.AddWithValue("$query", query);
+            command.Parameters.AddWithValue("$prefix", escaped + "%");
+            command.Parameters.AddWithValue("$contains", "%" + escaped + "%");
+            command.Parameters.AddWithValue("$limit", limit);
+            var result = new List<IndexReferenceDocumentRecord>(Math.Min(limit, 256));
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadReferenceDocument(reader));
+            return (IReadOnlyList<IndexReferenceDocumentRecord>)result;
+        }, cancellationToken);
+
     public Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken) =>
         WithConnectionAsync(async connection =>
         {
@@ -1368,6 +1501,15 @@ public sealed class ReadOnlySqliteAtlasRepository :
             Enum.Parse<InteropInputTrust>(reader.GetString(11)),
             reader.GetString(12));
 
+    private static IndexReferenceDocumentRecord ReadReferenceDocument(SqliteDataReader reader) =>
+        new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetInt64(4),
+            reader.GetString(5));
+
     private static IndexRelationshipRecord ReadRelationship(SqliteDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6));
 
@@ -1562,6 +1704,42 @@ public sealed class ReadOnlySqliteAtlasRepository :
         command.CommandText = sql;
         foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value ?? DBNull.Value);
         return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+    }
+
+    private static async Task<Dictionary<string, IReadOnlyList<string>>> LoadReferenceSymbolOwnersByModAsync(
+        SqliteConnection connection,
+        string indexId)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT owner.mod_id, owner.symbol_id
+            FROM reference_symbol_owners AS owner
+            INNER JOIN index_runs AS run
+                ON run.index_id = owner.index_id
+               AND run.snapshot_id = owner.snapshot_id
+            WHERE owner.index_id = $indexId
+              AND run.status = 'Completed'
+            ORDER BY owner.mod_id COLLATE BINARY, owner.symbol_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        var result = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var modId = reader.GetString(0);
+            if (!result.TryGetValue(modId, out var symbolIds))
+            {
+                symbolIds = [];
+                result.Add(modId, symbolIds);
+            }
+
+            symbolIds.Add(reader.GetString(1));
+        }
+
+        return result.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<string>)pair.Value,
+            StringComparer.Ordinal);
     }
 
     private static void AddPageParameters(SqliteCommand command, string snapshot, string? scene, string? parent, string? query, int limit)

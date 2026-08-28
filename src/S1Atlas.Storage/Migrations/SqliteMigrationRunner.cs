@@ -140,7 +140,7 @@ internal sealed class SqliteMigrationRunner
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
-        await using var transaction =
+        SqliteTransaction? transaction =
             (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         var activeMigration = _migrations[0];
 
@@ -159,6 +159,25 @@ internal sealed class SqliteMigrationRunner
             for (var index = 1; index < _migrations.Count; index++)
             {
                 activeMigration = _migrations[index];
+                if (!activeMigration.RequiresTransaction)
+                {
+                    ArgumentNullException.ThrowIfNull(transaction);
+                    await transaction.CommitAsync(cancellationToken);
+                    await transaction.DisposeAsync();
+                    transaction = null;
+                    await ApplyMigrationWithoutOuterTransactionAsync(
+                        connection,
+                        activeMigration,
+                        cancellationToken);
+                    continue;
+                }
+
+                if (transaction is null)
+                {
+                    transaction =
+                        (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+                }
+
                 await ExecuteMigrationSqlAsync(
                     connection,
                     transaction,
@@ -171,17 +190,33 @@ internal sealed class SqliteMigrationRunner
                     cancellationToken);
             }
 
-            await transaction.CommitAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
             throw;
         }
         catch (Exception exception)
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
             throw CreateMigrationFailure(activeMigration, exception);
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
         }
     }
 
@@ -191,6 +226,18 @@ internal sealed class SqliteMigrationRunner
         bool createLedger,
         CancellationToken cancellationToken)
     {
+        if (!migration.RequiresTransaction)
+        {
+            if (createLedger)
+            {
+                throw new InvalidOperationException(
+                    $"Atlas database migration {migration.Version} '{migration.Name}' cannot skip the outer transaction while creating the migration ledger.");
+            }
+
+            await ApplyMigrationWithoutOuterTransactionAsync(connection, migration, cancellationToken);
+            return;
+        }
+
         await using var transaction =
             (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
@@ -228,6 +275,34 @@ internal sealed class SqliteMigrationRunner
         }
     }
 
+    private async Task ApplyMigrationWithoutOuterTransactionAsync(
+        SqliteConnection connection,
+        SqliteMigration migration,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ExecuteMigrationSqlAsync(connection, transaction: null, migration, cancellationToken);
+
+            await using var ledgerTransaction =
+                (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            await InsertMigrationRowAsync(
+                connection,
+                ledgerTransaction,
+                migration,
+                cancellationToken);
+            await ledgerTransaction.CommitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw CreateMigrationFailure(migration, exception);
+        }
+    }
+
     private static async Task CreateLedgerAsync(
         SqliteConnection connection,
         SqliteTransaction transaction,
@@ -241,7 +316,7 @@ internal sealed class SqliteMigrationRunner
 
     private static async Task ExecuteMigrationSqlAsync(
         SqliteConnection connection,
-        SqliteTransaction transaction,
+        SqliteTransaction? transaction,
         SqliteMigration migration,
         CancellationToken cancellationToken)
     {

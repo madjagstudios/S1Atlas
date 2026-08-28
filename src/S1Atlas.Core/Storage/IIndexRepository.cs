@@ -107,7 +107,10 @@ public sealed record IndexWriteSet(
     IReadOnlyList<IndexSourceLocationRecord> SourceLocations,
     IReadOnlyList<IndexFingerprintRecord> Fingerprints,
     IReadOnlyList<IndexRelationshipRecord> Relationships,
-    IReadOnlyList<IndexCallableSurfaceRecord>? CallableSurface = null);
+    IReadOnlyList<IndexCallableSurfaceRecord>? CallableSurface = null,
+    ReferenceIndexContextRecord? ReferenceIndexContext = null,
+    IReadOnlyList<IndexReferenceModRecord>? ReferenceMods = null,
+    IReadOnlyList<IndexReferenceDocumentRecord>? ReferenceDocuments = null);
 
 public interface IIndexRepository
 {
@@ -148,6 +151,18 @@ public interface IIndexRepository
         string gameSymbolId,
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<IndexCallableSurfaceRecord>>([]);
+    Task<ReferenceIndexContextRecord?> GetReferenceIndexContextAsync(string indexId, CancellationToken cancellationToken) =>
+        Task.FromResult<ReferenceIndexContextRecord?>(null);
+    Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(string indexId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexReferenceModRecord>>([]);
+    Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(string indexId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexReferenceDocumentRecord>>([]);
+    Task<IReadOnlyList<IndexReferenceDocumentRecord>> SearchCompletedReferenceDocumentsAsync(
+        string indexId,
+        string query,
+        int limit,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexReferenceDocumentRecord>>([]);
     Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken);
     Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken);
     Task<string?> GetCompletedIndexBuildIdAsync(string indexId, CancellationToken cancellationToken) =>

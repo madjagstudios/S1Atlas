@@ -664,6 +664,153 @@ internal static class SqliteMigrations
         ON callable_surface(index_id, status);
         """;
 
+    private const string ReferenceModsV10Sql = """
+        PRAGMA foreign_keys = OFF;
+
+        BEGIN IMMEDIATE;
+
+        CREATE TABLE code_snapshots_v10 (
+            snapshot_id TEXT NOT NULL PRIMARY KEY,
+            codebase TEXT NOT NULL CHECK (codebase IN ('ScheduleI', 'ReferenceMod', 'S1Api', 'S1MApi')),
+            channel TEXT NOT NULL CHECK (channel IN ('Installed', 'Release', 'Preview')),
+            environment_snapshot_id TEXT NULL,
+            source_identity TEXT NOT NULL,
+            created_at_utc TEXT NOT NULL,
+            CHECK ((codebase NOT IN ('ScheduleI', 'ReferenceMod')) OR channel = 'Installed'),
+            FOREIGN KEY (environment_snapshot_id)
+                REFERENCES environment_snapshots(snapshot_id)
+                ON DELETE SET NULL
+        );
+
+        INSERT INTO code_snapshots_v10 (
+            snapshot_id,
+            codebase,
+            channel,
+            environment_snapshot_id,
+            source_identity,
+            created_at_utc)
+        SELECT
+            snapshot_id,
+            codebase,
+            channel,
+            environment_snapshot_id,
+            source_identity,
+            created_at_utc
+        FROM code_snapshots;
+
+        DROP TABLE code_snapshots;
+        ALTER TABLE code_snapshots_v10 RENAME TO code_snapshots;
+
+        CREATE INDEX ix_code_snapshots_lookup
+        ON code_snapshots(codebase, channel, created_at_utc DESC);
+
+        CREATE UNIQUE INDEX ux_index_runs_index_snapshot
+        ON index_runs(index_id, snapshot_id);
+
+        CREATE UNIQUE INDEX ux_symbols_id_snapshot
+        ON symbols(symbol_id, snapshot_id);
+
+        CREATE TABLE reference_index_context (
+            reference_index_id TEXT NOT NULL PRIMARY KEY,
+            reference_snapshot_id TEXT NOT NULL,
+            game_index_id TEXT NOT NULL,
+            game_snapshot_id TEXT NOT NULL,
+            build_id TEXT NOT NULL,
+            FOREIGN KEY (reference_index_id, reference_snapshot_id)
+                REFERENCES index_runs(index_id, snapshot_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (reference_snapshot_id)
+                REFERENCES code_snapshots(snapshot_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (game_index_id, game_snapshot_id)
+                REFERENCES index_runs(index_id, snapshot_id),
+            FOREIGN KEY (game_snapshot_id)
+                REFERENCES code_snapshots(snapshot_id),
+            FOREIGN KEY (build_id)
+                REFERENCES builds(build_id)
+        );
+
+        CREATE TABLE reference_mods (
+            index_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            mod_id TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            license TEXT NULL,
+            root_path TEXT NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            PRIMARY KEY (index_id, mod_id),
+            FOREIGN KEY (index_id, snapshot_id)
+                REFERENCES index_runs(index_id, snapshot_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (snapshot_id)
+                REFERENCES code_snapshots(snapshot_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX ix_reference_mods_snapshot_mod
+        ON reference_mods(snapshot_id, mod_id);
+
+        CREATE TABLE reference_documents (
+            index_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            mod_id TEXT NOT NULL,
+            relative_path TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            byte_count INTEGER NOT NULL CHECK (byte_count >= 0),
+            content TEXT NOT NULL,
+            PRIMARY KEY (index_id, mod_id, relative_path),
+            FOREIGN KEY (index_id, snapshot_id)
+                REFERENCES index_runs(index_id, snapshot_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (index_id, mod_id)
+                REFERENCES reference_mods(index_id, mod_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (snapshot_id)
+                REFERENCES code_snapshots(snapshot_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX ix_reference_documents_index_kind
+        ON reference_documents(index_id, kind);
+
+        CREATE TABLE reference_symbol_owners (
+            index_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            symbol_id TEXT NOT NULL PRIMARY KEY,
+            mod_id TEXT NOT NULL,
+            FOREIGN KEY (index_id, snapshot_id)
+                REFERENCES index_runs(index_id, snapshot_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (index_id, mod_id)
+                REFERENCES reference_mods(index_id, mod_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (symbol_id, snapshot_id)
+                REFERENCES symbols(symbol_id, snapshot_id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (snapshot_id)
+                REFERENCES code_snapshots(snapshot_id)
+                ON DELETE CASCADE
+        );
+
+        CREATE INDEX ix_reference_symbol_owners_index_mod
+        ON reference_symbol_owners(index_id, mod_id);
+
+        COMMIT;
+
+        PRAGMA foreign_keys = ON;
+
+        CREATE TEMP TABLE reference_mod_fk_check (
+            violations INTEGER NOT NULL CHECK (violations = 0)
+        );
+
+        INSERT INTO reference_mod_fk_check (violations)
+        SELECT COUNT(*) FROM pragma_foreign_key_check;
+
+        DROP TABLE reference_mod_fk_check;
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -674,6 +821,7 @@ internal static class SqliteMigrations
         new(6, "indexing-v6", IndexingV6Sql),
         new(7, "body-recovery-v7", BodyRecoveryV7Sql),
         new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql),
-        new(9, "callable-surface-v9", CallableSurfaceV9Sql)
+        new(9, "callable-surface-v9", CallableSurfaceV9Sql),
+        new(10, "reference-mods-v10", ReferenceModsV10Sql, RequiresTransaction: false)
     ];
 }
