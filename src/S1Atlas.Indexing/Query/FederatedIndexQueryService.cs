@@ -6,22 +6,18 @@ namespace S1Atlas.Indexing.Query;
 public sealed class FederatedIndexQueryService
 {
     private const string CallSiteCompletenessNotice = TargetRelationshipQueryNotices.CallSites;
-    private readonly IIndexRepository? _repository;
-    private readonly SymbolResolver? _symbolResolver;
+    private readonly IIndexRepository _repository;
+    private readonly SymbolResolver _symbolResolver;
     private readonly IndexQueryService _game;
     private readonly ReferenceModQueryService _reference;
 
     public FederatedIndexQueryService(IIndexRepository repository, string? dataRoot = null)
-        : this(new IndexQueryService(repository, dataRoot), new ReferenceModQueryService(repository, dataRoot))
     {
-        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
-        _symbolResolver = new SymbolResolver(_repository);
-    }
-
-    public FederatedIndexQueryService(IndexQueryService game, ReferenceModQueryService reference)
-    {
-        _game = game ?? throw new ArgumentNullException(nameof(game));
-        _reference = reference ?? throw new ArgumentNullException(nameof(reference));
+        ArgumentNullException.ThrowIfNull(repository);
+        _repository = repository;
+        _symbolResolver = new SymbolResolver(repository);
+        _game = new IndexQueryService(repository, dataRoot);
+        _reference = new ReferenceModQueryService(repository, dataRoot);
     }
 
     public async Task<SymbolSearchResult> SearchAsync(
@@ -533,27 +529,13 @@ public sealed class FederatedIndexQueryService
             result.Candidates.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray());
     }
 
-    private async Task<CallSiteTargetQuery> ResolveCallSiteTargetQueryAsync(
+    private Task<CallSiteTargetQuery> ResolveCallSiteTargetQueryAsync(
         IndexRunRecord run,
         CodebaseKind codebase,
         CodeChannel channel,
         string selector,
-        CancellationToken cancellationToken)
-    {
-        var resolution = await SymbolResolver.ResolveAsync(run.IndexId, selector, codebase, channel, cancellationToken);
-        if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
-        {
-            var resolvedTarget = TargetTextFromResolvedSymbol(resolution.Symbol);
-            return HasExplicitCallSiteParameters(selector)
-                ? new CallSiteTargetQuery(resolvedTarget, RelationshipTargetTextMatchMode.Prefix)
-                : new CallSiteTargetQuery(StripParameterList(resolvedTarget), RelationshipTargetTextMatchMode.Prefix);
-        }
-
-        var normalized = NormalizeCallSiteSelector(selector);
-        return HasExplicitCallSiteParameters(normalized)
-            ? new CallSiteTargetQuery(normalized, RelationshipTargetTextMatchMode.Prefix)
-            : new CallSiteTargetQuery(StripParameterList(normalized), RelationshipTargetTextMatchMode.Prefix);
-    }
+        CancellationToken cancellationToken) =>
+        CallSiteSelectors.ResolveTargetQueryAsync(SymbolResolver, run, codebase, channel, selector, cancellationToken);
 
     private RelationshipEndpointQueryResult MapReferenceEndpoint(
         string? symbolId,
@@ -644,63 +626,12 @@ public sealed class FederatedIndexQueryService
         return sourceFile is null ? (null, null) : (sourceFile.RelativePath, sourceFile.Sha256);
     }
 
-    private static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) => filter switch
-    {
-        FieldReferenceFilter.All => ["ReadsField", "WritesField"],
-        FieldReferenceFilter.Readers => ["ReadsField"],
-        FieldReferenceFilter.Writers => ["WritesField"],
-        _ => throw new ArgumentOutOfRangeException(nameof(filter))
-    };
+    private static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) =>
+        CallSiteSelectors.FieldRelationshipKinds(filter);
 
-    private static bool HasExplicitCallSiteParameters(string selector) =>
-        selector.IndexOf('(') >= 0;
+    private IIndexRepository Repository => _repository;
 
-    private static string StripParameterList(string selector)
-    {
-        var separator = selector.IndexOf('(');
-        return separator >= 0 ? selector[..separator] : selector;
-    }
-
-    private static string NormalizeCallSiteSelector(string selector)
-    {
-        var trimmed = selector.Trim();
-        var parameterSeparator = trimmed.IndexOf('(');
-        var head = parameterSeparator >= 0 ? trimmed[..parameterSeparator] : trimmed;
-        if (head.Contains("::", StringComparison.Ordinal))
-            return trimmed;
-
-        var lastDot = head.LastIndexOf('.');
-        if (lastDot < 0)
-            return trimmed;
-
-        var normalizedHead = head[..lastDot] + "::" + head[(lastDot + 1)..];
-        return parameterSeparator >= 0
-            ? normalizedHead + trimmed[parameterSeparator..]
-            : normalizedHead;
-    }
-
-    private static string TargetTextFromResolvedSymbol(SymbolQueryResult symbol)
-    {
-        var signature = symbol.Signature;
-        var memberSeparator = signature.IndexOf("::", StringComparison.Ordinal);
-        if (memberSeparator <= 0)
-            return signature;
-
-        var returnSeparator = signature.LastIndexOf(' ', memberSeparator);
-        return returnSeparator >= 0 && returnSeparator + 1 < signature.Length
-            ? signature[(returnSeparator + 1)..]
-            : signature;
-    }
-
-    private IIndexRepository Repository =>
-        _repository ?? throw new InvalidOperationException("Target-relationship federation requires a repository-backed federated query service.");
-
-    private SymbolResolver SymbolResolver =>
-        _symbolResolver ?? throw new InvalidOperationException("Target-relationship federation requires a repository-backed federated query service.");
+    private SymbolResolver SymbolResolver => _symbolResolver;
 
     private enum RelationshipKind { Refs, Callers, Callees }
-
-    private readonly record struct CallSiteTargetQuery(
-        string TargetText,
-        RelationshipTargetTextMatchMode MatchMode);
 }
