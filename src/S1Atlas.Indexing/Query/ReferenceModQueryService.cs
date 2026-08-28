@@ -374,7 +374,8 @@ public sealed class ReferenceModQueryService
             return null;
         var mods = await _repository.GetCompletedReferenceModsAsync(run.IndexId, cancellationToken);
         var sourceFiles = await _repository.GetCompletedSourceFilesAsync(run.IndexId, cancellationToken);
-        return new IndexSelection(collection, run, context, gameRun, mods, sourceFiles);
+        var sourceLocations = await _repository.GetCompletedSourceLocationsAsync(run.IndexId, cancellationToken);
+        return new IndexSelection(collection, run, context, gameRun, mods, sourceFiles, sourceLocations);
     }
 
     private SymbolQueryResult DecorateReferenceSymbol(IndexSelection selection, IndexSymbolRecord symbol)
@@ -386,6 +387,7 @@ public sealed class ReferenceModQueryService
     private SymbolQueryResult DecorateReferenceQuerySymbol(IndexSelection selection, SymbolQueryResult result)
     {
         var mod = selection.Mods.FirstOrDefault(candidate => candidate.SymbolIds.Contains(result.SymbolId, StringComparer.Ordinal));
+        var source = SourceProvenance(selection, result.SymbolId);
         return result with
         {
             Origin = "reference",
@@ -394,21 +396,22 @@ public sealed class ReferenceModQueryService
             DisplayName = mod?.DisplayName,
             Version = mod?.Version,
             License = mod?.License,
-            RelativePath = mod is null
-                ? null
-                : selection.SourceFiles
-                    .Where(file => file.RelativePath.StartsWith(mod.ModId + "/", StringComparison.Ordinal))
-                    .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
-                    .Select(file => file.RelativePath)
-                    .FirstOrDefault(),
-            Sha256 = mod is null
-                ? null
-                : selection.SourceFiles
-                    .Where(file => file.RelativePath.StartsWith(mod.ModId + "/", StringComparison.Ordinal))
-                    .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
-                    .Select(file => file.Sha256)
-                    .FirstOrDefault()
+            RelativePath = source.RelativePath,
+            Sha256 = source.Sha256
         };
+    }
+
+    private static (string? RelativePath, string? Sha256) SourceProvenance(IndexSelection selection, string symbolId)
+    {
+        var locations = selection.SourceLocations
+            .Where(location => string.Equals(location.SymbolId, symbolId, StringComparison.Ordinal))
+            .ToArray();
+        if (locations.Length != 1)
+            return (null, null);
+
+        var sourceFile = selection.SourceFiles.SingleOrDefault(file =>
+            string.Equals(file.SourceFileId, locations[0].SourceFileId, StringComparison.Ordinal));
+        return sourceFile is null ? (null, null) : (sourceFile.RelativePath, sourceFile.Sha256);
     }
 
     private static SymbolResolutionResult DecorateGameResolution(SymbolResolutionResult result, string collection) =>
@@ -462,5 +465,6 @@ public sealed class ReferenceModQueryService
         ReferenceIndexContextRecord Context,
         IndexRunRecord GameRun,
         IReadOnlyList<IndexReferenceModRecord> Mods,
-        IReadOnlyList<IndexSourceFileRecord> SourceFiles);
+        IReadOnlyList<IndexSourceFileRecord> SourceFiles,
+        IReadOnlyList<IndexSourceLocationRecord> SourceLocations);
 }

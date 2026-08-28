@@ -25,7 +25,7 @@
 
 - Task 2: completed — implementation `0709483`, review fix `7e025fe`; initial review found three Important findings and fix round 1 addressed all three. Scoped re-review found no new Critical/Important breakage. Focused ReferenceMod suite passed 20/20.
 - Task 3: completed — implementation `2e8af6a`, review fix `17686f0`; initial review found one Critical and two Important findings, and fix round 1 addressed all three. Scoped re-review approved with no new Critical/Important breakage. Focused suite passed 6/6; Indexing 216/216; Storage 142/142. One parallel integration fixture failure passed in isolation and was not changed.
-- Task 4: completed — implementation `59c03a7` plus review fix round 1; focused query/provenance tests passed 29/29, indexing 232/232, storage 142/142, and core 127/127. Fix round covers game-scope federation isolation, honest multi-assembly source provenance, bounded document reads, codebase-derived origins, collection/running/wildcard/dedup coverage, and reparse-point safety. No CLI, MCP, or docs-surface code was added. See `task-4-report.md`.
+- Task 4: completed — implementation `59c03a7` plus review fix rounds 1–2; current focused query/provenance tests passed 32/32, indexing 235/235, storage 142/142, core 127/127, full solution 1,294/1,294, and isolated IntegrationTests 161/161. Fix rounds cover game-scope federation isolation, location-backed multi-assembly source provenance, bounded document reads, codebase-derived origins, cross-origin/dedup/collection coverage, and reparse-point safety. The known intermittent ManagedToolCli parallel-suite flake is documented in `task-4-report.md`. No CLI, MCP, or docs-surface code was added.
 
 ## Task 3 review checkpoint
 

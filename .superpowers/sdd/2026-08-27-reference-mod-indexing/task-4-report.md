@@ -43,7 +43,7 @@ dotnet test tests/S1Atlas.Core.Tests/S1Atlas.Core.Tests.csproj --no-restore
 Passed!  - Failed:     0, Passed:   127, Skipped:     0, Total:   127
 
 dotnet test S1Atlas.sln --no-restore
-Core 127, Docs 8, Indexing 223, Extraction 551, Storage 142, Integration 161, MCP 70 (1,282 total); all failed: 0.
+Implementation-session run reported Core 127, Docs 8, Indexing 223, Extraction 551, Storage 142, Integration 161, MCP 70 (1,282 total) passed in that run; this is not a stability claim for parallel execution.
 
 git diff --check
 Exit code: 0
@@ -85,3 +85,22 @@ Storage: 142/142 passed
 Core: 127/127 passed
 Full solution: 1,291/1,291 passed
 ```
+
+## Review fix round 2 — RED/GREEN evidence
+
+The scoped re-review reproduced the remaining provenance defect: a genuine two-assembly fixture exposed the second generated file as symbol provenance even though no symbol-to-source location was persisted. It also added failing coverage for second-assembly relationship provenance, cross-origin same-ID federation, federated callees, API source/relationship origins, and second-assembly hash failure.
+
+The fix now derives reference symbol and relationship source path/hash only from exactly one persisted symbol location whose source file exists; absent or ambiguous ownership leaves those fields null. The second-assembly fixture persists a location to the second file to verify correct path/hash/content and then verifies tampering fails hash validation.
+
+Current verification:
+
+```text
+Focused query/provenance tests: 32/32 passed
+Indexing: 235/235 passed
+Storage: 142/142 passed
+Core: 127/127 passed
+Full solution run: 1,294/1,294 passed
+Isolated IntegrationTests rerun: 161/161 passed
+```
+
+The full-suite result above is the successful run from this fix round. The scoped re-review also recorded an existing intermittent `ManagedToolCli` integration failure under parallel full-suite execution; the isolated 161-test integration rerun passed, so that flake is not attributed to Task 4.

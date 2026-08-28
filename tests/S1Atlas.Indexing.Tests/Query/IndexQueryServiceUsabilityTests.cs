@@ -116,6 +116,26 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         Assert.Null(Assert.Single(result.Results).Origin);
     }
 
+    [Theory]
+    [InlineData(CodebaseKind.S1Api)]
+    [InlineData(CodebaseKind.S1MApi)]
+    public async Task Source_and_relationships_preserve_non_game_api_origin(CodebaseKind codebase)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = await SeedSourceAsync(BodyRecoveryStatus.Recovered, codebase, cancellationToken);
+        var service = new IndexQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(codebase, CodeChannel.Installed);
+
+        var source = await service.SourceAsync(fixture.Selected.SymbolId, options, 0, cancellationToken);
+        Assert.Null(source.Snippet!.Origin);
+        Assert.Null(source.Resolution.Symbol!.Origin);
+
+        var callees = await service.CalleesAsync(fixture.Selected.SymbolId, options, cancellationToken);
+        var edge = Assert.Single(callees.Relationships);
+        Assert.Null(edge.Source.Origin);
+        Assert.Null(edge.Target.Origin);
+    }
+
     [Fact]
     public async Task Find_applies_kind_filter_before_the_bounded_limit()
     {
@@ -321,6 +341,13 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
 
     private async Task<SourceFixture> SeedScheduleOneSourceAsync(
         BodyRecoveryStatus? bodyRecoveryStatus,
+        CancellationToken cancellationToken,
+        CodebaseKind codebase = CodebaseKind.ScheduleI) =>
+        await SeedSourceAsync(bodyRecoveryStatus, codebase, cancellationToken);
+
+    private async Task<SourceFixture> SeedSourceAsync(
+        BodyRecoveryStatus? bodyRecoveryStatus,
+        CodebaseKind codebase,
         CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);
@@ -329,7 +356,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         var snapshotId = "snapshot-source";
         var snapshot = new CodeSnapshotRecord(
             snapshotId,
-            CodebaseKind.ScheduleI,
+            codebase,
             CodeChannel.Installed,
             "extraction-source",
             "2026-08-14T05:00:00Z");
@@ -341,7 +368,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         var type = new IndexSymbolRecord(
             "type-source",
             snapshotId,
-            "ScheduleI:Installed:Type:Demo.Widget",
+            codebase + ":Installed:Type:Demo.Widget",
             "Type",
             "Demo.Widget",
             "Demo.Widget",
@@ -350,7 +377,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         var selected = new IndexSymbolRecord(
             "method-source",
             snapshotId,
-            "ScheduleI:Installed:Method:Demo.Widget::Run()",
+            codebase + ":Installed:Method:Demo.Widget::Run()",
             "Method",
             "Demo.Widget.Run",
             "System.Void Demo.Widget::Run()",
@@ -359,7 +386,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         var dealerA = new IndexSymbolRecord(
             "dealer-a",
             snapshotId,
-            "ScheduleI:Installed:Type:Alpha.DealerService",
+            codebase + ":Installed:Type:Alpha.DealerService",
             "Type",
             "Alpha.DealerService",
             "Alpha.DealerService",
@@ -367,7 +394,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         var dealerB = new IndexSymbolRecord(
             "dealer-b",
             snapshotId,
-            "ScheduleI:Installed:Type:Beta.DealerService",
+            codebase + ":Installed:Type:Beta.DealerService",
             "Type",
             "Beta.DealerService",
             "Beta.DealerService",
@@ -409,7 +436,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
                 [sourceFile, unrelatedSourceFile],
                 [methodLocation, typeLocation],
                 [],
-                [],
+                [new IndexRelationshipRecord("source-callee", snapshotId, selected.SymbolId, type.SymbolId, null, "Calls", "fixture:api")],
                 [new IndexCallableSurfaceRecord(
                     "surface-source",
                     indexId,
@@ -427,7 +454,9 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
             "2026-08-14T05:01:00Z",
             cancellationToken);
 
-        var indexRoot = Path.Combine(_dataRoot, "builds", buildId, "indexes", indexId);
+        var indexRoot = codebase == CodebaseKind.ScheduleI
+            ? Path.Combine(_dataRoot, "builds", buildId, "indexes", indexId)
+            : Path.Combine(_dataRoot, "installed", codebase == CodebaseKind.S1Api ? "s1api" : "s1mapi", "source", "indexes", indexId);
         Directory.CreateDirectory(indexRoot);
         var selectedPath = Path.Combine(indexRoot, sourceFile.RelativePath);
         await File.WriteAllTextAsync(selectedPath, sourceText, new UTF8Encoding(false), cancellationToken);

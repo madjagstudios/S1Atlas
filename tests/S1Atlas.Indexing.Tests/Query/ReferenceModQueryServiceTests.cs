@@ -49,8 +49,8 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal("reference", symbol.Origin);
         Assert.Equal(fixture.IndexId, symbol.Collection);
         Assert.Equal("qol", symbol.ReferenceModId);
-        Assert.Equal("qol/plugins/QolMod.cs", symbol.RelativePath);
-        Assert.False(string.IsNullOrWhiteSpace(symbol.Sha256));
+        Assert.Null(symbol.RelativePath);
+        Assert.Null(symbol.Sha256);
         Assert.Equal("Quality of Life", symbol.DisplayName);
         Assert.Equal("1.0.0", symbol.Version);
         Assert.Equal("MIT", symbol.License);
@@ -114,6 +114,22 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
         Assert.Null(result.Snippet);
         Assert.Equal(2, (await _repository.GetCompletedSourceFilesAsync(fixture.IndexId, TestContext.Current.CancellationToken)).Count);
+
+        var secondAssembly = await service.SearchAsync(
+            "qol/Qol.Second.Other::RunSecond():System.Void",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+            TestContext.Current.CancellationToken);
+        var secondSymbol = Assert.Single(secondAssembly.Results);
+        Assert.Null(secondSymbol.RelativePath);
+        Assert.Null(secondSymbol.Sha256);
+
+        var secondRelationships = await service.CalleesAsync(
+            "qol/Qol.Second.Other::RunSecond():System.Void",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+            TestContext.Current.CancellationToken);
+        var secondEdge = Assert.Single(secondRelationships.Relationships);
+        Assert.Null(secondEdge.Source.RelativePath);
+        Assert.Null(secondEdge.Source.Sha256);
     }
 
     [Fact]
@@ -122,7 +138,7 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         var fixture = await SeedAsync("located-assembly", "Located assembly", multipleAssemblies: true);
         var sourceFiles = await _repository.GetCompletedSourceFilesAsync(fixture.IndexId, TestContext.Current.CancellationToken);
         var second = Assert.Single(sourceFiles, file => file.RelativePath.EndsWith("QolMod.Second.cs", StringComparison.Ordinal));
-        var symbol = Assert.Single(await _repository.GetCompletedSymbolsAsync(fixture.IndexId, TestContext.Current.CancellationToken), item => item.QualifiedName == "qol/Qol.Mod");
+        var symbol = Assert.Single(await _repository.GetCompletedSymbolsAsync(fixture.IndexId, TestContext.Current.CancellationToken), item => item.QualifiedName == "qol/Qol.Second.Other::RunSecond():System.Void");
         await using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_root, "atlas.db")}"))
         {
             await connection.OpenAsync(TestContext.Current.CancellationToken);
@@ -135,7 +151,7 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
 
         var service = new ReferenceModQueryService(_repository, _dataRoot);
         var result = await service.SourceAsync(
-            "qol/Qol.Mod",
+            "qol/Qol.Second.Other::RunSecond():System.Void",
             new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
             0,
             TestContext.Current.CancellationToken);
@@ -144,6 +160,24 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal(second.RelativePath, snippet.RelativePath);
         Assert.Equal(second.Sha256, snippet.Sha256);
         Assert.Contains("SECOND ASSEMBLY", snippet.Text, StringComparison.Ordinal);
+
+        var relationships = await service.CalleesAsync(
+            "qol/Qol.Second.Other::RunSecond():System.Void",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+            TestContext.Current.CancellationToken);
+        var edge = Assert.Single(relationships.Relationships);
+        Assert.Equal(second.RelativePath, edge.Source.RelativePath);
+        Assert.Equal(second.Sha256, edge.Source.Sha256);
+
+        await File.AppendAllTextAsync(
+            Path.Combine(_dataRoot, "reference", fixture.IndexId, second.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
+            "tampered",
+            TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.SourceAsync(
+            "qol/Qol.Second.Other::RunSecond():System.Void",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: fixture.IndexId),
+            0,
+            TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -267,6 +301,14 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         var references = await service.RefsAsync(fixture.GameSymbolId, all, TestContext.Current.CancellationToken);
         Assert.Equal(["game", "reference"], references.Relationships.Select(edge => edge.Source.Origin!).OrderBy(origin => origin, StringComparer.Ordinal).ToArray());
 
+        var referenceCallees = await service.CalleesAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            all,
+            TestContext.Current.CancellationToken);
+        var referenceCallee = Assert.Single(referenceCallees.Relationships);
+        Assert.Equal("reference", referenceCallee.Source.Origin);
+        Assert.Equal("game", referenceCallee.Target.Origin);
+
         var gameOnly = all with { Scope = IndexQueryScope.Game };
         await Assert.ThrowsAsync<ArgumentException>(() => service.CallersAsync(fixture.GameSymbolId, gameOnly, TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<ArgumentException>(() => service.RefsAsync(fixture.GameSymbolId, gameOnly, TestContext.Current.CancellationToken));
@@ -319,6 +361,37 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
 
         var wildcard = await service.SearchDocumentsAsync("README%", options, TestContext.Current.CancellationToken);
         Assert.Empty(wildcard);
+    }
+
+    [Fact]
+    public async Task Federation_deduplicates_exact_identity_but_keeps_same_symbol_id_across_origins()
+    {
+        var sharedSymbol = new IndexSymbolRecord(
+            "shared-symbol",
+            "game-snapshot",
+            "ScheduleI:Installed:Method:Shared.Game::Run():System.Void",
+            "Method",
+            "Shared.Game::Run():System.Void",
+            "Shared.Game::Run():System.Void",
+            false);
+        var referenceSymbol = sharedSymbol with
+        {
+            SnapshotId = "reference-snapshot",
+            CanonicalKey = "ReferenceMod:Installed:Method:mod/Shared.Reference::Run():System.Void",
+            QualifiedName = "mod/Shared.Reference::Run():System.Void"
+        };
+        var repository = new FederationRepository(sharedSymbol, referenceSymbol);
+        var service = new FederatedIndexQueryService(repository);
+
+        var result = await service.SearchAsync(
+            "Run",
+            new IndexQueryOptions(CodebaseKind.ScheduleI, Scope: IndexQueryScope.All, ReferenceCollection: "collection"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(2, result.Results.Count);
+        Assert.Equal(["game", "reference"], result.Results.Select(item => item.Origin!).ToArray());
+        Assert.Equal(["shared-symbol", "shared-symbol"], result.Results.Select(item => item.SymbolId).ToArray());
     }
 
     [Fact]
@@ -503,7 +576,73 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
                 AssemblyPath = assemblyPath,
                 SourceText = assemblyPath.EndsWith("QolMod.Second.dll", StringComparison.Ordinal)
                     ? "// SECOND ASSEMBLY\nnamespace Qol; public class Mod { public void Run() {} }"
-                    : decompilation.SourceText
+                    : decompilation.SourceText,
+                Types = assemblyPath.EndsWith("QolMod.Second.dll", StringComparison.Ordinal)
+                    ? [new ManagedTypeFacts(
+                        "Qol.Second.Other",
+                        "Qol.Second",
+                        "Other",
+                        null,
+                        [],
+                        [new ManagedMemberFacts(
+                            "RunSecond",
+                            ManagedMemberKind.Method,
+                            "RunSecond",
+                            true,
+                            [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Game.Target::Run():System.Void")],
+                            [],
+                            "System.Void")])]
+                    : decompilation.Types
             });
+    }
+
+    private sealed class FederationRepository : IIndexRepository
+    {
+        private readonly IndexSymbolRecord _gameSymbol;
+        private readonly IndexSymbolRecord _referenceSymbol;
+
+        public FederationRepository(IndexSymbolRecord gameSymbol, IndexSymbolRecord referenceSymbol)
+        {
+            _gameSymbol = gameSymbol;
+            _referenceSymbol = referenceSymbol;
+        }
+
+        public Task CreateCodeSnapshotAsync(CodeSnapshotRecord snapshot, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken) =>
+            Task.FromResult<CodeSnapshotRecord?>(snapshotId switch
+            {
+                "game-snapshot" => new CodeSnapshotRecord(snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "game", "now"),
+                "reference-snapshot" => new CodeSnapshotRecord(snapshotId, CodebaseKind.ReferenceMod, CodeChannel.Installed, "collection", "now"),
+                _ => null
+            });
+        public Task StartIndexRunAsync(IndexRunRecord run, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CompleteIndexRunAsync(string indexId, IndexWriteSet writeSet, string completedAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task FailIndexRunAsync(string indexId, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<IndexRunRecord?> GetCompletedIndexAsync(string indexId, CancellationToken cancellationToken) =>
+            Task.FromResult<IndexRunRecord?>(indexId == "game-index" ? new IndexRunRecord(indexId, "game-snapshot", IndexRunStatus.Completed, "now") : null);
+        public Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken) =>
+            Task.FromResult<IndexRunRecord?>(codebase == CodebaseKind.ScheduleI ? new IndexRunRecord("game-index", "game-snapshot", IndexRunStatus.Completed, "now") : null);
+        public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsAsync(string indexId, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<IndexSymbolRecord>>(indexId == "game-index" ? [_gameSymbol] : [_referenceSymbol]);
+        public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolByCanonicalKeyAsync(string indexId, string canonicalKey, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<IndexSymbolRecord>>([]);
+        public Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) =>
+            Task.FromResult<IndexSymbolRecord?>(indexId == "game-index" && symbolId == _gameSymbol.SymbolId ? _gameSymbol : indexId == "reference-index" && symbolId == _referenceSymbol.SymbolId ? _referenceSymbol : null);
+        public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<IndexSymbolRecord>>(GetCompletedSymbolsAsync(indexId, cancellationToken).Result.Where(symbol => symbolIds.Contains(symbol.SymbolId, StringComparer.Ordinal)).ToArray());
+        public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null) =>
+            Task.FromResult(indexId == "game-index" ? 2 : 1);
+        public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null) =>
+            Task.FromResult<IReadOnlyList<IndexSymbolRecord>>(indexId == "game-index" ? [_gameSymbol, _gameSymbol] : [_referenceSymbol]);
+        public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexRelationshipRecord>>([]);
+        public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsBySourceSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexRelationshipRecord>>([]);
+        public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexRelationshipRecord>>([]);
+        public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexSourceFileRecord>>([]);
+        public Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexSourceLocationRecord>>([]);
+        public Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexFingerprintRecord>>([]);
+        public Task<ReferenceIndexContextRecord?> GetReferenceIndexContextAsync(string indexId, CancellationToken cancellationToken) => Task.FromResult<ReferenceIndexContextRecord?>(indexId == "reference-index" ? new ReferenceIndexContextRecord(indexId, "game-index", "build") : null);
+        public Task<IndexRunRecord?> GetLatestCompletedIndexBySourceIdentityAsync(CodebaseKind codebase, CodeChannel channel, string sourceIdentity, CancellationToken cancellationToken) =>
+            Task.FromResult<IndexRunRecord?>(codebase == CodebaseKind.ReferenceMod && sourceIdentity == "collection" ? new IndexRunRecord("reference-index", "reference-snapshot", IndexRunStatus.Completed, "now") : null);
+        public Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken) => Task.FromResult<IndexRunRecord?>(null);
     }
 }
