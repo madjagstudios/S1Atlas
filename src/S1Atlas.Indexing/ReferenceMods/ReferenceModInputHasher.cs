@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -110,9 +111,16 @@ public sealed class ReferenceModInputHasher
 
     private static void Append(IncrementalHash hash, string value)
     {
+        hash.AppendData(EncodeFrame(value));
+    }
+
+    internal static byte[] EncodeFrame(string value)
+    {
         var bytes = Encoding.UTF8.GetBytes(value);
-        hash.AppendData(BitConverter.GetBytes(bytes.Length));
-        hash.AppendData(bytes);
+        var framed = new byte[sizeof(int) + bytes.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(framed, bytes.Length);
+        bytes.CopyTo(framed, sizeof(int));
+        return framed;
     }
 }
 

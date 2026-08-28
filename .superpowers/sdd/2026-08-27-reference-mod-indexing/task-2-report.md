@@ -102,3 +102,46 @@ Self-review:
 Concerns:
 
 - `license: "unknown"` is preserved as explicit local metadata, but Task 2’s required loader contract has no natural warning channel. A warning surface still needs to be threaded through the later workflow/CLI layer so `"unknown"` is not mistaken for permission.
+
+## Review-fix round
+
+Fixed the three focused review findings:
+
+- Replaced host-endian `BitConverter.GetBytes(bytes.Length)` framing with an explicit little-endian length prefix using `BinaryPrimitives.WriteInt32LittleEndian`. Added an internal framing test that asserts the exact bytes; the existing collection hash version remains `1` because this is a correction to the encoding implementation, not an intentional content-contract change.
+- Replaced the weak drive-root substring assertion with a behavioral comparison of equivalent selected inputs in two different temporary absolute roots. The test now asserts equal collection hashes, expected SHA-256 file hashes, matching relative-path records, and byte counts; the collection payload remains path-free.
+- Added a real `Docs/Guide.markdown` fixture and `**/*.markdown` include pattern, asserting selection as a `TextDocument` with declared document kind `Guide`.
+
+Review-fix test-first evidence:
+
+1. Initial red run after adding the focused review tests and before the framing implementation:
+
+   Command:
+   `dotnet test tests/S1Atlas.Indexing.Tests/S1Atlas.Indexing.Tests.csproj --filter "FullyQualifiedName~ReferenceMod"`
+
+   Output excerpt:
+
+   ```text
+   ReferenceModInputHasherTests.cs(12,46): error CS0117: 'ReferenceModInputHasher' does not contain a definition for 'EncodeFrame'
+   ```
+
+2. Final focused verification after the fixes:
+
+   Command:
+   `dotnet test tests/S1Atlas.Indexing.Tests/S1Atlas.Indexing.Tests.csproj --filter "FullyQualifiedName~ReferenceMod"`
+
+   Output:
+
+   ```text
+   Passed!  - Failed:     0, Passed:    20, Skipped:     0, Total:    20, Duration: 190 ms - S1Atlas.Indexing.Tests.dll (net8.0)
+   ```
+
+Self-review for the review-fix round:
+
+- The changed production surface is limited to stable hash framing; the helper is internal and used only by the hasher.
+- The path-independence test compares distinct absolute roots and never depends on substring absence in the final digest.
+- `.markdown` is covered end-to-end through fixture creation, include matching, selection, kind classification, and hashing.
+- No Task 3 workflow/decompilation or CLI/MCP surface was added; no network or downloading behavior was introduced.
+
+Review-fix concerns:
+
+- The explicit framing byte order is little-endian by contract. If a future persisted-hash compatibility policy requires preserving hashes produced by a host-endian implementation on a big-endian runtime, the collection hash version should be bumped and migration behavior specified; this work keeps version `1` because current supported runtimes already use little-endian framing.

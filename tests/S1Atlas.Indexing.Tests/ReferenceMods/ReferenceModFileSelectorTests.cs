@@ -24,30 +24,37 @@ public sealed class ReferenceModFileSelectorTests : IDisposable
         var firstMod = CreateMod(firstRoot);
         var secondMod = CreateMod(secondRoot);
 
-        var selected = new ReferenceModFileSelector().Select([secondMod, firstMod]);
+        var selector = new ReferenceModFileSelector();
+        var firstSelected = selector.Select([firstMod]);
+        var secondSelected = selector.Select([secondMod]);
 
         Assert.Equal(
             [
-                ("chem-plant", "Docs/Guide.txt", ReferenceModInputKind.TextDocument, "Guide"),
+                ("chem-plant", "Docs/Guide.markdown", ReferenceModInputKind.TextDocument, "Guide"),
                 ("chem-plant", "Docs/Guide.txt", ReferenceModInputKind.TextDocument, "Guide"),
                 ("chem-plant", "README.md", ReferenceModInputKind.TextDocument, "Readme"),
-                ("chem-plant", "README.md", ReferenceModInputKind.TextDocument, "Readme"),
                 ("chem-plant", "plugins/ChemPlant.dll", ReferenceModInputKind.ManagedAssembly, (string?)null),
-                ("chem-plant", "plugins/ChemPlant.dll", ReferenceModInputKind.ManagedAssembly, (string?)null),
-                ("chem-plant", "src/Feature.cs", ReferenceModInputKind.SourceText, "Source"),
                 ("chem-plant", "src/Feature.cs", ReferenceModInputKind.SourceText, "Source")
             ],
-            selected.Select(file => (file.ModId, file.RelativePath, file.Kind, file.DeclaredDocumentKind)).ToArray());
+            firstSelected.Select(file => (file.ModId, file.RelativePath, file.Kind, file.DeclaredDocumentKind)).ToArray());
 
         var firstHash = await new ReferenceModInputHasher().HashAsync(
-            selected,
+            firstSelected,
             TestContext.Current.CancellationToken);
         var secondHash = await new ReferenceModInputHasher().HashAsync(
-            new ReferenceModFileSelector().Select([CreateMod(secondRoot), CreateMod(firstRoot)]),
+            secondSelected,
             TestContext.Current.CancellationToken);
 
         Assert.Equal(firstHash.CollectionContentSha256, secondHash.CollectionContentSha256);
-        Assert.All(firstHash.Files, fileHash => Assert.DoesNotContain(Path.GetPathRoot(fileHash.FullPath)!, firstHash.CollectionContentSha256, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(
+            SHA256.HashData([1, 2, 3, 4]),
+            Convert.FromHexString(firstHash.Files.Single(file => file.RelativePath == "plugins/ChemPlant.dll").Sha256));
+        Assert.Equal(
+            SHA256.HashData(Encoding.UTF8.GetBytes("guide")),
+            Convert.FromHexString(firstHash.Files.Single(file => file.RelativePath == "Docs/Guide.markdown").Sha256));
+        Assert.Equal(
+            firstHash.Files.Select(file => (file.RelativePath, file.Sha256, file.ByteCount)),
+            secondHash.Files.Select(file => (file.RelativePath, file.Sha256, file.ByteCount)));
     }
 
     [Fact]
@@ -161,6 +168,7 @@ public sealed class ReferenceModFileSelectorTests : IDisposable
         File.WriteAllBytes(Path.Combine(root, "plugins", "ChemPlant.dll"), [1, 2, 3, 4]);
         File.WriteAllText(Path.Combine(root, "src", "Feature.cs"), "namespace Demo; public sealed class Feature {}");
         File.WriteAllText(Path.Combine(root, "README.md"), "# Readme");
+        File.WriteAllText(Path.Combine(root, "Docs", "Guide.markdown"), "guide");
         File.WriteAllText(Path.Combine(root, "Docs", "Guide.txt"), "guide");
         File.WriteAllText(Path.Combine(root, "bin", "Ignored.cs"), "ignored");
         File.WriteAllText(Path.Combine(root, "obj", "Ignored.cs"), "ignored");
@@ -181,6 +189,6 @@ public sealed class ReferenceModFileSelectorTests : IDisposable
             license,
             rootPath,
             string.Empty,
-            ["**/*.txt", "**/*.dll", "**/*.cs", "**/*.md"],
+            ["**/*.txt", "**/*.dll", "**/*.cs", "**/*.md", "**/*.markdown"],
             ["**/obj/**", "**/BepInEx/cache/**", "**/bin/**"]);
 }
