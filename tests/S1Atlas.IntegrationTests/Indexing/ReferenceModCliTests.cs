@@ -62,6 +62,9 @@ public sealed class ReferenceModCliTests
         Assert.NotEqual(
             firstJson.RootElement.GetProperty("data").GetProperty("indexId").GetString(),
             forcedJson.RootElement.GetProperty("data").GetProperty("indexId").GetString());
+        Assert.True(firstJson.RootElement.GetProperty("data").GetProperty("phases").GetProperty("inputHashMilliseconds").GetInt64() >= 0);
+        var human = atlas.Run("reference", "index", atlas.ManifestPath);
+        Assert.Contains("hash ", human.StandardOutput, StringComparison.Ordinal);
         Assert.Equal(0, atlas.NetworkRequestCount);
         Assert.DoesNotContain(atlas.ModRoot, first.StandardOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(atlas.ManifestPath, first.StandardOutput, StringComparison.OrdinalIgnoreCase);
@@ -111,6 +114,101 @@ public sealed class ReferenceModCliTests
         Assert.Equal("game", allJson.RootElement.GetProperty("data").GetProperty("results")[0].GetProperty("origin").GetString());
         Assert.DoesNotContain(atlas.ModRoot, reference.StandardOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(atlas.ManifestPath, reference.StandardOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Reference_collection_name_and_index_selectors_return_identical_canonical_provenance()
+    {
+        await using var atlas = await ReferenceCliFixture.CreateAsync();
+        var indexed = atlas.Run("reference", "index", atlas.ManifestPath, "--json");
+        Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
+        using var indexedJson = JsonDocument.Parse(indexed.StandardOutput);
+        var indexId = indexedJson.RootElement.GetProperty("data").GetProperty("indexId").GetString()!;
+
+        var byName = atlas.Run("search", "Selected", "--scope", "reference", "--collection", "qol", "--json");
+        var byIndex = atlas.Run("search", "Selected", "--scope", "reference", "--collection", indexId, "--json");
+
+        Assert.True(byName.ExitCode == 0, byName.StandardOutput + byName.StandardError);
+        Assert.True(byIndex.ExitCode == 0, byIndex.StandardOutput + byIndex.StandardError);
+        using var nameJson = JsonDocument.Parse(byName.StandardOutput);
+        using var indexJson = JsonDocument.Parse(byIndex.StandardOutput);
+        var nameResult = nameJson.RootElement.GetProperty("data").GetProperty("results")[0];
+        var indexResult = indexJson.RootElement.GetProperty("data").GetProperty("results")[0];
+        Assert.Equal("qol", nameResult.GetProperty("collection").GetString());
+        Assert.Equal("qol", indexResult.GetProperty("collection").GetString());
+        Assert.Equal(nameResult.GetProperty("collection").GetString(), indexResult.GetProperty("collection").GetString());
+        Assert.Equal(nameResult.GetProperty("referenceModId").GetString(), indexResult.GetProperty("referenceModId").GetString());
+    }
+
+    [Theory]
+    [InlineData("reference")]
+    [InlineData("all")]
+    public async Task Successful_scoped_source_and_relationship_queries_return_reference_provenance(string scope)
+    {
+        await using var atlas = await ReferenceCliFixture.CreateAsync();
+        var indexed = atlas.Run("reference", "index", atlas.ManifestPath, "--json");
+        Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
+        using var indexedJson = JsonDocument.Parse(indexed.StandardOutput);
+        var indexId = indexedJson.RootElement.GetProperty("data").GetProperty("indexId").GetString()!;
+
+        var wrapperSearch = atlas.Run("search", "InteropWrapper", "--scope", "reference", "--collection", "qol", "--json");
+        var runtimeSearch = atlas.Run("search", "il2cpp_runtime_invoke", "--scope", "reference", "--collection", "qol", "--json");
+        Assert.True(wrapperSearch.ExitCode == 0, wrapperSearch.StandardOutput + wrapperSearch.StandardError);
+        Assert.True(runtimeSearch.ExitCode == 0, runtimeSearch.StandardOutput + runtimeSearch.StandardError);
+        using var wrapperJson = JsonDocument.Parse(wrapperSearch.StandardOutput);
+        using var runtimeJson = JsonDocument.Parse(runtimeSearch.StandardOutput);
+        var wrapper = wrapperJson.RootElement.GetProperty("data").GetProperty("results")[0];
+        var runtime = runtimeJson.RootElement.GetProperty("data").GetProperty("results")[0];
+        var wrapperSelector = wrapper.GetProperty("qualifiedName").GetString()!;
+        var runtimeSelector = runtime.GetProperty("qualifiedName").GetString()!;
+        await atlas.AddSourceLocationAsync(indexId, wrapper.GetProperty("symbolId").GetString()!);
+
+        var source = atlas.Run("source", wrapperSelector, "--scope", scope, "--collection", "qol", "--context", "0", "--json");
+        var callers = atlas.Run("callers", runtimeSelector, "--scope", scope, "--collection", "qol", "--json");
+        var callees = atlas.Run("callees", wrapperSelector, "--scope", scope, "--collection", "qol", "--json");
+        var refs = atlas.Run("refs", wrapperSelector, "--scope", scope, "--collection", "qol", "--json");
+
+        Assert.True(source.ExitCode == 0, source.StandardOutput + source.StandardError);
+        Assert.True(callers.ExitCode == 0, callers.StandardOutput + callers.StandardError);
+        Assert.True(callees.ExitCode == 0, callees.StandardOutput + callees.StandardError);
+        Assert.True(refs.ExitCode == 0, refs.StandardOutput + refs.StandardError);
+
+        using var sourceJson = JsonDocument.Parse(source.StandardOutput);
+        var sourceData = sourceJson.RootElement.GetProperty("data");
+        var sourceSymbol = sourceData.GetProperty("symbol");
+        Assert.Equal("reference", sourceSymbol.GetProperty("origin").GetString());
+        Assert.Equal("qol", sourceSymbol.GetProperty("collection").GetString());
+        Assert.Equal("selected", sourceSymbol.GetProperty("referenceModId").GetString());
+        Assert.Equal(sourceData.GetProperty("relativePath").GetString(), sourceSymbol.GetProperty("relativePath").GetString());
+        Assert.Equal(sourceData.GetProperty("sha256").GetString(), sourceSymbol.GetProperty("sha256").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(sourceData.GetProperty("relativePath").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(sourceData.GetProperty("sha256").GetString()));
+
+        AssertReferenceRelationship(callers.StandardOutput, expectedSource: "selected", expectedTarget: "selected");
+        AssertReferenceRelationship(callees.StandardOutput, expectedSource: "selected", expectedTarget: "selected");
+        AssertReferenceRelationship(refs.StandardOutput, expectedSource: "selected", expectedTarget: "selected");
+    }
+
+    private static void AssertReferenceRelationship(string output, string expectedSource, string expectedTarget)
+    {
+        using var json = JsonDocument.Parse(output);
+        var relationship = json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray()
+            .Where(candidate => candidate.GetProperty("source").GetProperty("referenceModId").GetString() == expectedSource &&
+                candidate.GetProperty("source").GetProperty("qualifiedName").GetString()?.Contains("InteropFixtureRoot::InteropWrapper", StringComparison.Ordinal) == true &&
+                candidate.GetProperty("target").GetProperty("referenceModId").GetString() == expectedTarget)
+            .ToArray();
+        Assert.NotEmpty(relationship);
+        var edge = relationship[0];
+        var source = edge.GetProperty("source");
+        var target = edge.GetProperty("target");
+        Assert.Equal("reference", source.GetProperty("origin").GetString());
+        Assert.Equal("qol", source.GetProperty("collection").GetString());
+        Assert.Equal(expectedSource, source.GetProperty("referenceModId").GetString());
+        Assert.Equal("reference", target.GetProperty("origin").GetString());
+        Assert.Equal("qol", target.GetProperty("collection").GetString());
+        Assert.Equal(expectedTarget, target.GetProperty("referenceModId").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(source.GetProperty("relativePath").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(source.GetProperty("sha256").GetString()));
     }
 
     [Theory]
@@ -178,6 +276,24 @@ internal sealed class ReferenceCliFixture : IAsyncDisposable
     public string ManifestPath { get; }
     public string ModRoot { get; }
     public int NetworkRequestCount => _network.RequestCount;
+
+    public async Task AddSourceLocationAsync(string indexId, string symbolId)
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_atlas.DataRoot}/atlas.db");
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO source_locations(symbol_id, source_file_id, start_line, start_column, end_line, end_column)
+            SELECT $symbolId, source_file_id, 1, 1, 1, 1
+            FROM source_files
+            WHERE snapshot_id = (SELECT snapshot_id FROM index_runs WHERE index_id = $indexId)
+            ORDER BY relative_path COLLATE BINARY
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$symbolId", symbolId);
+        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+    }
 
     public static async Task<ReferenceCliFixture> CreateAsync()
     {

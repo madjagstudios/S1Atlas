@@ -23,7 +23,8 @@ public sealed record IndexingWorkflowResult(
     int CallableSurfaceCount = 0,
     int? ReferenceModCount = null,
     int? ReferenceDocumentCount = null,
-    int? ReferenceSymbolCount = null);
+    int? ReferenceSymbolCount = null,
+    long? InputHashMilliseconds = null);
 
 public sealed class IndexingWorkflow
 {

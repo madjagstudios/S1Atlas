@@ -118,7 +118,8 @@ internal static class ReferenceIndexCommand
                 .Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
                 .ToArray(),
-            new ReferencePhaseTimings(manifestMilliseconds, 0, phases.ElapsedMilliseconds));
+            new ReferencePhaseTimings(manifestMilliseconds, result.InputHashMilliseconds
+                ?? throw new InvalidOperationException("Reference indexing did not report input hash timing."), phases.ElapsedMilliseconds));
         return commandOutput.Success(data, writer =>
         {
             writer.WriteLine(
@@ -127,6 +128,7 @@ internal static class ReferenceIndexCommand
                 $"source files {data.SourceFileCount} | relationships {data.RelationshipCount}");
             writer.WriteLine(
                 $"Phases: manifest {data.Phases.ManifestValidationMilliseconds}ms, " +
+                $"hash {data.Phases.InputHashMilliseconds}ms, " +
                 $"workflow {data.Phases.IndexWorkflowMilliseconds}ms");
             foreach (var warning in data.Warnings) writer.WriteLine("Warning: " + warning);
         });

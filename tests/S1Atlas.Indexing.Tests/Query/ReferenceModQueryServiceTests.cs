@@ -47,7 +47,7 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         var symbol = Assert.Single(result.Results);
         Assert.Equal(SymbolResolutionStatus.Resolved, result.ResolutionStatus);
         Assert.Equal("reference", symbol.Origin);
-        Assert.Equal(fixture.IndexId, symbol.Collection);
+        Assert.Equal("qol", symbol.Collection);
         Assert.Equal("qol", symbol.ReferenceModId);
         Assert.Null(symbol.RelativePath);
         Assert.Null(symbol.Sha256);
@@ -410,8 +410,8 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         var secondResult = await service.SearchAsync("Qol.Mod::Run", secondOptions, TestContext.Current.CancellationToken);
         var emptyResult = await service.SearchAsync("Qol.Mod::Run", emptyOptions, TestContext.Current.CancellationToken);
 
-        Assert.Equal(first.IndexId, Assert.Single(firstResult.Results).Collection);
-        Assert.Equal(second.IndexId, Assert.Single(secondResult.Results).Collection);
+        Assert.Equal("first", Assert.Single(firstResult.Results).Collection);
+        Assert.Equal("second", Assert.Single(secondResult.Results).Collection);
         Assert.Equal(SymbolResolutionStatus.NotFound, emptyResult.ResolutionStatus);
         Assert.Empty(emptyResult.Results);
     }

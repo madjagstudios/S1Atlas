@@ -375,7 +375,7 @@ public sealed class ReferenceModQueryService
         var mods = await _repository.GetCompletedReferenceModsAsync(run.IndexId, cancellationToken);
         var sourceFiles = await _repository.GetCompletedSourceFilesAsync(run.IndexId, cancellationToken);
         var sourceLocations = await _repository.GetCompletedSourceLocationsAsync(run.IndexId, cancellationToken);
-        return new IndexSelection(collection, run, context, gameRun, mods, sourceFiles, sourceLocations);
+        return new IndexSelection(snapshot.SourceIdentity, run, context, gameRun, mods, sourceFiles, sourceLocations);
     }
 
     private SymbolQueryResult DecorateReferenceSymbol(IndexSelection selection, IndexSymbolRecord symbol)

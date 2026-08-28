@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.ReferenceMods;
@@ -63,7 +64,9 @@ public sealed class ReferenceModIndexWorkflow
 
         var game = await _gameSymbols.LoadAsync(collection.GameIndexId, cancellationToken);
         var selected = _selector.Select(collection.Mods);
+        var hashTimer = Stopwatch.StartNew();
         var initialHash = await _hasher.HashAsync(selected, cancellationToken);
+        var inputHashMilliseconds = hashTimer.ElapsedMilliseconds;
         var collectionHash = CreateCollectionHash(collection, initialHash.CollectionContentSha256);
         var settings = force ? "reference:forced:" + Guid.NewGuid().ToString("N") : "reference";
         var indexId = CreateIndexId(game.IndexId, game.VerifiedExtractionIdentity, collectionHash, settings, IndexingWorkflow.IndexSchemaVersion);
@@ -79,7 +82,7 @@ public sealed class ReferenceModIndexWorkflow
                 var relationships = await _repository.GetCompletedRelationshipsAsync(indexId, cancellationToken);
                 var mods = await _repository.GetCompletedReferenceModsAsync(indexId, cancellationToken);
                 var documents = await _repository.GetCompletedReferenceDocumentsAsync(indexId, cancellationToken);
-                return new IndexingWorkflowResult(indexId, snapshotId, true, symbols.Count, sourceFiles.Count, relationships.Count, [], 0, mods.Count, documents.Count, symbols.Count);
+                return new IndexingWorkflowResult(indexId, snapshotId, true, symbols.Count, sourceFiles.Count, relationships.Count, [], 0, mods.Count, documents.Count, symbols.Count, inputHashMilliseconds);
             }
         }
 
@@ -100,7 +103,9 @@ public sealed class ReferenceModIndexWorkflow
             await _repository.StartIndexRunAsync(new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, DateTimeOffset.UtcNow.ToString("O")), cancellationToken);
             started = true;
             var indexed = await ReadSelectedInputsAsync(selected, initialHash.Files, snapshotId, paths.StagingRoot, cancellationToken);
+            hashTimer.Restart();
             var postReadHash = await _hasher.HashAsync(selected, cancellationToken);
+            inputHashMilliseconds += hashTimer.ElapsedMilliseconds;
             if (!string.Equals(initialHash.CollectionContentSha256, postReadHash.CollectionContentSha256, StringComparison.Ordinal))
                 throw new InvalidDataException("Reference mod inputs changed during indexing.");
 
@@ -127,7 +132,7 @@ public sealed class ReferenceModIndexWorkflow
                 Directory.Delete(paths.FinalRoot, recursive: true);
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
             await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, cancellationToken);
-            return new IndexingWorkflowResult(indexId, snapshotId, false, indexed.Symbols.Count, indexed.SourceFiles.Count, relationships.Count, [], 0, mods.Count, indexed.Documents.Count, indexed.Symbols.Count);
+            return new IndexingWorkflowResult(indexId, snapshotId, false, indexed.Symbols.Count, indexed.SourceFiles.Count, relationships.Count, [], 0, mods.Count, indexed.Documents.Count, indexed.Symbols.Count, inputHashMilliseconds);
         }
         catch (Exception exception)
         {

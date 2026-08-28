@@ -51,3 +51,11 @@
 - Whole-solution `dotnet format --verify-no-changes` reports four pre-existing whitespace diagnostics in Task 2's `ReferenceModFileSelector.cs` lines 44–47; no unrelated format changes were made.
 - Existing code-map check reports nine generator-version mismatches; no unrelated code-map regeneration was included.
 - Detailed report: `.superpowers/sdd/2026-08-27-reference-mod-indexing/task-5-report.md`.
+
+### Task 5 review fix round 1
+
+- Peirce Important 1 fixed: reference workflow returns measured combined initial/post-read hash duration; CLI JSON and human output include `InputHashMilliseconds`/`hash ...ms` without affecting other workflow callers.
+- Peirce Important 2 fixed: reference query provenance now uses the completed snapshot's persisted source identity for both collection-name and index-ID selectors; regression coverage asserts identical canonical provenance.
+- Peirce Important 3 fixed: real CLI integration coverage now exercises successful `reference` and `all` source/callers/callees/refs routes with source and endpoint provenance assertions.
+- RED: new review regression set failed 4/19 before fixes; GREEN focused suite passed 19/19, Integration 180/180, Indexing 235/235, and serial full solution 1,313/1,313. Build passed 0/0 warnings/errors; changed-file format and diff checks passed.
+- Whole-solution format retains four pre-existing whitespace diagnostics; parallel-only extraction flakes passed isolated serial reruns. No push.
