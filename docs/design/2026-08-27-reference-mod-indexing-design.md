@@ -1,6 +1,6 @@
 # Reference-mod indexing design
 
-**Status:** Ready for implementation; implementation has not started.
+**Status:** In progress; the storage and migration foundation has shipped, with manifest validation and indexing workflow still pending.
 
 **Goal:** Let an agent search a deliberately selected, local collection of reference mods alongside the verified Schedule I game index when investigating prior-art.
 
