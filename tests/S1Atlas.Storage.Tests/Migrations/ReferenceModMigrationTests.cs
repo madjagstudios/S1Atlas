@@ -217,10 +217,64 @@ public sealed class ReferenceModMigrationTests : IAsyncDisposable
             .MigrateAsync(TestContext.Current.CancellationToken);
 
         await using var connection = await OpenAsync(SqliteOpenMode.ReadOnly, TestContext.Current.CancellationToken);
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM builds WHERE build_id = 'build-legacy';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM environment_snapshots WHERE snapshot_id = 'env-legacy';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM tool_instances WHERE tool_instance_id = 'tool-1';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM input_snapshots WHERE input_snapshot_id = 'input-1';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM extraction_attempts WHERE attempt_id = 'attempt-1';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM validated_extractions WHERE extraction_id = 'extraction-1';"));
         Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM code_snapshots;"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM index_runs WHERE index_id = 'index-1';"));
         Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM symbols;"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM source_files WHERE source_file_id = 'source-1';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM source_locations WHERE symbol_id = 'symbol-1';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM symbol_fingerprints WHERE symbol_id = 'symbol-1';"));
         Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM relationships;"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM scene_snapshots WHERE scene_snapshot_id = 'scene-snapshot-1';"));
+        Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM scene_containers WHERE container_id = 'container-1';"));
         Assert.Equal(1, await QueryIntAsync(connection, "SELECT COUNT(*) FROM scenes;"));
+        Assert.Equal(0, await QueryIntAsync(connection, "SELECT COUNT(*) FROM pragma_foreign_key_check;"));
+    }
+
+    [Fact]
+    public async Task ReferenceMigration_RollsBackSchemaWhenLedgerInsertFails()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await new SqliteMigrationRunner(
+            _databasePath,
+            _backupDirectory,
+            SqliteMigrations.All.Take(9).ToArray())
+            .MigrateAsync(cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new SqliteMigrationRunner(
+                _databasePath,
+                _backupDirectory,
+                SqliteMigrations.All.Take(9).Append(
+                    new SqliteMigration(
+                        10,
+                        "reference-mods-v10-test-failure",
+                        """
+                        PRAGMA foreign_keys = OFF;
+                        BEGIN IMMEDIATE;
+                        CREATE TABLE atomicity_probe (value TEXT NOT NULL);
+                        INSERT INTO atomicity_probe(value) VALUES ('schema-work');
+                        CREATE TRIGGER fail_reference_migration_ledger
+                        BEFORE INSERT ON schema_migrations
+                        WHEN NEW.version = 10
+                        BEGIN
+                            SELECT RAISE(ABORT, 'deterministic ledger failure');
+                        END;
+                        /* S1ATLAS_MIGRATION_LEDGER */
+                        COMMIT;
+                        PRAGMA foreign_keys = ON;
+                        """,
+                        RequiresTransaction: false)).ToArray())
+                .MigrateAsync(cancellationToken));
+
+        await using var connection = await OpenAsync(SqliteOpenMode.ReadOnly, cancellationToken);
+        Assert.Equal(9L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+        Assert.Equal(0L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'atomicity_probe';"));
         Assert.Equal(0, await QueryIntAsync(connection, "SELECT COUNT(*) FROM pragma_foreign_key_check;"));
     }
 

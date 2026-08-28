@@ -1,6 +1,7 @@
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.ReferenceMods;
 using S1Atlas.Core.Storage;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
@@ -16,6 +17,43 @@ public sealed class ReferenceModRepositoryTests : IAsyncDisposable
     {
         Directory.CreateDirectory(_root);
         _repository = new SqliteAtlasRepository(Path.Combine(_root, "atlas.db"));
+    }
+
+    [Fact]
+    public void Reference_collection_represents_named_selection_contract()
+    {
+        var mod = new ReferenceModDefinition(
+            "mod-a",
+            "Mod A",
+            "local",
+            "MIT",
+            "C:\\Mods\\ModA",
+            "content-sha-mod-a",
+            ["**/*.dll", "**/*.cs"],
+            ["**/bin/**", "**/obj/**"]);
+        var collection = new ReferenceCollectionDefinition(
+            "build-1",
+            "index-game",
+            [mod],
+            "qol",
+            "Quality of life prior art");
+
+        Assert.Equal("qol", collection.CollectionId);
+        Assert.Equal("Quality of life prior art", collection.CollectionName);
+        Assert.Equal(["**/*.dll", "**/*.cs"], collection.Mods[0].IncludeSelectors);
+        Assert.Equal(["**/bin/**", "**/obj/**"], collection.Mods[0].ExcludeSelectors);
+        var roundTripped = new ReferenceCollectionDefinition(
+            collection.BuildId,
+            collection.GameIndexId,
+            collection.Mods,
+            collection.CollectionId,
+            collection.CollectionName);
+        Assert.Equal(collection.BuildId, roundTripped.BuildId);
+        Assert.Equal(collection.GameIndexId, roundTripped.GameIndexId);
+        Assert.Equal(collection.CollectionId, roundTripped.CollectionId);
+        Assert.Equal(collection.CollectionName, roundTripped.CollectionName);
+        Assert.Equal(collection.Mods[0].IncludeSelectors, roundTripped.Mods[0].IncludeSelectors);
+        Assert.Equal(collection.Mods[0].ExcludeSelectors, roundTripped.Mods[0].ExcludeSelectors);
     }
 
     [Fact]
@@ -48,6 +86,14 @@ public sealed class ReferenceModRepositoryTests : IAsyncDisposable
             "Demo.Mod.Run",
             "System.Void Demo.Mod::Run()",
             false);
+        var referenceType = new IndexSymbolRecord(
+            "reference-type",
+            referenceSnapshot.SnapshotId,
+            "ReferenceMod:Installed:Type:Demo.Mod",
+            "Type",
+            "Demo.Mod",
+            "Demo.Mod",
+            false);
         var context = new ReferenceIndexContextRecord("index-reference", "index-game", buildId);
         var mod = new IndexReferenceModRecord(
             "mod-a",
@@ -56,7 +102,7 @@ public sealed class ReferenceModRepositoryTests : IAsyncDisposable
             "MIT",
             "C:\\Mods\\ModA",
             "content-sha-mod-a",
-            ["reference-symbol"]);
+            ["reference-symbol", "reference-type"]);
         var documents = new[]
         {
             new IndexReferenceDocumentRecord("mod-a", "README.md", "Readme", "doc-readme", 24, "mod readme content"),
@@ -77,7 +123,7 @@ public sealed class ReferenceModRepositoryTests : IAsyncDisposable
         await _repository.CompleteIndexRunAsync(
             "index-reference",
             new IndexWriteSet(
-                [referenceSymbol],
+                [referenceSymbol, referenceType],
                 [],
                 [],
                 [],
@@ -243,6 +289,91 @@ public sealed class ReferenceModRepositoryTests : IAsyncDisposable
                 cancellationToken));
 
         await _repository.FailIndexRunAsync("index-reference", "cleanup", "2026-08-27T00:42:00Z", cancellationToken);
+        Assert.Empty(await _repository.GetCompletedSymbolsAsync("index-reference", cancellationToken));
+        Assert.Empty(await _repository.GetCompletedReferenceModsAsync("index-reference", cancellationToken));
+        Assert.Empty(await _repository.GetCompletedReferenceDocumentsAsync("index-reference", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Reference_index_rejects_orphan_reference_symbol_and_rolls_back()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var environmentSnapshotId = await SeedEnvironmentAsync(cancellationToken);
+        await SeedGameIndexAsync("snapshot-game", "index-game", environmentSnapshotId, "game-extraction", "game-symbol", cancellationToken);
+
+        var referenceSnapshot = new CodeSnapshotRecord(
+            "snapshot-reference",
+            CodebaseKind.ReferenceMod,
+            CodeChannel.Installed,
+            "reference-collection-orphan",
+            "2026-08-27T00:50:00Z",
+            environmentSnapshotId);
+        await _repository.CreateCodeSnapshotAsync(referenceSnapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-reference", referenceSnapshot.SnapshotId, IndexRunStatus.Running, referenceSnapshot.CreatedAtUtc),
+            cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.CompleteIndexRunAsync(
+                "index-reference",
+                new IndexWriteSet(
+                    [new IndexSymbolRecord("orphan-symbol", referenceSnapshot.SnapshotId, "ReferenceMod:Installed:Type:Demo.Orphan", "Type", "Demo.Orphan", "Demo.Orphan", false)],
+                    [],
+                    [],
+                    [],
+                    [],
+                    null,
+                    new ReferenceIndexContextRecord("index-reference", "index-game", "build-1"),
+                    [new IndexReferenceModRecord("mod-a", "Mod A", "1.0.0", null, "C:\\Mods\\ModA", "mod-content", [])],
+                    []),
+                "2026-08-27T00:51:00Z",
+                cancellationToken));
+
+        Assert.Empty(await _repository.GetCompletedSymbolsAsync("index-reference", cancellationToken));
+        Assert.Empty(await _repository.GetCompletedReferenceModsAsync("index-reference", cancellationToken));
+        Assert.Empty(await _repository.GetCompletedReferenceDocumentsAsync("index-reference", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Reference_index_rejects_duplicate_symbol_ownership_and_rolls_back()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var environmentSnapshotId = await SeedEnvironmentAsync(cancellationToken);
+        await SeedGameIndexAsync("snapshot-game", "index-game", environmentSnapshotId, "game-extraction", "game-symbol", cancellationToken);
+
+        var referenceSnapshot = new CodeSnapshotRecord(
+            "snapshot-reference",
+            CodebaseKind.ReferenceMod,
+            CodeChannel.Installed,
+            "reference-collection-duplicate-owner",
+            "2026-08-27T01:00:00Z",
+            environmentSnapshotId);
+        await _repository.CreateCodeSnapshotAsync(referenceSnapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-reference", referenceSnapshot.SnapshotId, IndexRunStatus.Running, referenceSnapshot.CreatedAtUtc),
+            cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _repository.CompleteIndexRunAsync(
+                "index-reference",
+                new IndexWriteSet(
+                    [new IndexSymbolRecord("shared-symbol", referenceSnapshot.SnapshotId, "ReferenceMod:Installed:Type:Demo.Shared", "Type", "Demo.Shared", "Demo.Shared", false)],
+                    [],
+                    [],
+                    [],
+                    [],
+                    null,
+                    new ReferenceIndexContextRecord("index-reference", "index-game", "build-1"),
+                    [
+                        new IndexReferenceModRecord("mod-a", "Mod A", "1.0.0", null, "C:\\Mods\\ModA", "mod-a-content", ["shared-symbol"]),
+                        new IndexReferenceModRecord("mod-b", "Mod B", "1.0.0", null, "C:\\Mods\\ModB", "mod-b-content", ["shared-symbol"])
+                    ],
+                    []),
+                "2026-08-27T01:01:00Z",
+                cancellationToken));
+
         Assert.Empty(await _repository.GetCompletedSymbolsAsync("index-reference", cancellationToken));
         Assert.Empty(await _repository.GetCompletedReferenceModsAsync("index-reference", cancellationToken));
         Assert.Empty(await _repository.GetCompletedReferenceDocumentsAsync("index-reference", cancellationToken));

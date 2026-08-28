@@ -14,6 +14,20 @@ internal sealed class SqliteMigrationRunner
         );
         """;
 
+    private const string LedgerInsertMarker = "/* S1ATLAS_MIGRATION_LEDGER */";
+    private const string LedgerInsertSql = """
+        INSERT INTO schema_migrations (
+            version,
+            name,
+            checksum,
+            applied_at_utc)
+        VALUES (
+            $version,
+            $name,
+            $checksum,
+            $appliedAtUtc);
+        """;
+
     private readonly string _databasePath;
     private readonly string _backupDirectory;
     private readonly IReadOnlyList<SqliteMigration> _migrations;
@@ -282,16 +296,12 @@ internal sealed class SqliteMigrationRunner
     {
         try
         {
-            await ExecuteMigrationSqlAsync(connection, transaction: null, migration, cancellationToken);
-
-            await using var ledgerTransaction =
-                (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
-            await InsertMigrationRowAsync(
+            await ExecuteMigrationSqlAsync(
                 connection,
-                ledgerTransaction,
+                transaction: null,
                 migration,
-                cancellationToken);
-            await ledgerTransaction.CommitAsync(cancellationToken);
+                cancellationToken,
+                includeLedgerInsert: true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -314,16 +324,45 @@ internal sealed class SqliteMigrationRunner
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private static async Task ExecuteMigrationSqlAsync(
+    private async Task ExecuteMigrationSqlAsync(
         SqliteConnection connection,
         SqliteTransaction? transaction,
         SqliteMigration migration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeLedgerInsert = false)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = migration.Sql;
+        if (includeLedgerInsert)
+        {
+            var expandedSql = command.CommandText.Replace(
+                LedgerInsertMarker,
+                LedgerInsertSql,
+                StringComparison.Ordinal);
+            if (string.Equals(expandedSql, command.CommandText, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Atlas migration {migration.Version} '{migration.Name}' must contain the migration ledger marker when it manages its own transaction.");
+            }
+
+            command.CommandText = expandedSql;
+            AddMigrationLedgerParameters(command, migration);
+        }
+
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private void AddMigrationLedgerParameters(
+        SqliteCommand command,
+        SqliteMigration migration)
+    {
+        command.Parameters.AddWithValue("$version", migration.Version);
+        command.Parameters.AddWithValue("$name", migration.Name);
+        command.Parameters.AddWithValue("$checksum", migration.Checksum);
+        command.Parameters.AddWithValue(
+            "$appliedAtUtc",
+            _timeProvider.GetUtcNow().ToString("O", CultureInfo.InvariantCulture));
     }
 
     private async Task InsertMigrationRowAsync(
@@ -334,24 +373,8 @@ internal sealed class SqliteMigrationRunner
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = """
-            INSERT INTO schema_migrations (
-                version,
-                name,
-                checksum,
-                applied_at_utc)
-            VALUES (
-                $version,
-                $name,
-                $checksum,
-                $appliedAtUtc);
-            """;
-        command.Parameters.AddWithValue("$version", migration.Version);
-        command.Parameters.AddWithValue("$name", migration.Name);
-        command.Parameters.AddWithValue("$checksum", migration.Checksum);
-        command.Parameters.AddWithValue(
-            "$appliedAtUtc",
-            _timeProvider.GetUtcNow().ToString("O", CultureInfo.InvariantCulture));
+        command.CommandText = LedgerInsertSql;
+        AddMigrationLedgerParameters(command, migration);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

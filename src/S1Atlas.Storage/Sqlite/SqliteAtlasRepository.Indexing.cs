@@ -1237,19 +1237,32 @@ public sealed partial class SqliteAtlasRepository
             throw new InvalidOperationException("Reference-mod snapshots must match the recorded base game build.");
 
         var symbolsById = writeSet.Symbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var persistedReferenceSymbolIds = await LoadSymbolIdsForSnapshotAsync(
+            connection,
+            transaction,
+            runningSnapshot.SnapshotId,
+            cancellationToken);
         var modIds = new HashSet<string>(StringComparer.Ordinal);
+        var ownedReferenceSymbolIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var mod in mods)
         {
             if (!modIds.Add(mod.ModId))
                 throw new InvalidOperationException("Reference mod ids must be unique within an index.");
 
-            foreach (var ownedSymbolId in mod.SymbolIds.Distinct(StringComparer.Ordinal))
+            foreach (var ownedSymbolId in mod.SymbolIds)
             {
+                if (!ownedReferenceSymbolIds.Add(ownedSymbolId))
+                    throw new InvalidOperationException("Every reference source symbol must have exactly one mod owner.");
+
                 if (!symbolsById.TryGetValue(ownedSymbolId, out var ownedSymbol) ||
                     !string.Equals(ownedSymbol.SnapshotId, runningSnapshot.SnapshotId, StringComparison.Ordinal))
                     throw new InvalidOperationException("Reference source symbols must belong to the running reference snapshot.");
             }
         }
+
+        if (persistedReferenceSymbolIds.Any(symbolId => !ownedReferenceSymbolIds.Contains(symbolId)) ||
+            symbolsById.Keys.Any(symbolId => !ownedReferenceSymbolIds.Contains(symbolId)))
+            throw new InvalidOperationException("Every reference source symbol must have exactly one mod owner.");
 
         foreach (var document in documents)
         {
@@ -1378,6 +1391,27 @@ public sealed partial class SqliteAtlasRepository
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
+
+    private static async Task<IReadOnlyList<string>> LoadSymbolIdsForSnapshotAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string snapshotId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT symbol_id
+            FROM symbols
+            WHERE snapshot_id = $snapshotId;
+            """;
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(reader.GetString(0));
         return result;
     }
 

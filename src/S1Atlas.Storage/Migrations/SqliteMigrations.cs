@@ -797,10 +797,6 @@ internal static class SqliteMigrations
         CREATE INDEX ix_reference_symbol_owners_index_mod
         ON reference_symbol_owners(index_id, mod_id);
 
-        COMMIT;
-
-        PRAGMA foreign_keys = ON;
-
         CREATE TEMP TABLE reference_mod_fk_check (
             violations INTEGER NOT NULL CHECK (violations = 0)
         );
@@ -809,6 +805,11 @@ internal static class SqliteMigrations
         SELECT COUNT(*) FROM pragma_foreign_key_check;
 
         DROP TABLE reference_mod_fk_check;
+
+        /* S1ATLAS_MIGRATION_LEDGER */
+        COMMIT;
+
+        PRAGMA foreign_keys = ON;
         """;
 
     public static IReadOnlyList<SqliteMigration> All { get; } =
