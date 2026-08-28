@@ -648,6 +648,52 @@ public sealed class ReadOnlySqliteAtlasRepository :
                 : null;
         }, cancellationToken);
 
+    public Task<IndexRunRecord?> GetLatestCompletedReferenceIndexAsync(
+        string collection,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(collection);
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                       run.completed_at_utc, run.failure_message
+                FROM index_runs AS run
+                INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+                WHERE run.status = 'Completed'
+                  AND snapshot.codebase = 'ReferenceMod'
+                  AND snapshot.channel = 'Installed'
+                  AND (run.index_id = $collection OR snapshot.source_identity = $collection)
+                ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
+                LIMIT 1;
+                """;
+            command.Parameters.AddWithValue("$collection", collection);
+            await using var reader = await command.ExecuteReaderAsync();
+            return await reader.ReadAsync() ? ReadRun(reader) : null;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexRunRecord>> GetCompletedReferenceIndexesAsync(
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                       run.completed_at_utc, run.failure_message
+                FROM index_runs AS run
+                INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+                WHERE run.status = 'Completed'
+                  AND snapshot.codebase = 'ReferenceMod'
+                  AND snapshot.channel = 'Installed'
+                ORDER BY snapshot.source_identity COLLATE BINARY, run.completed_at_utc DESC,
+                         run.index_id COLLATE BINARY DESC;
+                """;
+            var result = new List<IndexRunRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadRun(reader));
+            return (IReadOnlyList<IndexRunRecord>)result;
+        }, cancellationToken);
+
     public Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(
         string indexId,
         CancellationToken cancellationToken) =>
@@ -705,6 +751,35 @@ public sealed class ReadOnlySqliteAtlasRepository :
                 """;
             command.Parameters.AddWithValue("$indexId", indexId);
             var result = new List<IndexReferenceDocumentRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadReferenceDocument(reader));
+            return (IReadOnlyList<IndexReferenceDocumentRecord>)result;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(
+        string indexId,
+        int limit,
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+            if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit), "The reference document limit must be positive.");
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                       document.byte_count, document.content
+                FROM reference_documents AS document
+                INNER JOIN index_runs AS run
+                    ON run.index_id = document.index_id
+                   AND run.snapshot_id = document.snapshot_id
+                WHERE document.index_id = $indexId
+                  AND run.status = 'Completed'
+                ORDER BY document.mod_id COLLATE BINARY, document.relative_path COLLATE BINARY
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$indexId", indexId);
+            command.Parameters.AddWithValue("$limit", limit);
+            var result = new List<IndexReferenceDocumentRecord>(Math.Min(limit, 256));
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) result.Add(ReadReferenceDocument(reader));
             return (IReadOnlyList<IndexReferenceDocumentRecord>)result;

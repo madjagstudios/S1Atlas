@@ -13,6 +13,7 @@ Point S1Atlas at your installed copy of Schedule I and it:
 - **Indexes** every type, method, field, and relationship — searchable by name, with decompiled source, callers, callees, and references.
 - **Diffs builds** so you can see exactly what a game update changed.
 - **Deep-indexes S1API and S1MAPI** so you can check the modding API before patching the game directly.
+- **Indexes explicitly selected local reference-mod collections** so prior-art symbols and relationships can be queried beside the verified game index.
 - **Serves the same knowledge three ways** — a CLI, a read-only [MCP](https://modelcontextprotocol.io) server for coding agents, and a generated static HTML portal.
 
 Every answer is labeled by provenance — `FACT` (extracted), `DERIVED` (computed) — and traced to the exact build. S1Atlas reports only what it can prove and stays explicit about what it can't.
@@ -53,6 +54,11 @@ dotnet run --project src/S1Atlas.Cli -- extract
 dotnet run --project src/S1Atlas.Cli -- index
 dotnet run --project src/S1Atlas.Cli -- search "Player" --limit 20
 
+# validate and index a local reference-mod collection selected by a manifest
+dotnet run --project src/S1Atlas.Cli -- reference collections validate "C:\path\to\reference-manifest.json"
+dotnet run --project src/S1Atlas.Cli -- reference index "C:\path\to\reference-manifest.json"
+dotnet run --project src/S1Atlas.Cli -- search "ModEntry" --scope reference --collection qol
+
 # generate a browsable, offline HTML portal (opens as ./s1atlas-docs/index.html)
 dotnet run --project src/S1Atlas.Cli -- docs generate
 ```
@@ -62,7 +68,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 ## Interfaces
 
 - **CLI** — `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `docs generate`.
-- **Read-only MCP server** — 15 tools over the Schedule I Installed surface, for coding agents (`dotnet run --project src/S1Atlas.Mcp -- mcp serve`).
+- **Read-only MCP server** — the Schedule I Installed surface plus completed local reference-collection queries, for coding agents (`dotnet run --project src/S1Atlas.Mcp -- mcp serve`).
 - **Static portal** — `docs generate` builds a deterministic, fully offline, provenance-labeled HTML site.
 - **Agent skill** — an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
 
@@ -75,10 +81,12 @@ S1Atlas.Indexing    ILSpy decompilation, Roslyn source/symbol indexing, relation
 S1Atlas.Storage     Checksummed migrations and transactional SQLite persistence
 S1Atlas.Application Shared read-only composition and Schedule I Installed build authority
 S1Atlas.Cli         Human and machine-readable command-line interface
-S1Atlas.Mcp         Read-only MCP stdio server for Schedule I Installed queries
+S1Atlas.Mcp         Read-only MCP stdio server for Schedule I Installed and completed local reference queries
 ```
 
-S1Atlas treats the game install and Steam manifest as **read-only input**. Extraction runs Cpp2IL in isolation, validates the result against a committed policy, and immutably promotes only an integrity-verified extraction. Every query — CLI, MCP, or portal — resolves through one shared authority path, so human and agent answers stay in parity, and it will never return an unverified candidate as if it were fact.
+S1Atlas treats the game install and Steam manifest as **read-only input**. Extraction runs Cpp2IL in isolation and promotes only results that pass the validation policy. CLI, MCP, and portal queries use the same verified index.
+
+Reference collections are local and CLI-indexed. Each completed collection records its selected mods, hashes, and Schedule I base index; MCP exposes the resulting read-only queries and collection list. `reference` stays within one collection, while `all` is the explicit cross-origin view. Body recovery, callability, and reference prior art are separate evidence dimensions: AT-24 addresses decompiled-body confidence, AT-25 describes the local interop projection, and AT-26 records selected reference material. None establishes the others.
 
 Deep internals — on-disk data layout, the pinned Cpp2IL definition, the validation policy, and build/environment identity — are documented in **[docs/REFERENCE.md](docs/REFERENCE.md)**.
 

@@ -57,11 +57,15 @@ public sealed class HostCompositionTests
     public void McpComposition_UsesSharedApplicationFactoryWithoutReflection()
     {
         var source = File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "McpServerComposition.cs"));
+        source += File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "Tools", "CodeSymbolTools.cs"));
+        source += File.ReadAllText(GetRepoPath("src", "S1Atlas.Mcp", "Tools", "ReferenceCollectionTools.cs"));
 
         Assert.Contains("ReadOnlyAtlasComposition", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Activator.CreateInstance", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetType(", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ValidatedExtractionIntegrityVerifier", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SqliteConnection", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("CommandText", source, StringComparison.Ordinal);
     }
 
     private static string GetRepoPath(params string[] segments)

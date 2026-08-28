@@ -9,10 +9,12 @@ namespace S1Atlas.Cli.Commands;
 
 internal static class RefsCommand
 {
-    public static Command Create(IndexQueryService service, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
+    public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create("refs", service, authorityResolver, repository, output, error, cancellationToken, async (query, options, ct) =>
         {
-            var result = await service.RefsAsync(query, options, ct);
+            var result = options.Scope == IndexQueryScope.Game
+                ? await service.RefsAsync(query, options, ct)
+                : await federatedService.RefsAsync(query, options, ct);
             return new IndexQueryOutput(
                 [],
                 result.Relationships,
@@ -21,7 +23,8 @@ internal static class RefsCommand
                 BodyRecoveryStatus: result.BodyRecoveryStatus,
                 CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
                 CompletenessNotice: result.CompletenessNotice);
-        }, async (query, run, limit, ct) => ToOutput(await service.RefsInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct)));
+        }, async (query, run, limit, ct) => ToOutput(await service.RefsInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct)),
+        includeScopeOptions: true);
 
     private static IndexQueryOutput ToOutput(RelationshipQuerySetResult result) => new([], result.Relationships, [],
         Resolution: result.Resolution, BodyRecoveryStatus: result.BodyRecoveryStatus,

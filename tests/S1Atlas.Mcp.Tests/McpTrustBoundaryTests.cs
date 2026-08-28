@@ -14,7 +14,7 @@ namespace S1Atlas.Mcp.Tests;
 public sealed class McpTrustBoundaryTests
 {
     [Fact]
-    public async Task StdioHost_UsesProtocolOnlyStdoutAndRegistersEveryV1Tool()
+    public async Task StdioHost_UsesProtocolOnlyStdoutAndRegistersEveryReadOnlyTool()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
 
@@ -23,6 +23,7 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(
             [
                 "compare_symbol",
+                "find_callees",
                 "find_callers",
                 "find_references",
                 "find_related_types",
@@ -36,6 +37,7 @@ public sealed class McpTrustBoundaryTests
                 "get_source",
                 "get_type",
                 "list_builds",
+                "list_reference_collections",
                 "list_scenes",
                 "search_symbols"
             ],
@@ -79,11 +81,17 @@ public sealed class McpTrustBoundaryTests
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
 
         var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
+        AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection"], ["query"]);
+        AssertSchema(schemas["list_reference_collections"], [], []);
         AssertSchema(schemas["get_type"], ["selector", "buildId", "limit"], ["selector"]);
         AssertSchema(schemas["get_method"], ["selector", "buildId", "limit"], ["selector"]);
+        AssertSchema(schemas["get_source"], ["selector", "buildId", "context", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(
             schemas["find_related_types"],
-            ["selector", "buildId", "relationKinds", "limit"],
+            ["selector", "buildId", "relationKinds", "limit", "scope", "collection"],
             ["selector"]);
 
         var serialized = await McpTestHost.CallToolThroughStdioAsync(
@@ -96,21 +104,104 @@ public sealed class McpTrustBoundaryTests
             new[] { "resolved", "ambiguous" });
     }
 
+    [Fact]
+    public async Task ScopeValidation_PreservesScheduleIDefaultsAndRejectsInvalidCollectionCombinations()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
+
+        var defaultResult = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, CancellationToken.None);
+        var gameWithCollection = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, CancellationToken.None, "game", "qol");
+        var referenceWithoutCollection = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, CancellationToken.None, "reference", null);
+
+        Assert.Equal(ToolStatus.Resolved, defaultResult.Status);
+        Assert.Equal(atlas.IndexId, defaultResult.Build!.IndexId);
+        Assert.Equal(ToolStatus.Invalid, gameWithCollection.Status);
+        Assert.Equal("InvalidCollection", gameWithCollection.Error!.Code);
+        Assert.Equal(ToolStatus.Invalid, referenceWithoutCollection.Status);
+        Assert.Equal("CollectionRequired", referenceWithoutCollection.Error!.Code);
+    }
+
+    [Fact]
+    public async Task StdioReferenceScopeDoesNotFallThroughForGameOnlySelectors()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var reference = await atlas.SeedReferenceCollectionAsync("qol");
+        var cases = new Dictionary<string, Dictionary<string, object?>>
+        {
+            ["get_source"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["context"] = 0,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            },
+            ["find_callers"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            },
+            ["find_callees"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            },
+            ["find_references"] = new()
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = reference.Collection
+            }
+        };
+
+        foreach (var (tool, arguments) in cases)
+        {
+            var serialized = await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, tool, arguments);
+            using var result = JsonDocument.Parse(serialized);
+            var root = result.RootElement;
+            Assert.NotEqual("resolved", root.GetProperty("status").GetString());
+            Assert.DoesNotContain("\"origin\":\"game\"", serialized, StringComparison.Ordinal);
+            Assert.True(!root.TryGetProperty("data", out var data) || data.ValueKind is JsonValueKind.Null);
+        }
+    }
+
+    [Fact]
+    public async Task CallableSurface_RemainsScheduleIOnly()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
+
+        var result = await tools.GetCallableSurfaceAsync(atlas.MethodSelector, null, CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, result.Status);
+        Assert.Equal("ScheduleI", result.Build!.Codebase);
+        Assert.Equal("Installed", result.Build.Channel);
+    }
+
     private static void AssertSchema(
         string serializedSchema,
         IReadOnlyList<string> expectedProperties,
         IReadOnlyList<string> expectedRequired)
     {
         using var schema = JsonDocument.Parse(serializedSchema);
+        var properties = schema.RootElement.TryGetProperty("properties", out var propertiesElement)
+            ? propertiesElement.EnumerateObject().Select(property => property.Name)
+            : [];
+        var required = schema.RootElement.TryGetProperty("required", out var requiredElement)
+            ? requiredElement.EnumerateArray().Select(value => value.GetString()!)
+            : [];
         Assert.Equal(
             expectedProperties.OrderBy(value => value, StringComparer.Ordinal),
-            schema.RootElement.GetProperty("properties").EnumerateObject()
-                .Select(property => property.Name)
+            properties
                 .OrderBy(value => value, StringComparer.Ordinal));
         Assert.Equal(
             expectedRequired.OrderBy(value => value, StringComparer.Ordinal),
-            schema.RootElement.GetProperty("required").EnumerateArray()
-                .Select(value => value.GetString()!)
+            required
                 .OrderBy(value => value, StringComparer.Ordinal));
     }
 
@@ -340,10 +431,13 @@ internal static class McpTestHost
         await code.GetSourceAsync(" ", null, 0, ct);
         await code.FindCallersAsync(atlas.MethodSelector, null, 50, ct);
         await code.FindCallersAsync(" ", null, 50, ct);
+        await code.FindCalleesAsync(atlas.MethodSelector, null, 50, ct);
+        await code.FindCalleesAsync(" ", null, 50, ct);
         await code.FindReferencesAsync(atlas.MethodSelector, null, 50, ct);
         await code.FindReferencesAsync(" ", null, 50, ct);
         await code.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
         await code.FindRelatedTypesAsync(" ", null, null, 50, ct);
+        await new ReferenceCollectionTools(services).ListReferenceCollectionsAsync(ct);
 
         await compare.CompareSymbolAsync(atlas.CompareSelector, atlas.BuildIdA, atlas.BuildIdB, ct);
         await compare.CompareSymbolAsync(atlas.CompareSelector, atlas.BuildIdA, " ", ct);

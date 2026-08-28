@@ -125,7 +125,7 @@ internal sealed class ValidatedExtractionPromoter
             _dataRoot, attempt.BuildId, attempt.AttemptId);
         var ownedAttempt = OwnedAttemptPaths.Create(_dataRoot, attempt.BuildId, attempt.AttemptId);
 
-        // Step 2: the candidate must still inventory identically to the manifest that
+        // The candidate must still inventory identically to the manifest that
         // was validated. If the bytes changed since validation, fail closed as a
         // filesystem promotion failure so no database extraction row is ever created.
         var inspection = await _candidateInspector.InspectAsync(attempt, _dataRoot, cancellationToken);
@@ -155,7 +155,7 @@ internal sealed class ValidatedExtractionPromoter
 
         var extraction = BuildExtraction(attempt, report, digest, extractionId, finalRoot, request.TrustLevel);
 
-        // Step 3: create the absent Atlas-owned staging root.
+        // Create the absent Atlas-owned staging root.
         if (Directory.Exists(stagingRoot))
         {
             throw new ExtractionOperationException(
@@ -167,7 +167,7 @@ internal sealed class ValidatedExtractionPromoter
         Directory.CreateDirectory(stagingRoot);
         OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, stagingRoot);
 
-        // Step 4: write the sibling promotion journal BEFORE any output is staged.
+        // Write the sibling promotion journal before any output is staged.
         var journal = new PromotionJournalContent(
             PromotionJournalStore.SchemaVersion,
             attempt.AttemptId,
@@ -181,17 +181,17 @@ internal sealed class ValidatedExtractionPromoter
             report.ValidatedAtUtc);
         await _journalStore.WriteAsync(attemptPaths, journal, cancellationToken);
 
-        // Step 5: move the candidate output into staging/reconstructed.
+        // Move the candidate output into staging/reconstructed.
         Directory.Move(ownedAttempt.CandidateOutputRoot, attemptPaths.StagedReconstructedRoot!);
 
-        // Step 6: copy the bounded attempt logs into staging/logs.
+        // Copy the bounded attempt logs into staging/logs.
         CopyBoundedLogs(ownedAttempt, attemptPaths.StagedLogsRoot!);
 
         // Steps 7 and 8: write the immutable documents, marker last.
         await _documentStore.WriteFinalDocumentsAsync(
             _dataRoot, stagingRoot, extraction, manifest, report, cancellationToken);
 
-        // Step 9: verify the staged output against the planned record before any DB row exists.
+        // Verify the staged output against the planned record before any DB row exists.
         var stagedIntegrity = await _integrityVerifier.VerifyAsync(
             _dataRoot, stagingRoot, extraction, manifest.Entries, cancellationToken);
         if (stagedIntegrity.Status != ValidatedExtractionIntegrityStatus.Valid)

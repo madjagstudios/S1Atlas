@@ -64,6 +64,17 @@ public sealed record OwnedIndexPaths
             File.GetAttributes);
     }
 
+    public static OwnedIndexPaths ForReferenceMod(string dataRoot, string indexId)
+    {
+        var root = NormalizeRoot(dataRoot);
+        RequireLowerHex64(indexId, "index ID");
+        return CreateIndex(
+            root,
+            "reference",
+            ResolveContained(root, "reference", indexId),
+            File.GetAttributes);
+    }
+
     public static OwnedIndexPaths ForUpstream(
         string dataRoot,
         string codebase,

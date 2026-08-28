@@ -19,7 +19,8 @@ internal static class IndexQueryCommandFactory
         CancellationToken cancellationToken,
         Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>> execute,
         Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>> executeInIndex,
-        Func<IndexQueryOptions, string?>? validateOptions = null)
+        Func<IndexQueryOptions, string?>? validateOptions = null,
+        bool includeScopeOptions = false)
     {
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
@@ -31,12 +32,19 @@ internal static class IndexQueryCommandFactory
             DefaultValueFactory = _ => 50
         };
         var jsonOption = CommandOutput.CreateJsonOption();
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
         var command = new Command(name, "Query the normalized code index.");
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(buildOption);
         command.Options.Add(limitOption);
+        if (includeScopeOptions)
+        {
+            command.Options.Add(scopeOption);
+            command.Options.Add(collectionOption);
+        }
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -52,10 +60,20 @@ internal static class IndexQueryCommandFactory
                             "--limit must be greater than zero.");
 
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    var options = ParseOptions(
-                        parseResult.GetValue(codebaseOption),
-                        parseResult.GetValue(channelOption),
-                        limit);
+                    IndexQueryOptions options;
+                    try
+                    {
+                        options = ParseOptions(
+                            parseResult.GetValue(codebaseOption),
+                            parseResult.GetValue(channelOption),
+                            limit,
+                            includeScopeOptions ? parseResult.GetValue(scopeOption) : null,
+                            includeScopeOptions ? parseResult.GetValue(collectionOption) : null);
+                    }
+                    catch (ArgumentException exception)
+                    {
+                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
+                    }
                     var optionError = validateOptions?.Invoke(options);
                     if (optionError is not null)
                         return commandOutput.Failure(1, "InvalidOptionCombination", optionError);
@@ -171,7 +189,12 @@ internal static class IndexQueryCommandFactory
             : $"unresolved: {raw} [{endpoint.SymbolId}]";
     }
 
-    public static IndexQueryOptions ParseOptions(string? codebase, string? channel, int limit = 50)
+    public static IndexQueryOptions ParseOptions(
+        string? codebase,
+        string? channel,
+        int limit = 50,
+        string? scope = null,
+        string? collection = null)
     {
         var parsedCodebase = (codebase ?? "schedule-i").ToLowerInvariant() switch
         {
@@ -181,18 +204,38 @@ internal static class IndexQueryCommandFactory
             _ => throw new ArgumentException("Codebase must be schedule-i, s1api, or s1mapi.", nameof(codebase))
         };
         var parsedChannel = (channel ?? "installed").ToLowerInvariant();
-        if (parsedChannel == "all") return new IndexQueryOptions(parsedCodebase, null, true, limit);
-        return new IndexQueryOptions(parsedCodebase, parsedChannel switch
+        var parsedScope = (scope ?? "game").ToLowerInvariant() switch
+        {
+            "game" => IndexQueryScope.Game,
+            "reference" => IndexQueryScope.Reference,
+            "all" => IndexQueryScope.All,
+            _ => throw new ArgumentException("Scope must be game, reference, or all.", nameof(scope))
+        };
+        if (parsedScope == IndexQueryScope.Game && !string.IsNullOrWhiteSpace(collection))
+            throw new ArgumentException("--collection is valid only for reference or all scope.", nameof(collection));
+        if (parsedScope is IndexQueryScope.Reference or IndexQueryScope.All && string.IsNullOrWhiteSpace(collection))
+            throw new ArgumentException("--scope reference and --scope all require --collection.", nameof(collection));
+        if (parsedScope is IndexQueryScope.Reference or IndexQueryScope.All && parsedCodebase != CodebaseKind.ScheduleI)
+            throw new ArgumentException("Reference scopes require --codebase schedule-i.", nameof(codebase));
+        var effectiveCodebase = parsedScope == IndexQueryScope.Reference ? CodebaseKind.ReferenceMod : parsedCodebase;
+        if (parsedChannel == "all")
+        {
+            if (parsedScope is IndexQueryScope.Reference or IndexQueryScope.All)
+                throw new ArgumentException("Reference scopes require --channel installed.", nameof(channel));
+            return new IndexQueryOptions(effectiveCodebase, null, true, limit, parsedScope);
+        }
+        return new IndexQueryOptions(effectiveCodebase, parsedChannel switch
         {
             "installed" => CodeChannel.Installed,
             "release" => CodeChannel.Release,
             "preview" => CodeChannel.Preview,
             _ => throw new ArgumentException("Channel must be installed, release, preview, or all.", nameof(channel))
-        }, false, limit);
+        }, false, limit, parsedScope, collection?.Trim());
     }
 
     public static bool UsesInstalledScheduleIAuthority(IndexQueryOptions options) =>
         options.Codebase == CodebaseKind.ScheduleI &&
         options.Channel == CodeChannel.Installed &&
+        options.Scope == IndexQueryScope.Game &&
         !options.AllChannels;
 }

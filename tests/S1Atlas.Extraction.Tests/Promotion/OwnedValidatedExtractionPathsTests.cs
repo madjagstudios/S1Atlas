@@ -4,12 +4,6 @@ using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Promotion;
 
-// Task 3 exercises OwnedValidatedExtractionPaths directly rather than through
-// ValidatedExtractionPromoterTests: the plan's own File Structure places
-// ValidatedExtractionPromoter.cs and its promotion machinery in Task 6, so no
-// promoter exists yet for path-focused promoter tests to drive. These
-// path-focused cases give OwnedValidatedExtractionPaths the coverage the plan
-// calls for while Task 6 remains unimplemented.
 public sealed class OwnedValidatedExtractionPathsTests : IDisposable
 {
     private const string AttemptId = "0123456789abcdef0123456789abcdef";
@@ -58,10 +52,6 @@ public sealed class OwnedValidatedExtractionPathsTests : IDisposable
 
         var paths = OwnedValidatedExtractionPaths.ForAttempt(_dataRoot, "build-a", AttemptId);
 
-        // Task 2's SqliteAtlasRepository.ValidatedExtractions derives the strict
-        // validation.json path by taking the parent of the attempt's "logs"
-        // directory (StandardOutputPath's grandparent). This must agree exactly
-        // so a later task's writes land where the stored report_path expects.
         var derivedFromLogs = Path.GetDirectoryName(
             Path.GetDirectoryName(Path.Combine(owned.FinalLogsRoot, "stdout.log")));
         Assert.Equal(

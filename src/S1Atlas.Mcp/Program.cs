@@ -25,6 +25,8 @@ builder.Logging.AddConsole(options =>
 builder.Services.AddSingleton(services);
 builder.Services.AddSingleton(services.AuthorityResolver);
 builder.Services.AddSingleton(services.IndexQueryService);
+builder.Services.AddSingleton(services.FederatedIndexQueryService);
+builder.Services.AddSingleton(services.ReferenceModQueryService);
 builder.Services.AddSingleton(services.BuildDiffService);
 builder.Services.AddSingleton(services.SceneQueryService);
 var toolJsonOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);

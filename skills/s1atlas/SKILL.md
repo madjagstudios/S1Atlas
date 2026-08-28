@@ -33,7 +33,10 @@ own answer or decision record, never write a citation back to Atlas.
 
 ## The evidence loop
 
-1. **Pin the scope.** Prefer the current indexed Schedule I build. Use CLI
+1. **Pin the scope.** Prefer the current indexed Schedule I build. For
+   reference prior-art, first use CLI `reference collections list --json` or
+   MCP `list_reference_collections` to select a completed local collection and
+   note its recorded Schedule I base index. Use CLI
    `status --json` and `builds --json`, or MCP `list_builds`, to identify it.
    An explicitly targeted build is allowed: pass `--build <id>` to Schedule I
    CLI queries or `buildId` to MCP. An omitted MCP `buildId` resolves the current
@@ -42,14 +45,22 @@ own answer or decision record, never write a citation back to Atlas.
    cite the completed index’s commit SHA and index ID.
 2. **Find the exact symbol.** Resolve names before reasoning from them. Use
    `search`, `type`, `method`, or `callable` on the CLI; use `search_symbols`,
-   `get_type`, `get_method`, or `get_callable_surface` through MCP. Qualify
+   `get_type`, `get_method`, or `get_callable_surface` through MCP. For a
+   reference collection, use `search --scope reference --collection <id>` or
+   MCP `search_symbols` with `scope: "reference"` and the collection. Qualify
    ambiguous matches instead of choosing one.
 3. **Inspect behavior.** When behavior, side effects, ownership, lifetime, or
    persistence matters, inspect the decompiled span first: CLI `source` or MCP
-   `get_source`. A method name or an old mod guide is not behavior evidence.
+   `get_source`. Add `--scope`/`--collection` or the matching MCP arguments
+   for reference evidence. A method name or an old mod guide is not behavior
+   evidence.
 4. **Trace relationships.** Use CLI `refs`, `callers`, and `callees`, or MCP
-   `find_references`, `find_callers`, and `find_related_types`. Preserve the
-   reported direction, resolution status, and completeness boundary.
+   `find_references`, `find_callers`, `find_callees`, and
+   `find_related_types`. Add the reference scope/collection when needed.
+   Preserve the reported direction, resolution status, origin, and
+   completeness boundary. `reference` is isolated to the selected collection;
+   use `all` explicitly when a recorded game endpoint or game relationship is
+   part of the evidence.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
    `scene`, `gameobject`, `prefab`, and `component`, or MCP `list_scenes`,
    `get_scene`, `get_gameobject`, `get_prefab`, and `get_component`. For
@@ -70,9 +81,10 @@ own answer or decision record, never write a citation back to Atlas.
 | Evidence need | CLI, always available | MCP, when registered |
 |---|---|---|
 | Locate a symbol | `search`, `type`, `method` with `--json` and, for Schedule I, `--build` | `search_symbols`, `get_type`, `get_method` |
+| Reference collections | `reference collections list --json` | `list_reference_collections` |
 | Callable surface | `callable <game-member>` | `get_callable_surface` |
 | Behavior/source | `source <query> --context <n> --json` | `get_source` |
-| Callers/references | `callers`, `callees`, `refs` | `find_callers`, `find_references`, `find_related_types` |
+| Callers/references | `callers`, `callees`, `refs` with `--scope`/`--collection` as needed | `find_callers`, `find_callees`, `find_references`, `find_related_types` with `scope`/`collection` as needed |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
 | Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component` | `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component` |
@@ -82,6 +94,13 @@ Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.
 `upstream sync` and `index --codebase ... --commit ...` prepare data; they are
 not evidence until a completed index exists and its query result reports the
 commit and index provenance.
+
+AT-24 body recovery, AT-25 callable-surface evidence, and AT-26 reference
+evidence are orthogonal. Body recovery establishes whether indexed decompiled
+text is available for behavioral inspection; callable-surface evidence
+describes how a Schedule I member is reached through the local interop
+projection; reference collections provide local prior-art evidence. None of
+these states establishes either of the other two.
 
 ## Authority boundary and provenance contract
 
@@ -103,7 +122,9 @@ Label every statement:
 
 For Schedule I, copy the returned MCP build context or CLI JSON identifiers into
 the citation: requested/resolved build ID, extraction ID, index ID, and integrity
-state. For S1API/S1MAPI, cite codebase, channel, source commit SHA, and index ID.
+state. For a reference result, also cite the collection, mod ID, recorded base
+index, relative path, and content hash. For S1API/S1MAPI, cite codebase, channel,
+source commit SHA, and index ID.
 Do not claim more than the result’s completeness boundary permits. “Zero callers
 in this completed index” is a measured DERIVED result; unavailable, not indexed,
 integrity-failed, ambiguous, and zero are different states and must remain so.

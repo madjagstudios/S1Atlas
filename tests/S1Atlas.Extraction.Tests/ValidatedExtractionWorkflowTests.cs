@@ -21,8 +21,6 @@ public sealed class ValidatedExtractionWorkflowTests
     private static readonly string PolicyDigest = new('b', 64);
     private static readonly string OtherPolicyDigest = new('9', 64);
 
-    // --- Task 8 Step 1: preparation resolves without touching the game ---
-
     [Fact]
     public async Task PrepareAsync_ResolvesBuildProfilePolicyToolAndRecipe_WithoutGameProcess()
     {
@@ -77,8 +75,6 @@ public sealed class ValidatedExtractionWorkflowTests
         Assert.Equal(withPolicyA.RecipeId, withPolicyB.RecipeId);
         Assert.NotEqual(withPolicyA.Policy.PolicyDigest, withPolicyB.Policy.PolicyDigest);
     }
-
-    // --- Task 8 Step 1: decision-order workflow ---
 
     [Fact]
     public async Task RunAsync_OneCurrentPolicyOutput_ReturnsIntegrityVerifiedNoOp()

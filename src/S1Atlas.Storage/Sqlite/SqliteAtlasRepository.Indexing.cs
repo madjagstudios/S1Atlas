@@ -959,6 +959,53 @@ public sealed partial class SqliteAtlasRepository
             : null;
     }
 
+    public async Task<IndexRunRecord?> GetLatestCompletedReferenceIndexAsync(
+        string collection,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(collection);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                   run.completed_at_utc, run.failure_message
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+            WHERE run.status = 'Completed'
+              AND snapshot.codebase = 'ReferenceMod'
+              AND snapshot.channel = 'Installed'
+              AND (run.index_id = $collection OR snapshot.source_identity = $collection)
+            ORDER BY run.completed_at_utc DESC, run.index_id COLLATE BINARY DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$collection", collection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? ReadRun(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<IndexRunRecord>> GetCompletedReferenceIndexesAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                   run.completed_at_utc, run.failure_message
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+            WHERE run.status = 'Completed'
+              AND snapshot.codebase = 'ReferenceMod'
+              AND snapshot.channel = 'Installed'
+            ORDER BY snapshot.source_identity COLLATE BINARY, run.completed_at_utc DESC,
+                     run.index_id COLLATE BINARY DESC;
+            """;
+        var result = new List<IndexRunRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadRun(reader));
+        return result;
+    }
+
     public async Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(
         string indexId,
         CancellationToken cancellationToken)
@@ -1016,6 +1063,38 @@ public sealed partial class SqliteAtlasRepository
             """;
         command.Parameters.AddWithValue("$indexId", indexId);
         var result = new List<IndexReferenceDocumentRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadReferenceDocument(reader));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(
+        string indexId,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The reference document limit must be positive.");
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                   document.byte_count, document.content
+            FROM reference_documents AS document
+            INNER JOIN index_runs AS run
+                ON run.index_id = document.index_id
+               AND run.snapshot_id = document.snapshot_id
+            WHERE document.index_id = $indexId
+              AND run.status = 'Completed'
+            ORDER BY document.mod_id COLLATE BINARY, document.relative_path COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$limit", limit);
+        var result = new List<IndexReferenceDocumentRecord>(Math.Min(limit, 256));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             result.Add(ReadReferenceDocument(reader));
@@ -1225,7 +1304,7 @@ public sealed partial class SqliteAtlasRepository
             cancellationToken) ?? throw new InvalidOperationException("Reference-mod indexes require a completed base game index.");
         if (gameIndex.Codebase != CodebaseKind.ScheduleI || gameIndex.Channel != CodeChannel.Installed)
             throw new InvalidOperationException("Reference-mod indexes must target a completed installed Schedule I index.");
-        if (!string.Equals(gameIndex.BuildId, context.BuildId, StringComparison.Ordinal))
+        if (gameIndex.BuildId is not null && !string.Equals(gameIndex.BuildId, context.BuildId, StringComparison.Ordinal))
             throw new InvalidOperationException("Reference index context build id must match the completed base game index build.");
 
         var referenceBuildId = await GetBuildIdForEnvironmentSnapshotAsync(

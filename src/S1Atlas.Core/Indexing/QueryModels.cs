@@ -6,7 +6,16 @@ public sealed record IndexQueryOptions(
     CodebaseKind Codebase,
     CodeChannel? Channel = CodeChannel.Installed,
     bool AllChannels = false,
-    int Limit = 50);
+    int Limit = 50,
+    IndexQueryScope Scope = IndexQueryScope.Game,
+    string? ReferenceCollection = null);
+
+public enum IndexQueryScope
+{
+    Game,
+    Reference,
+    All
+}
 
 public sealed record IndexPageRequest
 {
@@ -37,7 +46,15 @@ public sealed record IndexedSymbolQueryResult(
     string QualifiedName,
     string Signature,
     bool IsBestEffort,
-    BodyRecoveryStatus? BodyRecoveryStatus);
+    BodyRecoveryStatus? BodyRecoveryStatus,
+    string? Origin = null,
+    string? Collection = null,
+    string? ReferenceModId = null,
+    string? DisplayName = null,
+    string? Version = null,
+    string? License = null,
+    string? RelativePath = null,
+    string? Sha256 = null);
 
 public sealed record NamespaceQueryResult(
     int TotalCount,
@@ -65,7 +82,15 @@ public sealed record SymbolQueryResult(
     string Kind,
     string QualifiedName,
     string Signature,
-    bool IsBestEffort);
+    bool IsBestEffort,
+    string? Origin = null,
+    string? Collection = null,
+    string? ReferenceModId = null,
+    string? DisplayName = null,
+    string? Version = null,
+    string? License = null,
+    string? RelativePath = null,
+    string? Sha256 = null);
 
 public enum SymbolResolutionStatus
 {
@@ -91,7 +116,15 @@ public sealed record RelationshipEndpointQueryResult(
     string? QualifiedName,
     string? Signature,
     string? RawText,
-    bool Resolved);
+    bool Resolved,
+    string? Origin = null,
+    string? Collection = null,
+    string? ReferenceModId = null,
+    string? DisplayName = null,
+    string? Version = null,
+    string? License = null,
+    string? RelativePath = null,
+    string? Sha256 = null);
 
 public sealed record RelationshipQueryResult(
     string RelationshipId,
@@ -138,7 +171,13 @@ public sealed record SourceQueryResult(
     string Sha256,
     long ByteCount,
     string Provenance,
-    IReadOnlyList<SourceLocationQueryResult> Locations);
+    IReadOnlyList<SourceLocationQueryResult> Locations,
+    string? Origin = null,
+    string? Collection = null,
+    string? ReferenceModId = null,
+    string? DisplayName = null,
+    string? Version = null,
+    string? License = null);
 
 public sealed record SourceLocationQueryResult(
     string SymbolId,
@@ -158,7 +197,13 @@ public sealed record SourceSnippetQueryResult(
     int ContextAfter,
     string Text,
     BodyRecoveryStatus? BodyRecoveryStatus,
-    string Provenance);
+    string Provenance,
+    string? Origin = null,
+    string? Collection = null,
+    string? ReferenceModId = null,
+    string? DisplayName = null,
+    string? Version = null,
+    string? License = null);
 
 public sealed record SourceSnippetResolutionResult(
     SymbolResolutionResult Resolution,
@@ -189,7 +234,37 @@ public sealed record ReferenceModQueryResult(
     string Version,
     string? License,
     string RootPath,
-    string ContentSha256);
+    string ContentSha256,
+    string? Collection = null,
+    string? Origin = "reference",
+    string Provenance = "LocalOnly");
+
+public sealed record ReferenceCollectionListResult(
+    int TotalCount,
+    IReadOnlyList<ReferenceCollectionQueryResult> Collections);
+
+public sealed record ReferenceCollectionAuthorityQueryResult(
+    string Collection,
+    string ReferenceIndexId,
+    string BuildId,
+    string BaseIndexId);
+
+public sealed record ReferenceCollectionQueryResult(
+    string Collection,
+    string IndexId,
+    string SnapshotId,
+    string BuildId,
+    string BaseIndexId,
+    int ModCount,
+    IReadOnlyList<ReferenceCollectionModQueryResult> Mods);
+
+public sealed record ReferenceCollectionModQueryResult(
+    string ModId,
+    string DisplayName,
+    string Version,
+    string? License,
+    string ContentSha256,
+    string Provenance = "LocalOnly");
 
 public sealed record ReferenceDocumentQueryResult(
     string ModId,
@@ -197,4 +272,13 @@ public sealed record ReferenceDocumentQueryResult(
     string Kind,
     string Sha256,
     long ByteCount,
-    string Content);
+    string Content,
+    string? Collection = null,
+    string? DisplayName = null,
+    string? Version = null,
+    string? License = null,
+    string? Origin = "reference",
+    string Provenance = "LocalOnly")
+{
+    public string ReferenceModId => ModId;
+}

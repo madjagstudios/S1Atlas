@@ -88,9 +88,6 @@ public sealed class ExtractionCliTests
         Assert.True(Directory.Exists(configuration.ValidationPoliciesDirectory));
     }
 
-    // Phase 4 legitimately changes this assertion: `extract` now validates and promotes the
-    // candidate, so a valid managed candidate produces authoritative output (not a bare
-    // ProcessCompleted candidate). A custom tool validates but is never auto-preferred.
     [Fact]
     public async Task Extract_DefaultCurrentBuildAndCustomTool_ValidatesAndPromotesAuthoritatively()
     {
@@ -125,8 +122,6 @@ public sealed class ExtractionCliTests
         Assert.True(File.Exists(Path.Combine(extractionRoot, "complete.marker")));
     }
 
-    // Phase 4 legitimately changes this assertion: successful `extract` now reports the
-    // authoritative validated extraction instead of the Phase 3 candidate caveat.
     [Fact]
     public async Task Extract_HumanSuccess_StatesTheAuthoritativeExtraction()
     {
@@ -258,10 +253,6 @@ public sealed class ExtractionCliTests
         Assert.Equal("ToolProbeFailed", error.GetProperty("code").GetString());
     }
 
-    // Phase 4 legitimately changes this assertion: the authoritative `extract` output no
-    // longer exposes candidateOutputPath and the attempt document's resolved paths are
-    // cleared once validation rewrites it, so the resolved game root is observed directly
-    // at the process seam.
     [Fact]
     public async Task Extract_ExplicitGamePath_TakesPriorityOverStoredObservation()
     {
@@ -420,8 +411,6 @@ public sealed class ExtractionCliTests
                 .GetString());
     }
 
-    // Phase 4 legitimately changes this assertion: the authoritative `extract` output no
-    // longer surfaces inputSnapshotId, so the snapshot is located through the attempt row.
     [Fact]
     public async Task Extract_SnapshotInputs_RetainsUnverifiedReplaySnapshot()
     {
@@ -520,9 +509,6 @@ public sealed class ExtractionCliTests
         Assert.DoesNotContain("Exception", result.StandardError, StringComparison.Ordinal);
     }
 
-    // Phase 4 legitimately changes this assertion: the source attempt is now driven to
-    // Succeeded with a result extraction ID, and the authoritative extraction root is the
-    // contained, immutable output carrying complete.marker.
     [Fact]
     public async Task Extract_ExtractionAndAttemptFacts_RemainContainedAndAgree()
     {
