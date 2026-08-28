@@ -106,7 +106,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
         ArgumentNullException.ThrowIfNull(expectedArtifacts);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Step 1: validate expected root.
+        // Validate the expected root.
         string root;
         string target;
         try
@@ -126,7 +126,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
             return Missing("ExtractionRootUnsafe", "The extraction root escapes its Atlas data root.");
         }
 
-        // Step 2: require a normal (non-reparse) root, strict docs, and the marker.
+        // Require a normal (non-reparse) root, strict docs, and the marker.
         if (!Directory.Exists(target))
         {
             return Missing("ExtractionRootMissing", "The extraction root does not exist.");
@@ -147,7 +147,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
                 "complete.marker is missing or does not match its strict schema.");
         }
 
-        // Step 3: hash the three bound documents and compare against the marker.
+        // Hash the three bound documents and compare against the marker.
         var extractionSha256 = await _documentStore.TryComputeDocumentSha256Async(
             bundle.Paths.ExtractionJsonPath, cancellationToken);
         var artifactManifestSha256 = await _documentStore.TryComputeDocumentSha256Async(
@@ -170,7 +170,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
                 "artifact-manifest.json, and validation.json.");
         }
 
-        // Step 4: recompute the artifact manifest digest and extraction ID.
+        // Recompute the artifact manifest digest and extraction ID.
         string recomputedDigest;
         string recomputedExtractionId;
         try
@@ -202,7 +202,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
                 "The recomputed extraction ID does not agree with the documents or database row.");
         }
 
-        // Step 5: compare the extraction document with the database ValidatedExtraction row.
+        // Compare the extraction document with the database ValidatedExtraction row.
         if (!ExtractionMatchesExpected(bundle.Extraction, expectedExtraction))
         {
             return Mismatch(
@@ -210,7 +210,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
                 "extraction.json does not agree with the database validated extraction row.");
         }
 
-        // Step 6: compare every artifact annotation/path/size/hash with the database artifact rows.
+        // Compare every artifact annotation/path/size/hash with the database artifact rows.
         var manifestEntries = bundle.ArtifactManifest.Manifest.Entries
             .OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)
             .ToArray();
@@ -224,14 +224,14 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
                 "The immutable artifact manifest does not agree with the database artifact rows.");
         }
 
-        // Step 7: enumerate the reconstructed artifact tree without following reparse points.
+        // Enumerate the reconstructed artifact tree without following reparse points.
         var reconstructedRoot = Path.Combine(target, ReconstructedDirectoryName);
         if (!TryEnumerateNormalTree(reconstructedRoot, out var discoveredFiles, out var treeFailure))
         {
             return Mismatch("ReconstructedTreeUnsafe", treeFailure!);
         }
 
-        // Step 8: require an exact path set and re-hash every artifact.
+        // Require an exact path set and re-hash every artifact.
         var manifestPaths = manifestEntries
             .Select(entry => entry.RelativePath)
             .ToHashSet(StringComparer.Ordinal);
@@ -287,7 +287,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
             }
         }
 
-        // Step 9: require document statistics agree with artifact annotations and database aggregates.
+        // Require document statistics agree with artifact annotations and database aggregates.
         var recomputedStatistics = RecomputeStatistics(manifestEntries);
         if (!StatisticsEqual(recomputedStatistics, bundle.Extraction.Statistics) ||
             !AggregateStatisticsEqual(recomputedStatistics, expectedExtraction.Statistics))

@@ -134,8 +134,6 @@ public sealed class ExtractionValidationEngineTests
         Assert.Empty(report.Comparisons);
     }
 
-    // --- Task 5: comparative sanity wiring ---
-
     [Fact]
     public void Evaluate_BaselineProvidedWithinTolerance_ReturnsComparisonsAndNoComparativeIssues()
     {
@@ -191,8 +189,6 @@ public sealed class ExtractionValidationEngineTests
         Assert.Null(report.BaselineExtractionId);
     }
 
-    // --- Task 5: reproducibility wiring ---
-
     [Fact]
     public void Evaluate_SameRecipeSameDigest_ReturnsDeduplicationTargetAndNoNewOutputIssue()
     {
@@ -227,8 +223,6 @@ public sealed class ExtractionValidationEngineTests
         Assert.Null(result.DeduplicationTarget);
         Assert.Null(result.AutomaticPreferenceReason);
     }
-
-    // --- Task 5: automatic preference wiring ---
 
     [Fact]
     public void Evaluate_ManagedPinnedNoCurrentPreference_ReturnsManagedAutomatic()

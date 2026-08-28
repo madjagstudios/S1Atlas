@@ -10,8 +10,8 @@ namespace S1Atlas.Extraction.Validation;
 /// identity), then the annotation issues <see cref="ArtifactManifestBuilder"/>
 /// already found (invalid managed DLLs, duplicate assembly identities), then the
 /// policy's minimum managed-assembly/type/method/byte thresholds. Comparative
-/// (preferred-baseline) and reproducibility (same-recipe) checks are Task 5's
-/// concern and are not evaluated here.
+/// (preferred-baseline) and reproducibility (same-recipe) checks are evaluated
+/// by the workflow after these absolute checks pass.
 /// </summary>
 internal static class AbsoluteSanityValidator
 {
