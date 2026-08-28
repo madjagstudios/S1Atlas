@@ -672,6 +672,28 @@ public sealed class ReadOnlySqliteAtlasRepository :
             return await reader.ReadAsync() ? ReadRun(reader) : null;
         }, cancellationToken);
 
+    public Task<IReadOnlyList<IndexRunRecord>> GetCompletedReferenceIndexesAsync(
+        CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT run.index_id, run.snapshot_id, run.status, run.started_at_utc,
+                       run.completed_at_utc, run.failure_message
+                FROM index_runs AS run
+                INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
+                WHERE run.status = 'Completed'
+                  AND snapshot.codebase = 'ReferenceMod'
+                  AND snapshot.channel = 'Installed'
+                ORDER BY snapshot.source_identity COLLATE BINARY, run.completed_at_utc DESC,
+                         run.index_id COLLATE BINARY DESC;
+                """;
+            var result = new List<IndexRunRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) result.Add(ReadRun(reader));
+            return (IReadOnlyList<IndexRunRecord>)result;
+        }, cancellationToken);
+
     public Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(
         string indexId,
         CancellationToken cancellationToken) =>

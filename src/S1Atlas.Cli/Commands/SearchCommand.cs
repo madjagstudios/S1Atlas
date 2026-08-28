@@ -9,10 +9,12 @@ namespace S1Atlas.Cli.Commands;
 
 internal static class SearchCommand
 {
-    public static Command Create(IndexQueryService service, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
+    public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create("search", service, authorityResolver, repository, output, error, cancellationToken, async (query, options, ct) =>
         {
-            var result = await service.SearchAsync(query, options, ct);
+            var result = options.Scope == IndexQueryScope.Game
+                ? await service.SearchAsync(query, options, ct)
+                : await federatedService.SearchAsync(query, options, ct);
             return new IndexQueryOutput(
                 result.Results,
                 [],
@@ -29,5 +31,5 @@ internal static class SearchCommand
                 result.TotalCount == 0
                     ? new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, [])
                     : null);
-        });
+        }, includeScopeOptions: true);
 }

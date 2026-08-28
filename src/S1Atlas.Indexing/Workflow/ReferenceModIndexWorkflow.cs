@@ -88,7 +88,7 @@ public sealed class ReferenceModIndexWorkflow
         if (snapshot is null)
         {
             await _repository.CreateCodeSnapshotAsync(
-                new CodeSnapshotRecord(snapshotId, CodebaseKind.ReferenceMod, CodeChannel.Installed, collectionHash, DateTimeOffset.UtcNow.ToString("O")),
+                new CodeSnapshotRecord(snapshotId, CodebaseKind.ReferenceMod, CodeChannel.Installed, collection.CollectionId, DateTimeOffset.UtcNow.ToString("O")),
                 cancellationToken);
         }
 

@@ -18,5 +18,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Fixtures\S1Atlas.ManagedAssemblyFixture\S1Atlas.ManagedAssemblyFixture.csproj" />
+    <ProjectReference Include="..\Fixtures\S1Atlas.InteropAssemblyFixture\S1Atlas.InteropAssemblyFixture.csproj" />
   </ItemGroup>
 </Project>

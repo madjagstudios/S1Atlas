@@ -14,6 +14,7 @@ internal static class SourceCommand
 
     public static Command Create(
         IndexQueryService service,
+        FederatedIndexQueryService federatedService,
         InstalledBuildAuthorityResolver authorityResolver,
         IAtlasRepository repository,
         string dataRoot,
@@ -50,6 +51,10 @@ internal static class SourceCommand
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(buildOption);
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        command.Options.Add(scopeOption);
+        command.Options.Add(collectionOption);
         command.Options.Add(limitOption);
         command.Options.Add(contextOption);
         command.Options.Add(fileOption);
@@ -61,12 +66,15 @@ internal static class SourceCommand
             return CommandExecution.Run(
                 () => Execute(
                     service,
+                    federatedService,
                     authorityResolver,
                     repository,
                     dataRoot,
                     parseResult.GetValue(queryArgument)!,
                     parseResult.GetValue(codebaseOption),
                     parseResult.GetValue(channelOption),
+                    parseResult.GetValue(scopeOption),
+                    parseResult.GetValue(collectionOption),
                     parseResult.GetValue(buildOption),
                     parseResult.GetValue(limitOption),
                     parseResult.GetValue(contextOption),
@@ -82,12 +90,15 @@ internal static class SourceCommand
 
     private static int Execute(
         IndexQueryService service,
+        FederatedIndexQueryService federatedService,
         InstalledBuildAuthorityResolver authorityResolver,
         IAtlasRepository repository,
         string dataRoot,
         string query,
         string? codebase,
         string? channel,
+        string? scope,
+        string? collection,
         string? buildId,
         int limit,
         int context,
@@ -102,7 +113,20 @@ internal static class SourceCommand
             return commandOutput.Failure(1, "InvalidContext", "--context cannot be negative.");
 
         repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-        var options = IndexQueryCommandFactory.ParseOptions(codebase, channel, limit);
+        IndexQueryOptions options;
+        try
+        {
+            options = IndexQueryCommandFactory.ParseOptions(
+                codebase,
+                channel,
+                limit,
+                scope,
+                collection);
+        }
+        catch (ArgumentException exception)
+        {
+            return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
+        }
         if (!string.IsNullOrWhiteSpace(buildId) && !IndexQueryCommandFactory.UsesInstalledScheduleIAuthority(options))
         {
             return commandOutput.Failure(
@@ -130,7 +154,9 @@ internal static class SourceCommand
             }
             else
             {
-                resolution = service.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult();
+                resolution = options.Scope == IndexQueryScope.Game
+                    ? service.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult()
+                    : federatedService.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult();
             }
         }
         catch (FileNotFoundException exception)
@@ -181,7 +207,7 @@ internal static class SourceCommand
             {
                 verifiedBytes = new VerifiedIndexedSourceReader().ReadAsync(
                     dataRoot,
-                    options.Codebase,
+                    snippet.Origin == "reference" ? CodebaseKind.ReferenceMod : options.Codebase,
                     ParseChannel(snippet.Symbol.Channel),
                     snippet.IndexId,
                     snippet.RelativePath,

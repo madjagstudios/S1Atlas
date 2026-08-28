@@ -33,3 +33,21 @@
 - Important finding addressed: declared manifest `ContentSha256` participates in collection identity.
 - Important finding addressed: drift coverage computes the production identity and asserts staging cleanup plus no completed result for that actual run ID.
 - Review verdict: approved by Socrates after comparing `2e8af6a88729948440dd68df830d169b79d44f7..17686f0` in the Task 3 worktree.
+
+## Task 4 review checkpoint
+
+- Scope isolation: Game rejects `ReferenceCollection`; reference relationships are federated only for All.
+- Provenance: multi-assembly symbols/relationships use only exact persisted locations; missing locations remain unavailable rather than guessing.
+- Resource safety: completed-reference document queries apply SQL limits before content materialization; reference roots use ancestor reparse-point validation.
+- Origin correctness: Schedule I is `game`; S1API/S1MAPI results retain nullable non-game origin.
+- Review verdict: approved by Zeno after review fix rounds `a27046d` and `ac69e3c`, with only Minor source-location preload and test-strength observations.
+
+## Task 5 status
+
+- Task 5: implemented in the current worktree; CLI integration GREEN is 16/16. A fresh full solution run passed 1,310 tests: Core 127, Docs 8, Indexing 235, Storage 142, Extraction 551, Integration 177, and MCP 70.
+- RED evidence: the initial `ReferenceModCliTests` run before CLI implementation failed 9/15 tests for the missing reference command, scope/collection options, and output behavior; six pre-existing contract checks passed.
+- GREEN evidence: the focused reference CLI suite passed 16/16; affected Indexing 235/235, Storage 142/142, and Core 127/127 also passed. Scoped format verification and `git diff --check` passed.
+- Contract ruling: `type` and `method` remain game/API-only convenience commands per the design/current contract; `callable` remains Schedule-I-only. Scope/collection is exposed only on search, source, callers, callees, and refs.
+- Whole-solution `dotnet format --verify-no-changes` reports four pre-existing whitespace diagnostics in Task 2's `ReferenceModFileSelector.cs` lines 44–47; no unrelated format changes were made.
+- Existing code-map check reports nine generator-version mismatches; no unrelated code-map regeneration was included.
+- Detailed report: `.superpowers/sdd/2026-08-27-reference-mod-indexing/task-5-report.md`.
