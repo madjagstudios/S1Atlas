@@ -182,3 +182,19 @@ public sealed record CallableSurfaceQueryResult(
 public sealed record CallableSurfaceResolutionResult(
     SymbolResolutionResult Resolution,
     CallableSurfaceQueryResult? CallableSurface);
+
+public sealed record ReferenceModQueryResult(
+    string ModId,
+    string DisplayName,
+    string Version,
+    string? License,
+    string RootPath,
+    string ContentSha256);
+
+public sealed record ReferenceDocumentQueryResult(
+    string ModId,
+    string RelativePath,
+    string Kind,
+    string Sha256,
+    long ByteCount,
+    string Content);

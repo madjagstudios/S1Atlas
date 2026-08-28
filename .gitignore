@@ -24,6 +24,7 @@ worktrees/
 
 # Local working notes
 docs/worknotes/
+docs/superpowers/
 
 # S1Atlas generated data
 data/

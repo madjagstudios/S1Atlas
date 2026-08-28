@@ -82,22 +82,34 @@ public sealed partial class SqliteAtlasRepository
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
         try
         {
-            var snapshotId = await GetRunningSnapshotIdAsync(connection, transaction, indexId, cancellationToken)
+            var runningSnapshot = await GetRunningSnapshotAsync(connection, transaction, indexId, cancellationToken)
                 ?? throw new InvalidOperationException($"Index run '{indexId}' is not running.");
-
-            ValidateCallableSurfaceOwnership(indexId, snapshotId, writeSet.Symbols, writeSet.CallableSurface ?? []);
-
-            await InsertSourceFilesAsync(connection, transaction, writeSet.SourceFiles, cancellationToken);
-            await InsertSymbolsAsync(connection, transaction, writeSet.Symbols, cancellationToken);
-            await InsertSourceLocationsAsync(connection, transaction, writeSet.SourceLocations, cancellationToken);
-            await InsertFingerprintsAsync(connection, transaction, writeSet.Fingerprints, cancellationToken);
-            await InsertRelationshipsAsync(connection, transaction, writeSet.Relationships, cancellationToken);
-            await InsertCallableSurfaceAsync(connection, transaction, writeSet.CallableSurface ?? [], cancellationToken);
+            var snapshotId = runningSnapshot.SnapshotId;
 
             if (writeSet.Symbols.Any(symbol => !string.Equals(symbol.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
                 writeSet.SourceFiles.Any(file => !string.Equals(file.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
                 writeSet.Relationships.Any(edge => !string.Equals(edge.SnapshotId, snapshotId, StringComparison.Ordinal)))
                 throw new InvalidOperationException("Index write-set rows must belong to the running snapshot.");
+
+            ValidateCallableSurfaceOwnership(indexId, snapshotId, writeSet.Symbols, writeSet.CallableSurface ?? []);
+            var referenceWriteSet = await ValidateReferenceWriteSetAsync(
+                connection,
+                transaction,
+                indexId,
+                runningSnapshot,
+                writeSet,
+                cancellationToken);
+
+            await InsertSourceFilesAsync(connection, transaction, writeSet.SourceFiles, cancellationToken);
+            await InsertSymbolsAsync(connection, transaction, writeSet.Symbols, cancellationToken);
+            await InsertReferenceIndexContextAsync(connection, transaction, referenceWriteSet, cancellationToken);
+            await InsertReferenceModsAsync(connection, transaction, indexId, snapshotId, referenceWriteSet?.Mods ?? [], cancellationToken);
+            await InsertReferenceDocumentsAsync(connection, transaction, indexId, snapshotId, referenceWriteSet?.Documents ?? [], cancellationToken);
+            await InsertReferenceSymbolOwnersAsync(connection, transaction, indexId, snapshotId, referenceWriteSet?.Mods ?? [], cancellationToken);
+            await InsertSourceLocationsAsync(connection, transaction, writeSet.SourceLocations, cancellationToken);
+            await InsertFingerprintsAsync(connection, transaction, writeSet.Fingerprints, cancellationToken);
+            await InsertRelationshipsAsync(connection, transaction, writeSet.Relationships, cancellationToken);
+            await InsertCallableSurfaceAsync(connection, transaction, writeSet.CallableSurface ?? [], cancellationToken);
 
             await using var update = connection.CreateCommand();
             update.Transaction = transaction;
@@ -469,13 +481,32 @@ public sealed partial class SqliteAtlasRepository
         command.Parameters.AddWithValue("$created", snapshot.CreatedAtUtc);
     }
 
-    private static async Task<string?> GetRunningSnapshotIdAsync(SqliteConnection connection, SqliteTransaction transaction, string indexId, CancellationToken cancellationToken)
+    private static async Task<RunningSnapshotRecord?> GetRunningSnapshotAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string indexId,
+        CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "SELECT snapshot_id FROM index_runs WHERE index_id = $id AND status = 'Running';";
+        command.CommandText = """
+            SELECT snapshot.snapshot_id, snapshot.codebase, snapshot.channel, snapshot.environment_snapshot_id
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot
+                ON snapshot.snapshot_id = run.snapshot_id
+            WHERE run.index_id = $id
+              AND run.status = 'Running'
+            LIMIT 1;
+            """;
         command.Parameters.AddWithValue("$id", indexId);
-        return await command.ExecuteScalarAsync(cancellationToken) as string;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new RunningSnapshotRecord(
+                reader.GetString(0),
+                Enum.Parse<CodebaseKind>(reader.GetString(1)),
+                Enum.Parse<CodeChannel>(reader.GetString(2)),
+                reader.IsDBNull(3) ? null : reader.GetString(3))
+            : null;
     }
 
     // Prepared, reusable-command inserts (AT-7). One compiled statement per table, parameter
@@ -643,6 +674,157 @@ public sealed partial class SqliteAtlasRepository
         }
     }
 
+    private static async Task InsertReferenceIndexContextAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        ValidatedReferenceWriteSet? referenceWriteSet,
+        CancellationToken cancellationToken)
+    {
+        if (referenceWriteSet is null) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO reference_index_context(
+                reference_index_id,
+                reference_snapshot_id,
+                game_index_id,
+                game_snapshot_id,
+                build_id)
+            VALUES ($referenceIndex,$referenceSnapshot,$gameIndex,$gameSnapshot,$buildId);
+            """;
+        command.Parameters.AddWithValue("$referenceIndex", referenceWriteSet.Context.ReferenceIndexId);
+        command.Parameters.AddWithValue("$referenceSnapshot", referenceWriteSet.ReferenceSnapshotId);
+        command.Parameters.AddWithValue("$gameIndex", referenceWriteSet.Context.GameIndexId);
+        command.Parameters.AddWithValue("$gameSnapshot", referenceWriteSet.GameSnapshotId);
+        command.Parameters.AddWithValue("$buildId", referenceWriteSet.Context.BuildId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task InsertReferenceModsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string indexId,
+        string snapshotId,
+        IReadOnlyList<IndexReferenceModRecord> mods,
+        CancellationToken cancellationToken)
+    {
+        if (mods.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO reference_mods(
+                index_id,
+                snapshot_id,
+                mod_id,
+                display_name,
+                version,
+                license,
+                root_path,
+                content_sha256)
+            VALUES ($indexId,$snapshotId,$modId,$displayName,$version,$license,$rootPath,$contentSha256);
+            """;
+        var index = command.Parameters.Add("$indexId", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshotId", SqliteType.Text);
+        var modId = command.Parameters.Add("$modId", SqliteType.Text);
+        var displayName = command.Parameters.Add("$displayName", SqliteType.Text);
+        var version = command.Parameters.Add("$version", SqliteType.Text);
+        var license = command.Parameters.Add("$license", SqliteType.Text);
+        var rootPath = command.Parameters.Add("$rootPath", SqliteType.Text);
+        var contentSha256 = command.Parameters.Add("$contentSha256", SqliteType.Text);
+        command.Prepare();
+        foreach (var mod in mods)
+        {
+            index.Value = indexId;
+            snapshot.Value = snapshotId;
+            modId.Value = mod.ModId;
+            displayName.Value = mod.DisplayName;
+            version.Value = mod.Version;
+            license.Value = (object?)mod.License ?? DBNull.Value;
+            rootPath.Value = mod.RootPath;
+            contentSha256.Value = mod.ContentSha256;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task InsertReferenceDocumentsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string indexId,
+        string snapshotId,
+        IReadOnlyList<IndexReferenceDocumentRecord> documents,
+        CancellationToken cancellationToken)
+    {
+        if (documents.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO reference_documents(
+                index_id,
+                snapshot_id,
+                mod_id,
+                relative_path,
+                kind,
+                sha256,
+                byte_count,
+                content)
+            VALUES ($indexId,$snapshotId,$modId,$relativePath,$kind,$sha256,$byteCount,$content);
+            """;
+        var index = command.Parameters.Add("$indexId", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshotId", SqliteType.Text);
+        var modId = command.Parameters.Add("$modId", SqliteType.Text);
+        var relativePath = command.Parameters.Add("$relativePath", SqliteType.Text);
+        var kind = command.Parameters.Add("$kind", SqliteType.Text);
+        var sha256 = command.Parameters.Add("$sha256", SqliteType.Text);
+        var byteCount = command.Parameters.Add("$byteCount", SqliteType.Integer);
+        var content = command.Parameters.Add("$content", SqliteType.Text);
+        command.Prepare();
+        foreach (var document in documents)
+        {
+            index.Value = indexId;
+            snapshot.Value = snapshotId;
+            modId.Value = document.ModId;
+            relativePath.Value = document.RelativePath;
+            kind.Value = document.Kind;
+            sha256.Value = document.Sha256;
+            byteCount.Value = document.ByteCount;
+            content.Value = document.Content;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static async Task InsertReferenceSymbolOwnersAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string indexId,
+        string snapshotId,
+        IReadOnlyList<IndexReferenceModRecord> mods,
+        CancellationToken cancellationToken)
+    {
+        if (mods.Count == 0) return;
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO reference_symbol_owners(index_id, snapshot_id, symbol_id, mod_id)
+            VALUES ($indexId,$snapshotId,$symbolId,$modId);
+            """;
+        var index = command.Parameters.Add("$indexId", SqliteType.Text);
+        var snapshot = command.Parameters.Add("$snapshotId", SqliteType.Text);
+        var symbolId = command.Parameters.Add("$symbolId", SqliteType.Text);
+        var modId = command.Parameters.Add("$modId", SqliteType.Text);
+        command.Prepare();
+        foreach (var mod in mods)
+        {
+            foreach (var ownedSymbolId in mod.SymbolIds.Distinct(StringComparer.Ordinal))
+            {
+                index.Value = indexId;
+                snapshot.Value = snapshotId;
+                symbolId.Value = ownedSymbolId;
+                modId.Value = mod.ModId;
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+    }
+
     private static async Task InsertRelationshipsAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<IndexRelationshipRecord> relationships, CancellationToken cancellationToken)
     {
         if (relationships.Count == 0) return;
@@ -750,6 +932,143 @@ public sealed partial class SqliteAtlasRepository
         var result = new List<IndexCallableSurfaceRecord>(2);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken)) result.Add(ReadCallableSurface(reader));
+        return result;
+    }
+
+    public async Task<ReferenceIndexContextRecord?> GetReferenceIndexContextAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT context.reference_index_id, context.game_index_id, context.build_id
+            FROM reference_index_context AS context
+            INNER JOIN index_runs AS run
+                ON run.index_id = context.reference_index_id
+               AND run.snapshot_id = context.reference_snapshot_id
+            WHERE context.reference_index_id = $indexId
+              AND run.status = 'Completed'
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new ReferenceIndexContextRecord(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+            : null;
+    }
+
+    public async Task<IReadOnlyList<IndexReferenceModRecord>> GetCompletedReferenceModsAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        var ownedSymbols = await LoadReferenceSymbolOwnersByModAsync(connection, indexId, cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT mod.mod_id, mod.display_name, mod.version, mod.license, mod.root_path, mod.content_sha256
+            FROM reference_mods AS mod
+            INNER JOIN index_runs AS run
+                ON run.index_id = mod.index_id
+               AND run.snapshot_id = mod.snapshot_id
+            WHERE mod.index_id = $indexId
+              AND run.status = 'Completed'
+            ORDER BY mod.mod_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        var result = new List<IndexReferenceModRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var modId = reader.GetString(0);
+            result.Add(new IndexReferenceModRecord(
+                modId,
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                ownedSymbols.TryGetValue(modId, out var symbolIds) ? symbolIds : []));
+        }
+
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexReferenceDocumentRecord>> GetCompletedReferenceDocumentsAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                   document.byte_count, document.content
+            FROM reference_documents AS document
+            INNER JOIN index_runs AS run
+                ON run.index_id = document.index_id
+               AND run.snapshot_id = document.snapshot_id
+            WHERE document.index_id = $indexId
+              AND run.status = 'Completed'
+            ORDER BY document.mod_id COLLATE BINARY, document.relative_path COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        var result = new List<IndexReferenceDocumentRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadReferenceDocument(reader));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<IndexReferenceDocumentRecord>> SearchCompletedReferenceDocumentsAsync(
+        string indexId,
+        string query,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The reference document search limit must be positive.");
+
+        var escaped = EscapeLikePattern(query);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT document.mod_id, document.relative_path, document.kind, document.sha256,
+                   document.byte_count, document.content
+            FROM reference_documents AS document
+            INNER JOIN index_runs AS run
+                ON run.index_id = document.index_id
+               AND run.snapshot_id = document.snapshot_id
+            WHERE document.index_id = $indexId
+              AND run.status = 'Completed'
+              AND (
+                  document.relative_path LIKE $contains ESCAPE '\' COLLATE NOCASE
+                  OR document.content LIKE $contains ESCAPE '\' COLLATE NOCASE
+              )
+            ORDER BY
+                CASE
+                    WHEN document.relative_path = $query COLLATE NOCASE THEN 0
+                    WHEN document.relative_path LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 1
+                    WHEN document.relative_path LIKE $contains ESCAPE '\' COLLATE NOCASE THEN 2
+                    ELSE 3
+                END,
+                document.relative_path COLLATE BINARY,
+                document.mod_id COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$query", query);
+        command.Parameters.AddWithValue("$prefix", escaped + "%");
+        command.Parameters.AddWithValue("$contains", "%" + escaped + "%");
+        command.Parameters.AddWithValue("$limit", limit);
+        var result = new List<IndexReferenceDocumentRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadReferenceDocument(reader));
         return result;
     }
 
@@ -863,4 +1182,292 @@ public sealed partial class SqliteAtlasRepository
             Enum.Parse<CallableSurfaceStatus>(reader.GetString(10)),
             Enum.Parse<InteropInputTrust>(reader.GetString(11)),
             reader.GetString(12));
+
+    private static IndexReferenceDocumentRecord ReadReferenceDocument(SqliteDataReader reader) =>
+        new(
+            reader.GetString(0),
+            reader.GetString(1),
+            reader.GetString(2),
+            reader.GetString(3),
+            reader.GetInt64(4),
+            reader.GetString(5));
+
+    private static async Task<ValidatedReferenceWriteSet?> ValidateReferenceWriteSetAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string indexId,
+        RunningSnapshotRecord runningSnapshot,
+        IndexWriteSet writeSet,
+        CancellationToken cancellationToken)
+    {
+        var mods = writeSet.ReferenceMods ?? [];
+        var documents = writeSet.ReferenceDocuments ?? [];
+        var hasReferenceRows = writeSet.ReferenceIndexContext is not null || mods.Count > 0 || documents.Count > 0;
+        if (runningSnapshot.Codebase != CodebaseKind.ReferenceMod)
+        {
+            if (hasReferenceRows)
+                throw new InvalidOperationException("Only reference-mod snapshots can persist reference mod rows.");
+            return null;
+        }
+
+        if (runningSnapshot.Channel != CodeChannel.Installed)
+            throw new InvalidOperationException("Reference-mod snapshots must use the Installed channel.");
+
+        var context = writeSet.ReferenceIndexContext
+            ?? throw new InvalidOperationException("Reference-mod indexes require a reference index context.");
+        if (!string.Equals(context.ReferenceIndexId, indexId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Reference index context must belong to the running index.");
+
+        var gameIndex = await GetCompletedIndexOwnershipAsync(
+            connection,
+            transaction,
+            context.GameIndexId,
+            cancellationToken) ?? throw new InvalidOperationException("Reference-mod indexes require a completed base game index.");
+        if (gameIndex.Codebase != CodebaseKind.ScheduleI || gameIndex.Channel != CodeChannel.Installed)
+            throw new InvalidOperationException("Reference-mod indexes must target a completed installed Schedule I index.");
+        if (!string.Equals(gameIndex.BuildId, context.BuildId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Reference index context build id must match the completed base game index build.");
+
+        var referenceBuildId = await GetBuildIdForEnvironmentSnapshotAsync(
+            connection,
+            transaction,
+            runningSnapshot.EnvironmentSnapshotId,
+            cancellationToken);
+        if (referenceBuildId is not null && !string.Equals(referenceBuildId, context.BuildId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Reference-mod snapshots must match the recorded base game build.");
+
+        var symbolsById = writeSet.Symbols.ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var persistedReferenceSymbolIds = await LoadSymbolIdsForSnapshotAsync(
+            connection,
+            transaction,
+            runningSnapshot.SnapshotId,
+            cancellationToken);
+        var modIds = new HashSet<string>(StringComparer.Ordinal);
+        var ownedReferenceSymbolIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var mod in mods)
+        {
+            if (!modIds.Add(mod.ModId))
+                throw new InvalidOperationException("Reference mod ids must be unique within an index.");
+
+            foreach (var ownedSymbolId in mod.SymbolIds)
+            {
+                if (!ownedReferenceSymbolIds.Add(ownedSymbolId))
+                    throw new InvalidOperationException("Every reference source symbol must have exactly one mod owner.");
+
+                if (!symbolsById.TryGetValue(ownedSymbolId, out var ownedSymbol) ||
+                    !string.Equals(ownedSymbol.SnapshotId, runningSnapshot.SnapshotId, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Reference source symbols must belong to the running reference snapshot.");
+            }
+        }
+
+        if (persistedReferenceSymbolIds.Any(symbolId => !ownedReferenceSymbolIds.Contains(symbolId)) ||
+            symbolsById.Keys.Any(symbolId => !ownedReferenceSymbolIds.Contains(symbolId)))
+            throw new InvalidOperationException("Every reference source symbol must have exactly one mod owner.");
+
+        foreach (var document in documents)
+        {
+            if (!modIds.Contains(document.ModId))
+                throw new InvalidOperationException("Reference documents must belong to a persisted reference mod.");
+        }
+
+        foreach (var relationship in writeSet.Relationships)
+        {
+            if (!symbolsById.TryGetValue(relationship.SourceSymbolId, out var sourceSymbol) ||
+                !string.Equals(sourceSymbol.SnapshotId, runningSnapshot.SnapshotId, StringComparison.Ordinal))
+                throw new InvalidOperationException("Reference relationships must originate from the running reference snapshot.");
+        }
+
+        var externalTargets = writeSet.Relationships
+            .Where(relationship => relationship.TargetSymbolId is not null)
+            .Select(relationship => relationship.TargetSymbolId!)
+            .Distinct(StringComparer.Ordinal)
+            .Where(symbolId => !symbolsById.ContainsKey(symbolId))
+            .ToArray();
+        var externalTargetSnapshots = await LoadSymbolSnapshotIdsAsync(
+            connection,
+            transaction,
+            externalTargets,
+            cancellationToken);
+        foreach (var relationship in writeSet.Relationships)
+        {
+            if (relationship.TargetSymbolId is null)
+                continue;
+
+            if (symbolsById.TryGetValue(relationship.TargetSymbolId, out var targetSymbol))
+            {
+                if (!string.Equals(targetSymbol.SnapshotId, runningSnapshot.SnapshotId, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Reference relationships may only target the running snapshot or recorded base game index.");
+                continue;
+            }
+
+            if (!externalTargetSnapshots.TryGetValue(relationship.TargetSymbolId, out var targetSnapshotId) ||
+                !string.Equals(targetSnapshotId, gameIndex.SnapshotId, StringComparison.Ordinal))
+                throw new InvalidOperationException("Reference relationships may only target the running snapshot or recorded base game index.");
+        }
+
+        return new ValidatedReferenceWriteSet(
+            context,
+            runningSnapshot.SnapshotId,
+            gameIndex.SnapshotId,
+            mods,
+            documents);
+    }
+
+    private static async Task<CompletedIndexOwnershipRecord?> GetCompletedIndexOwnershipAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT snapshot.snapshot_id, snapshot.codebase, snapshot.channel, env.build_id
+            FROM index_runs AS run
+            INNER JOIN code_snapshots AS snapshot
+                ON snapshot.snapshot_id = run.snapshot_id
+            LEFT JOIN environment_snapshots AS env
+                ON env.snapshot_id = snapshot.environment_snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new CompletedIndexOwnershipRecord(
+                reader.GetString(0),
+                Enum.Parse<CodebaseKind>(reader.GetString(1)),
+                Enum.Parse<CodeChannel>(reader.GetString(2)),
+                reader.IsDBNull(3) ? null : reader.GetString(3))
+            : null;
+    }
+
+    private static async Task<string?> GetBuildIdForEnvironmentSnapshotAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string? environmentSnapshotId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(environmentSnapshotId))
+            return null;
+
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT build_id
+            FROM environment_snapshots
+            WHERE snapshot_id = $snapshotId
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$snapshotId", environmentSnapshotId);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    private static async Task<Dictionary<string, string>> LoadSymbolSnapshotIdsAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IReadOnlyList<string> symbolIds,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (symbolIds.Count == 0)
+            return result;
+
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        var parameterNames = new string[symbolIds.Count];
+        for (var index = 0; index < symbolIds.Count; index++)
+        {
+            parameterNames[index] = "$symbol" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            command.Parameters.AddWithValue(parameterNames[index], symbolIds[index]);
+        }
+
+        command.CommandText = $"""
+            SELECT symbol_id, snapshot_id
+            FROM symbols
+            WHERE symbol_id IN ({string.Join(", ", parameterNames)});
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result[reader.GetString(0)] = reader.GetString(1);
+        return result;
+    }
+
+    private static async Task<IReadOnlyList<string>> LoadSymbolIdsForSnapshotAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string snapshotId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT symbol_id
+            FROM symbols
+            WHERE snapshot_id = $snapshotId;
+            """;
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(reader.GetString(0));
+        return result;
+    }
+
+    private static async Task<Dictionary<string, IReadOnlyList<string>>> LoadReferenceSymbolOwnersByModAsync(
+        SqliteConnection connection,
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT owner.mod_id, owner.symbol_id
+            FROM reference_symbol_owners AS owner
+            INNER JOIN index_runs AS run
+                ON run.index_id = owner.index_id
+               AND run.snapshot_id = owner.snapshot_id
+            WHERE owner.index_id = $indexId
+              AND run.status = 'Completed'
+            ORDER BY owner.mod_id COLLATE BINARY, owner.symbol_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        var result = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var modId = reader.GetString(0);
+            if (!result.TryGetValue(modId, out var symbolIds))
+            {
+                symbolIds = [];
+                result.Add(modId, symbolIds);
+            }
+
+            symbolIds.Add(reader.GetString(1));
+        }
+
+        return result.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<string>)pair.Value,
+            StringComparer.Ordinal);
+    }
+
+    private sealed record RunningSnapshotRecord(
+        string SnapshotId,
+        CodebaseKind Codebase,
+        CodeChannel Channel,
+        string? EnvironmentSnapshotId);
+
+    private sealed record CompletedIndexOwnershipRecord(
+        string SnapshotId,
+        CodebaseKind Codebase,
+        CodeChannel Channel,
+        string? BuildId);
+
+    private sealed record ValidatedReferenceWriteSet(
+        ReferenceIndexContextRecord Context,
+        string ReferenceSnapshotId,
+        string GameSnapshotId,
+        IReadOnlyList<IndexReferenceModRecord> Mods,
+        IReadOnlyList<IndexReferenceDocumentRecord> Documents);
 }
