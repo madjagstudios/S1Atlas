@@ -44,6 +44,15 @@ internal static class SourceCommand
         {
             Description = "Write the complete hash-verified source file to this path."
         };
+        var fullTypeOption = new Option<bool>("--full-type")
+        {
+            Description = "Return the containing type's verified source span for a member selection."
+        };
+        var relatedLimitOption = new Option<int>("--related-limit")
+        {
+            Description = "Maximum caller and callee rows to include in the source neighborhood (0-50).",
+            DefaultValueFactory = _ => 10
+        };
         var jsonOption = CommandOutput.CreateJsonOption();
 
         var command = new Command("source", "Show integrity-checked source for one resolved symbol.");
@@ -59,6 +68,8 @@ internal static class SourceCommand
         command.Options.Add(contextOption);
         command.Options.Add(fileOption);
         command.Options.Add(outputOption);
+        command.Options.Add(fullTypeOption);
+        command.Options.Add(relatedLimitOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -78,6 +89,8 @@ internal static class SourceCommand
                     parseResult.GetValue(buildOption),
                     parseResult.GetValue(limitOption),
                     parseResult.GetValue(contextOption),
+                    parseResult.GetValue(fullTypeOption),
+                    parseResult.GetValue(relatedLimitOption),
                     parseResult.GetValue(fileOption),
                     parseResult.GetValue(outputOption),
                     commandOutput,
@@ -102,6 +115,8 @@ internal static class SourceCommand
         string? buildId,
         int limit,
         int context,
+        bool fullType,
+        int relatedLimit,
         bool fullFile,
         string? destination,
         CommandOutput commandOutput,
@@ -111,6 +126,15 @@ internal static class SourceCommand
             return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
         if (context < 0)
             return commandOutput.Failure(1, "InvalidContext", "--context cannot be negative.");
+        if (relatedLimit is < 0 or > 50)
+            return commandOutput.Failure(1, "InvalidRelatedLimit", "--related-limit must be between 0 and 50.");
+        if (fullType && (fullFile || !string.IsNullOrWhiteSpace(destination)))
+        {
+            return commandOutput.Failure(
+                1,
+                "InvalidOptionCombination",
+                "--full-type cannot be combined with --file or --output.");
+        }
 
         repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
         IndexQueryOptions options;
@@ -150,13 +174,20 @@ internal static class SourceCommand
                 }
 
                 resolution = service.SourceInIndexAsync(
-                    authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, query, context, cancellationToken).GetAwaiter().GetResult();
+                    authority.IndexRun!,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    query,
+                    context,
+                    cancellationToken,
+                    fullType,
+                    relatedLimit).GetAwaiter().GetResult();
             }
             else
             {
                 resolution = options.Scope == IndexQueryScope.Game
-                    ? service.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult()
-                    : federatedService.SourceAsync(query, options, context, cancellationToken).GetAwaiter().GetResult();
+                    ? service.SourceAsync(query, options, context, cancellationToken, fullType, relatedLimit).GetAwaiter().GetResult()
+                    : federatedService.SourceAsync(query, options, context, cancellationToken, fullType, relatedLimit).GetAwaiter().GetResult();
             }
         }
         catch (FileNotFoundException exception)
@@ -278,7 +309,10 @@ internal static class SourceCommand
             snippet.Provenance,
             fullFile || writtenPath is not null,
             writtenPath,
-            displayedText);
+            displayedText,
+            snippet.RuntimeVerification,
+            snippet.Neighborhood,
+            snippet.NeighborhoodNotice);
         return commandOutput.Success(data, writer => WriteHuman(data, writer));
     }
 
@@ -292,6 +326,27 @@ internal static class SourceCommand
         writer.WriteLine($"Body recovery: {data.BodyRecoveryStatus?.ToString() ?? "n/a"}");
         writer.WriteLine($"Provenance:    {data.Provenance}");
         if (data.OutputPath is not null) writer.WriteLine($"Written:       {data.OutputPath}");
+        if (data.RuntimeVerification is { } runtimeVerification)
+        {
+            writer.WriteLine($"Runtime verification: {string.Join(", ", runtimeVerification.Signals)}");
+            writer.WriteLine($"Runtime guidance:     {runtimeVerification.Message}");
+        }
+        if (data.Neighborhood is { } neighborhood)
+        {
+            writer.WriteLine(
+                $"Neighborhood: Callers: {neighborhood.Callers.Count}/{neighborhood.CallerTotal}; " +
+                $"Callees: {neighborhood.Callees.Count}/{neighborhood.CalleeTotal}");
+            foreach (var caller in neighborhood.Callers)
+                writer.WriteLine($"  Caller: {FormatRelationship(caller)}");
+            foreach (var callee in neighborhood.Callees)
+                writer.WriteLine($"  Callee: {FormatRelationship(callee)}");
+            if (!string.IsNullOrWhiteSpace(neighborhood.CallerCompletenessNotice))
+                writer.WriteLine($"Caller notice: {neighborhood.CallerCompletenessNotice}");
+            if (!string.IsNullOrWhiteSpace(neighborhood.CalleeCompletenessNotice))
+                writer.WriteLine($"Callee notice: {neighborhood.CalleeCompletenessNotice}");
+        }
+        if (!string.IsNullOrWhiteSpace(data.NeighborhoodNotice))
+            writer.WriteLine($"Neighborhood notice: {data.NeighborhoodNotice}");
         if (data.Text is not null)
         {
             writer.WriteLine();
@@ -302,6 +357,28 @@ internal static class SourceCommand
 
     private static string FormatRange(SourceLocationQueryResult location) =>
         $"{location.StartLine}:{location.StartColumn}-{location.EndLine ?? location.StartLine}:{location.EndColumn ?? location.StartColumn}";
+
+    private static string FormatRelationship(RelationshipQueryResult relationship) =>
+        $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
+        $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}";
+
+    private static string FormatEndpoint(RelationshipEndpointQueryResult endpoint)
+    {
+        if (endpoint.Resolved)
+        {
+            var readable = endpoint.QualifiedName ?? endpoint.Signature ?? endpoint.SymbolId ?? "<unknown>";
+            var id = endpoint.SymbolId is null ? string.Empty : $" [{endpoint.SymbolId}]";
+            var signature = endpoint.Signature is null || string.Equals(endpoint.Signature, readable, StringComparison.Ordinal)
+                ? string.Empty
+                : $" | {endpoint.Signature}";
+            return readable + id + signature;
+        }
+
+        var raw = endpoint.RawText ?? "<unresolved>";
+        return endpoint.SymbolId is null
+            ? $"unresolved: {raw}"
+            : $"unresolved: {raw} [{endpoint.SymbolId}]";
+    }
 
     private static CodeChannel ParseChannel(string channel) =>
         Enum.TryParse<CodeChannel>(channel, ignoreCase: true, out var parsed)
@@ -332,5 +409,8 @@ internal static class SourceCommand
         string Provenance,
         bool FullFile,
         string? OutputPath,
-        string? Text);
+        string? Text,
+        RuntimeVerificationHint? RuntimeVerification,
+        RelationshipEvidenceQueryResult? Neighborhood,
+        string? NeighborhoodNotice);
 }

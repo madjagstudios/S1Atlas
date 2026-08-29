@@ -82,13 +82,73 @@ public sealed class IndexQueryBulkTests : IAsyncDisposable
         Assert.Single(evidence.Callees);
     }
 
+    [Fact]
+    public async Task Limit_aware_relationship_evidence_keeps_direction_totals_and_omits_references()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var run = await SeedApiRunAsync(
+            "snapshot-api-limited",
+            "index-api-limited",
+            "2026-08-20T00:04:00Z",
+            "2026-08-20T00:05:00Z",
+            includeRelationship: true,
+            cancellationToken,
+            relationshipCopies: 3);
+
+        var service = new IndexQueryService(_repository);
+        var evidence = await service.GetRelationshipEvidenceInIndexAsync(
+            run.Run,
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "index-api-limited-target",
+            relatedLimit: 1,
+            cancellationToken);
+
+        Assert.Empty(evidence.References);
+        Assert.Equal(0, evidence.ReferenceTotal);
+        Assert.Equal(3, evidence.CallerTotal);
+        Assert.Equal(3, evidence.CalleeTotal);
+        Assert.Single(evidence.Callers);
+        Assert.Single(evidence.Callees);
+        Assert.Contains("Incoming callers", evidence.CallerCompletenessNotice, StringComparison.Ordinal);
+        Assert.DoesNotContain("Incoming callers", evidence.CalleeCompletenessNotice, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(51)]
+    public async Task Limit_aware_relationship_evidence_rejects_limits_outside_the_source_neighborhood_range(int relatedLimit)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var run = await SeedApiRunAsync(
+            "snapshot-api-invalid-limit-" + relatedLimit,
+            "index-api-invalid-limit-" + relatedLimit,
+            "2026-08-20T00:06:00Z",
+            "2026-08-20T00:07:00Z",
+            includeRelationship: true,
+            cancellationToken);
+
+        var service = new IndexQueryService(_repository);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.GetRelationshipEvidenceInIndexAsync(
+            run.Run,
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "index-api-invalid-limit-" + relatedLimit + "-target",
+            relatedLimit,
+            cancellationToken));
+    }
+
     private async Task<SeededRun> SeedApiRunAsync(
         string snapshotId,
         string indexId,
         string createdAt,
         string completedAt,
         bool includeRelationship,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int relationshipCopies = 1)
     {
         var sourceIdentity = "s1api:release:" + (indexId.EndsWith("old", StringComparison.Ordinal) ? "old" : "current");
         var snapshot = new CodeSnapshotRecord(snapshotId, CodebaseKind.S1Api, CodeChannel.Release, sourceIdentity, createdAt);
@@ -106,13 +166,15 @@ public sealed class IndexQueryBulkTests : IAsyncDisposable
         var calleeId = indexId + "-callee";
         var fieldId = indexId + "-field";
         var relationships = includeRelationship
-            ? new[]
-            {
-                Edge(indexId + "-ref-in", snapshotId, callerId, targetId, "ReadsField"),
-                Edge(indexId + "-ref-out", snapshotId, targetId, fieldId, "ReadsField"),
-                Edge(indexId + "-call-in", snapshotId, callerId, targetId, "Calls"),
-                Edge(indexId + "-call-out", snapshotId, targetId, calleeId, "Calls")
-            }
+            ? Enumerable.Range(1, relationshipCopies)
+                .SelectMany(index => new[]
+                {
+                    Edge(indexId + $"-ref-in-{index:D3}", snapshotId, callerId, targetId, "ReadsField"),
+                    Edge(indexId + $"-ref-out-{index:D3}", snapshotId, targetId, fieldId, "ReadsField"),
+                    Edge(indexId + $"-call-in-{index:D3}", snapshotId, callerId, targetId, "Calls"),
+                    Edge(indexId + $"-call-out-{index:D3}", snapshotId, targetId, calleeId, "Calls")
+                })
+                .ToArray()
             : [];
         await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [], [], [], relationships), completedAt, cancellationToken);
         return new SeededRun(new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Completed, createdAt, completedAt), snapshot);

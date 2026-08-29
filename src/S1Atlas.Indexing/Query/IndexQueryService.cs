@@ -6,6 +6,7 @@ namespace S1Atlas.Indexing.Query;
 public sealed class IndexQueryService
 {
     private const string CallSiteCompletenessNotice = "Call-site results are evidence of recovered IL references and do not prove runtime behavior or execution order.";
+    private const int MaxSourceNeighborhoodLimit = 50;
     private readonly IIndexRepository _repository;
     private readonly string? _dataRoot;
     private readonly SymbolResolver _symbolResolver;
@@ -267,6 +268,59 @@ public sealed class IndexQueryService
             CompletenessNotice(bodyStatus, callers: true), CompletenessNotice(bodyStatus, callers: false));
     }
 
+    public async Task<RelationshipEvidenceQueryResult> GetRelationshipEvidenceInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string symbolId,
+        int relatedLimit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
+        if (relatedLimit <= 0 || relatedLimit > MaxSourceNeighborhoodLimit)
+            throw new ArgumentOutOfRangeException(nameof(relatedLimit), $"The source neighborhood limit must be between 1 and {MaxSourceNeighborhoodLimit}.");
+
+        var symbol = await _repository.GetCompletedSymbolByIdAsync(run.IndexId, symbolId, cancellationToken);
+        if (symbol is null)
+        {
+            return new RelationshipEvidenceQueryResult(
+                [],
+                0,
+                [],
+                0,
+                [],
+                0,
+                "symbol not found in this index",
+                "symbol not found in this index");
+        }
+
+        var selected = new SelectedSymbol(
+            channel,
+            run,
+            SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)));
+        var callers = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callers, int.MaxValue, cancellationToken);
+        var callees = await GetSelectedRelationshipEdgesAsync(selected, RelationshipQueryMode.Callees, int.MaxValue, cancellationToken);
+        var mapped = await MapRelationshipEdgesAsync(
+            run,
+            callers.Concat(callees).DistinctBy(item => (item.Edge.RelationshipId, item.Direction)).ToArray(),
+            SymbolResolver.OriginFor(codebase),
+            cancellationToken);
+        var callerKeys = callers.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var calleeKeys = callees.Select(item => (item.Edge.RelationshipId, item.Direction)).ToHashSet();
+        var bodyStatus = IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : (BodyRecoveryStatus?)null;
+
+        return new RelationshipEvidenceQueryResult(
+            [],
+            0,
+            mapped.Where(item => callerKeys.Contains((item.RelationshipId, item.Direction))).Take(relatedLimit).ToArray(),
+            callers.Count,
+            mapped.Where(item => calleeKeys.Contains((item.RelationshipId, item.Direction))).Take(relatedLimit).ToArray(),
+            callees.Count,
+            CompletenessNotice(bodyStatus, callers: true),
+            CompletenessNotice(bodyStatus, callers: false));
+    }
+
     public async Task<IReadOnlyList<SymbolQueryResult>> FindAsync(
         string query,
         SymbolKind kind,
@@ -473,36 +527,54 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string selector,
         int context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool fullType = false,
+        int relatedLimit = 10)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         if (context < 0)
             throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
+        ValidateSourceRelatedLimit(relatedLimit);
         if (_dataRoot is null)
             throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
 
         var selection = await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken);
         if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
             return new SourceSnippetResolutionResult(selection.Resolution, null);
-        return await SourceFromSelectedAsync(selection.Selected.Value, codebase, context, cancellationToken);
+        return await SourceFromSelectedAsync(
+            selection.Selected.Value,
+            codebase,
+            context,
+            fullType,
+            relatedLimit,
+            cancellationToken);
     }
 
     public async Task<SourceSnippetResolutionResult> SourceAsync(
         string selector,
         IndexQueryOptions options,
         int context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool fullType = false,
+        int relatedLimit = 10)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         if (context < 0)
             throw new ArgumentOutOfRangeException(nameof(context), "Source context cannot be negative.");
+        ValidateSourceRelatedLimit(relatedLimit);
         if (_dataRoot is null)
             throw new InvalidOperationException("The Atlas data root is required for integrity-checked source queries.");
 
         var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
         if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
             return new SourceSnippetResolutionResult(selection.Resolution, null);
-        return await SourceFromSelectedAsync(selection.Selected.Value, options.Codebase, context, cancellationToken);
+        return await SourceFromSelectedAsync(
+            selection.Selected.Value,
+            options.Codebase,
+            context,
+            fullType,
+            relatedLimit,
+            cancellationToken);
     }
 
     private async Task<SymbolSearchResult> SearchInRunAsync(
@@ -807,6 +879,8 @@ public sealed class IndexQueryService
         SelectedSymbol selected,
         CodebaseKind codebase,
         int context,
+        bool fullType,
+        int relatedLimit,
         CancellationToken cancellationToken)
     {
         if (_dataRoot is null)
@@ -817,6 +891,24 @@ public sealed class IndexQueryService
             selected.Symbol.SymbolId,
             cancellationToken)
             ?? throw new InvalidDataException("The resolved symbol disappeared from the completed index.");
+        if (fullType && !string.Equals(selected.Symbol.Kind, SymbolKind.Type.ToString(), StringComparison.Ordinal))
+        {
+            var containingType = await ResolveContainingTypeAsync(selected, symbolRecord, codebase, cancellationToken);
+            if (containingType is null)
+            {
+                return new SourceSnippetResolutionResult(
+                    new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, []),
+                    null);
+            }
+
+            selected = containingType.Value;
+            symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                cancellationToken)
+                ?? throw new InvalidDataException("The containing type disappeared from the completed index.");
+            relatedLimit = 0;
+        }
         var locations = await _repository.GetCompletedSourceLocationsAsync(selected.Run.IndexId, cancellationToken);
         var matchingLocations = locations
             .Where(location => string.Equals(location.SymbolId, selected.Symbol.SymbolId, StringComparison.Ordinal))
@@ -845,6 +937,14 @@ public sealed class IndexQueryService
             locationRecord,
             context,
             cancellationToken);
+        var selectedSpan = context == 0
+            ? read.Text
+            : (await _sourceSnippetReader.ReadAsync(
+                sourcePath,
+                sourceFile.Sha256,
+                locationRecord,
+                0,
+                cancellationToken)).Text;
         var location = new SourceLocationQueryResult(
             locationRecord.SymbolId,
             locationRecord.StartLine,
@@ -854,6 +954,26 @@ public sealed class IndexQueryService
         BodyRecoveryStatus? bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
+        var runtimeVerification = RuntimeVerificationClassifier.Classify(selectedSpan, selected.Symbol.Signature);
+        RelationshipEvidenceQueryResult? neighborhood = null;
+        string? neighborhoodNotice = null;
+        if (!fullType && relatedLimit > 0 && IsCallable(symbolRecord.Kind))
+        {
+            try
+            {
+                neighborhood = await GetRelationshipEvidenceInIndexAsync(
+                    selected.Run,
+                    codebase,
+                    selected.Channel,
+                    selected.Symbol.SymbolId,
+                    relatedLimit,
+                    cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                neighborhoodNotice = "Relationship neighborhood evidence was unavailable.";
+            }
+        }
         var snippet = new SourceSnippetQueryResult(
             selected.Symbol,
             selected.Run.IndexId,
@@ -866,10 +986,43 @@ public sealed class IndexQueryService
             read.Text,
             bodyRecoveryStatus,
             codebase + ":" + selected.Channel + ":generated",
-            SymbolResolver.OriginFor(codebase));
+            SymbolResolver.OriginFor(codebase),
+            RuntimeVerification: runtimeVerification,
+            Neighborhood: neighborhood,
+            NeighborhoodNotice: neighborhoodNotice);
         return new SourceSnippetResolutionResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
             snippet);
+    }
+
+    private async Task<SelectedSymbol?> ResolveContainingTypeAsync(
+        SelectedSymbol selected,
+        IndexSymbolRecord? symbolRecord,
+        CodebaseKind codebase,
+        CancellationToken cancellationToken)
+    {
+        if (symbolRecord is null)
+            return null;
+
+        var canonicalParts = symbolRecord.CanonicalKey.Split(':', 4, StringSplitOptions.None);
+        if (canonicalParts.Length < 4)
+            return null;
+
+        var memberKey = canonicalParts[3];
+        var memberSeparator = memberKey.IndexOf("::", StringComparison.Ordinal);
+        if (memberSeparator <= 0)
+            return null;
+
+        var typeCanonicalKey = $"{canonicalParts[0]}:{canonicalParts[1]}:{SymbolKind.Type}:{memberKey[..memberSeparator]}";
+        var resolution = await _symbolResolver.ResolveAsync(
+            selected.Run.IndexId,
+            typeCanonicalKey,
+            codebase,
+            selected.Channel,
+            cancellationToken);
+        return resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null
+            ? new SelectedSymbol(selected.Channel, selected.Run, resolution.Symbol)
+            : null;
     }
 
     private async Task<ChannelSelection> ResolveAcrossChannelsAsync(
@@ -983,6 +1136,14 @@ public sealed class IndexQueryService
     {
         if (limit <= 0)
             throw new ArgumentOutOfRangeException(parameterName, "The query result limit must be positive.");
+    }
+
+    private static void ValidateSourceRelatedLimit(int relatedLimit)
+    {
+        if (relatedLimit < 0 || relatedLimit > MaxSourceNeighborhoodLimit)
+            throw new ArgumentOutOfRangeException(
+                nameof(relatedLimit),
+                $"The source neighborhood limit must be between 0 and {MaxSourceNeighborhoodLimit}.");
     }
 
     private static string CompletenessNotice(BodyRecoveryStatus? status, bool callers)

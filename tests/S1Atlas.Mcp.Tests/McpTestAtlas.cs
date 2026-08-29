@@ -65,6 +65,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string KnownSymbolFragment => "Dealer";
     public string MethodSelector => "System.Void Demo.Widget::Run()";
     public string MethodSymbolId => "method-run";
+    public string RuntimeMethodSelector => "System.Void Demo.Widget::CheckPhysics()";
     public string TypeSelector => "Demo.Widget";
     public string EngineCallSiteSelector => "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink";
     public string EngineCallSiteTargetText => "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()";
@@ -716,7 +717,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                 createdAtUtc),
             ct);
 
-        const string sourceText = "namespace Demo;\npublic class Widget\n{\n    public void Run() { }\n}\n";
+        const string sourceText = "namespace Demo;\npublic class Widget\n{\n    public void Run() { }\n    public void CheckPhysics() { Physics.IgnoreLayerCollision(0, 1); }\n}\n";
         var sourceFile = new IndexSourceFileRecord(
             Id("source-file-widget"),
             snapshotId,
@@ -730,6 +731,20 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             5,
             4,
             26);
+        var typeSourceLocation = new IndexSourceLocationRecord(
+            Id("type-widget"),
+            sourceFile.SourceFileId,
+            2,
+            1,
+            6,
+            2);
+        var runtimeSourceLocation = new IndexSourceLocationRecord(
+            Id("method-check-physics"),
+            sourceFile.SourceFileId,
+            5,
+            5,
+            5,
+            71);
 
         var indexRoot = Path.Combine(DataRoot, "builds", buildId, "indexes", indexId);
         Directory.CreateDirectory(indexRoot);
@@ -767,6 +782,15 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         MethodSelector,
                         false,
                         methodBodyStatus),
+                    new IndexSymbolRecord(
+                        Id("method-check-physics"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Widget::CheckPhysics()",
+                        "Method",
+                        "Demo.Widget.CheckPhysics",
+                        RuntimeMethodSelector,
+                        false,
+                        BodyRecoveryStatus.Recovered),
                     new IndexSymbolRecord(
                         Id(CompareSymbolId),
                         snapshotId,
@@ -887,7 +911,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                         false)
                 ],
                 [sourceFile],
-                [sourceLocation],
+                [sourceLocation, typeSourceLocation, runtimeSourceLocation],
                 [
                     new IndexFingerprintRecord(
                         Id(CompareSymbolId),

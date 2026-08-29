@@ -137,7 +137,9 @@ public sealed class CodeSymbolTools
         [Description("Source context lines before and after the selected span.")] int context = 5,
         CancellationToken ct = default,
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
+        [Description("Return the containing type's verified source span.")] bool fullType = false,
+        [Description("Max caller/callee neighborhood rows per direction (0-50). Zero disables neighborhood lookup.")] int relatedLimit = 10)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -153,6 +155,11 @@ public sealed class CodeSymbolTools
                 if (!ToolArguments.TryBoundContext(context, authority, out var boundedContext, out ToolEnvelope<SourceSnippetQueryResult> contextError))
                 {
                     return contextError;
+                }
+
+                if (!ToolArguments.TryBoundRelatedLimit(relatedLimit, authority, out var boundedRelatedLimit, out ToolEnvelope<SourceSnippetQueryResult> relatedLimitError))
+                {
+                    return relatedLimitError;
                 }
 
                 if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<SourceSnippetQueryResult> scopeError))
@@ -173,12 +180,17 @@ public sealed class CodeSymbolTools
                             CodeChannel.Installed,
                             selector,
                             boundedContext,
-                            ct)
+                            ct,
+                            fullType,
+                            boundedRelatedLimit)
                         : await _services.FederatedIndexQueryService.SourceAsync(
                             selector,
                             options,
                             boundedContext,
-                            ct);
+                            ct,
+                            fullType,
+                            boundedRelatedLimit,
+                            pinned.ReferenceCollection?.ReferenceIndexId);
                     return EnvelopeMapper.FromScopedSource(authority, result, options.ReferenceCollection);
                 }
                 catch (InvalidDataException)
@@ -620,6 +632,24 @@ public sealed class CodeSymbolTools
             }
 
             bounded = context;
+            error = null!;
+            return true;
+        }
+
+        public static bool TryBoundRelatedLimit<T>(
+            int relatedLimit,
+            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            out int bounded,
+            out ToolEnvelope<T> error) where T : class
+        {
+            if (relatedLimit is < 0 or > 50)
+            {
+                bounded = default;
+                error = Invalid<T>(authority, "InvalidRelatedLimit", "The related result limit must be between 0 and 50.");
+                return false;
+            }
+
+            bounded = relatedLimit;
             error = null!;
             return true;
         }
