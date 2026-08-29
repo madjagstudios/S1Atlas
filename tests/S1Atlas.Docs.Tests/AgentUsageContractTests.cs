@@ -8,9 +8,8 @@ public sealed class AgentUsageContractTests
     public void SharedGuidanceDefinesParitySelectionAndTrustRules()
     {
         var root = FindRepositoryRoot();
-        var skill = File.ReadAllText(Path.Combine(root, "skills", "s1atlas", "SKILL.md"));
-        var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md"));
-        var combined = skill + Environment.NewLine + usage;
+        var skill = File.ReadAllText(Path.Combine(root, "skills", "s1atlas", "SKILL.md")).ReplaceLineEndings("\n");
+        var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
         var sharedGuidance = """
             ### Host parity and efficient use
 
@@ -31,16 +30,30 @@ public sealed class AgentUsageContractTests
             callability, and source runtime-verification hints remain distinct from live
             runtime behavior.
             """.ReplaceLineEndings("\n");
+        var sharedTrustRule = """
+            S1Atlas does not download mods, rank internet mods by similarity, or treat
+            prior-art selection as proof of safety, compatibility, licensing, or
+            behavioral equivalence.
+            """.ReplaceLineEndings("\n");
 
-        Assert.Contains("dotnet run --project src/S1Atlas.Mcp -- mcp serve", combined, StringComparison.Ordinal);
-        Assert.Contains("list_reference_collections", combined, StringComparison.Ordinal);
-        Assert.Contains("CLI JSON", combined, StringComparison.Ordinal);
-        Assert.Contains("unavailable server", combined, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("content hash", combined, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("read-only", combined, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("does not download mods", combined, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(sharedGuidance, skill.ReplaceLineEndings("\n"), StringComparison.Ordinal);
-        Assert.Contains(sharedGuidance, usage.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        AssertPortableContract(skill);
+        AssertPortableContract(usage);
+        Assert.Contains("dotnet run --project src/S1Atlas.Mcp -- mcp serve", skill, StringComparison.Ordinal);
+        Assert.Contains("dotnet run --project src/S1Atlas.Mcp -- mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains(sharedGuidance, skill, StringComparison.Ordinal);
+        Assert.Contains(sharedGuidance, usage, StringComparison.Ordinal);
+        Assert.Contains(sharedTrustRule, skill, StringComparison.Ordinal);
+        Assert.Contains(sharedTrustRule, usage, StringComparison.Ordinal);
+    }
+
+    private static void AssertPortableContract(string document)
+    {
+        Assert.Contains("list_reference_collections", document, StringComparison.Ordinal);
+        Assert.Contains("CLI's JSON output", document, StringComparison.Ordinal);
+        Assert.Contains("missing server as an empty index", document, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("content hash", document, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("read-only", document, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("does not download mods", document, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRepositoryRoot()
