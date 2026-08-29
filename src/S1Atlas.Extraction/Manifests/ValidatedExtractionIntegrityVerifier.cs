@@ -324,12 +324,10 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
         document.CreatedAtUtc == expected.CreatedAtUtc &&
         document.TrustLevel == expected.TrustLevel &&
         document.InitialValidationOutcome == expected.InitialValidationOutcome &&
-        // The validated_extractions row stores only aggregate statistics; the per-assembly
-        // breakdown lives in extraction_artifacts and is verified against the immutable
-        // artifact manifest below (recomputed vs document). So the database-row comparison
-        // is aggregate-only — comparing Assemblies here would always fail because the
-        // reconstructed row carries an empty Assemblies list.
         AggregateStatisticsEqual(document.Statistics, expected.Statistics);
+
+    // The database row stores aggregate statistics; per-assembly details are verified
+    // separately against the immutable artifact manifest.
 
     private static bool AggregateStatisticsEqual(ExtractionStatistics a, ExtractionStatistics b) =>
         a.ArtifactCount == b.ArtifactCount &&
