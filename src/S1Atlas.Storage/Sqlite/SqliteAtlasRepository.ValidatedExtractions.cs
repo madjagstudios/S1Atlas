@@ -241,6 +241,7 @@ public sealed partial class SqliteAtlasRepository
             return null;
         }
 
+        // Per-assembly statistics live in validation.json and are not reconstructed from SQL.
         return new StoredValidationResult(
             AttemptId: reader.GetString(0),
             SubjectExtractionId: ReadNullableString(reader, 1),
@@ -268,9 +269,6 @@ public sealed partial class SqliteAtlasRepository
                 EventDefinitionCount: reader.GetInt32(18),
                 TotalOutputBytes: reader.GetInt64(19),
                 TotalManagedBytes: reader.GetInt64(20),
-                // The validation-results summary table has no per-artifact detail;
-                // full per-assembly statistics live only in the strict validation.json
-                // report at ReportPath, never reconstructed here from SQL.
                 Assemblies: []));
     }
 

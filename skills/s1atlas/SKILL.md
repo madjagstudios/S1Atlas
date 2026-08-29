@@ -25,6 +25,29 @@ this launch command to the S1Atlas MCP server entry:
 dotnet run --project src/S1Atlas.Mcp -- mcp serve
 ```
 
+### Host parity and efficient use
+
+Codex and Claude use the same read-only S1Atlas MCP server. When the server is
+registered and available, use MCP for discovery and queries; otherwise use the
+CLI's JSON output. Verify availability before relying on MCP, and never treat a
+missing server as an empty index.
+
+For prior-art work, list completed collections once, choose one explicit
+collection, and retain its recorded Schedule I base index. Resolve the exact
+symbol before reading source. Read the focused span first, then request only
+the bounded callers, callees, call sites, field references, or related types
+needed for the question. Do not repeat equivalent MCP and CLI queries or issue
+unscoped searches across every collection.
+
+Carry the returned build, extraction, index, collection, mod, relative-path,
+and content-hash provenance into the decision. Static relationship evidence,
+callability, and source runtime-verification hints remain distinct from live
+runtime behavior.
+
+S1Atlas does not download mods, rank internet mods by similarity, or treat
+prior-art selection as proof of safety, compatibility, licensing, or
+behavioral equivalence.
+
 Use MCP tools only after the server is registered and the tool is actually
 available. If it is not registered, use the CLI commands below; do not invent
 MCP results or silently treat an unavailable server as an empty index. Neither
