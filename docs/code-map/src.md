@@ -12,9 +12,9 @@ Roots: src
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 2 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 38 |
+| src/S1Atlas.Cli/Commands/ | 45 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
-| src/S1Atlas.Cli/Output/ | 12 |
+| src/S1Atlas.Cli/Output/ | 13 |
 | src/S1Atlas.Cli/Performance/ | 1 |
 | src/S1Atlas.Cli/Properties/ | 1 |
 | src/S1Atlas.Core/ | 1 |
@@ -61,17 +61,18 @@ Roots: src
 | src/S1Atlas.Indexing/Fingerprints/ | 1 |
 | src/S1Atlas.Indexing/Paths/ | 2 |
 | src/S1Atlas.Indexing/Properties/ | 1 |
-| src/S1Atlas.Indexing/Query/ | 4 |
-| src/S1Atlas.Indexing/Relationships/ | 1 |
+| src/S1Atlas.Indexing/Query/ | 9 |
+| src/S1Atlas.Indexing/ReferenceMods/ | 3 |
+| src/S1Atlas.Indexing/Relationships/ | 2 |
 | src/S1Atlas.Indexing/Scene/ | 10 |
 | src/S1Atlas.Indexing/Source/ | 2 |
 | src/S1Atlas.Indexing/Upstream/ | 5 |
-| src/S1Atlas.Indexing/Workflow/ | 4 |
+| src/S1Atlas.Indexing/Workflow/ | 7 |
 | src/S1Atlas.Mcp/ | 4 |
 | src/S1Atlas.Mcp/Mapping/ | 1 |
-| src/S1Atlas.Mcp/Tools/ | 4 |
+| src/S1Atlas.Mcp/Tools/ | 5 |
 | src/S1Atlas.Storage/ | 1 |
 | src/S1Atlas.Storage/Migrations/ | 7 |
 | src/S1Atlas.Storage/Properties/ | 1 |
-| src/S1Atlas.Storage/Sqlite/ | 10 |
+| src/S1Atlas.Storage/Sqlite/ | 11 |
 
