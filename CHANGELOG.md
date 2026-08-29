@@ -6,9 +6,28 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
-- Public-repo hygiene: `SECURITY.md`, issue/PR templates, this changelog.
-- Focused source queries with static runtime-verification hints, bounded
-  callable neighborhoods, and containing-type source spans.
+No changes yet.
+
+## [1.1.0] — 2026-08-28 — Agent usability
+
+This release adds the evidence surfaces that reduce repeated manual decompilation
+and make the boundary between static code evidence and live-game behavior clear.
+
+### Added
+
+- Body-recovery classification for generated interop wrappers.
+- Callable-surface queries for directly callable game members.
+- Reference-mod collections with cross-assembly relationships resolved against a
+  pinned game index.
+- Static call-site and field-reference queries with explicit resolution and
+  completeness details.
+- Focused source queries with deterministic runtime-verification hints, bounded
+  caller/callee neighborhoods, and explicit containing-type source spans.
+- Public usage and agent-skill guidance for the new query surfaces.
+
+### Maintained
+
+- Public-repository hygiene files, issue/PR templates, and release documentation.
 
 ## [1.0.0] — 2026-08-20 — V1
 
