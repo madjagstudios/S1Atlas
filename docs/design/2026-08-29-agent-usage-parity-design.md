@@ -1,6 +1,6 @@
 # Agent Usage and MCP Parity Design
 
-**Status:** Implementation planned
+**Status:** Implemented
 
 ## Goal
 
