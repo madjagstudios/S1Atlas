@@ -455,28 +455,11 @@ Host configuration and reference manifests stay outside the repository. Keep
 local paths, manifests, generated indexes, credentials, and host-private
 timeouts in user-level configuration rather than public repo content.
 
-### Host parity and efficient use
-
-Codex and Claude use the same read-only S1Atlas MCP server. When the server is
-registered and available, use MCP for discovery and queries; otherwise use the
-CLI's JSON output. Verify availability before relying on MCP, and never treat a
-missing server as an empty index.
-
-For prior-art work, list completed collections once, choose one explicit
-collection, and retain its recorded Schedule I base index. Resolve the exact
-symbol before reading source. Read the focused span first, then request only
-the bounded callers, callees, call sites, field references, or related types
-needed for the question. Do not repeat equivalent MCP and CLI queries or issue
-unscoped searches across every collection.
-
-Carry the returned build, extraction, index, collection, mod, relative-path,
-and content-hash provenance into the decision. Static relationship evidence,
-callability, and source runtime-verification hints remain distinct from live
-runtime behavior.
-
-S1Atlas does not download mods, rank internet mods by similarity, or treat
-prior-art selection as proof of safety, compatibility, licensing, or
-behavioral equivalence.
+The skill is the canonical source for the full parity, trust, provenance, and
+efficient-query contract. Use MCP only when the registered read-only server is
+available; otherwise use the skill's CLI commands as the fallback. Never treat
+a missing server as an empty index, and remember that S1Atlas does not download
+mods.
 
 ## Command reference
 

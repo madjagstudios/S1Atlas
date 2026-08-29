@@ -5,45 +5,35 @@ namespace S1Atlas.Docs.Tests;
 public sealed class AgentUsageContractTests
 {
     [Fact]
-    public void SharedGuidanceDefinesParitySelectionAndTrustRules()
+    public void CanonicalSkillDefinesTheFullAgentContract()
     {
         var root = FindRepositoryRoot();
         var skill = File.ReadAllText(Path.Combine(root, "skills", "s1atlas", "SKILL.md")).ReplaceLineEndings("\n");
-        var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
-        var sharedGuidance = """
-            ### Host parity and efficient use
-
-            Codex and Claude use the same read-only S1Atlas MCP server. When the server is
-            registered and available, use MCP for discovery and queries; otherwise use the
-            CLI's JSON output. Verify availability before relying on MCP, and never treat a
-            missing server as an empty index.
-
-            For prior-art work, list completed collections once, choose one explicit
-            collection, and retain its recorded Schedule I base index. Resolve the exact
-            symbol before reading source. Read the focused span first, then request only
-            the bounded callers, callees, call sites, field references, or related types
-            needed for the question. Do not repeat equivalent MCP and CLI queries or issue
-            unscoped searches across every collection.
-
-            Carry the returned build, extraction, index, collection, mod, relative-path,
-            and content-hash provenance into the decision. Static relationship evidence,
-            callability, and source runtime-verification hints remain distinct from live
-            runtime behavior.
-            """.ReplaceLineEndings("\n");
-        var sharedTrustRule = """
-            S1Atlas does not download mods, rank internet mods by similarity, or treat
-            prior-art selection as proof of safety, compatibility, licensing, or
-            behavioral equivalence.
-            """.ReplaceLineEndings("\n");
 
         AssertPortableContract(skill);
-        AssertPortableContract(usage);
-        Assert.Contains("dotnet run --project src/S1Atlas.Mcp -- mcp serve", skill, StringComparison.Ordinal);
+        Assert.Contains("### Host parity and efficient use", skill, StringComparison.Ordinal);
+        Assert.Contains("## Authority boundary and provenance contract", skill, StringComparison.Ordinal);
+        Assert.Contains("Do not repeat equivalent MCP and CLI queries", skill, StringComparison.Ordinal);
+        Assert.Contains("Carry the returned build, extraction, index, collection, mod, relative-path,", skill, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UsagePointsToTheSkillAndRetainsOperationalSafetyFacts()
+    {
+        var root = FindRepositoryRoot();
+        var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
+
+        Assert.Contains("[`skills/s1atlas/SKILL.md`](../skills/s1atlas/SKILL.md)", usage, StringComparison.Ordinal);
         Assert.Contains("dotnet run --project src/S1Atlas.Mcp -- mcp serve", usage, StringComparison.Ordinal);
-        Assert.Contains(sharedGuidance, skill, StringComparison.Ordinal);
-        Assert.Contains(sharedGuidance, usage, StringComparison.Ordinal);
-        Assert.Contains(sharedTrustRule, skill, StringComparison.Ordinal);
-        Assert.Contains(sharedTrustRule, usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains("skill's CLI", usage, StringComparison.Ordinal);
+        Assert.Contains("commands remain the fallback", usage, StringComparison.Ordinal);
+        Assert.Contains("read-only server entry point", usage, StringComparison.Ordinal);
+        Assert.Contains("Host configuration and reference manifests stay outside the repository", usage, StringComparison.Ordinal);
+        Assert.Contains("S1Atlas does not download", usage, StringComparison.Ordinal);
+        Assert.Contains("mods.", usage, StringComparison.Ordinal);
+        Assert.DoesNotContain("### Host parity and efficient use", usage, StringComparison.Ordinal);
+        Assert.DoesNotContain("For prior-art work, list completed collections once", usage, StringComparison.Ordinal);
     }
 
     private static void AssertPortableContract(string document)
