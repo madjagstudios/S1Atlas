@@ -444,6 +444,36 @@ commands remain the fallback. The skill adds no capability and requires agents
 to cite FACT/DERIVED evidence and build/extraction/index or API commit/index
 identifiers in their own output.
 
+Codex and Claude share the same public contract. When the read-only MCP server
+is registered and available, use MCP for discovery and queries; otherwise use
+CLI JSON as the supported fallback. Verify availability before relying on MCP,
+and never treat an unavailable server as an empty index.
+
+For host registration, point each host's local configuration at the same
+read-only server entry point using that operator's checkout root, for example:
+
+```text
+dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve
+```
+
+Host configuration and reference manifests stay outside the repository. Keep
+local paths, manifests, generated indexes, credentials, and host-private
+timeouts in user-level configuration rather than public repo content.
+
+For prior-art work, list completed collections once, choose one explicit
+collection, and retain its recorded Schedule I base index. Resolve the exact
+symbol before reading source. Read the focused span first, then request only
+the bounded callers, callees, call sites, field references, or related types
+needed for the question. Do not repeat equivalent MCP and CLI queries or issue
+unscoped searches across every collection.
+
+Carry the returned build, extraction, index, collection, mod, relative-path,
+and content hash provenance into the decision. Static relationship evidence,
+callability, source body recovery, and source runtime-verification hints remain
+distinct from live runtime behavior. S1Atlas does not download mods, rank
+internet mods by similarity, or treat prior-art selection as proof of safety,
+compatibility, licensing, or behavioral equivalence.
+
 ## Command reference
 
 | Command | Purpose |
