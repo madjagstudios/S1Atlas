@@ -140,6 +140,181 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Source_json_includes_runtime_verification_neighborhood_and_notice_fields()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var source = CreateRuntimeSource();
+        await SeedSourceIndexAsync(source, cancellationToken, endColumn: 53);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--channel", "all", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        var data = document.RootElement.GetProperty("data");
+        var verification = data.GetProperty("runtimeVerification");
+        Assert.Contains(0, verification.GetProperty("signals").EnumerateArray().Select(value => value.GetInt32()));
+        Assert.Contains("in-game", verification.GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(JsonValueKind.Object, data.GetProperty("neighborhood").ValueKind);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("neighborhoodNotice").ValueKind);
+    }
+
+    [Fact]
+    public async Task Source_human_output_reports_runtime_guidance_and_neighborhood_summary()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSourceIndexAsync(CreateRuntimeSource(), cancellationToken, endColumn: 53);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        var text = output.ToString();
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.Contains("Runtime verification:", text, StringComparison.Ordinal);
+        Assert.Contains("in-game", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Neighborhood:", text, StringComparison.Ordinal);
+        Assert.Contains("Callers: 0/0", text, StringComparison.Ordinal);
+        Assert.Contains("Callees: 0/0", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Source_related_limit_zero_omits_neighborhood()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSourceIndexAsync(CreateRuntimeSource(), cancellationToken, endColumn: 53);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--channel", "all", "--related-limit", "0", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("data").GetProperty("neighborhood").ValueKind);
+    }
+
+    [Fact]
+    public async Task Source_related_limit_accepts_the_upper_bound()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSourceIndexAsync(CreateRuntimeSource(), cancellationToken, endColumn: 53);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--channel", "all", "--related-limit", "50", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Fact]
+    public async Task Source_full_type_returns_containing_type_span_without_neighborhood()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var source = string.Join(
+            '\n',
+            "namespace Demo;",
+            "public sealed class SourceTarget",
+            "{",
+            "    public void Run() { }",
+            "}");
+        await SeedSourceIndexAsync(
+            source,
+            cancellationToken,
+            startLine: 4,
+            endColumn: 26,
+            includeContainingType: true,
+            containingTypeStartLine: 2,
+            containingTypeEndLine: 5);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--channel", "all", "--full-type", "--context", "0", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal("Type", data.GetProperty("symbol").GetProperty("kind").GetString());
+        Assert.Contains("public sealed class SourceTarget", data.GetProperty("text").GetString(), StringComparison.Ordinal);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("neighborhood").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("51")]
+    public async Task Source_rejects_related_limit_outside_zero_to_fifty(string value)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSourceIndexAsync(CreateSmallSource(), cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "source-target", "--channel", "all", "--related-limit", value, "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("InvalidRelatedLimit", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("--file")]
+    [InlineData("--output")]
+    public async Task Source_full_type_rejects_complete_file_modes(string conflictingOption)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSourceIndexAsync(CreateSmallSource(), cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        string[] arguments = conflictingOption == "--output"
+            ? ["source", "source-target", "--channel", "all", "--full-type", conflictingOption, Path.Combine(_root, "out.cs"), "--json"]
+            : ["source", "source-target", "--channel", "all", "--full-type", conflictingOption, "--json"];
+
+        var exitCode = application.Invoke(arguments, output, error, cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        using var document = JsonDocument.Parse(output.ToString());
+        Assert.Equal("InvalidOptionCombination", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Source_context_zero_returns_exact_recorded_span_and_negative_context_is_stable_error()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -465,7 +640,10 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         CancellationToken cancellationToken,
         int startLine = 6,
         int endColumn = 22,
-        string? installationRoot = null)
+        string? installationRoot = null,
+        bool includeContainingType = false,
+        int containingTypeStartLine = 1,
+        int containingTypeEndLine = 1)
     {
         var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
         await repository.InitializeAsync(cancellationToken);
@@ -489,20 +667,47 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         await repository.StartIndexRunAsync(
             new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
             cancellationToken);
+        var symbols = new List<IndexSymbolRecord>
+        {
+            new(
+                "source-target",
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.SourceTarget::Run()",
+                "Method",
+                "Demo.SourceTarget.Run",
+                "System.Void Demo.SourceTarget::Run()",
+                false,
+                BodyRecoveryStatus.Recovered)
+        };
+        var locations = new List<IndexSourceLocationRecord>
+        {
+            new("source-target", "source-file", startLine, 1, startLine, endColumn)
+        };
+        if (includeContainingType)
+        {
+            symbols.Add(new IndexSymbolRecord(
+                "source-type",
+                snapshotId,
+                "ScheduleI:Installed:Type:Demo.SourceTarget",
+                "Type",
+                "Demo.SourceTarget",
+                "Demo.SourceTarget",
+                false));
+            locations.Add(new IndexSourceLocationRecord(
+                "source-type",
+                "source-file",
+                containingTypeStartLine,
+                1,
+                containingTypeEndLine,
+                2));
+        }
+
         await repository.CompleteIndexRunAsync(
             indexId,
             new IndexWriteSet(
-                [new IndexSymbolRecord(
-                    "source-target",
-                    snapshotId,
-                    "ScheduleI:Installed:Method:Demo.SourceTarget::Run()",
-                    "Method",
-                    "Demo.SourceTarget.Run",
-                    "System.Void Demo.SourceTarget::Run()",
-                    false,
-                    BodyRecoveryStatus.Recovered)],
+                symbols,
                 [new IndexSourceFileRecord("source-file", snapshotId, relativePath, sha256, bytes.LongLength)],
-                [new IndexSourceLocationRecord("source-target", "source-file", startLine, 1, startLine, endColumn)],
+                locations,
                 [],
                 []),
             "2026-08-14T18:25:00Z",
@@ -649,6 +854,21 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         "line-4",
         "line-5",
         "public void Run() { }",
+        "line-7",
+        "line-8",
+        "line-9",
+        "line-10",
+        "line-11",
+        "line-12");
+
+    private static string CreateRuntimeSource() => string.Join(
+        '\n',
+        "line-1",
+        "line-2",
+        "line-3",
+        "line-4",
+        "line-5",
+        "public void Run() { var collider = new Collider(); }",
         "line-7",
         "line-8",
         "line-9",

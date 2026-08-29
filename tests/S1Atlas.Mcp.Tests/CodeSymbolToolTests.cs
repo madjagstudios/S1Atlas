@@ -260,6 +260,20 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public void GetSource_AppendsOptionalArgumentsAfterScopeAndCollection()
+    {
+        var parameters = typeof(CodeSymbolTools)
+            .GetMethod(nameof(CodeSymbolTools.GetSourceAsync))!
+            .GetParameters();
+
+        Assert.Equal(
+            ["selector", "buildId", "context", "ct", "scope", "collection", "fullType", "relatedLimit"],
+            parameters.Select(parameter => parameter.Name));
+        Assert.Equal(false, parameters[^2].DefaultValue);
+        Assert.Equal(10, parameters[^1].DefaultValue);
+    }
+
+    [Fact]
     public async Task GetSource_ReturnsHashVerifiedSnippet()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -274,6 +288,143 @@ public sealed class CodeSymbolToolTests
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Equal("public void Run() { }", envelope.Data!.Text);
         Assert.Equal(atlas.SourceRelativePath, envelope.Data.RelativePath);
+    }
+
+    [Fact]
+    public async Task GetSource_DefaultsToBoundedCallableNeighborhood()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            atlas.MethodSelector,
+            buildId: null,
+            context: 0,
+            ct: CancellationToken.None);
+
+        var neighborhood = envelope.Data!.Neighborhood;
+        Assert.NotNull(neighborhood);
+        Assert.Equal(1, neighborhood.CallerTotal);
+        Assert.Equal(1, neighborhood.CalleeTotal);
+        Assert.Single(neighborhood.Callers);
+        Assert.Single(neighborhood.Callees);
+        Assert.Empty(neighborhood.References);
+        Assert.Equal(0, neighborhood.ReferenceTotal);
+        Assert.Equal(atlas.IndexId, envelope.Build!.IndexId);
+    }
+
+    [Fact]
+    public async Task GetSource_RelatedLimitZero_OmitsNeighborhood()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            atlas.MethodSelector,
+            buildId: null,
+            context: 0,
+            ct: CancellationToken.None,
+            relatedLimit: 0);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Null(envelope.Data!.Neighborhood);
+        Assert.Null(envelope.Data.NeighborhoodNotice);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(51)]
+    public async Task GetSource_InvalidRelatedLimit_ReturnsSelectedBuild(int relatedLimit)
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            atlas.MethodSelector,
+            buildId: null,
+            context: 0,
+            ct: CancellationToken.None,
+            relatedLimit: relatedLimit);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+        Assert.Equal("InvalidRelatedLimit", envelope.Error!.Code);
+        Assert.Equal(atlas.IndexId, envelope.Build!.IndexId);
+    }
+
+    [Fact]
+    public async Task GetSource_FullType_ReturnsContainingTypeWithoutNeighborhood()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            atlas.MethodSelector,
+            buildId: null,
+            context: 0,
+            ct: CancellationToken.None,
+            fullType: true);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal("type-widget", envelope.Data!.Symbol.SymbolId);
+        Assert.Contains("public class Widget", envelope.Data.Text, StringComparison.Ordinal);
+        Assert.Null(envelope.Data.Neighborhood);
+        Assert.Null(envelope.Data.NeighborhoodNotice);
+        Assert.Equal(atlas.IndexId, envelope.Data.IndexId);
+    }
+
+    [Fact]
+    public async Task GetSource_ExposesStaticRuntimeVerificationHint()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            atlas.RuntimeMethodSelector,
+            buildId: null,
+            context: 0,
+            ct: CancellationToken.None,
+            relatedLimit: 0);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.NotNull(envelope.Data!.RuntimeVerification);
+        var hint = envelope.Data.RuntimeVerification!;
+        Assert.Equal([RuntimeVerificationSignal.Physics], hint.Signals);
+        Assert.Contains("in-game", hint.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(envelope.Data.Neighborhood);
+    }
+
+    [Fact]
+    public async Task GetSource_ReferenceScope_UsesPinnedCollectionAndFederatedNeighborhood()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var reference = await atlas.SeedReferenceCollectionAsync("qol");
+        await atlas.AddReferenceSourceLocationAsync(reference);
+        var tools = CreateTools(atlas);
+        var selected = await tools.SearchSymbolsAsync(
+            "Qol.Mod::Run",
+            buildId: null,
+            kind: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            scope: "reference",
+            collection: reference.Collection);
+
+        var source = await tools.GetSourceAsync(
+            selected.Data!.Results[0].Signature,
+            buildId: null,
+            context: 0,
+            ct: CancellationToken.None,
+            scope: "reference",
+            collection: reference.Collection,
+            relatedLimit: 1);
+
+        Assert.Equal(ToolStatus.Resolved, source.Status);
+        Assert.Equal(reference.IndexId, source.Data!.IndexId);
+        Assert.Equal("reference", source.Data.Origin);
+        Assert.Equal(1, source.Data.Neighborhood!.CalleeTotal);
+        Assert.Single(source.Data.Neighborhood.Callees);
+        Assert.Equal("game", source.Data.Neighborhood.Callees[0].Target.Origin);
+        Assert.Contains(source.Provenance, entry => entry.Source == "reference-collection");
     }
 
     [Fact]

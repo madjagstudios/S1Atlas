@@ -5,6 +5,7 @@ namespace S1Atlas.Indexing.Query;
 
 public sealed class FederatedIndexQueryService
 {
+    private const int MaxSourceNeighborhoodLimit = 50;
     private const string CallSiteCompletenessNotice = TargetRelationshipQueryNotices.CallSites;
     private readonly IIndexRepository _repository;
     private readonly SymbolResolver _symbolResolver;
@@ -67,7 +68,7 @@ public sealed class FederatedIndexQueryService
         if (options.Scope == IndexQueryScope.Game)
             return await _gameResolution(selector, options, cancellationToken);
         if (options.Scope == IndexQueryScope.Reference)
-            return await _reference.ResolveAsync(selector, options, cancellationToken);
+            return await _reference.ResolveAsync(selector, options, cancellationToken, referenceIndexId);
 
         var selection = await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
         if (selection is null)
@@ -102,31 +103,37 @@ public sealed class FederatedIndexQueryService
         string selector,
         IndexQueryOptions options,
         int context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool fullType = false,
+        int relatedLimit = 10,
+        string? referenceIndexId = null)
     {
         ValidateOptions(options);
+        ValidateSourceRelatedLimit(relatedLimit);
         var selection = options.Scope == IndexQueryScope.Game
             ? null
-            : await _reference.GetSelectionForFederationAsync(options, cancellationToken);
+            : await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
         if (options.Scope != IndexQueryScope.Game && selection is null)
             return new SourceSnippetResolutionResult(
                 new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
                 null);
 
-        var resolution = await ResolveAsync(selector, options, cancellationToken);
+        var resolution = await ResolveAsync(selector, options, cancellationToken, referenceIndexId);
         if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
             return new SourceSnippetResolutionResult(resolution, null);
         return resolution.Symbol.Origin == "reference"
-            ? await _reference.SourceAsync(selector, options with { Scope = IndexQueryScope.Reference }, context, cancellationToken)
+            ? await _reference.SourceAsync(selector, options with { Scope = IndexQueryScope.Reference }, context, cancellationToken, fullType, relatedLimit, referenceIndexId)
             : selection is null
-                ? await _game.SourceAsync(selector, GameOptions(options, options.Limit), context, cancellationToken)
+                ? await _game.SourceAsync(selector, GameOptions(options, options.Limit), context, cancellationToken, fullType, relatedLimit)
                 : await _game.SourceInIndexAsync(
                     selection.GameRun,
                     CodebaseKind.ScheduleI,
                     CodeChannel.Installed,
                     selector,
                     context,
-                    cancellationToken);
+                    cancellationToken,
+                    fullType,
+                    relatedLimit);
     }
 
     public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
@@ -507,6 +514,12 @@ public sealed class FederatedIndexQueryService
     {
         if (limit <= 0)
             throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
+    }
+
+    private static void ValidateSourceRelatedLimit(int relatedLimit)
+    {
+        if (relatedLimit < 0 || relatedLimit > MaxSourceNeighborhoodLimit)
+            throw new ArgumentOutOfRangeException(nameof(relatedLimit), $"The source neighborhood limit must be between 0 and {MaxSourceNeighborhoodLimit}.");
     }
 
     private Task<SymbolResolutionResult> _gameResolution(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>

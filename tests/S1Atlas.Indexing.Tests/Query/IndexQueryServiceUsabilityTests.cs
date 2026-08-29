@@ -207,6 +207,98 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Source_classifies_the_selected_span_without_classifying_context_lines()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = await SeedScheduleOneSourceAsync(
+            BodyRecoveryStatus.Recovered,
+            cancellationToken,
+            selectedSourceLine: "    public void Run() { var body = new Rigidbody(); }",
+            contextLine: "    // NavMesh context must not affect the selected member hint.");
+        var service = new IndexQueryService(_repository, _dataRoot);
+
+        var result = await service.SourceAsync(
+            fixture.Selected.SymbolId,
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed),
+            1,
+            cancellationToken);
+
+        var snippet = Assert.IsType<SourceSnippetQueryResult>(result.Snippet);
+        var hint = Assert.IsType<RuntimeVerificationHint>(snippet.RuntimeVerification);
+        Assert.Equal([RuntimeVerificationSignal.Physics], hint.Signals);
+        Assert.NotNull(snippet.Neighborhood);
+        Assert.Equal(1, snippet.Neighborhood.CalleeTotal);
+        Assert.Single(snippet.Neighborhood.Callees);
+    }
+
+    [Fact]
+    public async Task Source_runtime_hint_is_stable_across_context_sizes_and_uses_identifier_boundaries()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = await SeedScheduleOneSourceAsync(
+            BodyRecoveryStatus.Recovered,
+            cancellationToken,
+            selectedSourceLine: "    public void Run() { var body = new Metaphysics(); }",
+            contextLine: "    // NavMesh context must not affect the selected member hint.");
+        var service = new IndexQueryService(_repository, _dataRoot);
+
+        var noContext = await service.SourceAsync(
+            fixture.Selected.SymbolId,
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed),
+            0,
+            cancellationToken,
+            relatedLimit: 0);
+        var broadContext = await service.SourceAsync(
+            fixture.Selected.SymbolId,
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed),
+            1,
+            cancellationToken,
+            relatedLimit: 0);
+
+        Assert.Null(noContext.Snippet?.RuntimeVerification);
+        Assert.Null(broadContext.Snippet?.RuntimeVerification);
+    }
+
+    [Fact]
+    public async Task Source_full_type_returns_the_containing_type_span_without_neighborhood()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = await SeedScheduleOneSourceAsync(BodyRecoveryStatus.Recovered, cancellationToken);
+        var service = new IndexQueryService(_repository, _dataRoot);
+
+        var result = await service.SourceAsync(
+            fixture.Selected.SymbolId,
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed),
+            0,
+            cancellationToken,
+            fullType: true);
+
+        var snippet = Assert.IsType<SourceSnippetQueryResult>(result.Snippet);
+        Assert.Equal(fixture.Type.SymbolId, snippet.Symbol.SymbolId);
+        Assert.StartsWith("public class Widget", snippet.Text, StringComparison.Ordinal);
+        Assert.Null(snippet.Neighborhood);
+        Assert.Null(snippet.NeighborhoodNotice);
+    }
+
+    [Fact]
+    public async Task Source_related_limit_zero_omits_neighborhood_and_invalid_bounds_are_rejected()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = await SeedScheduleOneSourceAsync(BodyRecoveryStatus.Recovered, cancellationToken);
+        var service = new IndexQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        var result = await service.SourceAsync(fixture.Selected.SymbolId, options, 0, cancellationToken, relatedLimit: 0);
+
+        Assert.Null(result.Snippet?.Neighborhood);
+        Assert.Null(result.Snippet?.NeighborhoodNotice);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.SourceAsync(
+            fixture.Selected.SymbolId, options, 0, cancellationToken, relatedLimit: -1));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.SourceAsync(
+            fixture.Selected.SymbolId, options, 0, cancellationToken, relatedLimit: 51));
+    }
+
+    [Fact]
     public async Task Source_returns_structured_ambiguity_and_does_not_choose_a_candidate()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -342,13 +434,17 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
     private async Task<SourceFixture> SeedScheduleOneSourceAsync(
         BodyRecoveryStatus? bodyRecoveryStatus,
         CancellationToken cancellationToken,
-        CodebaseKind codebase = CodebaseKind.ScheduleI) =>
-        await SeedSourceAsync(bodyRecoveryStatus, codebase, cancellationToken);
+        CodebaseKind codebase = CodebaseKind.ScheduleI,
+        string selectedSourceLine = "    public void Run() { }",
+        string contextLine = "    // context") =>
+        await SeedSourceAsync(bodyRecoveryStatus, codebase, cancellationToken, selectedSourceLine, contextLine);
 
     private async Task<SourceFixture> SeedSourceAsync(
         BodyRecoveryStatus? bodyRecoveryStatus,
         CodebaseKind codebase,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string selectedSourceLine = "    public void Run() { }",
+        string contextLine = "    // context")
     {
         await _repository.InitializeAsync(cancellationToken);
         var indexId = new string('a', 64);
@@ -400,7 +496,7 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
             "Beta.DealerService",
             false);
 
-        const string sourceText = "namespace Demo;\npublic class Widget\n{\n    public void Run() { }\n}\n";
+        var sourceText = $"namespace Demo;\npublic class Widget\n{{\n{contextLine}\n{selectedSourceLine}\n}}\n";
         const string unrelatedText = "this file must never be read for Widget.Run";
         var sourceFile = new IndexSourceFileRecord(
             "file-source",
@@ -417,16 +513,16 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         var methodLocation = new IndexSourceLocationRecord(
             selected.SymbolId,
             sourceFile.SourceFileId,
-            4,
             5,
-            4,
-            26);
+            5,
+            5,
+            selectedSourceLine.Length + 1);
         var typeLocation = new IndexSourceLocationRecord(
             type.SymbolId,
             sourceFile.SourceFileId,
             2,
             1,
-            5,
+            6,
             2);
 
         await _repository.CompleteIndexRunAsync(

@@ -100,6 +100,203 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Reference_source_classifies_its_span_and_returns_pinned_callable_neighborhood()
+    {
+        var fixture = await SeedAsync(
+            "runtime-source",
+            "Runtime source",
+            multipleCallees: true,
+            distinctGameIndexes: true,
+            sourceText: "namespace Qol;\npublic class Mod\n{\n    // NavMesh context must not affect the member hint.\n    public void Run()\n    {\n        var collider = new Collider();\n    }\n}\n");
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(
+            CodebaseKind.ReferenceMod,
+            Scope: IndexQueryScope.Reference,
+            ReferenceCollection: fixture.IndexId);
+
+        var result = await service.SourceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            options,
+            context: 2,
+            TestContext.Current.CancellationToken,
+            relatedLimit: 1);
+
+        var snippet = Assert.IsType<SourceSnippetQueryResult>(result.Snippet);
+        Assert.Equal("reference", snippet.Origin);
+        Assert.Equal([RuntimeVerificationSignal.Physics], snippet.RuntimeVerification!.Signals);
+        Assert.DoesNotContain(RuntimeVerificationSignal.NavMesh, snippet.RuntimeVerification.Signals);
+        Assert.Equal(0, snippet.Neighborhood!.CallerTotal);
+        Assert.Equal(2, snippet.Neighborhood.CalleeTotal);
+        Assert.Empty(snippet.Neighborhood.References);
+        Assert.Single(snippet.Neighborhood.Callees);
+        Assert.Equal(fixture.GameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
+        Assert.NotEqual(fixture.LatestGameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
+
+        var fullType = await service.SourceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            options,
+            0,
+            TestContext.Current.CancellationToken,
+            fullType: true,
+            relatedLimit: 1);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, fullType.Resolution.Status);
+        var typeSnippet = Assert.IsType<SourceSnippetQueryResult>(fullType.Snippet);
+        Assert.Equal("qol/Qol.Mod", typeSnippet.Symbol.QualifiedName);
+        Assert.Contains("public class Mod", typeSnippet.Text, StringComparison.Ordinal);
+        Assert.Null(typeSnippet.Neighborhood);
+        Assert.Null(typeSnippet.NeighborhoodNotice);
+    }
+
+    [Fact]
+    public async Task Federated_reference_source_preserves_scope_routing_and_pinned_game_binding()
+    {
+        var fixture = await SeedAsync(
+            "federated-source",
+            "Federated source",
+            multipleCallees: true,
+            distinctGameIndexes: true,
+            sourceText: "namespace Qol;\npublic class Mod\n{\n    // NavMesh context must not affect the member hint.\n    public void Run()\n    {\n        var collider = new Collider();\n    }\n}\n");
+        var service = new FederatedIndexQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(
+            CodebaseKind.ScheduleI,
+            Scope: IndexQueryScope.All,
+            ReferenceCollection: fixture.IndexId);
+
+        var result = await service.SourceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            options,
+            2,
+            TestContext.Current.CancellationToken,
+            relatedLimit: 1,
+            referenceIndexId: fixture.IndexId);
+
+        var snippet = Assert.IsType<SourceSnippetQueryResult>(result.Snippet);
+        Assert.Equal("reference", snippet.Origin);
+        Assert.Equal([RuntimeVerificationSignal.Physics], snippet.RuntimeVerification!.Signals);
+        Assert.Equal(2, snippet.Neighborhood!.CalleeTotal);
+        Assert.Single(snippet.Neighborhood.Callees);
+        Assert.Equal(fixture.GameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
+        Assert.NotEqual(fixture.LatestGameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
+    }
+
+    [Fact]
+    public async Task Reference_source_returns_no_completed_index_without_a_collection()
+    {
+        await _repository.InitializeAsync(TestContext.Current.CancellationToken);
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+
+        var result = await service.SourceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: "missing"),
+            0,
+            TestContext.Current.CancellationToken,
+            relatedLimit: 0);
+
+        Assert.Equal(SymbolResolutionStatus.NoCompletedIndex, result.Resolution.Status);
+        Assert.Null(result.Snippet);
+    }
+
+    [Fact]
+    public async Task Reference_source_preserves_integrity_failure_with_runtime_options()
+    {
+        var fixture = await SeedAsync(
+            "runtime-integrity",
+            "Runtime integrity",
+            sourceText: "namespace Qol;\npublic class Mod\n{\n    public void Run() { }\n}\n");
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(
+            CodebaseKind.ReferenceMod,
+            Scope: IndexQueryScope.Reference,
+            ReferenceCollection: fixture.IndexId);
+        var sourceFile = Assert.Single(await _repository.GetCompletedSourceFilesAsync(
+            fixture.IndexId,
+            TestContext.Current.CancellationToken));
+        await File.AppendAllTextAsync(
+            Path.Combine(_dataRoot, "reference", fixture.IndexId, sourceFile.RelativePath.Replace('/', Path.DirectorySeparatorChar)),
+            "tampered",
+            TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.SourceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            options,
+            0,
+            TestContext.Current.CancellationToken,
+            relatedLimit: 0));
+    }
+
+    [Theory]
+    [InlineData(-1, IndexQueryScope.Game)]
+    [InlineData(-1, IndexQueryScope.Reference)]
+    [InlineData(-1, IndexQueryScope.All)]
+    [InlineData(51, IndexQueryScope.Game)]
+    [InlineData(51, IndexQueryScope.Reference)]
+    [InlineData(51, IndexQueryScope.All)]
+    public async Task Federated_source_rejects_invalid_related_limits_before_resolution(
+        int relatedLimit,
+        IndexQueryScope scope)
+    {
+        var service = new FederatedIndexQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(
+            CodebaseKind.ScheduleI,
+            Scope: scope,
+            ReferenceCollection: scope == IndexQueryScope.Game ? null : "missing");
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.SourceAsync(
+            "missing",
+            options,
+            0,
+            TestContext.Current.CancellationToken,
+            relatedLimit: relatedLimit));
+    }
+
+    [Fact]
+    public async Task Reference_relationship_evidence_is_compact_and_uses_the_pinned_game_context()
+    {
+        var fixture = await SeedAsync(
+            "relationship-evidence",
+            "Relationship evidence",
+            multipleCallees: true,
+            distinctGameIndexes: true);
+        var service = new ReferenceModQueryService(_repository, _dataRoot);
+        var options = new IndexQueryOptions(
+            CodebaseKind.ReferenceMod,
+            Scope: IndexQueryScope.Reference,
+            ReferenceCollection: fixture.IndexId);
+
+        var latestGameIndex = await _repository.GetLatestCompletedIndexAsync(
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(fixture.LatestGameIndexId, latestGameIndex?.IndexId);
+        Assert.NotEqual(fixture.GameIndexId, fixture.LatestGameIndexId);
+
+        var evidence = await service.GetRelationshipEvidenceAsync(
+            "qol/Qol.Mod::Run():System.Void",
+            options,
+            relatedLimit: 1,
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(evidence.References);
+        Assert.Equal(0, evidence.ReferenceTotal);
+        Assert.Equal(0, evidence.CallerTotal);
+        Assert.Equal(2, evidence.CalleeTotal);
+        Assert.Single(evidence.Callees);
+        Assert.True(evidence.CalleeTotal > evidence.Callees.Count);
+        Assert.All(evidence.Callees, result =>
+        {
+            Assert.Equal("reference", result.Source.Origin);
+            Assert.Equal("game", result.Target.Origin);
+            Assert.True(result.Target.SymbolId is not null &&
+                        new[] { fixture.GameSymbolId, fixture.SecondGameSymbolId }
+                            .Contains(result.Target.SymbolId, StringComparer.Ordinal));
+            Assert.NotEqual(fixture.LatestGameSymbolId, result.Target.SymbolId);
+        });
+        Assert.NotEqual(evidence.CallerCompletenessNotice, evidence.CalleeCompletenessNotice);
+    }
+
+    [Fact]
     public async Task Reference_source_does_not_guess_a_file_for_a_multi_assembly_mod()
     {
         var fixture = await SeedAsync("multi-assembly", "Multi assembly", multipleAssemblies: true);
@@ -443,10 +640,27 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal(["alt", "qol"], result.Candidates.Select(candidate => candidate.ReferenceModId!).ToArray());
     }
 
-    private async Task<QueryFixture> SeedAsync(string collectionName, string displayName, bool multipleAssemblies = false, bool multipleDocuments = false)
+    private async Task<QueryFixture> SeedAsync(
+        string collectionName,
+        string displayName,
+        bool multipleAssemblies = false,
+        bool multipleDocuments = false,
+        bool multipleCallees = false,
+        bool distinctGameIndexes = false,
+        string? sourceText = null)
     {
         await _repository.InitializeAsync(TestContext.Current.CancellationToken);
-        var fixture = await QueryFixture.CreateAsync(_root, _dataRoot, _repository, collectionName, displayName, multipleAssemblies: multipleAssemblies, multipleDocuments: multipleDocuments);
+        var fixture = await QueryFixture.CreateAsync(
+            _root,
+            _dataRoot,
+            _repository,
+            collectionName,
+            displayName,
+            multipleAssemblies: multipleAssemblies,
+            multipleDocuments: multipleDocuments,
+            multipleCallees: multipleCallees,
+            distinctGameIndexes: distinctGameIndexes,
+            sourceText: sourceText);
         return fixture;
     }
 
@@ -469,7 +683,13 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         await Task.CompletedTask;
     }
 
-    private sealed record QueryFixture(string IndexId, string GameIndexId, string GameSymbolId)
+    private sealed record QueryFixture(
+        string IndexId,
+        string GameIndexId,
+        string GameSymbolId,
+        string SecondGameSymbolId,
+        string LatestGameIndexId,
+        string LatestGameSymbolId)
     {
         public static async Task<QueryFixture> CreateAsync(
             string root,
@@ -480,11 +700,17 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
             bool empty = false,
             bool secondMod = false,
             bool multipleAssemblies = false,
-            bool multipleDocuments = false)
+            bool multipleDocuments = false,
+            bool multipleCallees = false,
+            bool distinctGameIndexes = false,
+            string? sourceText = null)
         {
             var buildId = new string('a', 64);
-            var gameIndexId = new string('b', 64);
-            var gameSymbolId = "game-target";
+            var gameIndexId = distinctGameIndexes ? "game-index-pinned" : new string('b', 64);
+            var latestGameIndexId = distinctGameIndexes ? "game-index-latest" : gameIndexId;
+            var gameSymbolId = distinctGameIndexes ? "game-pinned-target" : "game-target";
+            var secondGameSymbolId = distinctGameIndexes ? "game-pinned-other-target" : "game-other-target";
+            var latestGameSymbolId = distinctGameIndexes ? "game-latest-target" : gameSymbolId;
             var now = DateTimeOffset.UtcNow;
             var environment = new EnvironmentSnapshot(
                 2,
@@ -494,38 +720,32 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
                 "test",
                 now);
             await repository.SaveSnapshotAsync(environment, TestContext.Current.CancellationToken);
-            if (await repository.GetCompletedIndexAsync(gameIndexId, TestContext.Current.CancellationToken) is null)
+            var environmentId = EnvironmentSnapshotId.Create(environment);
+            var pinnedSnapshotId = distinctGameIndexes ? "game-snapshot-pinned" : "game-snapshot";
+            var pinnedSourceIdentity = distinctGameIndexes ? "game-pinned-extraction" : "game-extraction";
+            var pinnedCallerSymbolId = distinctGameIndexes ? "game-caller-pinned" : "game-caller";
+            await CreateGameIndexAsync(
+                repository,
+                gameIndexId,
+                pinnedSnapshotId,
+                pinnedSourceIdentity,
+                environmentId,
+                now.AddMinutes(-1),
+                gameSymbolId,
+                multipleCallees ? secondGameSymbolId : null,
+                pinnedCallerSymbolId);
+            if (distinctGameIndexes)
             {
-                var environmentId = EnvironmentSnapshotId.Create(environment);
-                var gameSnapshot = new CodeSnapshotRecord("game-snapshot", CodebaseKind.ScheduleI, CodeChannel.Installed, "game-extraction", now.ToString("O"), environmentId);
-                await repository.CreateCodeSnapshotAsync(gameSnapshot, TestContext.Current.CancellationToken);
-                await repository.StartIndexRunAsync(new IndexRunRecord(gameIndexId, gameSnapshot.SnapshotId, IndexRunStatus.Running, now.ToString("O")), TestContext.Current.CancellationToken);
-                var gameSymbol = new IndexSymbolRecord(
-                    gameSymbolId,
-                    gameSnapshot.SnapshotId,
-                    "ScheduleI:Installed:Method:Game.Target::Run():System.Void",
-                    "Method",
-                    "Game.Target::Run():System.Void",
-                    "Game.Target::Run():System.Void",
-                    false);
-                var gameCaller = new IndexSymbolRecord(
-                    "game-caller",
-                    gameSnapshot.SnapshotId,
-                    "ScheduleI:Installed:Method:Game.Caller::Run():System.Void",
-                    "Method",
-                    "Game.Caller::Run():System.Void",
-                    "Game.Caller::Run():System.Void",
-                    false);
-                await repository.CompleteIndexRunAsync(
-                    gameIndexId,
-                    new IndexWriteSet(
-                        [gameSymbol, gameCaller],
-                        [],
-                        [],
-                        [],
-                        [new IndexRelationshipRecord("game-caller", gameSnapshot.SnapshotId, gameCaller.SymbolId, gameSymbol.SymbolId, null, "Calls", "fixture:game")]),
-                    now.ToString("O"),
-                    TestContext.Current.CancellationToken);
+                await CreateGameIndexAsync(
+                    repository,
+                    latestGameIndexId,
+                    "game-snapshot-latest",
+                    "game-latest-extraction",
+                    environmentId,
+                    now,
+                    latestGameSymbolId,
+                    multipleCallees ? "game-latest-other-target" : null,
+                    "game-caller-latest");
             }
 
             var modRoot = Path.Combine(root, "mods", "qol");
@@ -559,7 +779,7 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
                 displayName);
             var decompilation = new ManagedDecompilation(
                 assemblyPath,
-                "namespace Qol; public class Mod { public void Run() {} public void Unresolved() {} }",
+                sourceText ?? "namespace Qol; public class Mod { public void Run() {} public void Unresolved() {} }",
                 [new ManagedTypeFacts(
                     "Qol.Mod",
                     "Qol",
@@ -567,7 +787,19 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
                     null,
                     [],
                     [
-                        new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Game.Target::Run():System.Void")], [], "System.Void"),
+                        new ManagedMemberFacts(
+                            "Run",
+                            ManagedMemberKind.Method,
+                            "Run",
+                            true,
+                            multipleCallees
+                                ? [
+                                    new ManagedReferenceFact(ManagedReferenceKind.Calls, "Game.Target::Run():System.Void"),
+                                    new ManagedReferenceFact(ManagedReferenceKind.Calls, "Game.OtherTarget::Run():System.Void")
+                                ]
+                                : [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Game.Target::Run():System.Void")],
+                            [],
+                            "System.Void"),
                         new ManagedMemberFacts("Unresolved", ManagedMemberKind.Method, "Unresolved", true, [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Missing.Target::Run():System.Void")], [], "System.Void")
                     ])]);
             var workflow = new ReferenceModIndexWorkflow(
@@ -578,7 +810,92 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
                 new ReferenceModIndexSource(new RecordingDecompiler(decompilation)),
                 new ReferenceGameSymbolLoader(repository));
             var result = await workflow.RunAsync(buildId, collection, false, TestContext.Current.CancellationToken);
-            return new QueryFixture(result.IndexId, gameIndexId, gameSymbolId);
+            if (sourceText is not null)
+                await AddSourceLocationsAsync(repository, Path.Combine(root, "atlas.db"), result.IndexId, TestContext.Current.CancellationToken);
+            return new QueryFixture(result.IndexId, gameIndexId, gameSymbolId, secondGameSymbolId, latestGameIndexId, latestGameSymbolId);
+        }
+
+        private static async Task AddSourceLocationsAsync(
+            SqliteAtlasRepository repository,
+            string databasePath,
+            string indexId,
+            CancellationToken cancellationToken)
+        {
+            var symbols = await repository.GetCompletedSymbolsAsync(indexId, cancellationToken);
+            var type = Assert.Single(symbols, symbol => symbol.QualifiedName == "qol/Qol.Mod");
+            var method = Assert.Single(symbols, symbol => symbol.QualifiedName == "qol/Qol.Mod::Run():System.Void");
+            var sourceFile = Assert.Single(
+                await repository.GetCompletedSourceFilesAsync(indexId, cancellationToken),
+                file => file.RelativePath.EndsWith("QolMod.cs", StringComparison.Ordinal));
+            await using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+                $"Data Source={databasePath}");
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO source_locations(symbol_id, source_file_id, start_line, start_column, end_line, end_column) VALUES ($type,$file,2,1,9,2),($method,$file,5,5,8,6);";
+            command.Parameters.AddWithValue("$type", type.SymbolId);
+            command.Parameters.AddWithValue("$method", method.SymbolId);
+            command.Parameters.AddWithValue("$file", sourceFile.SourceFileId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        private static async Task CreateGameIndexAsync(
+            SqliteAtlasRepository repository,
+            string indexId,
+            string snapshotId,
+            string sourceIdentity,
+            string environmentId,
+            DateTimeOffset completedAt,
+            string targetSymbolId,
+            string? secondTargetSymbolId,
+            string callerSymbolId)
+        {
+            if (await repository.GetCompletedIndexAsync(indexId, TestContext.Current.CancellationToken) is not null)
+                return;
+
+            var timestamp = completedAt.ToString("O");
+            var gameSnapshot = new CodeSnapshotRecord(snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, sourceIdentity, timestamp, environmentId);
+            await repository.CreateCodeSnapshotAsync(gameSnapshot, TestContext.Current.CancellationToken);
+            await repository.StartIndexRunAsync(new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, timestamp), TestContext.Current.CancellationToken);
+            var gameSymbol = new IndexSymbolRecord(
+                targetSymbolId,
+                snapshotId,
+                "ScheduleI:Installed:Method:Game.Target::Run():System.Void",
+                "Method",
+                "Game.Target::Run():System.Void",
+                "Game.Target::Run():System.Void",
+                false);
+            var gameSymbols = new List<IndexSymbolRecord> { gameSymbol };
+            if (secondTargetSymbolId is not null)
+            {
+                gameSymbols.Add(new IndexSymbolRecord(
+                    secondTargetSymbolId,
+                    snapshotId,
+                    "ScheduleI:Installed:Method:Game.OtherTarget::Run():System.Void",
+                    "Method",
+                    "Game.OtherTarget::Run():System.Void",
+                    "Game.OtherTarget::Run():System.Void",
+                    false));
+            }
+
+            var gameCaller = new IndexSymbolRecord(
+                callerSymbolId,
+                snapshotId,
+                "ScheduleI:Installed:Method:Game.Caller::Run():System.Void",
+                "Method",
+                "Game.Caller::Run():System.Void",
+                "Game.Caller::Run():System.Void",
+                false);
+            gameSymbols.Add(gameCaller);
+            await repository.CompleteIndexRunAsync(
+                indexId,
+                new IndexWriteSet(
+                    gameSymbols,
+                    [],
+                    [],
+                    [],
+                    [new IndexRelationshipRecord(callerSymbolId, snapshotId, callerSymbolId, targetSymbolId, null, "Calls", "fixture:game")]),
+                timestamp,
+                TestContext.Current.CancellationToken);
         }
     }
 

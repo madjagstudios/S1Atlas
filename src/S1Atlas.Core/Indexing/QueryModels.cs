@@ -74,6 +74,17 @@ public sealed record RelationshipEvidenceQueryResult(
     string CallerCompletenessNotice,
     string CalleeCompletenessNotice);
 
+public enum RuntimeVerificationSignal
+{
+    Physics,
+    NavMesh,
+    TriggerState
+}
+
+public sealed record RuntimeVerificationHint(
+    IReadOnlyList<RuntimeVerificationSignal> Signals,
+    string Message);
+
 public sealed record SymbolQueryResult(
     string IndexId,
     string Codebase,
@@ -239,7 +250,10 @@ public sealed record SourceSnippetQueryResult(
     string? ReferenceModId = null,
     string? DisplayName = null,
     string? Version = null,
-    string? License = null);
+    string? License = null,
+    RuntimeVerificationHint? RuntimeVerification = null,
+    RelationshipEvidenceQueryResult? Neighborhood = null,
+    string? NeighborhoodNotice = null);
 
 public sealed record SourceSnippetResolutionResult(
     SymbolResolutionResult Resolution,

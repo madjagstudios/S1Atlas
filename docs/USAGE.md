@@ -127,6 +127,34 @@ dotnet run --project src/S1Atlas.Cli -- fieldrefs "Demo.State.Value" --readers
 dotnet run --project src/S1Atlas.Cli -- callable "<TypeName.MethodName>"
 ```
 
+Source queries are focused by default. For a resolved method or constructor,
+the result includes bounded direct callers and callees from the selected index.
+`--related-limit` defaults to `10`, accepts `0` through `50`, and `0` disables
+the neighborhood lookup. The neighborhood is callable-only; fields, properties,
+events, and type selections do not include one. Caller and callee totals remain separate
+and complete even when their row lists are limited, and each direction keeps its
+own completeness notice. If an optional relationship lookup fails, the verified
+source still succeeds with the neighborhood omitted and a notice explaining
+that the evidence was unavailable.
+
+Use `--full-type` to return the containing type's verified source span for a
+member selection. This is a type span, not the complete source file, and it
+cannot be combined with `--file` or `--output`:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --context 6 --related-limit 20 --json
+dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --full-type --json
+dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --file --output symbol.cs
+```
+
+When the selected member's source span or canonical signature contains a
+recognized physics, navmesh, or trigger-state signal, the result may include a
+deterministic runtime-verification hint. The heuristic scans only that selected
+span and signature; context lines requested with `--context` are never scanned.
+The message format is `Static guidance only: the selected source suggests
+<signal names> runtime behavior; verify it in-game.` It is a prompt to test in
+the game, not evidence that the runtime behavior occurs.
+
 Source results include a `Body recovery` status for callable symbols. `Recovered`
 means the indexed IL provided affirmative body evidence; `NoBodyByDesign` means an
 implementation body is not expected; `StubOrUnavailable` means the displayed text
@@ -362,6 +390,23 @@ completed collections, their recorded base index/build, and local-only mod
 metadata. `get_type`, `get_method`, and `get_callable_surface` retain their
 Schedule I-only behavior.
 
+`get_source` also accepts `fullType` (default `false`) and `relatedLimit`
+(default `10`, bounded to `0`–`50`). `fullType` returns the containing type's
+verified source span rather than the complete file; `relatedLimit: 0` disables
+the callable neighborhood. `fullType` cannot be combined with full-file output
+modes. Source results use the same static runtime-verification heuristic as the
+CLI: only the selected member span and canonical signature are scanned, never
+context. Its message format is `Static guidance only: the selected source
+suggests <signal names> runtime behavior; verify it in-game.` The JSON fields
+are `runtimeVerification`, `neighborhood`, and `neighborhoodNotice`.
+
+For callable members, `get_source` can include bounded callers and callees with
+separate complete totals and direction-specific completeness notices. Fields,
+properties, events, and type selections omit this neighborhood. If the optional
+relationship lookup fails, the source response still succeeds with the
+neighborhood omitted and a source-level notice; cancellation still cancels the
+request.
+
 Queries use the current environment when `buildId` is omitted and honor an
 explicit build ID exactly. The selected build must have a preferred,
 integrity-verified extraction and a completed matching Installed index. Responses
@@ -418,7 +463,7 @@ identifiers in their own output.
 | `search <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Query the normalized code index across symbols, types, and methods |
 | `type <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed type definitions |
 | `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |
-| `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--limit <n>] [--json]` | Show integrity-checked decompiled source for one resolved symbol |
+| `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--full-type] [--related-limit <0-50>] [--limit <n>] [--json]` | Show focused, integrity-checked decompiled source and optional callable neighborhood for one resolved symbol |
 | `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed references to a resolved symbol |
 | `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callers of a resolved method |
 | `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callees of a resolved method |

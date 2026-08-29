@@ -9,6 +9,7 @@ namespace S1Atlas.Indexing.Query;
 public sealed class ReferenceModQueryService
 {
     public const int MaxDocumentExcerptCharacters = 16 * 1024;
+    private const int MaxSourceNeighborhoodLimit = 50;
     private const int CandidateLimit = 50;
     private readonly IIndexRepository _repository;
     private readonly string? _dataRoot;
@@ -25,10 +26,11 @@ public sealed class ReferenceModQueryService
     public async Task<SymbolResolutionResult> ResolveAsync(
         string selector,
         IndexQueryOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
-        var selection = await RequireSelectionAsync(options, cancellationToken);
+        var selection = await RequireSelectionAsync(options, referenceIndexId, cancellationToken);
         if (selection is null)
             return NoCompletedIndex();
 
@@ -73,11 +75,15 @@ public sealed class ReferenceModQueryService
         string selector,
         IndexQueryOptions options,
         int context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool fullType = false,
+        int relatedLimit = 10,
+        string? referenceIndexId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         if (context < 0) throw new ArgumentOutOfRangeException(nameof(context));
-        var selection = await RequireSelectionAsync(options, cancellationToken);
+        ValidateSourceRelatedLimit(relatedLimit);
+        var selection = await RequireSelectionAsync(options, referenceIndexId, cancellationToken);
         if (selection is null) return new SourceSnippetResolutionResult(NoCompletedIndex(), null);
 
         var resolution = await ResolveInIndexAsync(selection, selector, cancellationToken);
@@ -88,6 +94,16 @@ public sealed class ReferenceModQueryService
 
         var symbol = await _repository.GetCompletedSymbolByIdAsync(selection.Run.IndexId, resolution.Symbol.SymbolId, cancellationToken)
             ?? throw new InvalidDataException("The resolved reference symbol disappeared from the completed index.");
+        if (fullType && !string.Equals(symbol.Kind, "Type", StringComparison.Ordinal))
+        {
+            var containingType = await ResolveContainingTypeAsync(selection, symbol, cancellationToken);
+            if (containingType is null)
+                return new SourceSnippetResolutionResult(new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, []), null);
+
+            symbol = containingType.Value.Record;
+            resolution = new SymbolResolutionResult(SymbolResolutionStatus.Resolved, containingType.Value.Symbol, []);
+            relatedLimit = 0;
+        }
         var locations = (await _repository.GetCompletedSourceLocationsAsync(selection.Run.IndexId, cancellationToken))
             .Where(location => string.Equals(location.SymbolId, symbol.SymbolId, StringComparison.Ordinal))
             .OrderBy(location => location.StartLine)
@@ -110,10 +126,28 @@ public sealed class ReferenceModQueryService
         var indexRoot = ResolveReferenceIndexRoot(_dataRoot, selection.Run.IndexId);
         var sourcePath = ResolveContainedPath(indexRoot, sourceFile.RelativePath);
         var read = await _sourceSnippetReader.ReadAsync(sourcePath, sourceFile.Sha256, location, context, cancellationToken);
+        var selectedSpan = context == 0
+            ? read.Text
+            : (await _sourceSnippetReader.ReadAsync(sourcePath, sourceFile.Sha256, location, 0, cancellationToken)).Text;
         BodyRecoveryStatus? bodyStatus = IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : null;
         var queryLocation = new SourceLocationQueryResult(location.SymbolId, location.StartLine, location.StartColumn, location.EndLine, location.EndColumn);
+        var selectedQuerySymbol = resolution.Symbol ?? throw new InvalidDataException("The resolved reference symbol metadata is missing.");
+        var runtimeVerification = RuntimeVerificationClassifier.Classify(selectedSpan, selectedQuerySymbol.Signature);
+        RelationshipEvidenceQueryResult? neighborhood = null;
+        string? neighborhoodNotice = null;
+        if (!fullType && relatedLimit > 0 && IsCallable(symbol.Kind))
+        {
+            try
+            {
+                neighborhood = await GetRelationshipEvidenceForSelectionAsync(selection, symbol, relatedLimit, cancellationToken);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                neighborhoodNotice = "Relationship neighborhood evidence was unavailable.";
+            }
+        }
         var snippet = new SourceSnippetQueryResult(
-            resolution.Symbol,
+            selectedQuerySymbol,
             selection.Run.IndexId,
             sourceFile.RelativePath,
             sourceFile.Sha256,
@@ -126,11 +160,59 @@ public sealed class ReferenceModQueryService
             "ReferenceMod:Installed:generated",
             "reference",
             selection.Collection,
-            resolution.Symbol.ReferenceModId,
-            resolution.Symbol.DisplayName,
-            resolution.Symbol.Version,
-            resolution.Symbol.License);
+            selectedQuerySymbol.ReferenceModId,
+            selectedQuerySymbol.DisplayName,
+            selectedQuerySymbol.Version,
+            selectedQuerySymbol.License,
+            RuntimeVerification: runtimeVerification,
+            Neighborhood: neighborhood,
+            NeighborhoodNotice: neighborhoodNotice);
         return new SourceSnippetResolutionResult(resolution, snippet);
+    }
+
+    public async Task<RelationshipEvidenceQueryResult> GetRelationshipEvidenceAsync(
+        string selector,
+        IndexQueryOptions options,
+        int relatedLimit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateSourceNeighborhoodLimit(relatedLimit);
+
+        var selection = await RequireSelectionAsync(options, cancellationToken);
+        if (selection is null)
+        {
+            return new RelationshipEvidenceQueryResult(
+                [],
+                0,
+                [],
+                0,
+                [],
+                0,
+                "no completed reference collection",
+                "no completed reference collection");
+        }
+
+        var resolution = await ResolveInIndexAsync(selection, selector, cancellationToken);
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+        {
+            return new RelationshipEvidenceQueryResult(
+                [],
+                0,
+                [],
+                0,
+                [],
+                0,
+                "symbol not found in this index",
+                "symbol not found in this index");
+        }
+
+        var symbol = await _repository.GetCompletedSymbolByIdAsync(
+            selection.Run.IndexId,
+            resolution.Symbol.SymbolId,
+            cancellationToken)
+            ?? throw new InvalidDataException("The resolved reference symbol disappeared from the completed index.");
+        return await GetRelationshipEvidenceForSelectionAsync(selection, symbol, relatedLimit, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ReferenceDocumentQueryResult>> GetDocumentsAsync(
@@ -358,6 +440,80 @@ public sealed class ReferenceModQueryService
             .ToArray();
     }
 
+    private async Task<RelationshipEvidenceQueryResult> GetRelationshipEvidenceForSelectionAsync(
+        IndexSelection selection,
+        IndexSymbolRecord symbol,
+        int relatedLimit,
+        CancellationToken cancellationToken)
+    {
+        var callers = (await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+                selection.Run.IndexId,
+                symbol.SymbolId,
+                cancellationToken))
+            .Where(edge => IsCallLike(edge.Kind))
+            .Select(edge => (edge, Direction: "Incoming"))
+            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+            .ToArray();
+        var callees = (await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(
+                selection.Run.IndexId,
+                symbol.SymbolId,
+                cancellationToken))
+            .Where(edge => IsCallLike(edge.Kind))
+            .Select(edge => (edge, Direction: "Outgoing"))
+            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+            .ToArray();
+        var mapped = await MapRelationshipsAsync(
+            selection,
+            callers.Concat(callees).DistinctBy(item => (item.edge.RelationshipId, item.Direction)).ToArray(),
+            includeGameEndpoints: true,
+            cancellationToken);
+        var callerKeys = callers.Select(item => (item.edge.RelationshipId, item.Direction)).ToHashSet();
+        var calleeKeys = callees.Select(item => (item.edge.RelationshipId, item.Direction)).ToHashSet();
+        var bodyStatus = IsCallable(symbol.Kind) ? symbol.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown : (BodyRecoveryStatus?)null;
+
+        return new RelationshipEvidenceQueryResult(
+            [],
+            0,
+            mapped.Where(item => callerKeys.Contains((item.RelationshipId, item.Direction))).Take(relatedLimit).ToArray(),
+            callers.Length,
+            mapped.Where(item => calleeKeys.Contains((item.RelationshipId, item.Direction))).Take(relatedLimit).ToArray(),
+            callees.Length,
+            CompletenessNotice(bodyStatus, callers: true),
+            CompletenessNotice(bodyStatus, callers: false));
+    }
+
+    private async Task<(IndexSymbolRecord Record, SymbolQueryResult Symbol)?> ResolveContainingTypeAsync(
+        IndexSelection selection,
+        IndexSymbolRecord symbol,
+        CancellationToken cancellationToken)
+    {
+        var parts = symbol.CanonicalKey.Split(':', 4, StringSplitOptions.None);
+        if (parts.Length < 4)
+            return null;
+
+        var memberKey = parts[3];
+        var separator = memberKey.IndexOf("::", StringComparison.Ordinal);
+        if (separator <= 0)
+            return null;
+
+        var typeKey = $"{parts[0]}:{parts[1]}:Type:{memberKey[..separator]}";
+        var records = await _repository.GetCompletedSymbolByCanonicalKeyAsync(
+            selection.Run.IndexId,
+            typeKey,
+            cancellationToken);
+        if (records.Count != 1)
+            return null;
+
+        var record = records[0];
+        return (record, DecorateReferenceQuerySymbol(
+            selection,
+            SymbolResolver.ToQueryResult(
+                selection.Run.IndexId,
+                CodebaseKind.ReferenceMod,
+                CodeChannel.Installed,
+                record)));
+    }
+
     private RelationshipEndpointQueryResult MapEndpoint(
         string? symbolId,
         string? rawText,
@@ -500,6 +656,38 @@ public sealed class ReferenceModQueryService
     {
         if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit));
     }
+
+    private static void ValidateSourceNeighborhoodLimit(int relatedLimit)
+    {
+        if (relatedLimit <= 0 || relatedLimit > MaxSourceNeighborhoodLimit)
+            throw new ArgumentOutOfRangeException(nameof(relatedLimit), $"The source neighborhood limit must be between 1 and {MaxSourceNeighborhoodLimit}.");
+    }
+
+    private static void ValidateSourceRelatedLimit(int relatedLimit)
+    {
+        if (relatedLimit < 0 || relatedLimit > MaxSourceNeighborhoodLimit)
+            throw new ArgumentOutOfRangeException(nameof(relatedLimit), $"The source neighborhood limit must be between 0 and {MaxSourceNeighborhoodLimit}.");
+    }
+
+    private static string CompletenessNotice(BodyRecoveryStatus? status, bool callers)
+    {
+        var bodyNotice = status switch
+        {
+            BodyRecoveryStatus.Recovered => "Atlas has affirmative recovered-body evidence.",
+            BodyRecoveryStatus.NoBodyByDesign => "No implementation body is expected for this declaration.",
+            BodyRecoveryStatus.StubOrUnavailable => "The body is stubbed or unavailable; zero call results are not definitive.",
+            BodyRecoveryStatus.Unknown => "Body recovery is unknown; zero call results are not definitive.",
+            null => "Call completeness is not applicable to a non-callable symbol.",
+            _ => "Body recovery status is unrecognized; zero call results are not definitive."
+        };
+        return callers
+            ? bodyNotice + " Incoming callers are limited to call sites whose target resolved to the selected symbol."
+            : bodyNotice;
+    }
+
+    private static bool IsCallLike(string kind) =>
+        string.Equals(kind, "Calls", StringComparison.Ordinal) ||
+        string.Equals(kind, "Constructs", StringComparison.Ordinal);
 
     private static bool IsCallable(string kind) => kind is "Method" or "Constructor";
 

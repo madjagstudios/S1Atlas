@@ -53,7 +53,14 @@ own answer or decision record, never write a citation back to Atlas.
    persistence matters, inspect the decompiled span first: CLI `source` or MCP
    `get_source`. Add `--scope`/`--collection` or the matching MCP arguments
    for reference evidence. A method name or an old mod guide is not behavior
-   evidence.
+   evidence. Source runtime-verification hints are deterministic static
+   heuristics: they scan only the selected member's source span and canonical
+   signature, never context lines. The exact trust wording is
+   `Static guidance only: the selected source suggests ... runtime behavior;
+   verify it in-game.` Treat the hint as a reason to test in-game, never as
+   proof of runtime behavior. Use CLI `--full-type` or MCP `fullType` for the
+   containing type's verified source span; it is not a full-file result, and
+   the CLI option conflicts with `--file` and `--output`.
 4. **Trace relationships.** Use CLI `refs`, `callers`, `callees`,
    `callsites`, and `fieldrefs`, or MCP `find_references`, `find_callers`,
    `find_callees`, `find_call_sites`, `find_field_references`, and
@@ -63,7 +70,13 @@ own answer or decision record, never write a citation back to Atlas.
    selected collection; use `all` explicitly when a recorded game endpoint or
    game relationship is part of the evidence. `callsites` and `fieldrefs` are
    recovered-IL static evidence only: they do not prove runtime behavior,
-   lifecycle ordering, scene behavior, geometry behavior, or call order.
+   lifecycle ordering, scene behavior, geometry behavior, or call order. Source
+   neighborhoods are callable-only and default to 10 rows per direction; the
+   CLI `--related-limit` and MCP `relatedLimit` accept 0–50, with zero disabling
+   the lookup. Caller and callee totals are separate and complete even when
+   rows are bounded, with separate completeness notices. A relationship-query
+   failure may omit the neighborhood and report a notice while leaving the
+   verified source result available.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
    `scene`, `gameobject`, `prefab`, and `component`, or MCP `list_scenes`,
    `get_scene`, `get_gameobject`, `get_prefab`, and `get_component`. For
@@ -86,7 +99,7 @@ own answer or decision record, never write a citation back to Atlas.
 | Locate a symbol | `search`, `type`, `method` with `--json` and, for Schedule I, `--build` | `search_symbols`, `get_type`, `get_method` |
 | Reference collections | `reference collections list --json` | `list_reference_collections` |
 | Callable surface | `callable <game-member>` | `get_callable_surface` |
-| Behavior/source | `source <query> --context <n> --json` | `get_source` |
+| Behavior/source | `source <query> --context <n> [--full-type] [--related-limit <0-50>] --json` | `get_source` (`fullType`, `relatedLimit`) |
 | Callers/references | `callers`, `callees`, `refs` with `--scope`/`--collection` as needed | `find_callers`, `find_callees`, `find_references`, `find_related_types` with `scope`/`collection` as needed |
 | Static engine/BCL call sites | `callsites <target>` with `--scope`/`--collection` as needed | `find_call_sites` with `scope`/`collection` as needed |
 | Field readers/writers | `fieldrefs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |

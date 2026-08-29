@@ -7,6 +7,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 ## [Unreleased]
 
 - Public-repo hygiene: `SECURITY.md`, issue/PR templates, this changelog.
+- Focused source queries with static runtime-verification hints, bounded
+  callable neighborhoods, and containing-type source spans.
 
 ## [1.0.0] — 2026-08-20 — V1
 

@@ -87,7 +87,11 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["list_reference_collections"], [], []);
         AssertSchema(schemas["get_type"], ["selector", "buildId", "limit"], ["selector"]);
         AssertSchema(schemas["get_method"], ["selector", "buildId", "limit"], ["selector"]);
-        AssertSchema(schemas["get_source"], ["selector", "buildId", "context", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["get_source"], ["selector", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector"]);
+        using var sourceSchema = JsonDocument.Parse(schemas["get_source"]);
+        var sourceProperties = sourceSchema.RootElement.GetProperty("properties");
+        Assert.False(sourceProperties.GetProperty("fullType").GetProperty("default").GetBoolean());
+        Assert.Equal(10, sourceProperties.GetProperty("relatedLimit").GetProperty("default").GetInt32());
         AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
@@ -109,6 +113,35 @@ public sealed class McpTrustBoundaryTests
         Assert.Contains(
             result.RootElement.GetProperty("status").GetString(),
             new[] { "resolved", "ambiguous" });
+
+        var sourceSerialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "get_source",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = atlas.RuntimeMethodSelector,
+                ["context"] = 0,
+                ["relatedLimit"] = 0
+            });
+        using var sourceResult = JsonDocument.Parse(sourceSerialized);
+        var sourceData = sourceResult.RootElement.GetProperty("data");
+        Assert.Equal(JsonValueKind.Object, sourceData.GetProperty("runtimeVerification").ValueKind);
+        Assert.False(sourceData.TryGetProperty("neighborhood", out _));
+        Assert.False(sourceData.TryGetProperty("neighborhoodNotice", out _));
+
+        var neighborhoodSerialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "get_source",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = atlas.MethodSelector,
+                ["context"] = 0
+            });
+        using var neighborhoodResult = JsonDocument.Parse(neighborhoodSerialized);
+        var neighborhood = neighborhoodResult.RootElement.GetProperty("data").GetProperty("neighborhood");
+        Assert.Equal(1, neighborhood.GetProperty("callerTotal").GetInt32());
+        Assert.Equal(1, neighborhood.GetProperty("calleeTotal").GetInt32());
+        Assert.Empty(neighborhood.GetProperty("references").EnumerateArray());
     }
 
     [Fact]
