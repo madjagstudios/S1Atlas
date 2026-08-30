@@ -37,6 +37,9 @@ public sealed class AgentUsageContractTests
         Assert.Contains("both surfaces expose the S1API/S1MAPI query path", normalizedSkill, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("find_api_callers", skill, StringComparison.Ordinal);
         Assert.Contains("plan_runtime_proof", skill, StringComparison.Ordinal);
+        Assert.Contains("command = \"dotnet\"", skill, StringComparison.Ordinal);
+        Assert.Contains("bin/Release/net8.0/S1Atlas.Mcp.dll", skill, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run --project src/S1Atlas.Mcp -- mcp serve", skill, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -68,8 +71,10 @@ public sealed class AgentUsageContractTests
         var normalizedUsage = NormalizeWhitespace(usage);
 
         Assert.Contains("[`skills/s1atlas/SKILL.md`](../skills/s1atlas/SKILL.md)", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet run --project src/S1Atlas.Mcp -- mcp serve", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet build src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release", usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains("command = \"dotnet\"", usage, StringComparison.Ordinal);
+        Assert.Contains("args = [ \"<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll\", \"mcp\", \"serve\" ]", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("Each host registration should enable the read-only server and use bounded startup/tool timeouts, with those settings kept in user-level config.", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("skill's CLI", usage, StringComparison.Ordinal);
         Assert.Contains("commands remain the fallback", usage, StringComparison.Ordinal);
@@ -78,6 +83,41 @@ public sealed class AgentUsageContractTests
         Assert.Contains("S1Atlas does not download mods.", normalizedUsage, StringComparison.Ordinal);
         Assert.DoesNotContain("### Host parity and efficient use", usage, StringComparison.Ordinal);
         Assert.DoesNotContain("For prior-art work, list completed collections once", usage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UsageDocumentsDirectDllLaunchAndMcpLifecycleOwnership()
+    {
+        var root = FindRepositoryRoot();
+        var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
+        var normalizedUsage = NormalizeWhitespace(usage);
+        var readme = File.ReadAllText(Path.Combine(root, "README.md")).ReplaceLineEndings("\n");
+
+        Assert.Contains("dotnet build src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release", usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains("one MCP server process per independent stdio client", normalizedUsage, StringComparison.Ordinal);
+        Assert.Contains("standard error", normalizedUsage, StringComparison.Ordinal);
+        Assert.Contains("ParentProcessId", usage, StringComparison.Ordinal);
+        Assert.Contains("does not require or create a shared singleton", normalizedUsage, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run --project src/S1Atlas.Mcp -- mcp serve", usage, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains("src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run --project src/S1Atlas.Mcp -- mcp serve", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UsageReferencesTheMcpLaunchBenchmark()
+    {
+        var root = FindRepositoryRoot();
+        var report = File.ReadAllText(Path.Combine(root, "docs", "performance", "2026-08-30-mcp-launch-baseline.md")).ReplaceLineEndings("\n");
+        var normalizedReport = NormalizeWhitespace(report);
+
+        Assert.Contains("dotnet run --project src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release --no-build --no-restore -- mcp serve", report, StringComparison.Ordinal);
+        Assert.Contains("dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", report, StringComparison.Ordinal);
+        Assert.Contains("wall time", normalizedReport, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("process count", normalizedReport, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("working set", normalizedReport, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MCP initialize/tool-list handshake", normalizedReport, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

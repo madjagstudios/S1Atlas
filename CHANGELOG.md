@@ -8,6 +8,32 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 No changes yet.
 
+## [1.2.0] — 2026-08-30 — Evidence-first agent parity
+
+This release makes S1Atlas more decisive and safer for Schedule I mod
+investigation by sharing deterministic evidence packets across the CLI and
+read-only MCP server.
+
+### Added
+
+- Behavior-ownership seam investigation with deterministic candidate ordering,
+  explicit coverage states, negative seam results, and bounded next actions.
+- S1API/S1MAPI index, symbol, source, and relationship queries through MCP with
+  build/index provenance and stale-index visibility.
+- Targeted native-body recovery planning with build, tool, and input-integrity
+  provenance; unsupported or failed recovery remains explicit.
+- Runtime-proof planning scoped to one execution boundary with
+  `PASS`/`INCONCLUSIVE`/`STOP` outcomes and no invented telemetry.
+- Shared agent guidance and contract tests covering the evidence-first workflow.
+- A reproducible MCP launch benchmark and direct Release-DLL registration
+  guidance.
+
+### Improved
+
+- MCP host documentation now explains one server process per independent stdio
+  client, protocol-only stdout, stderr diagnostics, and stale-session process
+  inspection.
+
 ## [1.1.0] — 2026-08-28 — Agent usability
 
 This release adds the evidence surfaces that reduce repeated manual decompilation

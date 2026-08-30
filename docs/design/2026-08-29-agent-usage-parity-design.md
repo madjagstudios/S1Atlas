@@ -36,10 +36,11 @@ The contract must not require a machine-specific path, credentials, or a host-pr
 Each agent host gets a local, user-level registration for the same read-only stdio server:
 
 ```text
-dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve
+command = "dotnet"
+args = ["<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll", "mcp", "serve"]
 ```
 
-The registration is host configuration, not repository content. It must use the operator's local checkout path, enable the server, and apply bounded startup and tool timeouts. No host registration may add write, network, extraction, indexing, or game-execution capabilities.
+The Release project is built separately so registration does not invoke restore or build work during MCP startup. The registration is host configuration, not repository content. It must use the operator's local checkout path, enable the server, and apply bounded startup and tool timeouts. No host registration may add write, network, extraction, indexing, or game-execution capabilities.
 
 The verification target is tool parity, not configuration-file identity: both hosts must expose the same supported read-only S1Atlas tools, even if their configuration formats differ.
 

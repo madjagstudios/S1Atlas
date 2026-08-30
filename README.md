@@ -71,7 +71,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 ## Interfaces
 
 - **CLI** — `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `docs generate`.
-- **Read-only MCP server** — the Schedule I Installed surface plus completed local reference-collection queries, for coding agents (`dotnet run --project src/S1Atlas.Mcp -- mcp serve`).
+- **Read-only MCP server** — the Schedule I Installed surface plus completed local reference-collection queries, for coding agents (`dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve` after a Release build).
 - **Static portal** — `docs generate` builds a deterministic, fully offline, provenance-labeled HTML site.
 - **Agent skill** — an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
 

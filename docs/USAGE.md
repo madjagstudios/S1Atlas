@@ -415,14 +415,49 @@ compatibility, safety, or licensing.
 
 ## Read-only MCP server
 
-Launch the MCP server as a separate executable over stdio:
+Build the MCP server once, then launch the compiled Release DLL as a separate
+executable over stdio:
 
 ```powershell
-dotnet run --project src/S1Atlas.Mcp -- mcp serve
+dotnet build src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release
+dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve
 ```
 
-Standard output is reserved for MCP protocol messages; diagnostics and logs go
-to standard error. MCP uses the same Atlas data root as the CLI: `%LOCALAPPDATA%\S1Atlas`
+The direct DLL launch does not invoke restore or build work during MCP startup.
+After pulling source changes, rebuild the Release project before restarting a
+registered host. Codex and Claude host registrations should keep the server
+command in user-level configuration with `command = "dotnet"` and arguments for
+the absolute local Release DLL path, `mcp`, and `serve`:
+
+```text
+command = "dotnet"
+args = [
+  "<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll",
+  "mcp",
+  "serve"
+]
+```
+
+There is one MCP server process per independent stdio client. Multiple Codex or
+Claude connections therefore produce multiple server processes; that is
+expected and the server does not require or create a shared singleton. Session
+cleanup remains the client/host's responsibility.
+
+Standard output is reserved for MCP protocol messages. Diagnostics belong on
+standard error. On Windows, inspect the parent/child relationship before
+investigating a suspected stale session:
+
+```powershell
+Get-CimInstance Win32_Process |
+  Where-Object { $_.CommandLine -match 'S1Atlas\.Mcp\.dll.*mcp serve' } |
+  Select-Object ProcessId, ParentProcessId, CommandLine
+```
+
+Match the `ParentProcessId` to the active Codex or Claude client before taking
+any cleanup action; do not terminate a process that belongs to an active stdio
+session.
+
+MCP uses the same Atlas data root as the CLI: `%LOCALAPPDATA%\S1Atlas`
 by default, or the root supplied through `S1ATLAS_HOME`. The variable moves the
 database and all Atlas-owned data together. MCP opens the existing database in
 read-only mode; it does not create the root or database, run migrations, or
@@ -518,8 +553,7 @@ The methodology skill is versioned at [`skills/s1atlas/SKILL.md`](../skills/s1at
 Install it using the skill mechanism supported by your agent host, keeping the
 repository copy as the source of truth. Verify the installed skill has identical
 bytes to the repository copy before relying on it. When MCP is registered, launch
-the read-only server over stdio with
-`dotnet run --project src/S1Atlas.Mcp -- mcp serve`; otherwise the skill's CLI
+the read-only server over stdio with the built Release DLL; otherwise the skill's CLI
 commands remain the fallback. The skill adds no capability and requires agents
 to cite FACT/DERIVED evidence and build/extraction/index or API commit/index
 identifiers in their own output.
@@ -528,7 +562,8 @@ For host registration, point each host's local configuration at the same
 read-only server entry point using that operator's checkout root, for example:
 
 ```text
-dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve
+command = "dotnet"
+args = ["<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll", "mcp", "serve"]
 ```
 
 Host configuration and reference manifests stay outside the repository. Keep

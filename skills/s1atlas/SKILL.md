@@ -27,12 +27,21 @@ prefer a junction or symlink so the source stays versioned. Verify that the
 installed `SKILL.md` has identical bytes to the repository copy and that its
 frontmatter description matches the task before relying on it.
 
-MCP is optional. To register the read-only stdio server with Claude Code, add
-this launch command to the S1Atlas MCP server entry:
+MCP is optional. Build the Release MCP project once, then register the compiled
+DLL with Claude Code or Codex using this command and argument list:
 
 ```text
-dotnet run --project src/S1Atlas.Mcp -- mcp serve
+command = "dotnet"
+args = ["<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll", "mcp", "serve"]
 ```
+
+The host registration stays in user-level configuration and does not invoke
+restore or build work during MCP startup. There is one server process per
+independent stdio client; multiple client sessions are expected and do not
+require a shared singleton. Keep stdout protocol-only and use stderr for
+diagnostics. On Windows, inspect `ProcessId` and `ParentProcessId` before
+investigating a suspected stale session, and do not terminate an active client
+session.
 
 ### Host parity and efficient use
 
