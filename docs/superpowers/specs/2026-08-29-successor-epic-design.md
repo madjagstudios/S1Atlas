@@ -1,6 +1,6 @@
 # S1Atlas Successor Epic Design
 
-**Status:** Proposed for implementation planning
+**Status:** Shipped in `dd3f04456569a1a7009fe9905d2fbf5e27d60608`
 
 **Source requirements:** Jira AT-31 and its five child tickets: AT-33, AT-32, AT-35, AT-34, and AT-36. AT-23 is the completed predecessor and remains outside this scope.
 

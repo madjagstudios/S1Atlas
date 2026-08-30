@@ -1,5 +1,7 @@
 # Runtime-Proof Protocol Implementation Plan
 
+**Status:** Shipped in `dd3f04456569a1a7009fe9905d2fbf5e27d60608`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement AT-36 as a pure planner that converts static UNKNOWNs into one bounded diagnostic protocol while preserving execution-role and native-compatibility boundaries.
@@ -290,6 +292,5 @@ Expected: PASS; no runtime executor, game-launch code, mutation capability, or p
 git add skills/s1atlas/SKILL.md docs/USAGE.md docs/REFERENCE.md tests/S1Atlas.Docs.Tests/AgentUsageContractTests.cs
 git commit -m "docs: define runtime proof protocol usage"
 ~~~
-
 
 

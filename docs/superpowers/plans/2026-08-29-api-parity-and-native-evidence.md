@@ -1,5 +1,7 @@
 # API Parity and Native Evidence Implementation Plan
 
+**Status:** Shipped in `dd3f04456569a1a7009fe9905d2fbf5e27d60608`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement AT-34's S1API/S1MAPI MCP parity surface and AT-35's bounded, provenance-preserving native evidence path, then attach both to the shared seam packet.
@@ -431,6 +433,5 @@ Expected: PASS with no proprietary/native artifacts in Git.
 git add docs/USAGE.md docs/REFERENCE.md tests/S1Atlas.IntegrationTests/CliQueryParityTests.cs tests/S1Atlas.Mcp.Tests/McpTrustBoundaryTests.cs
 git commit -m "docs: document api and native evidence boundaries"
 ~~~
-
 
 

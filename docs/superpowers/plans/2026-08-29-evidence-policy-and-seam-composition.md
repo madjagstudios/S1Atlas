@@ -1,5 +1,7 @@
 # Evidence Policy and Seam Composition Implementation Plan
 
+**Status:** Shipped in `dd3f04456569a1a7009fe9905d2fbf5e27d60608`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement AT-33 and AT-32 so S1Atlas applies a behavior-ownership gate and exposes one deterministic `investigate_seam` result through both CLI and MCP.
@@ -414,6 +416,5 @@ Expected: build, tests, and hygiene pass; no proprietary or generated evidence i
 git add docs/USAGE.md docs/REFERENCE.md tests/S1Atlas.Docs.Tests/AgentUsageContractTests.cs tests/S1Atlas.IntegrationTests/SeamInvestigationCliTests.cs tests/S1Atlas.Mcp.Tests/SeamToolTests.cs
 git commit -m "docs: document seam investigation parity"
 ```
-
 
 
