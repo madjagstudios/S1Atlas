@@ -302,6 +302,12 @@ public sealed class CliApplication
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
         var referenceQueryService = new ReferenceModQueryService(sqliteRepository, _paths.RootDirectory);
         var federatedIndexQueryService = new FederatedIndexQueryService(sqliteRepository, _paths.RootDirectory);
+        var seamInvestigationService = new SeamInvestigationService(
+            indexQueryService,
+            federatedIndexQueryService,
+            referenceQueryService,
+            sqliteRepository,
+            repository);
         var authorityResolver = new InstalledBuildAuthorityResolver(
             new PreferredVerifiedExtractionResolver(_paths.RootDirectory, sqliteRepository, integrityVerifier),
             sqliteRepository,
@@ -383,6 +389,7 @@ public sealed class CliApplication
         root.Subcommands.Add(SearchCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(TypeCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(MethodCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(InvestigateSeamCommand.Create(seamInvestigationService, referenceQueryService, authorityResolver, repository, sqliteRepository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(SourceCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));

@@ -265,7 +265,7 @@ public sealed class FederatedIndexQueryService
         if (options.Scope != IndexQueryScope.All || string.IsNullOrWhiteSpace(options.ReferenceCollection))
             return game;
         var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
-        return MergeRelationships(resolution, game, reference, kind);
+        return MergeRelationships(resolution, game, reference, kind, options.Limit);
     }
 
     private Task<RelationshipQuerySetResult> GameRelationshipsAsync(
@@ -389,7 +389,8 @@ public sealed class FederatedIndexQueryService
         SymbolResolutionResult resolution,
         RelationshipQuerySetResult game,
         RelationshipQuerySetResult reference,
-        RelationshipKind kind)
+        RelationshipKind kind,
+        int limit)
     {
         var relationships = game.Relationships
             .Concat(reference.Relationships)
@@ -405,12 +406,17 @@ public sealed class FederatedIndexQueryService
             .ThenBy(edge => edge.Source.ReferenceModId, StringComparer.Ordinal)
             .ThenBy(edge => edge.Target.SymbolId, StringComparer.Ordinal)
             .ToArray();
+        var totalCount = game.TotalCount is int gameTotal && reference.TotalCount is int referenceTotal &&
+                         game.Relationships.Count == gameTotal && reference.Relationships.Count == referenceTotal
+            ? (int?)relationships.Length
+            : null;
         return new RelationshipQuerySetResult(
             resolution,
-            relationships,
+            relationships.Take(limit).ToArray(),
             game.BodyRecoveryStatus ?? reference.BodyRecoveryStatus,
             kind == RelationshipKind.Callers,
-            game.CompletenessNotice + reference.CompletenessNotice);
+            game.CompletenessNotice + reference.CompletenessNotice,
+            totalCount);
     }
 
     private async Task<RelationshipQueryPageResult> MapReferenceRelationshipPageAsync(

@@ -11,9 +11,10 @@ using S1Atlas.Core.Tools;
 
 namespace S1Atlas.Storage.Sqlite;
 
-public sealed class ReadOnlySqliteAtlasRepository :
+public sealed partial class ReadOnlySqliteAtlasRepository :
     IAtlasRepository,
     IIndexRepository,
+    INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest>,
     ISceneRepository,
     IValidatedExtractionRepository
 {
@@ -151,7 +152,8 @@ public sealed class ReadOnlySqliteAtlasRepository :
                 header.Installation,
                 dependencies,
                 header.AtlasVersion,
-                header.CapturedAtUtc);
+                header.CapturedAtUtc,
+                header.SnapshotId);
         }, cancellationToken);
 
     public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken cancellationToken) =>

@@ -281,7 +281,7 @@ internal static class IndexQueryCommandFactory
         {
             var authority = authorityResolver.ResolveAsync(buildId, cancellationToken).GetAwaiter().GetResult();
             return authority.Status == InstalledBuildAuthorityStatus.Resolved
-                ? new ExecutionAuthority(authority.IndexRun, null, null)
+                ? new ExecutionAuthority(authority.IndexRun, null, null, BuildAuthority: authority)
                 : new ExecutionAuthority(null, authority.Status.ToString(), authority.Message ?? "The requested Schedule I build is unavailable.");
         }
 
@@ -337,12 +337,18 @@ internal static class IndexQueryCommandFactory
                 "The reference collection's recorded base index is not the authoritative index for its build.");
         }
 
-        return new ExecutionAuthority(null, null, null, collection.ReferenceIndexId);
+        return new ExecutionAuthority(
+            null,
+            null,
+            null,
+            collection.ReferenceIndexId,
+            baseAuthority);
     }
 
     internal readonly record struct ExecutionAuthority(
         IndexRunRecord? Run,
         string? ErrorCode,
         string? ErrorMessage,
-        string? ReferenceIndexId = null);
+        string? ReferenceIndexId = null,
+        InstalledBuildAuthority? BuildAuthority = null);
 }

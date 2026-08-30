@@ -8,7 +8,16 @@ description: Use when an agent answers questions about Schedule I internals, cho
 S1Atlas is an evidence source, not a permission to guess. Use it before making
 claims about Schedule I internals, and keep every claim tied to the exact indexed
 scope that supports it. MCP is a faster read-only interface; the CLI is the
-always-available fallback and the only S1API/S1MAPI query surface.
+always-available fallback. Both surfaces expose the S1API/S1MAPI query path when
+the corresponding read-only MCP tools are registered.
+
+The API parity MCP tools include `find_api_callers`, `find_api_callees`,
+`find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
+`find_api_field_references`; they remain read-only and preserve exact
+codebase/channel/index authority. Use `plan_runtime_proof` after the static
+ownership gate for bounded runtime planning. Its execution boundary must be
+one of `singlePlayer`, `listenHost`, `dedicatedServer`, or `client`; never
+transfer authority or observability assumptions between those roles.
 
 ## Install and prerequisites
 
@@ -129,7 +138,7 @@ own answer or decision record, never write a citation back to Atlas.
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
 | Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component` | `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component` |
-| S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | Not exposed by the V1 MCP server |
+| S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes`, `search_api_symbols`, `get_api_source`, and the `find_api_*` relationship tools |
 
 Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.
 `upstream sync` and `index --codebase ... --commit ...` prepare data; they are
@@ -183,13 +192,87 @@ Limitations: <zero, unavailable, partial, or not-indexed state if applicable>
 ## API-before-patch rule
 
 Before recommending a direct game patch, check the relevant S1API and S1MAPI
-indexed surfaces with the CLI. Search the API codebase/channel, inspect its
-source, and trace its references when the abstraction may already expose the
-needed operation. If the API snapshot is absent, stale, ambiguous, or not
-completed, say that explicitly; do not replace it with memory or documentation
-from an unrelated commit. Then inspect the current Schedule I symbol and source
-before discussing any direct patch. This is a decision discipline, not a license
-to edit game files or add new Atlas capabilities.
+indexed surfaces with the CLI or the registered read-only MCP API tools. Search
+the API codebase/channel, inspect its source, and trace its references when the
+abstraction may already expose the needed operation. If the API snapshot is
+absent, stale, ambiguous, or not completed, say that explicitly; do not replace
+it with memory or documentation from an unrelated commit. Then inspect the
+current Schedule I symbol and source before discussing any direct patch. This is
+a decision discipline, not a license to edit game files or add new Atlas
+capabilities.
+
+## Behavior ownership gate
+
+Any ownership recommendation must pass this mandatory gate before you name a
+supportable seam. This checklist is the exact contract consumed by
+`SeamInvestigationResult`. It records eleven fields; `candidate symbol and role`
+share one concept label in prose but remain two recorded fields:
+
+1. behavioral question
+2. pinned provenance
+3. candidate symbol
+4. role
+5. body/callability coverage
+6. authority/entity attribution
+7. alternate/generic callers and exclusivity
+8. lifecycle position and before/after state
+9. API-before-patch result
+10. remaining UNKNOWNs
+11. bounded next action
+
+Treat the checklist as an evidence gate, not a prose suggestion. If a field is
+unavailable, say why, preserve the limitation, and do not promote the candidate
+to an ownership recommendation.
+
+### Ownership contract rules
+
+- OC-29: event names are not lifecycle proof. A friendly event name, callback
+  order, or visible result does not prove ownership of the state transition.
+  Tie the candidate to the exact before/after state and the owning authority.
+- OC-32: missing or incomplete callers must not be reported as no callers.
+  Preserve unavailable, partial, ambiguous, or bounded caller coverage exactly
+  as returned, and route it to named escalation rather than speculation.
+- OC-30: the API-before-patch result is mandatory. Record whether S1API or
+  S1MAPI already exposes the operation, whether the result is absent/stale/
+  ambiguous, and why a direct patch is or is not still under consideration.
+- OC-2: authority/entity attribution is mandatory. Name which authority owns
+  the behavior and which entity instance changes. UI refreshes, generic hooks,
+  and observer callbacks are not ownership by themselves.
+
+A candidate note that lists only a symbol name, friendly event name, callback
+order, and visible result is insufficient for an ownership recommendation.
+
+When body or caller evidence is unavailable, incomplete, or unresolved, record
+that as a named escalation instead of guessing. Use a concrete label such as
+`Escalation: missing body coverage`, `Escalation: incomplete caller coverage`,
+or `Escalation: unresolved owning authority`, then give the bounded next action
+needed to resolve it.
+
+### Negative-seam result
+
+A Negative-seam result is a completed evidence result that records why a
+candidate is unsuitable. Use it when the investigation resolves to
+`NoSupportableSeam` for that candidate even though the research itself is
+complete. It must preserve the same provenance and checklist fields as a
+positive result, but the conclusion states why the candidate fails the gate:
+generic-only caller coverage, observer-only position, missing authority/entity
+attribution, lifecycle ambiguity, API ownership already provided elsewhere, or
+another cited contract failure.
+
+### Runtime-proof plan
+
+When static evidence narrows the seam but does not prove lifecycle ownership,
+return a Runtime-proof plan instead of over-claiming. The plan must name:
+
+1. hypotheses
+2. observables
+3. controls
+4. duration
+5. cleanup
+6. PASS / INCONCLUSIVE / STOP outcomes
+
+The runtime plan is a bounded experiment request. It does not convert static
+hints into proof, and it must cite the exact unknowns it is meant to resolve.
 
 ## C# learning rule
 

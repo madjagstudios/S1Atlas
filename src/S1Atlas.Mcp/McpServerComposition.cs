@@ -14,14 +14,23 @@ public static class McpServerComposition
         var services = ReadOnlyAtlasComposition.BuildReadOnlyServices(dataDirectory);
         var referenceQueryService = new ReferenceModQueryService(services.Repository, services.Paths.RootDirectory);
         var federatedQueryService = new FederatedIndexQueryService(services.Repository, services.Paths.RootDirectory);
+        var apiIndexQueryService = new ApiIndexQueryService(services.Repository, services.IndexQueryService);
+        var seamInvestigationService = new SeamInvestigationService(
+            services.IndexQueryService,
+            federatedQueryService,
+            referenceQueryService,
+            services.Repository,
+            services.Repository);
 
         return new McpReadOnlyServices(
             services.Paths.RootDirectory,
             services.Repository,
             services.AuthorityResolver,
             services.IndexQueryService,
+            apiIndexQueryService,
             federatedQueryService,
             referenceQueryService,
+            seamInvestigationService,
             services.BuildDiffService,
             services.SceneQueryService);
     }
@@ -32,7 +41,9 @@ public sealed record McpReadOnlyServices(
     ReadOnlySqliteAtlasRepository Repository,
     InstalledBuildAuthorityResolver AuthorityResolver,
     IndexQueryService IndexQueryService,
+    ApiIndexQueryService ApiIndexQueryService,
     FederatedIndexQueryService FederatedIndexQueryService,
     ReferenceModQueryService ReferenceModQueryService,
+    SeamInvestigationService SeamInvestigationService,
     BuildDiffService BuildDiffService,
     SceneQueryService SceneQueryService);

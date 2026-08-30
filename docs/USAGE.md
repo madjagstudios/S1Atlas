@@ -189,6 +189,63 @@ explicit. They are static relationship evidence only:
 they do not prove runtime behavior, scene or geometry behavior, lifecycle
 ordering, or call order.
 
+## Investigate seams
+
+Use `investigate_seam` when the question is which exact code seam owns a
+behavior, not whether that behavior has already been proved at runtime:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
+dotnet run --project src/S1Atlas.Cli -- investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
+```
+
+The CLI surface requires `<selector>` and `--question`, and also accepts
+`--codebase`, `--channel`, `--build`, `--scope`, `--collection`,
+`--relationship-limit`, `--owner-limit`, `--context`, repeated
+`--native-symbol-id`, `--native-traversal-budget` from `0` to `500`,
+`--details`, and `--json`. A zero native budget disables native lookup.
+
+When MCP is registered, call the same investigation through the read-only
+`investigate_seam` tool. The MCP surface accepts `selector`,
+`behavioralQuestion`, `buildId`, `scope`, `collection`, `relationshipLimit`,
+`ownerLimit`, `context`, `details`, `nativeSymbolIds`, and
+`nativeTraversalBudget`. `nativeTraversalBudget: 0` (the default) disables
+native evidence lookup; a positive budget performs a read-only lookup only for
+the explicitly supplied native symbol IDs. MCP already returns the structured
+result, so there is no extra `json` argument on the MCP tool.
+
+The CLI JSON envelope and the MCP tool share the same payload contract:
+`conclusion`, resolved `candidate`, ordered `ownerCandidates`,
+`coverageWarnings`, `unknownDimensions`, and `nextActions`. Candidate and owner
+candidate ordering is deterministic owner-candidate order, so the same seeded
+request yields the same preferred candidate and owner list on both surfaces.
+S1Atlas does not emit a confidence score. Instead, interpret the
+returned `FACT`/`DERIVED` claims and separate `unknownDimensions`.
+
+The complete decision packet also carries `pinnedProvenance`,
+`authorityEntityAttribution`, `alternateGenericCallersAndExclusivity`,
+`lifecyclePositionAndBeforeAfterState`, and `apiBeforePatchResult`. With
+`details` off, `claims` and `evidenceSections` are empty while the complete
+decision packet and all five gate records remain present; with `details` on,
+only those two evidence arrays are populated. The CLI reports resolved research
+as `success: true` with exit code `0`; MCP reports the same packet with
+`status: resolved`.
+
+CLI JSON has one intentional adapter-specific field: CLI-only
+`referenceCollectionBaseProvenance`. It is `null` for game-only results. For a
+reference result it records the installed Schedule I build, extraction, and
+index that anchor the selected reference collection, while `pinnedProvenance`
+records the selected reference index. MCP carries that base authority in its
+top-level `build` and `provenance` entries instead of duplicating the CLI-only
+field inside `data`.
+
+`investigate_seam` is a read-only investigation: it does not patch code, run
+native recovery automatically, or prove runtime behavior. When explicitly
+requested, it may attach a matching stored native-evidence summary containing
+status, mapping evidence, direct native edges, field accesses, tool identity,
+and an output hash. A no-body or failed record remains visible and does not
+become a positive seam claim.
+
 Upstream S1API/S1MAPI channels are cached explicitly before a release/preview
 index; `upstream status` is always offline and `upstream sync` is the only
 networked upstream command:
@@ -387,7 +444,9 @@ local reference collections through these tools:
 `game` rejects it. `find_field_references` also accepts `readers` and `writers`
 filters, which are mutually exclusive. `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
-metadata. `get_type`, `get_method`, and `get_callable_surface` retain their
+metadata. `investigate_seam` accepts the same selector/question/limit options as
+the CLI and returns the same ordered candidate, warning, unknown-dimension, and
+next-action payload fields. `get_type`, `get_method`, and `get_callable_surface` retain their
 Schedule I-only behavior.
 
 `get_source` also accepts `fullType` (default `false`) and `relatedLimit`
@@ -426,11 +485,32 @@ totals, and reference collection provenance, but they do not prove runtime
 behavior, scene or geometry behavior, lifecycle ordering, or call order.
 
 MCP has no write, patch, network, indexing, or game-execution capability. It does not
-install tools, run extraction, launch a game or external process, sync
-upstream data, or expose S1API/S1MAPI channels. Reference indexing remains a
-CLI-only operation. Source and scene results read only already-indexed
+install tools, run extraction, launch a game or external process, or sync
+upstream data. Read-only S1API/S1MAPI catalog, symbol, and source queries use
+already-indexed local API snapshots; reference indexing remains a CLI-only
+operation. Source and scene results read only already-indexed
 Atlas-owned files with existing integrity checks; reference source/document
-results are bounded and retain local-only provenance.
+results are bounded and retain local-only provenance. Native evidence is
+read-only, hash-keyed to the selected build/index/GameAssembly identity, and
+never stores proprietary bodies, disassembly, paths, or binary artifacts.
+
+The read-only MCP API parity tools are `list_api_indexes`, `search_api_symbols`,
+`get_api_source`, `find_api_callers`, `find_api_callees`,
+`find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
+`find_api_field_references`. They query only completed S1API/S1MAPI indexes and
+preserve the selected codebase, channel, build/index, and source-snapshot
+authority. Installed-current queries are bound to the exact current environment
+snapshot; a stale index is reported as stale/unavailable rather than silently
+treated as current.
+
+For runtime questions, use the read-only MCP `plan_runtime_proof` tool after the
+static ownership gate. It produces competing hypotheses, positive and negative
+controls, declared observables, lifecycle checks, bounded duration/sample-rate
+limits, cleanup requirements, and `PASS`/`INCONCLUSIVE`/`STOP` outcomes. The
+plan is scoped to exactly one `singlePlayer`, `listenHost`, `dedicatedServer`,
+or `client` execution boundary; authority and observability assumptions must
+not be transferred between host roles. S1Atlas does not launch the game or
+claim runtime proof automatically.
 
 ## Agent skill
 
@@ -488,6 +568,7 @@ mods.
 | `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callees of a resolved method |
 | `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
 | `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL field readers and writers for one resolved field |
+| `investigate_seam <selector> --question <text> [--codebase <id>] [--channel <id>] [--build <id>] [--scope game\|reference\|all] [--collection <name-or-id>] [--relationship-limit <1-50>] [--owner-limit <1-50>] [--context <n>] [--native-symbol-id <id>] [--native-traversal-budget <0-500>] [--details] [--json]` | Investigate a supportable ownership seam with deterministic candidate ordering, coverage warnings, unknown dimensions, and bounded next actions |
 | `upstream status [--codebase <s1api\|s1mapi>] [--json]` | Show cached upstream API status without network access |
 | `upstream sync <s1api\|s1mapi> --commit <sha> [--json]` | Fetch and cache one exact upstream commit for later indexing |
 | `index --scene [--build <id>] [--force] [--json]` | Build or reuse an offline, integrity-verified scene snapshot for the selected build |

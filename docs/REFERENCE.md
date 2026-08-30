@@ -141,6 +141,102 @@ preference when the same recipe produces different bytes. Automated tests use a
 test policy with a tiny managed-byte floor and never modify the production
 `config/validation/*.json`.
 
+## Seam investigation contract
+
+`investigate_seam` is a read-only ownership-analysis surface shared by the CLI
+JSON result and the MCP tool payload. Valid conclusion values are
+`SupportableSeam`, `NoSupportableSeam`, and `InsufficientCoverage`.
+
+`InsufficientCoverage` is the service-gate outcome whenever mandatory evidence
+is `Incomplete` or `Unavailable`, including incomplete or unavailable caller
+coverage. `InsufficientCoverage` and `NoSupportableSeam` are both resolved
+research outcomes; CLI may return `success: true` and MCP may return
+`status: resolved` while preserving either conclusion.
+
+Coverage is categorical, never probabilistic. Valid coverage states are
+`Complete`, `Bounded`, `Incomplete`, `Unavailable`, and `NotApplicable`.
+S1Atlas does not emit a confidence score; it preserves `FACT`/`DERIVED` claims
+and separate `unknownDimensions` so unsupported gaps remain explicit instead of
+being collapsed into a confidence number.
+Treat every entry in `unknownDimensions` as a literal `UNKNOWN`
+classification, not as a confidence score.
+
+Owner candidates are ordered deterministically by the traversal/path rules used
+by the investigation service. The same seeded request therefore preserves the
+same selected candidate symbol ID, ordered owner candidate symbol IDs,
+coverage warnings, unknown dimensions, and next-action kinds across the CLI and
+MCP surfaces.
+
+Once mandatory evidence is complete, `NoSupportableSeam` is reserved for
+complete evidence that establishes no supportable owner, such as no candidate,
+competing candidates, generic-only ownership coverage, or a remaining literal
+`UNKNOWN` dimension. Example: if complete evidence leaves
+`Game.Seams.CompleteEvidenceTarget` with competing owner candidates, the
+investigation remains a successful resolved `NoSupportableSeam` result.
+
+MCP provenance entries carry `source`, `buildId`, `extractionId`, and
+`indexId`. The shared CLI/MCP data packet carries `pinnedProvenance`,
+`authorityEntityAttribution`, `alternateGenericCallersAndExclusivity`,
+`lifecyclePositionAndBeforeAfterState`, and `apiBeforePatchResult` in both
+detail modes. These are the five mandatory gate records: pinned authority,
+authority/entity attribution, alternate or generic callers and exclusivity,
+lifecycle position and before/after state, and API-before-patch result.
+
+CLI seam results additionally expose nullable
+`referenceCollectionBaseProvenance`. For `scope: reference`, it identifies the
+installed Schedule I build/extraction/index that the selected reference
+collection pins as its base authority; `pinnedProvenance` identifies the
+selected reference index. The field is `null` for game-only results. MCP places
+the same base authority in the envelope's `build` and `provenance` metadata.
+
+`details: false` keeps `claims` and `evidenceSections` empty without removing
+any decision, coverage, provenance, authority, or gate record; `details: true`
+populates those two arrays. The remaining shared packet must be identical
+between detail modes and between CLI JSON and MCP for the same seeded request.
+
+The CLI reports resolved research outcomes as `success: true` with exit code
+`0`. MCP adapter statuses are `resolved`, `not_found`, `ambiguous`,
+`unavailable`, and `invalid`; only `resolved` carries the successful seam data
+packet. CLI failures remain nonzero error envelopes and never become resolved
+research packets. These adapter statuses are transport outcomes and do not
+replace the packet's `SupportableSeam`, `NoSupportableSeam`, or
+`InsufficientCoverage` conclusion.
+
+Candidate and ordered owner records preserve their symbol/index identifiers,
+and claims, evidence sections, gate records, and MCP provenance preserve their
+evidence or authority identifiers. Treat those identifiers as provenance, not
+as proof that the unknown dimensions have been closed.
+
+Native recovery and runtime proof are next actions only; S1Atlas never executes
+either automatically. Seam investigation does not patch binaries, does not run
+automatic native recovery, and does not claim runtime proof from static source,
+relationship, or callable evidence alone. An explicit native lookup uses
+`nativeSymbolIds` plus a `nativeTraversalBudget` from `0` to `500`; zero means
+no lookup. A matching stored result is exposed as `nativeEvidence` with
+`status`, `isComplete`, mapping evidence, direct native edges, field accesses,
+tool provenance, an output SHA-256, and an optional failure message. The lookup
+also reports `Matched`, `NoMatch`, or `InputChanged` separately from recovery
+status, so a missing record is not conflated with `Unsupported`. Records are matched by build ID, index
+ID, GameAssembly SHA-256, selected native symbols, and traversal budget. Negative
+statuses such as `NoBody`, `Failed`, `InputChanged`, and `Unsupported` remain
+visible and do not imply a recovered body. Native persistence is read-only at
+query time and stores no proprietary body, disassembly, path, or binary artifact.
+
+The API parity MCP surface includes `find_api_callers`, `find_api_callees`,
+`find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
+`find_api_field_references` in addition to API index, symbol, and source
+queries. These remain read-only and use the same completed-index and exact
+environment-snapshot authority rules as the CLI query services.
+
+`plan_runtime_proof` is a bounded planning surface, not a game runner. Its
+`executionBoundary` is one of `singlePlayer`, `listenHost`, `dedicatedServer`,
+or `client`; the planner keeps observability and authority evidence inside that
+boundary. It returns competing hypotheses, controls, lifecycle checks,
+declared-observable limitations, cleanup, and `Pass`, `Inconclusive`, or `Stop`
+outcomes. A missing policy gate or authority starts at `Stop`; otherwise the
+initial decision is `Inconclusive` until runtime observations satisfy the
+declared controls.
+
 ## Design documents
 
 - [V1 design specification](design/2026-08-12-s1atlas-design.md)

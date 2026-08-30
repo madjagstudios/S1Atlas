@@ -16,7 +16,7 @@ Roots: tests
 | tests/S1Atlas.Core.Tests/Indexing/ | 4 |
 | tests/S1Atlas.Core.Tests/Scenes/ | 1 |
 | tests/S1Atlas.Core.Tests/Tools/ | 2 |
-| tests/S1Atlas.Docs.Tests/ | 1 |
+| tests/S1Atlas.Docs.Tests/ | 2 |
 | tests/S1Atlas.Docs.Tests/Content/ | 1 |
 | tests/S1Atlas.Docs.Tests/Determinism/ | 1 |
 | tests/S1Atlas.Docs.Tests/Generation/ | 1 |
@@ -45,15 +45,16 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Decompilation/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Diff/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Fingerprints/ | 1 |
+| tests/S1Atlas.Indexing.Tests/NativeRecovery/ | 1 |
 | tests/S1Atlas.Indexing.Tests/Paths/ | 2 |
-| tests/S1Atlas.Indexing.Tests/Query/ | 10 |
+| tests/S1Atlas.Indexing.Tests/Query/ | 13 |
 | tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 3 |
 | tests/S1Atlas.Indexing.Tests/Relationships/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Scene/ | 6 |
 | tests/S1Atlas.Indexing.Tests/Source/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Upstream/ | 4 |
 | tests/S1Atlas.Indexing.Tests/Workflow/ | 3 |
-| tests/S1Atlas.IntegrationTests/ | 4 |
+| tests/S1Atlas.IntegrationTests/ | 5 |
 | tests/S1Atlas.IntegrationTests/Authority/ | 1 |
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
@@ -63,10 +64,10 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Repository/ | 1 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
-| tests/S1Atlas.Mcp.Tests/ | 10 |
+| tests/S1Atlas.Mcp.Tests/ | 12 |
 | tests/S1Atlas.Storage.Tests/ | 4 |
 | tests/S1Atlas.Storage.Tests/Indexing/ | 1 |
-| tests/S1Atlas.Storage.Tests/Migrations/ | 9 |
+| tests/S1Atlas.Storage.Tests/Migrations/ | 10 |
 | tests/S1Atlas.Storage.Tests/Scene/ | 2 |
-| tests/S1Atlas.Storage.Tests/Sqlite/ | 10 |
+| tests/S1Atlas.Storage.Tests/Sqlite/ | 11 |
 

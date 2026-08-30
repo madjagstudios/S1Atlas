@@ -817,6 +817,63 @@ internal static class SqliteMigrations
         ON relationships(snapshot_id, relationship_kind, target_text, relationship_id);
         """;
 
+    private const string NativeEvidenceV12Sql = """
+        CREATE TABLE native_recovery_runs (
+            recovery_id TEXT NOT NULL PRIMARY KEY,
+            build_id TEXT NOT NULL,
+            index_id TEXT NOT NULL,
+            game_assembly_sha256 TEXT NOT NULL CHECK (length(game_assembly_sha256) = 64),
+            symbol_ids_json TEXT NOT NULL,
+            max_traversal_edges INTEGER NOT NULL CHECK (max_traversal_edges BETWEEN 1 AND 500),
+            tool_name TEXT NOT NULL,
+            tool_version TEXT NOT NULL,
+            tool_sha256 TEXT NOT NULL CHECK (length(tool_sha256) = 64),
+            status TEXT NOT NULL CHECK (status IN ('Recovered', 'NoBody', 'AmbiguousMapping', 'InputChanged', 'Failed', 'Unsupported')),
+            mapping_evidence_json TEXT NOT NULL,
+            is_complete INTEGER NOT NULL CHECK (is_complete IN (0, 1)),
+            output_sha256 TEXT NOT NULL CHECK (length(output_sha256) = 64),
+            created_at_utc TEXT NOT NULL,
+            failure_message TEXT NULL,
+            FOREIGN KEY (build_id) REFERENCES builds(build_id),
+            FOREIGN KEY (index_id) REFERENCES index_runs(index_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX ix_native_recovery_runs_input
+        ON native_recovery_runs(
+            index_id,
+            build_id,
+            game_assembly_sha256,
+            symbol_ids_json,
+            max_traversal_edges,
+            created_at_utc DESC,
+            recovery_id);
+
+        CREATE TABLE native_recovery_edges (
+            recovery_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+            edge_id TEXT NOT NULL,
+            source_method_pointer TEXT NOT NULL,
+            target_method_pointer TEXT NULL,
+            target_text TEXT NULL,
+            kind TEXT NOT NULL,
+            evidence TEXT NOT NULL,
+            is_complete INTEGER NOT NULL CHECK (is_complete IN (0, 1)),
+            PRIMARY KEY (recovery_id, ordinal),
+            FOREIGN KEY (recovery_id) REFERENCES native_recovery_runs(recovery_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX ix_native_recovery_edges_recovery_edge
+        ON native_recovery_edges(recovery_id, edge_id);
+
+        CREATE TABLE native_recovery_fields (
+            recovery_id TEXT NOT NULL,
+            ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+            field_access TEXT NOT NULL,
+            PRIMARY KEY (recovery_id, ordinal),
+            FOREIGN KEY (recovery_id) REFERENCES native_recovery_runs(recovery_id) ON DELETE CASCADE
+        );
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -829,6 +886,7 @@ internal static class SqliteMigrations
         new(8, "scene-intelligence-v8", SceneIntelligenceV8Sql),
         new(9, "callable-surface-v9", CallableSurfaceV9Sql),
         new(10, "reference-mods-v10", ReferenceModsV10Sql, RequiresTransaction: false),
-        new(11, "relationship-query-target-text-v11", RelationshipQueryTargetTextV11Sql)
+        new(11, "relationship-query-target-text-v11", RelationshipQueryTargetTextV11Sql),
+        new(12, "native-evidence-v12", NativeEvidenceV12Sql)
     ];
 }

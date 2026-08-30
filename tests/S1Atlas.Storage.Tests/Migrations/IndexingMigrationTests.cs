@@ -16,7 +16,7 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Fresh_database_migrates_to_v11_relationship_query_schema()
+    public async Task Fresh_database_migrates_to_v12_and_preserves_relationship_query_schema()
     {
         await new SqliteMigrationRunner(_databasePath, Path.Combine(_root, "backups")).MigrateAsync(
             TestContext.Current.CancellationToken);
@@ -24,8 +24,8 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
         await using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
         {
             await connection.OpenAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(11L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
-            Assert.Equal(11, SqliteMigrations.All.Count);
+            Assert.Equal(12L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
+            Assert.Equal(12, SqliteMigrations.All.Count);
             foreach (var table in new[] { "code_snapshots", "index_runs", "symbols", "source_files", "source_locations", "symbol_fingerprints", "relationships", "upstream_repositories", "upstream_snapshots", "upstream_state" })
                 Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=$name;", ("$name", table)));
             Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('symbols') WHERE name='body_recovery_status';"));
@@ -57,7 +57,10 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
             Path.Combine(_root, "backups-v10"),
             SqliteMigrations.All.Take(10).ToArray()).MigrateAsync(cancellationToken);
 
-        await new SqliteMigrationRunner(_databasePath, Path.Combine(_root, "backups-v11"))
+        await new SqliteMigrationRunner(
+            _databasePath,
+            Path.Combine(_root, "backups-v11"),
+            SqliteMigrations.All.Take(11).ToArray())
             .MigrateAsync(cancellationToken);
 
         await using var connection = new SqliteConnection($"Data Source={_databasePath}");

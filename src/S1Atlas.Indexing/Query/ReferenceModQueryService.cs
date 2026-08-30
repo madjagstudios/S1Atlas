@@ -399,7 +399,8 @@ public sealed class ReferenceModQueryService
             relationships,
             bodyStatus,
             mode == RelationshipMode.Callers,
-            mode == RelationshipMode.Refs ? string.Empty : "Reference relationships are limited to persisted target resolutions.");
+            mode == RelationshipMode.Refs ? string.Empty : "Reference relationships are limited to persisted target resolutions.",
+            relationships.Count);
     }
 
     private async Task<SymbolResolutionResult> ResolveInIndexAsync(IndexSelection selection, string selector, CancellationToken cancellationToken)

@@ -12,7 +12,8 @@ public sealed partial class SqliteAtlasRepository :
     IToolRepository,
     IExtractionRepository,
     IValidatedExtractionRepository,
-    IIndexRepository
+    IIndexRepository,
+    INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest>
 {
     private readonly string _databasePath;
     private readonly SqliteMigrationRunner _migrationRunner;
@@ -168,7 +169,8 @@ public sealed partial class SqliteAtlasRepository :
             header.Installation,
             dependencies,
             header.AtlasVersion,
-            header.CapturedAtUtc);
+            header.CapturedAtUtc,
+            header.SnapshotId);
     }
 
     public async Task<IReadOnlyList<GameBuild>> ListBuildsAsync(

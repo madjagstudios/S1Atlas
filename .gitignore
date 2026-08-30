@@ -65,6 +65,9 @@ s1atlas-docs/
 logs/
 *.log
 
+# Local agent worknotes
+.superpowers/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -120,7 +120,7 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
                     "SELECT COUNT(*) FROM environment_snapshots WHERE snapshot_id = 'real-scan-foundation-v1';",
                     cancellationToken));
             Assert.Equal(
-                11,
+                12,
                 await ReadScalarInt64Async(
                     connection,
                     "SELECT COUNT(*) FROM schema_migrations;",
@@ -177,7 +177,7 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
             paths.DatabasePath,
             cancellationToken);
         Assert.Equal(
-            11,
+            12,
             await ReadScalarInt64Async(
                 finalConnection,
                 "SELECT COUNT(*) FROM schema_migrations;",
@@ -444,7 +444,7 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
             ? Directory
                 .EnumerateFiles(
                     backupDirectory,
-                    "atlas-before-schema-11-*.db",
+                    "atlas-before-schema-12-*.db",
                     SearchOption.TopDirectoryOnly)
                 .Order(StringComparer.Ordinal)
                 .ToArray()

@@ -131,6 +131,184 @@ public static class EnvelopeMapper
             Derived(authority, "search-ranking"));
     }
 
+    public static ToolEnvelope<ApiIndexCatalogResult> FromApiCatalog(ApiIndexCatalogResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var provenance = result.Selections
+            .Where(selection => selection.Availability == ApiIndexAvailability.Current)
+            .Select(selection => ApiFact(selection, result.ResolvedBuildId))
+            .ToArray();
+        return ToolEnvelope<ApiIndexCatalogResult>.Resolved(
+            build: null,
+            result,
+            provenance);
+    }
+
+    public static ToolEnvelope<T> FromApiSelectionFailure<T>(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(selection);
+
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        return selection.Availability switch
+        {
+            ApiIndexAvailability.Stale => ToolEnvelope<T>.Unavailable(
+                new ToolError("StaleApiIndex", selection.Message ?? "The installed API index does not match the selected Schedule I build."),
+                build,
+                provenance),
+            ApiIndexAvailability.Unavailable when selection.IndexId is null && IsMissingApiIndex(selection) => ToolEnvelope<T>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", selection.Message ?? "No completed API index exists for the requested scope."),
+                provenance),
+            ApiIndexAvailability.Unavailable => ToolEnvelope<T>.Unavailable(
+                new ToolError("ApiIndexUnavailable", selection.Message ?? "The API index cannot be used with the selected authority."),
+                build,
+                provenance),
+            ApiIndexAvailability.Ambiguous => ToolEnvelope<T>.Ambiguous(
+                build,
+                new object[] { selection },
+                provenance),
+            _ => throw new InvalidOperationException("A current API selection is not a failure.")
+        };
+    }
+
+    public static ToolEnvelope<SymbolSearchResult> FromApiSearch(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        SymbolSearchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        if (result.ResolutionStatus == SymbolResolutionStatus.NoCompletedIndex)
+        {
+            return ToolEnvelope<SymbolSearchResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                provenance);
+        }
+
+        return result.TotalCount == 0
+            ? ToolEnvelope<SymbolSearchResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                provenance)
+            : ToolEnvelope<SymbolSearchResult>.Resolved(build, result, provenance);
+    }
+
+    public static ToolEnvelope<SourceSnippetQueryResult> FromApiSource(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        SourceSnippetResolutionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<SourceSnippetQueryResult>.Ambiguous(
+                build,
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                provenance),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                provenance),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                provenance),
+            _ when result.Snippet is null => ToolEnvelope<SourceSnippetQueryResult>.Unavailable(
+                new ToolError("SourceUnavailable", "The selected API symbol has no integrity-checked source location."),
+                build,
+                provenance),
+            _ => ToolEnvelope<SourceSnippetQueryResult>.Resolved(build, result.Snippet, provenance)
+        };
+    }
+
+    public static ToolEnvelope<SourceSnippetQueryResult> ApiSourceIntegrityFailure(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection) =>
+        ToolEnvelope<SourceSnippetQueryResult>.Unavailable(
+            new ToolError("SourceIntegrityFailure", "The completed API source failed integrity verification."),
+            ApiBuildFrom(catalog, selection),
+            ApiProvenance(catalog, selection));
+
+    public static ToolEnvelope<SourceSnippetQueryResult> ApiSourceUnavailable(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection) =>
+        ToolEnvelope<SourceSnippetQueryResult>.Unavailable(
+            new ToolError("SourceUnavailable", "The completed API source is unavailable."),
+            ApiBuildFrom(catalog, selection),
+            ApiProvenance(catalog, selection));
+
+    public static ToolEnvelope<RelationshipQuerySetResult> FromApiRelationships(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        RelationshipQuerySetResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<RelationshipQuerySetResult>.Ambiguous(
+                build,
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                provenance),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                provenance),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                provenance),
+            _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(build, result, provenance)
+        };
+    }
+
+    public static ToolEnvelope<CallSiteQueryResult> FromApiCallSites(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        CallSiteQueryResult result) =>
+        ToolEnvelope<CallSiteQueryResult>.Resolved(
+            ApiBuildFrom(catalog, selection),
+            result,
+            ApiProvenance(catalog, selection));
+
+    public static ToolEnvelope<FieldReferenceQueryResult> FromApiFieldReferences(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        FieldReferenceQueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<FieldReferenceQueryResult>.Ambiguous(
+                build,
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                provenance),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                provenance),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                provenance),
+            _ => ToolEnvelope<FieldReferenceQueryResult>.Resolved(build, result, provenance)
+        };
+    }
+
     public static ToolEnvelope<SymbolSearchResult> FromScopedSearch(
         InstalledBuildAuthority authority,
         SymbolSearchResult result,
@@ -364,6 +542,55 @@ public static class EnvelopeMapper
         };
     }
 
+    public static ToolEnvelope<SeamInvestigationResult> FromSeamInvestigation(
+        InstalledBuildAuthority authority,
+        SeamInvestigationResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<SeamInvestigationResult>.Ambiguous(
+                BuildFrom(authority),
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<SeamInvestigationResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SeamInvestigationResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                Derived(authority, "symbol-selection")),
+            _ when !HasRequiredSeamGateRecords(result) => ToolEnvelope<SeamInvestigationResult>.Unavailable(
+                new ToolError("IncompleteSeamResult", "The resolved seam result is missing required gate records."),
+                BuildFrom(authority),
+                Fact(authority, "seam-investigation"),
+                Derived(authority, "seam-evaluation")),
+            _ => ToolEnvelope<SeamInvestigationResult>.Resolved(
+                BuildFrom(authority),
+                result,
+                Fact(authority, "seam-investigation"),
+                Derived(authority, "seam-evaluation"))
+        };
+    }
+
+    public static ToolEnvelope<SeamInvestigationResult> FromScopedSeamInvestigation(
+        InstalledBuildAuthority authority,
+        SeamInvestigationResult result,
+        string? collection,
+        ReferenceCollectionAuthorityQueryResult? referenceAuthority,
+        IndexQueryScope scope)
+    {
+        var mapped = FromSeamInvestigation(
+            authority,
+            result with
+            {
+                PinnedProvenance = BuildSeamPinnedProvenance(authority, result, referenceAuthority, scope)
+            });
+        return AddSeamReferenceProvenance(mapped, authority, collection, referenceAuthority, result, scope);
+    }
+
     public static ToolEnvelope<T> Invalid<T>(string code, string message) where T : class =>
         ToolEnvelope<T>.Invalid(new ToolError(code, message));
 
@@ -394,6 +621,33 @@ public static class EnvelopeMapper
         return AddReferenceCollectionProvenance(envelope, authority, requestedCollection, referenceIndexId);
     }
 
+    private static ToolEnvelope<T> AddSeamReferenceProvenance<T>(
+        ToolEnvelope<T> envelope,
+        InstalledBuildAuthority authority,
+        string? requestedCollection,
+        ReferenceCollectionAuthorityQueryResult? referenceAuthority,
+        SeamInvestigationResult result,
+        IndexQueryScope scope) where T : class
+    {
+        var selected = SelectSeamAuthority(authority, referenceAuthority, result, scope);
+        var selectedEnvelope = envelope with
+        {
+            Provenance = envelope.Provenance
+                .Select(entry => new ProvenanceEntry(
+                    entry.Classification,
+                    entry.Source,
+                    selected.BuildId,
+                    selected.ExtractionId,
+                    selected.IndexId))
+                .ToArray()
+        };
+        return AddSeamReferenceCollectionProvenance(
+            selectedEnvelope,
+            authority,
+            requestedCollection,
+            referenceAuthority);
+    }
+
     private static ToolEnvelope<T> AddReferenceCollectionProvenance<T>(
         ToolEnvelope<T> envelope,
         InstalledBuildAuthority authority,
@@ -413,6 +667,133 @@ public static class EnvelopeMapper
             .ToArray();
         return envelope with { Provenance = provenance };
     }
+
+    private static ToolEnvelope<T> AddSeamReferenceCollectionProvenance<T>(
+        ToolEnvelope<T> envelope,
+        InstalledBuildAuthority authority,
+        string? requestedCollection,
+        ReferenceCollectionAuthorityQueryResult? referenceAuthority) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(requestedCollection) || referenceAuthority is null)
+            return envelope;
+
+        var provenance = envelope.Provenance
+            .Append(new ProvenanceEntry(
+                ProvenanceClassification.Fact,
+                "reference-collection-base",
+                referenceAuthority.BuildId,
+                authority.ExtractionId,
+                referenceAuthority.BaseIndexId))
+            .Append(new ProvenanceEntry(
+                ProvenanceClassification.Fact,
+                "reference-collection",
+                referenceAuthority.BuildId,
+                null,
+                referenceAuthority.ReferenceIndexId))
+            .ToArray();
+        return envelope with { Provenance = provenance };
+    }
+
+    private static SeamPinnedProvenance BuildSeamPinnedProvenance(
+        InstalledBuildAuthority authority,
+        SeamInvestigationResult result,
+        ReferenceCollectionAuthorityQueryResult? referenceAuthority,
+        IndexQueryScope scope)
+    {
+        var selected = SelectSeamAuthority(authority, referenceAuthority, result, scope);
+        return new SeamPinnedProvenance(
+            selected.IsReference
+                ? authority.RequestedBuildId
+                : authority.RequestedBuildId ?? selected.BuildId,
+            selected.BuildId,
+            selected.ExtractionId,
+            selected.IndexId,
+            selected.Codebase,
+            "Installed",
+            selected.IntegrityVerified);
+    }
+
+    private static SeamAuthoritySelection SelectSeamAuthority(
+        InstalledBuildAuthority authority,
+        ReferenceCollectionAuthorityQueryResult? referenceAuthority,
+        SeamInvestigationResult result,
+        IndexQueryScope scope)
+    {
+        var useReference = referenceAuthority is not null &&
+                           (scope == IndexQueryScope.Reference ||
+                            scope == IndexQueryScope.All && IsReferenceSeamResult(result));
+        return useReference
+            ? new(
+                referenceAuthority!.BuildId,
+                null,
+                referenceAuthority.ReferenceIndexId,
+                "ReferenceMod",
+                IntegrityVerified: false,
+                IsReference: true)
+            : new(
+                authority.ResolvedBuildId,
+                authority.ExtractionId,
+                referenceAuthority?.BaseIndexId ?? authority.IndexId,
+                "ScheduleI",
+                IntegrityVerified: true,
+                IsReference: false);
+    }
+
+    private static bool IsReferenceSeamResult(SeamInvestigationResult result) =>
+        result.Resolution.Symbol?.Origin == "reference" ||
+        result.Candidate?.Origin == "reference" ||
+        result.OwnerCandidates.Any(candidate => candidate.Symbol.Origin == "reference");
+
+    private static bool HasRequiredSeamGateRecords(SeamInvestigationResult result) =>
+        result.PinnedProvenance is not null &&
+        result.AuthorityEntityAttribution is not null &&
+        result.AlternateGenericCallersAndExclusivity is not null &&
+        result.LifecyclePositionAndBeforeAfterState is not null &&
+        result.ApiBeforePatchResult is not null;
+
+    private sealed record SeamAuthoritySelection(
+        string? BuildId,
+        string? ExtractionId,
+        string? IndexId,
+        string Codebase,
+        bool IntegrityVerified,
+        bool IsReference);
+
+    private static BuildContext ApiBuildFrom(ApiIndexCatalogResult catalog, ApiIndexSelection selection) =>
+        new(
+            selection.Channel == CodeChannel.Installed ? catalog.RequestedBuildId : null,
+            selection.Channel == CodeChannel.Installed ? catalog.ResolvedBuildId : null,
+            ExtractionId: null,
+            selection.IndexId,
+            selection.Codebase.ToString(),
+            selection.Channel.ToString(),
+            selection.Availability == ApiIndexAvailability.Current);
+
+    private static ProvenanceEntry[] ApiProvenance(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection)
+    {
+        var derived = new ProvenanceEntry(
+            ProvenanceClassification.Derived,
+            $"api-index-selection:{selection.Codebase}:{selection.Channel}",
+            selection.Channel == CodeChannel.Installed ? catalog.ResolvedBuildId : null,
+            ExtractionId: null,
+            selection.IndexId);
+        return selection.IndexId is null || selection.SourceIdentity is null
+            ? [derived]
+            : [ApiFact(selection, catalog.ResolvedBuildId), derived];
+    }
+
+    private static ProvenanceEntry ApiFact(ApiIndexSelection selection, string? resolvedBuildId) =>
+        new(
+            ProvenanceClassification.Fact,
+            $"api-index:{selection.Codebase}:{selection.Channel}:source={selection.SourceIdentity ?? "unknown"}",
+            selection.Channel == CodeChannel.Installed ? resolvedBuildId : null,
+            ExtractionId: null,
+            selection.IndexId);
+
+    private static bool IsMissingApiIndex(ApiIndexSelection selection) =>
+        selection.Message?.StartsWith("No completed", StringComparison.Ordinal) == true;
 
     private static ProvenanceEntry Fact(InstalledBuildAuthority authority, string source) =>
         new(

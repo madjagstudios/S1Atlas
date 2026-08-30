@@ -8,7 +8,9 @@ Roots: docs
 |---|---|
 | docs/ | 2 |
 | docs/dependencies/ | 1 |
-| docs/design/ | 8 |
+| docs/design/ | 10 |
 | docs/performance/ | 1 |
 | docs/smoke-tests/ | 4 |
+| docs/superpowers/plans/ | 3 |
+| docs/superpowers/specs/ | 1 |
 

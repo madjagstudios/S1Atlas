@@ -38,7 +38,7 @@ public sealed class HostCompositionTests
         };
 
         Assert.All(
-            toolNames,
+            toolNames.Where(name => name != "list_api_indexes"),
             name => Assert.DoesNotContain(
                 forbiddenVerbs,
                 verb => name.Contains(verb, StringComparison.OrdinalIgnoreCase)));

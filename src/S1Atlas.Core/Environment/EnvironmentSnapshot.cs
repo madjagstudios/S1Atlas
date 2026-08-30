@@ -8,4 +8,5 @@ public sealed record EnvironmentSnapshot(
     InstallationObservation Installation,
     IReadOnlyList<DependencyVersion> Dependencies,
     string AtlasVersion,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc,
+    string? SnapshotId = null);

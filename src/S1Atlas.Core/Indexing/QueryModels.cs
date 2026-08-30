@@ -210,7 +210,8 @@ public sealed record RelationshipQuerySetResult(
     IReadOnlyList<RelationshipQueryResult> Relationships,
     BodyRecoveryStatus? BodyRecoveryStatus,
     bool CallerCompletenessBoundedByTargetResolution,
-    string CompletenessNotice);
+    string CompletenessNotice,
+    int? TotalCount = null);
 
 public sealed record SourceQueryResult(
     string IndexId,

@@ -1,5 +1,6 @@
 using S1Atlas.Application.Envelope;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Storage;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using S1Atlas.Mcp;
@@ -23,12 +24,19 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(
             [
                 "compare_symbol",
+                "find_api_call_sites",
+                "find_api_callees",
+                "find_api_callers",
+                "find_api_field_references",
+                "find_api_references",
+                "find_api_related_types",
                 "find_call_sites",
                 "find_callees",
                 "find_callers",
                 "find_field_references",
                 "find_references",
                 "find_related_types",
+                "get_api_source",
                 "get_callable_surface",
                 "get_component",
                 "get_environment",
@@ -38,9 +46,13 @@ public sealed class McpTrustBoundaryTests
                 "get_scene",
                 "get_source",
                 "get_type",
+                "investigate_seam",
+                "list_api_indexes",
                 "list_builds",
                 "list_reference_collections",
                 "list_scenes",
+                "plan_runtime_proof",
+                "search_api_symbols",
                 "search_symbols"
             ],
             tools.OrderBy(name => name, StringComparer.Ordinal));
@@ -78,12 +90,59 @@ public sealed class McpTrustBoundaryTests
     }
 
     [Fact]
+    public async Task StdioHost_NativeEvidenceLookupIsReadOnlyAndPreservesProvenance()
+    {
+        await using var atlas = await SeamMcpTestAtlas.CreateOc32Async();
+        await atlas.SeedNativeRecoveredEvidenceAsync();
+        var before = FileTree.HashAll(atlas.DataRoot);
+
+        var serialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "investigate_seam",
+            new Dictionary<string, object?>
+            {
+                ["behavioralQuestion"] = "Which seam owns settlement clearing?",
+                ["selector"] = atlas.TargetSymbolId,
+                ["relationshipLimit"] = 3,
+                ["ownerLimit"] = 5,
+                ["context"] = 0,
+                ["nativeSymbolIds"] = new[] { atlas.NativeSymbolId },
+                ["nativeTraversalBudget"] = 25
+            });
+
+        var after = FileTree.HashAll(atlas.DataRoot);
+        Assert.Equal(before, after);
+
+        using var document = JsonDocument.Parse(serialized);
+        var data = document.RootElement.GetProperty("data");
+        var native = data.GetProperty("nativeEvidence");
+        Assert.Equal("Matched", native.GetProperty("lookupStatus").GetString());
+        Assert.Equal("Recovered", native.GetProperty("status").GetString());
+        Assert.True(native.GetProperty("isComplete").GetBoolean());
+        Assert.Equal("native-tool 1.0.0 (bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)", native.GetProperty("toolProvenance").GetString());
+        Assert.Single(native.GetProperty("directEdges").EnumerateArray());
+    }
+
+    [Fact]
     public async Task StdioHost_CodeSymbolSchemasMatchApprovedContractsAndAllowOmittedOptions()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
 
         var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
         AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection"], ["query"]);
+        AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
+        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit"], ["codebase", "channel", "query"]);
+        AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_related_types"], ["codebase", "channel", "selector", "relationKinds", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(
+            schemas["plan_runtime_proof"],
+            ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
+            ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
         AssertSchema(schemas["list_reference_collections"], [], []);
         AssertSchema(schemas["get_type"], ["selector", "buildId", "limit"], ["selector"]);
         AssertSchema(schemas["get_method"], ["selector", "buildId", "limit"], ["selector"]);
@@ -92,6 +151,75 @@ public sealed class McpTrustBoundaryTests
         var sourceProperties = sourceSchema.RootElement.GetProperty("properties");
         Assert.False(sourceProperties.GetProperty("fullType").GetProperty("default").GetBoolean());
         Assert.Equal(10, sourceProperties.GetProperty("relatedLimit").GetProperty("default").GetInt32());
+
+        foreach (var (toolName, arguments) in new Dictionary<string, IReadOnlyDictionary<string, object?>>
+        {
+            ["list_api_indexes"] = new Dictionary<string, object?>(),
+            ["search_api_symbols"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["query"] = "Missing.Api"
+            },
+            ["get_api_source"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["find_api_callers"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["find_api_callees"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["find_api_references"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["find_api_related_types"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["find_api_call_sites"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["find_api_field_references"] = new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Missing.Api"
+            },
+            ["plan_runtime_proof"] = new Dictionary<string, object?>
+            {
+                ["behavioralQuestion"] = "Which authority owns settlement clearing?",
+                ["executionBoundary"] = "singlePlayer",
+                ["canonicalIdentity"] = "Game.Seams.Target.Run",
+                ["authority"] = "Game.Seams.Target.Run",
+                ["availableObservables"] = new[] { "state transition" },
+                ["unavailableObservables"] = new[] { "dedicated-server telemetry" },
+                ["policyGateSatisfied"] = true
+            }
+        })
+        {
+            var apiSerialized = await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, toolName, arguments);
+            using var apiResult = JsonDocument.Parse(apiSerialized);
+            Assert.True(apiResult.RootElement.TryGetProperty("status", out _), apiSerialized);
+        }
+
         AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
@@ -142,6 +270,77 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(1, neighborhood.GetProperty("callerTotal").GetInt32());
         Assert.Equal(1, neighborhood.GetProperty("calleeTotal").GetInt32());
         Assert.Empty(neighborhood.GetProperty("references").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task StdioHost_UnrelatedSymbolResultsOmitNullableNestedFields()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+
+        var serialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "get_method",
+            new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector });
+
+        using var document = JsonDocument.Parse(serialized);
+        var data = document.RootElement.GetProperty("data");
+
+        Assert.Equal(JsonValueKind.Object, data.ValueKind);
+        foreach (var propertyName in new[]
+        {
+            "collection",
+            "referenceModId",
+            "displayName",
+            "version",
+            "license",
+            "relativePath",
+            "sha256"
+        })
+        {
+            Assert.False(data.TryGetProperty(propertyName, out _), $"Unrelated symbol result emitted nullable field {propertyName}.");
+        }
+
+        var searchSerialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "search_symbols",
+            new Dictionary<string, object?>
+            {
+                ["query"] = "Dealer",
+                ["limit"] = 50
+            });
+        using var searchDocument = JsonDocument.Parse(searchSerialized);
+        var searchSymbols = searchDocument.RootElement.GetProperty("data").GetProperty("results").EnumerateArray();
+        Assert.NotEmpty(searchSymbols);
+        Assert.All(searchSymbols, searchSymbol =>
+        {
+            foreach (var propertyName in new[]
+            {
+                "collection",
+                "referenceModId",
+                "displayName",
+                "version",
+                "license",
+                "relativePath",
+                "sha256"
+            })
+            {
+                Assert.False(searchSymbol.TryGetProperty(propertyName, out _), $"Unrelated nested symbol result emitted nullable field {propertyName}.");
+            }
+        });
+
+        var buildsSerialized = await McpTestHost.CallToolThroughStdioAsync(
+            atlas.DataRoot,
+            "list_builds",
+            new Dictionary<string, object?> { ["limit"] = 50 });
+        using var buildsDocument = JsonDocument.Parse(buildsSerialized);
+        Assert.All(
+            buildsDocument.RootElement.GetProperty("provenance").EnumerateArray(),
+            provenance =>
+            {
+                Assert.False(provenance.TryGetProperty("buildId", out _));
+                Assert.False(provenance.TryGetProperty("extractionId", out _));
+                Assert.False(provenance.TryGetProperty("indexId", out _));
+            });
     }
 
     [Fact]
@@ -459,7 +658,29 @@ internal static class McpTestHost
         var compare = new CompareTools(services);
         var build = new BuildEnvironmentTools(services);
         var scene = new SceneTools(services);
+        var seam = new SeamTools(services);
+        var api = new ApiIndexTools(services);
+        var runtimeProof = new RuntimeProofTools();
         var ct = CancellationToken.None;
+
+        await api.ListApiIndexesAsync(ct: ct);
+        await api.SearchApiSymbolsAsync("s1api", "release", "Missing.Api", 10, ct);
+        await api.GetApiSourceAsync("s1api", "release", "Missing.Api", 0, 0, ct);
+        await api.FindApiCallersAsync("s1api", "release", "Missing.Api", 10, ct);
+        await api.FindApiCalleesAsync("s1api", "release", "Missing.Api", 10, ct);
+        await api.FindApiReferencesAsync("s1api", "release", "Missing.Api", 10, ct);
+        await api.FindApiRelatedTypesAsync("s1api", "release", "Missing.Api", null, 10, ct);
+        await api.FindApiCallSitesAsync("s1api", "release", "Missing.Api", 10, ct);
+        await api.FindApiFieldReferencesAsync("s1api", "release", "Missing.Api", false, false, 10, ct);
+        await runtimeProof.PlanRuntimeProofAsync(
+            "Which authority owns the Demo.Widget run path?",
+            "singlePlayer",
+            "Demo.Widget.Run",
+            "Demo.Widget",
+            ["lifecycle state is persisted"],
+            ["state transition"],
+            ["dedicated-server telemetry"],
+            policyGateSatisfied: true);
 
         await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, ct);
         await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, "not-a-kind", 50, ct);
@@ -501,6 +722,17 @@ internal static class McpTestHost
         await scene.GetPrefabAsync(" ", atlas.BuildIdA, null, false, false, false, 50, ct);
         await scene.GetComponentAsync(atlas.ComponentSelector, atlas.BuildIdA, null, false, true, 50, ct);
         await scene.GetComponentAsync(" ", atlas.BuildIdA, null, false, true, 50, ct);
+        await seam.InvestigateSeamAsync(
+            "Which seam owns the Demo.Widget run path?",
+            atlas.MethodSelector,
+            atlas.BuildIdA,
+            null,
+            null,
+            10,
+            5,
+            0,
+            false,
+            ct);
     }
 
     public static async Task<IReadOnlyList<ToolObservation>> QueryEveryCodeToolAsync(McpTestAtlas atlas)

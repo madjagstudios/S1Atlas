@@ -112,11 +112,28 @@ public sealed record IndexWriteSet(
     IReadOnlyList<IndexReferenceModRecord>? ReferenceMods = null,
     IReadOnlyList<IndexReferenceDocumentRecord>? ReferenceDocuments = null);
 
+public interface INativeRecoveryRepository<TRecord, TRequest>
+    where TRecord : class
+    where TRequest : class
+{
+    Task SaveNativeRecoveryAsync(TRecord record, CancellationToken cancellationToken);
+    Task<TRecord?> GetNativeRecoveryAsync(string recoveryId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<TRecord>> GetNativeRecoveriesAsync(
+        TRequest request,
+        CancellationToken cancellationToken);
+}
+
 public interface IIndexRepository
 {
     ISceneRepository RequireSceneRepository() =>
         this as ISceneRepository ?? throw new InvalidOperationException(
             "Scene indexing requires an index repository that also owns scene persistence.");
+
+    INativeRecoveryRepository<TRecord, TRequest> RequireNativeRecoveryRepository<TRecord, TRequest>()
+        where TRecord : class
+        where TRequest : class =>
+        this as INativeRecoveryRepository<TRecord, TRequest> ?? throw new InvalidOperationException(
+            "Native recovery requires an index repository that also owns native evidence persistence.");
 
     Task CreateCodeSnapshotAsync(CodeSnapshotRecord snapshot, CancellationToken cancellationToken);
     Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken);
