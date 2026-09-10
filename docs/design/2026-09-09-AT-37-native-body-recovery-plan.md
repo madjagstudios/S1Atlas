@@ -283,7 +283,15 @@ Unit tests in this phase use small synthetic byte buffers + a fake/loopback imag
 - Test: `tests/S1Atlas.NativeRecovery.Tests/BoundedNativeDecoderTests.cs`
 
 **Interfaces:**
-- Consumes: a byte slice + start VA + budget + an `IAddressResolver` (`ulong -> string? managedName`, fakeable), and a `IFieldResolver` (`(typeContext, offset) -> string? fieldName`).
+- Consumes: a byte slice + start VA + budget + an `IAddressResolver` and an `IFieldResolver` (both fakeable):
+  ```csharp
+  // Address → managed target. Captures the real multi-implementation case (AT-39 finding):
+  // an address can map to 0, 1, or >1 managed methods.
+  public enum AddressResolutionKind { None, Single, Ambiguous }
+  public readonly record struct AddressResolution(AddressResolutionKind Kind, string? ManagedName);
+  public interface IAddressResolver { AddressResolution Resolve(ulong virtualAddress); }
+  public interface IFieldResolver { string? ResolveFieldName(ulong offset); } // null ⇒ offset-only
+  ```
 - Produces:
   ```csharp
   public sealed record DecodedEvidence(
@@ -297,11 +305,17 @@ Unit tests in this phase use small synthetic byte buffers + a fake/loopback imag
           int maxEdges, IAddressResolver addresses, IFieldResolver fields);
   }
   ```
-  Rules (per Task 1.2 findings): iterate with Iced `Decoder` (64-bit); on `Call` with a near-branch immediate target → resolve via `addresses`; if resolved → `NativeEvidenceEdge{ Kind="DirectCall", SourceMethodPointer=sourcePointer, TargetMethodPointer=Pointer(target), TargetText=managedName, Evidence="direct call" , IsComplete=true }`; else (indirect/register/memory call, or unresolved) → `Kind="RuntimeDispatch"` (workflow will normalize to UNKNOWN); on memory reads `[base+disp]` with a plausible field base → append a `FieldAccess`. Stop at the first `ret`, when `Edges.Count == maxEdges` (then `IsComplete=false`), or a max-byte cap (then `IsComplete=false`). Never emit raw disassembly text into any field.
+  Rules (per AT-39 spike findings): iterate with Iced `Decoder` (64-bit); on `Call` with a near-branch immediate target → resolve via `addresses`:
+    - `Single(name)` → `NativeEvidenceEdge{ Kind="DirectCall", SourceMethodPointer=sourcePointer, TargetMethodPointer=Pointer(target), TargetText=name, Evidence="direct call", IsComplete=true }`.
+    - `Ambiguous` (address maps to >1 managed impl) → still a `DirectCall` (the target VA is concrete) but `TargetText=null` and `IsComplete=false` — preserves the uncertainty (AC #3) while keeping the resolved pointer.
+    - `None` (unresolved — e.g. a shared codegen thunk) → `Kind="RuntimeDispatch"` (workflow normalizes to UNKNOWN).
+  - Indirect/register/memory calls (`call [rax+…]`) → `Kind="RuntimeDispatch"` → UNKNOWN.
+  - Memory reads `[base+disp]` with a plausible field base → append a `FieldAccess`: `"this.<name> @ 0x<hex>"` when `fields.ResolveFieldName` returns a name, else `"field @ 0x<hex>"` (AT-39: ~92% of offsets resolved to names on the validation method).
+  - Termination (AT-39 decision): stop at the first of `ret`, `Edges.Count == maxEdges`, or a max-byte cap. Only reaching `ret` leaves `IsComplete=true`; the budget or byte cap sets `IsComplete=false`. Never emit raw disassembly text into any field.
 
-- [ ] **Step 1: Write failing tests** using hand-assembled byte buffers (fixed opcodes): a `call rel32` to a resolvable address yields one `DirectCall` edge with the expected `TargetText`; a `call [rax+0x10]` yields a non-direct edge (kind not `DirectCall`); hitting `maxEdges` sets `IsComplete=false`; a `ret` terminates and `IsComplete=true`; a `mov rax,[rbx+0x168]` with a resolvable field yields the expected `FieldAccess` string.
+- [ ] **Step 1: Write failing tests** using hand-assembled byte buffers (fixed opcodes): a `call rel32` resolving `Single` yields one `DirectCall` edge with the expected `TargetText` and `IsComplete=true`; a `call rel32` resolving `Ambiguous` yields a `DirectCall` with non-null `TargetMethodPointer`, `TargetText=null`, `IsComplete=false`; a `call rel32` resolving `None` yields a non-`DirectCall` edge (`RuntimeDispatch`); a `call [rax+0x10]` yields a non-direct edge; hitting `maxEdges` sets `IsComplete=false`; a `ret` terminates with `IsComplete=true`; a `mov rax,[rbx+0x168]` with a resolvable field yields `"this.<name> @ 0x168"`, and with no name yields `"field @ 0x168"`.
 - [ ] **Step 2: Run, verify FAIL.**
-- [ ] **Step 3: Implement** with `Iced.Intel.Decoder`. (Exact Iced call shapes confirmed by Task 1.1 spike; Iced 1.21.0 is already a proven dependency of Cpp2IL.Core.)
+- [ ] **Step 3: Implement** with `Iced.Intel.Decoder`. The LibCpp2IL-backed `IAddressResolver` (built in Task 2.5) MUST use `LibCpp2IlMain.GetManagedMethodImplementationsAtAddress(ulong)` — it returns a `List` (0/1/>1 → `None`/`Single`/`Ambiguous`). **Do NOT use `GetMethodDefinitionByGlobalAddress` — AT-39 proved it returns null universally.** (Iced 1.21.0 call shapes confirmed by the AT-39 spike.)
 - [ ] **Step 4: Run, verify PASS.**
 - [ ] **Step 5: Commit.**
 
@@ -429,7 +443,8 @@ Unit tests in this phase use small synthetic byte buffers + a fake/loopback imag
 ## Decisions Log
 
 - **Provenance identity:** Option 1 — pinned-library identity; `ToolSha256` = SHA-256 over the library descriptor (Task 0.3). Doc amended (Task 0.1).
-- **(open, set in Task 1.2)** Field-offset → field-name resolution format and whether names are resolved or offsets-only.
-- **(open, set in Task 1.2)** Decode termination policy (ret / budget / byte cap).
-- **(open, set in Task 2.5)** Traversal-budget division across multiple selected symbols (per-symbol vs. shared pool).
-- **(open, set in Task 1.1)** Whether `LibCpp2IlMain.Reset()` is required between image loads.
+- **SETTLED (AT-39):** Field-offset → field-name resolution: **resolve names** (~92% hit rate on the validation method). Format `"this.<name> @ 0x<hex>"` when resolved, else `"field @ 0x<hex>"`.
+- **SETTLED (AT-39):** Decode termination: stop at the first of **`ret` / instruction-or-edge budget / max-byte cap**; only reaching `ret` leaves `IsComplete=true`.
+- **SETTLED (AT-39):** Traversal-budget division across symbols: **shared pool** (single decrementing budget), not a per-symbol split — edge density varies too much for an even split.
+- **SETTLED (AT-39):** `LibCpp2IlMain.Reset()` is **not strictly required** between loads (verified: identical `MethodPointer` across repeated loads), but `Il2CppImageCache` calls it **defensively before each (re-)initialization** since the different-image case was untested and the cost is negligible.
+- **SETTLED (AT-39) — API correction:** call-target resolution uses **`GetManagedMethodImplementationsAtAddress(ulong)`** (returns a `List`; 0/1/>1 ⇒ None/Single/Ambiguous), **not** `GetMethodDefinitionByGlobalAddress` (returns null universally). See Task 2.4 `IAddressResolver`.
