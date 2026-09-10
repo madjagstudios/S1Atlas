@@ -63,13 +63,23 @@ public static class BoundedNativeDecoder
     /// </summary>
     private const int MaxDecodeBytes = 4096;
 
+    /// <param name="thisRegister">
+    /// The register holding the incoming <c>this</c> pointer at method entry, per the x64 calling
+    /// convention IL2CPP compiles against (the first integer/pointer argument arrives in RCX).
+    /// Pass <see cref="Register.None"/> for a static method, which has no <c>this</c> pointer.
+    /// Field-access evidence is only ever emitted for a memory operand whose base register is
+    /// currently known to alias this register (see <see cref="UpdateThisAliases"/>) — never for a
+    /// non-this base (a local struct pointer, another held reference) or a RIP-relative operand
+    /// (RIP is never a this-alias).
+    /// </param>
     public static DecodedEvidence Decode(
         ReadOnlySpan<byte> code,
         ulong startVirtualAddress,
         string sourcePointer,
         int maxEdges,
         IAddressResolver addresses,
-        IFieldResolver fields)
+        IFieldResolver fields,
+        Register thisRegister)
     {
         var boundedLength = Math.Min(code.Length, MaxDecodeBytes);
         var bounded = code[..boundedLength].ToArray();
@@ -78,7 +88,16 @@ public static class BoundedNativeDecoder
 
         var edges = new List<NativeEvidenceEdge>();
         var fieldAccesses = new List<string>();
+        var seenFieldAccesses = new HashSet<string>();
         var isComplete = false;
+
+        var thisAliases = new HashSet<Register>();
+        if (thisRegister != Register.None)
+        {
+            thisAliases.Add(thisRegister.GetFullRegister());
+        }
+
+        var instructionInfoFactory = new InstructionInfoFactory();
 
         while (decoder.IP < endAddress)
         {
@@ -105,7 +124,12 @@ public static class BoundedNativeDecoder
                 continue;
             }
 
-            CollectFieldAccesses(instruction, fields, fieldAccesses);
+            // Evaluate memory operands against the alias set as it stood BEFORE this instruction
+            // executes, then apply this instruction's effect on the alias set. This mirrors the
+            // real execution order: a read/write addressed via a this-alias register is genuine
+            // evidence regardless of what this same instruction later does to other registers.
+            CollectFieldAccesses(instruction, fields, thisAliases, fieldAccesses, seenFieldAccesses);
+            UpdateThisAliases(instruction, thisAliases, instructionInfoFactory);
         }
 
         return new DecodedEvidence(edges, fieldAccesses, isComplete);
@@ -161,8 +185,21 @@ public static class BoundedNativeDecoder
             IsComplete: false);
     }
 
+    /// <summary>
+    /// Emits FieldAccess evidence only for a memory operand whose base register is currently a
+    /// this-alias, with no index register and a positive displacement. This excludes: a non-this
+    /// base (a local struct pointer, another held reference — not a this-alias), RIP-relative
+    /// operands (RIP is never a this-alias), indexed/array-style accesses, and non-positive
+    /// displacements. Both reads and writes of a genuine this-field are recorded (a write to
+    /// <c>this.field</c> is still real evidence of that field's existence), deduped within this
+    /// method body so the decoder's own output stays clean.
+    /// </summary>
     private static void CollectFieldAccesses(
-        in Instruction instruction, IFieldResolver fields, List<string> fieldAccesses)
+        in Instruction instruction,
+        IFieldResolver fields,
+        HashSet<Register> thisAliases,
+        List<string> fieldAccesses,
+        HashSet<string> seenFieldAccesses)
     {
         for (var operand = 0; operand < instruction.OpCount; operand++)
         {
@@ -172,8 +209,10 @@ public static class BoundedNativeDecoder
             }
 
             var baseRegister = instruction.MemoryBase;
-            if (baseRegister == Register.None)
+            if (baseRegister == Register.None || !thisAliases.Contains(baseRegister.GetFullRegister()))
             {
+                // No base register at all (rare absolute-address form), a non-this base, or a
+                // RIP-relative operand (MemoryBase == Register.RIP, which is never a this-alias).
                 continue;
             }
 
@@ -183,14 +222,67 @@ public static class BoundedNativeDecoder
                 continue;
             }
 
-            var displacement = instruction.MemoryDisplacement64;
-            if (displacement == 0)
+            var rawDisplacement = instruction.MemoryDisplacement64;
+            var signedDisplacement = unchecked((long)rawDisplacement);
+            if (signedDisplacement <= 0)
             {
                 continue;
             }
 
-            var fieldName = fields.ResolveFieldName(displacement);
-            fieldAccesses.Add(NativeNameNormalizer.FieldAccess(fieldName, displacement));
+            var fieldName = fields.ResolveFieldName(rawDisplacement);
+            var access = NativeNameNormalizer.FieldAccess(fieldName, rawDisplacement);
+            if (seenFieldAccesses.Add(access))
+            {
+                fieldAccesses.Add(access);
+            }
         }
     }
+
+    /// <summary>
+    /// Maintains the set of registers currently known to alias the incoming <c>this</c> pointer.
+    /// A plain <c>mov regDest, regSrc</c> propagates the alias from <c>regSrc</c> to
+    /// <c>regDest</c> when <c>regSrc</c> is currently an alias. Any other instruction that writes
+    /// a register removes that register from the alias set — including <c>mov regDest, X</c> where
+    /// <c>X</c> is not currently an alias (a load from memory, an immediate, or a non-alias
+    /// register). This is intentionally conservative: when in doubt, drop the alias, since a false
+    /// negative (missed field-access evidence) is safer than a false positive (mislabeled evidence).
+    /// </summary>
+    private static void UpdateThisAliases(
+        in Instruction instruction, HashSet<Register> thisAliases, InstructionInfoFactory instructionInfoFactory)
+    {
+        if (instruction.Mnemonic == Mnemonic.Mov &&
+            instruction.Op0Kind == OpKind.Register &&
+            instruction.Op1Kind == OpKind.Register)
+        {
+            var destination = instruction.Op0Register.GetFullRegister();
+            var source = instruction.Op1Register.GetFullRegister();
+            if (thisAliases.Contains(source))
+            {
+                thisAliases.Add(destination);
+            }
+            else
+            {
+                thisAliases.Remove(destination);
+            }
+
+            return;
+        }
+
+        var info = instructionInfoFactory.GetInfo(instruction);
+        foreach (var usedRegister in info.GetUsedRegisters())
+        {
+            if (!IsWriteAccess(usedRegister.Access))
+            {
+                continue;
+            }
+
+            thisAliases.Remove(usedRegister.Register.GetFullRegister());
+        }
+    }
+
+    private static bool IsWriteAccess(OpAccess access) => access switch
+    {
+        OpAccess.Write or OpAccess.CondWrite or OpAccess.ReadWrite or OpAccess.ReadCondWrite => true,
+        _ => false,
+    };
 }

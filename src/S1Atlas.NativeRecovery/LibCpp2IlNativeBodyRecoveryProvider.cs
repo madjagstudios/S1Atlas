@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AssetRipper.Primitives;
+using Iced.Intel;
 using LibCpp2IL;
 using LibCpp2IL.Metadata;
 using LibCpp2IL.Reflection;
@@ -167,7 +168,8 @@ public sealed class LibCpp2IlMethodLookup : IIl2CppMethodLookup
                 method.Rva,
                 type.FullName ?? declaringTypeFullName,
                 candidateMethodName,
-                parameterTypeFullNames));
+                parameterTypeFullNames,
+                method.IsStatic));
         }
 
         return results;
@@ -371,13 +373,19 @@ public sealed class LibCpp2IlNativeBodyRecoveryProvider : INativeBodyRecoveryPro
 
             var fieldResolver = _adapterFactory.CreateFieldResolver(descriptor!.DeclaringTypeFullName);
             var code = gameAssemblyBytes.AsSpan(offset);
+            // IL2CPP compiles against the x64 calling convention, which passes the first
+            // integer/pointer argument (the implicit `this` for an instance method) in RCX. A
+            // static method has no `this` pointer, so Register.None disables this-gated
+            // field-access evidence entirely for it.
+            var thisRegister = symbol.IsStatic ? Register.None : Register.RCX;
             var decoded = BoundedNativeDecoder.Decode(
                 code,
                 symbol.MethodPointer,
                 NativeNameNormalizer.Pointer(symbol.MethodPointer),
                 remainingBudget,
                 addressResolver,
-                fieldResolver);
+                fieldResolver,
+                thisRegister);
 
             edges.AddRange(decoded.Edges);
             fieldAccesses.AddRange(decoded.FieldAccesses);

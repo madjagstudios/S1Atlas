@@ -111,13 +111,21 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
         public string? ResolveFieldName(ulong offset) => null;
     }
 
-    private sealed class FakeAdapterFactory(IIl2CppMethodLookup lookup, IAddressResolver addressResolver) : ILibCpp2IlAdapterFactory
+    private sealed class FixedFieldResolver(string name) : IFieldResolver
+    {
+        public string? ResolveFieldName(ulong offset) => name;
+    }
+
+    private sealed class FakeAdapterFactory(
+        IIl2CppMethodLookup lookup, IAddressResolver addressResolver, IFieldResolver? fieldResolver = null)
+        : ILibCpp2IlAdapterFactory
     {
         public IIl2CppMethodLookup CreateMethodLookup() => lookup;
 
         public IAddressResolver CreateAddressResolver() => addressResolver;
 
-        public IFieldResolver CreateFieldResolver(string declaringTypeFullName) => new NullFieldResolver();
+        public IFieldResolver CreateFieldResolver(string declaringTypeFullName) =>
+            fieldResolver ?? new NullFieldResolver();
     }
 
     [Fact]
@@ -326,6 +334,84 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
         AssertAllEvidenceIsSummarySafe(record);
     }
 
+    // `mov rax, [rcx+disp32]`: REX.W 8B /r, ModRM=10 000 001 (mod=disp32, reg=rax, rm=rcx).
+    private static byte[] MovRaxFromRcxDisp32(uint disp)
+    {
+        var bytes = new byte[7];
+        bytes[0] = 0x48; // REX.W
+        bytes[1] = 0x8B; // MOV r64, r/m64
+        bytes[2] = 0x81; // ModRM: mod=10, reg=000 (rax), rm=001 (rcx)
+        BitConverter.GetBytes(disp).CopyTo(bytes, 3);
+        return bytes;
+    }
+
+    [Fact]
+    public async Task RecoverAsync_InstanceMethodWithFieldReadOffRcx_RecordsThisGatedFieldAccess()
+    {
+        const ulong methodVa = 0x1000;
+        var methodBytes = Concat(MovRaxFromRcxDisp32(0x168), Ret());
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            methodVa, MethodOffsetInFile: 0, Rva: methodVa, "Foo.Bar", "Method1", [], IsStatic: false));
+
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(methodBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(
+                lookup, new FixedAddressResolver(AddressResolutionKind.None), new FixedFieldResolver("balance")),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var record = await provider.RecoverAsync(CreateRequest(["sym1"]), CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Equal(["this.balance @ 0x168"], record.FieldAccesses);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public async Task RecoverAsync_StaticMethodWithSameBytesOffRcx_RecordsNoFieldAccess()
+    {
+        const ulong methodVa = 0x1000;
+        var methodBytes = Concat(MovRaxFromRcxDisp32(0x168), Ret());
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            methodVa, MethodOffsetInFile: 0, Rva: methodVa, "Foo.Bar", "Method1", [], IsStatic: true));
+
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(methodBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(
+                lookup, new FixedAddressResolver(AddressResolutionKind.None), new FixedFieldResolver("balance")),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        // A static method's first integer argument also arrives in RCX, per the same x64 calling
+        // convention -- but RCX is NOT `this` for a static method, so the same bytes that produce
+        // this-gated evidence for an instance method must produce none here.
+        var record = await provider.RecoverAsync(CreateRequest(["sym1"]), CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Empty(record.FieldAccesses);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
     [Fact]
     public void NormalizeSeparators_SlashPlusAndDot_AllProduceTheSameNormalizedValue()
     {
@@ -389,7 +475,7 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
     // ---------------------------------------------------------------------------------------
     [Collection(LibCpp2IlGlobalStateCollection.Name)]
     [Trait("Category", "LocalGameRequired")]
-    public sealed class RealAdapterEndToEndTests
+    public sealed class RealAdapterEndToEndTests(ITestOutputHelper output)
     {
         private sealed class RealNativeImageSource : INativeImageSource
         {
@@ -449,6 +535,31 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
             Assert.Equal(request, record.Request);
             Assert.NotEmpty(record.MappingEvidence);
             Assert.NotEmpty(record.Edges);
+
+            // Task 2.7: EvaluateCounteroffer is an INSTANCE method, so field-access evidence is now
+            // this-gated (base register must currently alias RCX, the incoming `this` pointer). It
+            // must not have dropped to near-zero -- that would mean the this-alias model is wrong
+            // for this build. Every accepted access is prefixed "this." or "field ", by construction
+            // of NativeNameNormalizer.FieldAccess; only the "this."-prefixed ones actually resolved
+            // to a named Customer field via LibCpp2IlFieldResolver.
+            Assert.NotEmpty(record.FieldAccesses);
+
+            var resolvedCount = record.FieldAccesses.Count(a => a.StartsWith("this.", StringComparison.Ordinal));
+            var hitRate = 100.0 * resolvedCount / record.FieldAccesses.Count;
+            output.WriteLine(
+                $"This-gated field-access hit rate: {resolvedCount}/{record.FieldAccesses.Count} ({hitRate:F1}%).");
+            foreach (var access in record.FieldAccesses)
+            {
+                output.WriteLine($"  {access}");
+            }
+
+            // The Task 1.2 (AT-39) spike observed ~92% against the same method with a looser
+            // (non-invalidating) alias heuristic. This hardened, invalidation-aware model is
+            // strictly more conservative, so some drop is expected -- but it must stay well above
+            // zero to prove the this-alias model still holds for this build.
+            Assert.True(
+                hitRate >= 50.0,
+                $"Expected a reasonable this-gated field-access hit rate (spike saw ~92%), got {hitRate:F1}%.");
 
             AssertAllEvidenceIsSummarySafe(record);
         }

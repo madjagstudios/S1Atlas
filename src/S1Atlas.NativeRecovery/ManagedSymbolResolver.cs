@@ -9,7 +9,8 @@ public sealed record NativeMethodCandidate(
     ulong Rva,
     string DeclaringTypeFullName,
     string MethodName,
-    IReadOnlyList<string> ParameterTypeFullNames);
+    IReadOnlyList<string> ParameterTypeFullNames,
+    bool IsStatic = false);
 
 /// <summary>
 /// Abstraction for looking up native methods by declaring type and method name.
@@ -49,7 +50,8 @@ public sealed record ResolvedNativeSymbol(
     ulong MethodPointer,
     long MethodOffsetInFile,
     ulong Rva,
-    string ManagedName);
+    string ManagedName,
+    bool IsStatic = false);
 
 /// <summary>
 /// The result of attempting to resolve an S1Atlas managed symbol to a native method.
@@ -164,7 +166,8 @@ public static class ManagedSymbolResolver
             candidate.MethodPointer,
             candidate.MethodOffsetInFile,
             candidate.Rva,
-            managedName);
+            managedName,
+            candidate.IsStatic);
 
         return new SymbolResolutionResult(SymbolResolution.Resolved, resolved, null);
     }
