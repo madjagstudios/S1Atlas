@@ -68,10 +68,10 @@ public sealed partial class SqliteAtlasRepository
             FROM index_runs AS run
             INNER JOIN code_snapshots AS snapshot
                 ON snapshot.snapshot_id = run.snapshot_id
-            INNER JOIN environment_snapshots AS environment
-                ON environment.snapshot_id = snapshot.environment_snapshot_id
+            INNER JOIN validated_extractions AS extraction
+                ON extraction.extraction_id = snapshot.source_identity
             INNER JOIN builds AS build
-                ON build.build_id = environment.build_id
+                ON build.build_id = extraction.build_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
               AND snapshot.codebase = 'ScheduleI'
