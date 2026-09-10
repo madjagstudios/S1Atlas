@@ -21,7 +21,7 @@ public class LibraryToolIdentityTests
     public void Config_pins_match_packages_lock_json_direct_dependencies()
     {
         var repoRoot = FindRepositoryRoot();
-        var configPath = Path.Combine(repoRoot, "config", "tools", "native-recovery-libraries.json");
+        var configPath = Path.Combine(repoRoot, "config", "native-recovery", "libraries.json");
         var lockPath = Path.Combine(repoRoot, "src", "S1Atlas.NativeRecovery", "packages.lock.json");
 
         using var configDoc = JsonDocument.Parse(File.ReadAllText(configPath));

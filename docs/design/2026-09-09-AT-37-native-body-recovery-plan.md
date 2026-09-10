@@ -33,7 +33,7 @@ New project **`src/S1Atlas.NativeRecovery/`** isolates the reverse-engineering l
 - Create `src/S1Atlas.NativeRecovery/BoundedNativeDecoder.cs` — Iced decode loop: emits `DirectCall`/`UNKNOWN` edges + field-offset accesses within budget.
 - Create `src/S1Atlas.NativeRecovery/NativeNameNormalizer.cs` — slash-free managed name + hex-VA formatting helpers.
 - Create `src/S1Atlas.NativeRecovery/LibraryToolIdentity.cs` — computes the 64-hex `ToolSha256` from the pinned-library descriptor.
-- Create `config/tools/native-recovery-libraries.json` — reviewed pinned-library tool definition (identity + license), read at composition time.
+- Create `config/native-recovery/libraries.json` — reviewed pinned-library tool definition (identity + license), read at composition time.
 - Modify `src/S1Atlas.Cli/CliApplication.cs` — compose the provider + workflow, resolve tool identity.
 - Create `src/S1Atlas.Cli/Commands/RecoverNativeBodyCommand.cs` — CLI write-path command that runs recovery and persists.
 - Modify `src/S1Atlas.Mcp/Mapping/EnvelopeMapper.cs` — add `FromNativeRecovery<T>` status→envelope mapping (only if a dedicated MCP tool is added; otherwise the existing `investigate_seam` path is reused).
@@ -104,7 +104,7 @@ git commit -m "chore: add isolated S1Atlas.NativeRecovery project with pinned Li
 ### Task 0.3: Reviewed pinned-library tool definition + `LibraryToolIdentity`
 
 **Files:**
-- Create: `config/tools/native-recovery-libraries.json`
+- Create: `config/native-recovery/libraries.json`
 - Create: `src/S1Atlas.NativeRecovery/LibraryToolIdentity.cs`
 - Test: `tests/S1Atlas.NativeRecovery.Tests/LibraryToolIdentityTests.cs`
 
@@ -140,11 +140,11 @@ public void ComputeToolSha256_is_64_lowercase_hex_and_order_independent()
   Run: `dotnet test tests/S1Atlas.NativeRecovery.Tests --filter LibraryToolIdentityTests`
 - [ ] **Step 3: Implement `LibraryToolIdentity`** using `System.Security.Cryptography.IncrementalHash` (SHA-256), length-prefix each UTF-8 string as little-endian int32 (mirror `NativeRecoveryIntegrity`'s framing), sort pins by `PackageId` (ordinal), return `Convert.ToHexString(hash).ToLowerInvariant()`.
 - [ ] **Step 4: Run test, verify PASS.**
-- [ ] **Step 5: Create `config/tools/native-recovery-libraries.json`** recording `toolName`, both library `pins` (packageId, version, contentSha256 copied from `packages.lock.json`), and `license` (both MIT + source URLs). Add a test asserting the file's pins match the `packages.lock.json` entries so drift is caught.
+- [ ] **Step 5: Create `config/native-recovery/libraries.json`** recording `toolName`, both library `pins` (packageId, version, contentSha256 copied from `packages.lock.json`), and `license` (both MIT + source URLs). Add a test asserting the file's pins match the `packages.lock.json` entries so drift is caught.
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add src/S1Atlas.NativeRecovery/LibraryToolIdentity.cs config/tools/native-recovery-libraries.json tests/S1Atlas.NativeRecovery.Tests/LibraryToolIdentityTests.cs
+git add src/S1Atlas.NativeRecovery/LibraryToolIdentity.cs config/native-recovery/libraries.json tests/S1Atlas.NativeRecovery.Tests/LibraryToolIdentityTests.cs
 git commit -m "feat: pinned-library tool identity for native recovery provenance"
 ```
 
