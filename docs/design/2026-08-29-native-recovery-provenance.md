@@ -59,3 +59,7 @@ Only a directly evidenced `DirectCall` edge with a target method pointer can rem
 ## Licensing and distribution boundary
 
 The Cpp2IL identity above is an inventory reference to the existing reviewed MIT-licensed pin, not authorization to redistribute it or claim native recovery capability. This workflow does not download tools. Any future provider executable remains locally installed and hash-verified under a separately reviewed tool definition and license. Schedule I binaries and derived native artifacts remain outside source control and distribution.
+
+### Provider identity: pinned library
+
+A provider MAY be an in-process pinned library rather than an executable. Its `ToolName`, `ToolVersion`, and `ToolSha256` describe the pinned NuGet libraries instead of an executable's file identity. The `ToolSha256` is a SHA-256 computed over a canonical descriptor of `{packageId, version, contentHash}` entries taken from the committed `packages.lock.json`. The libraries are hash-verified at restore via lockfile locked-mode; no runtime download occurs. This pinned-library identity is an accepted alternative to the executable inventory; the same deterministic provenance guarantees apply.
