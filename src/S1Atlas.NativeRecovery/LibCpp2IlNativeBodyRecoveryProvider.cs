@@ -67,12 +67,16 @@ public sealed record ManagedSymbolDescriptor(
     IReadOnlyList<string> ParameterTypeFullNames);
 
 /// <summary>
-/// Resolves an S1Atlas symbol id to its managed identity, or <c>null</c> when the symbol id is
-/// unknown to the index.
+/// Resolves a batch of S1Atlas symbol ids to their managed identity. A symbol id maps to
+/// <c>null</c> in the returned dictionary when it is unknown to the index. Resolution is batched
+/// and performed up front by <see cref="LibCpp2IlNativeBodyRecoveryProvider.RecoverAsync"/> —
+/// before entering <see cref="Il2CppImageCache.WithImageAsync{T}"/> — so that database work never
+/// runs inside that cache's single-flight section.
 /// </summary>
 public interface ISymbolIdentityResolver
 {
-    ManagedSymbolDescriptor? Resolve(string symbolId);
+    Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+        string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -299,6 +303,12 @@ public sealed class LibCpp2IlNativeBodyRecoveryProvider : INativeBodyRecoveryPro
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        // Resolved once, up front, for the whole batch: this is DB-backed work, and it must not
+        // run inside Il2CppImageCache.WithImageAsync's single-flight section below.
+        var resolvedDescriptors = await _symbolIdentityResolver
+            .ResolveAsync(request.IndexId, request.SymbolIds, cancellationToken)
+            .ConfigureAwait(false);
+
         var image = await _imageSource.GetImageAsync(cancellationToken).ConfigureAwait(false);
 
         return await _imageCache.WithImageAsync(
@@ -307,11 +317,14 @@ public sealed class LibCpp2IlNativeBodyRecoveryProvider : INativeBodyRecoveryPro
             image.MetadataSha256,
             image.MetadataBytes,
             _unityVersion,
-            _ => Task.FromResult(RecoverWithinImage(request, image.GameAssemblyBytes)),
+            _ => Task.FromResult(RecoverWithinImage(request, image.GameAssemblyBytes, resolvedDescriptors)),
             cancellationToken).ConfigureAwait(false);
     }
 
-    private NativeRecoveryRecord RecoverWithinImage(NativeRecoveryRequest request, byte[] gameAssemblyBytes)
+    private NativeRecoveryRecord RecoverWithinImage(
+        NativeRecoveryRequest request,
+        byte[] gameAssemblyBytes,
+        IReadOnlyDictionary<string, ManagedSymbolDescriptor?> resolvedDescriptors)
     {
         var methodLookup = _adapterFactory.CreateMethodLookup();
         var addressResolver = _adapterFactory.CreateAddressResolver();
@@ -319,7 +332,7 @@ public sealed class LibCpp2IlNativeBodyRecoveryProvider : INativeBodyRecoveryPro
         var resolutions = new List<(string SymbolId, SymbolResolutionResult Result, ManagedSymbolDescriptor? Descriptor)>();
         foreach (var symbolId in request.SymbolIds)
         {
-            var descriptor = _symbolIdentityResolver.Resolve(symbolId);
+            var descriptor = resolvedDescriptors.TryGetValue(symbolId, out var found) ? found : null;
             var result = descriptor is null
                 ? new SymbolResolutionResult(
                     SymbolResolution.NotFound,

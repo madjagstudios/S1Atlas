@@ -59,13 +59,20 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
     private sealed class FakeSymbolIdentityResolver(
         IReadOnlyDictionary<string, ManagedSymbolDescriptor?> descriptorsBySymbolId) : ISymbolIdentityResolver
     {
-        public ManagedSymbolDescriptor? Resolve(string symbolId) =>
-            descriptorsBySymbolId.TryGetValue(symbolId, out var descriptor) ? descriptor : null;
+        public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+            string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<string, ManagedSymbolDescriptor?> result = symbolIds.ToDictionary(
+                symbolId => symbolId,
+                symbolId => descriptorsBySymbolId.TryGetValue(symbolId, out var descriptor) ? descriptor : null);
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class ThrowingSymbolIdentityResolver : ISymbolIdentityResolver
     {
-        public ManagedSymbolDescriptor? Resolve(string symbolId) =>
+        public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+            string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Symbol identity lookup failed.");
     }
 
@@ -492,7 +499,14 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
 
         private sealed class FixedSymbolIdentityResolver(ManagedSymbolDescriptor descriptor) : ISymbolIdentityResolver
         {
-            public ManagedSymbolDescriptor? Resolve(string symbolId) => descriptor;
+            public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+                string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken)
+            {
+                IReadOnlyDictionary<string, ManagedSymbolDescriptor?> result = symbolIds.ToDictionary(
+                    symbolId => symbolId,
+                    ManagedSymbolDescriptor? (_) => descriptor);
+                return Task.FromResult(result);
+            }
         }
 
         [Fact]

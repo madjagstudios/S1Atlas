@@ -7,6 +7,7 @@
     <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
     <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
     <ProjectReference Include="..\S1Atlas.Docs\S1Atlas.Docs.csproj" />
+    <ProjectReference Include="..\S1Atlas.NativeRecovery\S1Atlas.NativeRecovery.csproj" />
     <PackageReference Include="System.CommandLine" Version="2.0.10" />
   </ItemGroup>
   <ItemGroup>
@@ -20,6 +21,10 @@
              CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\config\validation\*.json"
              Link="config\validation\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\config\native-recovery\*.json"
+             Link="config\native-recovery\%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

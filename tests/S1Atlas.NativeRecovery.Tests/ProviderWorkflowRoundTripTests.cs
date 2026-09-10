@@ -75,8 +75,14 @@ public class ProviderWorkflowRoundTripTests
     private sealed class FakeSymbolIdentityResolver(
         IReadOnlyDictionary<string, ManagedSymbolDescriptor?> descriptorsBySymbolId) : ISymbolIdentityResolver
     {
-        public ManagedSymbolDescriptor? Resolve(string symbolId) =>
-            descriptorsBySymbolId.TryGetValue(symbolId, out var descriptor) ? descriptor : null;
+        public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+            string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<string, ManagedSymbolDescriptor?> result = symbolIds.ToDictionary(
+                symbolId => symbolId,
+                symbolId => descriptorsBySymbolId.TryGetValue(symbolId, out var descriptor) ? descriptor : null);
+            return Task.FromResult(result);
+        }
     }
 
     private sealed class FakeMethodLookup : IIl2CppMethodLookup

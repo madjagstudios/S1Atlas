@@ -11,6 +11,9 @@ internal sealed record CliConfigurationPaths(string RootDirectory)
     public string ValidationPoliciesDirectory =>
         Path.Combine(RootDirectory, "validation");
 
+    public string NativeRecoveryLibrariesPath =>
+        Path.Combine(RootDirectory, "native-recovery", "libraries.json");
+
     public static CliConfigurationPaths Resolve()
     {
         var appBaseCandidate = Path.Combine(
