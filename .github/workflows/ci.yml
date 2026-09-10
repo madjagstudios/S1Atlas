@@ -16,6 +16,8 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Restore
         run: dotnet restore S1Atlas.sln
+      - name: Verify S1Atlas.NativeRecovery lockfile
+        run: dotnet restore src/S1Atlas.NativeRecovery/S1Atlas.NativeRecovery.csproj --locked-mode
       - name: Build
         run: dotnet build S1Atlas.sln --configuration Release --no-restore
       - name: Test
