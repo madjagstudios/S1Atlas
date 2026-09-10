@@ -173,14 +173,17 @@ public sealed class NativeRecoveryWorkflow
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidDataException)
         {
-            return InvalidProviderRecord(request, executionContext, "The provider returned invalid evidence.");
+            // exception.Message here always comes from this file's own RequireText/RequireSha256/
+            // SanitizeSummary throws (e.g. "MappingEvidence must be a bounded evidence summary."),
+            // never from raw provider-supplied text, so it is safe to surface as the specific reason.
+            return InvalidProviderRecord(request, executionContext, exception.Message);
         }
     }
 
     private NativeRecoveryRecord InvalidProviderRecord(
         NativeRecoveryRequest request,
         NativeRecoveryExecutionContext executionContext,
-        string _) =>
+        string message) =>
         CreateRecord(
             request,
             executionContext,
@@ -189,7 +192,23 @@ public sealed class NativeRecoveryWorkflow
             edges: [],
             fieldAccesses: [],
             isComplete: false,
-            "Native recovery provider returned invalid evidence.");
+            BoundInvalidProviderMessage(message));
+
+    /// <summary>
+    /// Composes the specific, sanitizer-safe reason passed by each <see cref="InvalidProviderRecord"/>
+    /// caller into the emitted <c>FailureMessage</c>, instead of discarding it behind a single
+    /// generic string. Every caller passes a short, code-controlled reason (never raw provider text),
+    /// so the composed message is bounded to <see cref="MaximumSummaryLength"/> defensively rather
+    /// than re-validated against <see cref="SanitizeSummary"/>, which would risk throwing from
+    /// inside failure-path construction.
+    /// </summary>
+    private static string BoundInvalidProviderMessage(string message)
+    {
+        var combined = $"Native recovery provider returned invalid evidence: {message}";
+        return combined.Length > MaximumSummaryLength
+            ? combined[..MaximumSummaryLength]
+            : combined;
+    }
 
     private NativeRecoveryRecord CreateRecord(
         NativeRecoveryRequest request,

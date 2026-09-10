@@ -968,7 +968,7 @@ internal sealed class SeamMcpTestAtlas : IAsyncDisposable
                     "DirectCall",
                     "direct native target",
                     true)],
-                [],
+                ["this.balance @ 0x168"],
                 true,
                 new string('d', 64),
                 DateTimeOffset.Parse("2026-08-30T12:00:00Z"),

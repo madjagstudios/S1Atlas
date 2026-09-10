@@ -1,0 +1,25 @@
+{
+  "toolName": "s1atlas-native-recovery-libs",
+  "pins": [
+    {
+      "packageId": "Samboy063.LibCpp2IL",
+      "version": "2022.1.0-pre-release.21",
+      "contentSha256": "ipcm/4MmEPaCXA8EgkGRk0ffNzl4Zs2iTjC6Dj+yoA6Et1UJiOigXhvhSmwUdWzoW/iJx57LP9SlG8Br6ZM2rA=="
+    },
+    {
+      "packageId": "Iced",
+      "version": "1.21.0",
+      "contentSha256": "dv5+81Q1TBQvVMSOOOmRcjJmvWcX3BZPZsIq31+RLc5cNft0IHAyNlkdb7ZarOWG913PyBoFDsDXoCIlKmLclg=="
+    }
+  ],
+  "license": {
+    "Samboy063.LibCpp2IL": {
+      "spdxId": "MIT",
+      "sourceUrl": "https://github.com/SamboyCoding/Cpp2IL/blob/2022.1.0-pre-release.21/LICENSE"
+    },
+    "Iced": {
+      "spdxId": "MIT",
+      "sourceUrl": "https://github.com/icedland/iced/blob/master/LICENSE.txt"
+    }
+  }
+}

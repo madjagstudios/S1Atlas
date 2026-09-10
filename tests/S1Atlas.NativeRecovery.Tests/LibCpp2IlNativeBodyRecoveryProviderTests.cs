@@ -1,0 +1,596 @@
+using AssetRipper.Primitives;
+using S1Atlas.Core.Storage;
+using S1Atlas.NativeRecovery;
+using S1Atlas.NativeRecovery.Tests.Spikes;
+using Xunit;
+
+namespace S1Atlas.NativeRecovery.Tests;
+
+public class LibCpp2IlNativeBodyRecoveryProviderTests
+{
+    private static readonly IReadOnlyList<LibraryPin> Pins =
+    [
+        new LibraryPin("Samboy063.LibCpp2IL", "2022.1.0-pre-release.21", "test-hash-libcpp2il"),
+        new LibraryPin("Iced", "1.21.0", "test-hash-iced"),
+    ];
+
+    // Assembles `call rel32` (opcode 0xE8 + 4-byte little-endian relative displacement)
+    // targeting the given absolute virtual address, given the instruction starts at `at`.
+    private static byte[] CallRel32(ulong at, ulong target)
+    {
+        var nextIp = at + 5; // E8 + 4-byte rel32
+        var rel32 = unchecked((int)(target - nextIp));
+        var bytes = new byte[5];
+        bytes[0] = 0xE8;
+        BitConverter.GetBytes(rel32).CopyTo(bytes, 1);
+        return bytes;
+    }
+
+    private static byte[] Ret() => [0xC3];
+
+    private static byte[] Concat(params byte[][] chunks)
+    {
+        var result = new List<byte>();
+        foreach (var chunk in chunks)
+        {
+            result.AddRange(chunk);
+        }
+
+        return [.. result];
+    }
+
+    private static NativeRecoveryRequest CreateRequest(IReadOnlyList<string> symbolIds, int maxTraversalEdges = 10) =>
+        new(
+            BuildId: "build-1",
+            IndexId: "index-1",
+            GameAssemblySha256: new string('a', 64),
+            SymbolIds: symbolIds,
+            MaxTraversalEdges: maxTraversalEdges);
+
+    private static Il2CppImageCache CreateNoOpImageCache() =>
+        new((_, _, _, _, _, _) => Task.CompletedTask);
+
+    private sealed class FakeNativeImageSource(byte[] gameAssemblyBytes) : INativeImageSource
+    {
+        public Task<NativeImage> GetImageAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new NativeImage(gameAssemblyBytes, "game-assembly-sha", [0x01], "metadata-sha"));
+    }
+
+    private sealed class FakeSymbolIdentityResolver(
+        IReadOnlyDictionary<string, ManagedSymbolDescriptor?> descriptorsBySymbolId) : ISymbolIdentityResolver
+    {
+        public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+            string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<string, ManagedSymbolDescriptor?> result = symbolIds.ToDictionary(
+                symbolId => symbolId,
+                symbolId => descriptorsBySymbolId.TryGetValue(symbolId, out var descriptor) ? descriptor : null);
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class ThrowingSymbolIdentityResolver : ISymbolIdentityResolver
+    {
+        public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+            string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Symbol identity lookup failed.");
+    }
+
+    private sealed class ThrowingAdapterFactory : ILibCpp2IlAdapterFactory
+    {
+        public IIl2CppMethodLookup CreateMethodLookup() =>
+            throw new InvalidOperationException("Adapter factory failed to create the method lookup.");
+
+        public IAddressResolver CreateAddressResolver() => new FixedAddressResolver(AddressResolutionKind.None);
+
+        public IFieldResolver CreateFieldResolver(string declaringTypeFullName) => new NullFieldResolver();
+    }
+
+    private sealed class FakeMethodLookup : IIl2CppMethodLookup
+    {
+        private readonly Dictionary<(string Type, string Name), List<NativeMethodCandidate>> _candidates = new();
+
+        public void Add(string declaringTypeFullName, string methodName, NativeMethodCandidate candidate)
+        {
+            var key = (declaringTypeFullName, methodName);
+            if (!_candidates.TryGetValue(key, out var list))
+            {
+                list = [];
+                _candidates[key] = list;
+            }
+
+            list.Add(candidate);
+        }
+
+        public IReadOnlyList<NativeMethodCandidate> FindByTypeAndName(string declaringTypeFullName, string methodName) =>
+            _candidates.TryGetValue((declaringTypeFullName, methodName), out var list)
+                ? list
+                : [];
+    }
+
+    private sealed class FixedAddressResolver(AddressResolutionKind kind, string? managedName = null) : IAddressResolver
+    {
+        public AddressResolution Resolve(ulong virtualAddress) => new(kind, managedName);
+    }
+
+    private sealed class NullFieldResolver : IFieldResolver
+    {
+        public string? ResolveFieldName(ulong offset) => null;
+    }
+
+    private sealed class FixedFieldResolver(string name) : IFieldResolver
+    {
+        public string? ResolveFieldName(ulong offset) => name;
+    }
+
+    private sealed class FakeAdapterFactory(
+        IIl2CppMethodLookup lookup, IAddressResolver addressResolver, IFieldResolver? fieldResolver = null)
+        : ILibCpp2IlAdapterFactory
+    {
+        public IIl2CppMethodLookup CreateMethodLookup() => lookup;
+
+        public IAddressResolver CreateAddressResolver() => addressResolver;
+
+        public IFieldResolver CreateFieldResolver(string declaringTypeFullName) =>
+            fieldResolver ?? new NullFieldResolver();
+    }
+
+    [Fact]
+    public async Task RecoverAsync_AllSymbolsResolved_ReturnsRecoveredWithAggregatedEdgesAndMatchingRequest()
+    {
+        const ulong method1Va = 0x1000;
+        const ulong method2Va = 0x2000;
+        const ulong targetVa = 0x9000;
+
+        var method1Bytes = Concat(CallRel32(method1Va, targetVa), Ret());
+        var method2Bytes = Concat(CallRel32(method2Va, targetVa), Ret());
+        var gameAssemblyBytes = Concat(method1Bytes, method2Bytes);
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            method1Va, MethodOffsetInFile: 0, Rva: method1Va, "Foo.Bar", "Method1", []));
+        lookup.Add("Foo.Bar", "Method2", new NativeMethodCandidate(
+            method2Va, MethodOffsetInFile: method1Bytes.Length, Rva: method2Va, "Foo.Bar", "Method2", []));
+
+        var addressResolver = new FixedAddressResolver(AddressResolutionKind.Single, "Some.Target.Method");
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+            ["sym2"] = new ManagedSymbolDescriptor("Foo.Bar", "Method2", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(gameAssemblyBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(lookup, addressResolver),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var request = CreateRequest(["sym1", "sym2"], maxTraversalEdges: 10);
+
+        var record = await provider.RecoverAsync(request, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Equal(request, record.Request);
+        Assert.Equal(2, record.Edges.Count);
+        Assert.All(record.Edges, edge => Assert.Equal("DirectCall", edge.Kind));
+        Assert.All(record.Edges, edge => Assert.True(edge.IsComplete));
+        Assert.Equal(2, record.MappingEvidence.Count);
+        Assert.True(record.IsComplete);
+        Assert.Null(record.FailureMessage);
+        Assert.Equal(LibraryToolIdentity.ToolName, record.ToolName);
+        Assert.Equal(LibraryToolIdentity.ToolVersion(Pins), record.ToolVersion);
+        Assert.Equal(LibraryToolIdentity.ComputeToolSha256(Pins), record.ToolSha256);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public async Task RecoverAsync_OneSymbolAmbiguous_ReturnsAmbiguousMappingWithNoEdges()
+    {
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Duplicate", new NativeMethodCandidate(0x1000, 0, 0x1000, "Foo.Bar", "Duplicate", []));
+        lookup.Add("Foo.Bar", "Duplicate", new NativeMethodCandidate(0x2000, 100, 0x2000, "Foo.Bar", "Duplicate", []));
+
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Duplicate", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(new byte[1024]),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(lookup, new FixedAddressResolver(AddressResolutionKind.None)),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var request = CreateRequest(["sym1"]);
+
+        var record = await provider.RecoverAsync(request, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.AmbiguousMapping, record.Status);
+        Assert.Equal(request, record.Request);
+        Assert.Empty(record.Edges);
+        Assert.Empty(record.FieldAccesses);
+        Assert.NotEmpty(record.MappingEvidence);
+        Assert.False(record.IsComplete);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public async Task RecoverAsync_AllSymbolsNotFound_ReturnsNoBody()
+    {
+        var lookup = new FakeMethodLookup(); // empty: nothing resolves
+
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Missing", []),
+            ["sym2"] = null, // unknown to the index entirely
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(new byte[1024]),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(lookup, new FixedAddressResolver(AddressResolutionKind.None)),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var request = CreateRequest(["sym1", "sym2"]);
+
+        var record = await provider.RecoverAsync(request, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.NoBody, record.Status);
+        Assert.Equal(request, record.Request);
+        Assert.Empty(record.Edges);
+        Assert.Empty(record.FieldAccesses);
+        Assert.NotEmpty(record.MappingEvidence);
+        Assert.False(record.IsComplete);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public async Task RecoverAsync_SymbolIdentityResolverThrows_ExceptionPropagates()
+    {
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(new byte[1024]),
+            new ThrowingSymbolIdentityResolver(),
+            new FakeAdapterFactory(new FakeMethodLookup(), new FixedAddressResolver(AddressResolutionKind.None)),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var request = CreateRequest(["sym1"]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.RecoverAsync(request, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RecoverAsync_AdapterFactoryThrows_ExceptionPropagates()
+    {
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(new byte[1024]),
+            symbolIdentityResolver,
+            new ThrowingAdapterFactory(),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var request = CreateRequest(["sym1"]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.RecoverAsync(request, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RecoverAsync_BudgetSmallerThanTotalEdgesAcrossSymbols_SharesBudgetAcrossSymbolsRatherThanPerSymbol()
+    {
+        const ulong method1Va = 0x1000;
+        const ulong method2Va = 0x2000;
+        const ulong targetVa = 0x9000;
+
+        // Each method body is a single call followed by a ret, so each yields exactly 1 edge
+        // when decoded with its own full budget.
+        var method1Bytes = Concat(CallRel32(method1Va, targetVa), Ret());
+        var method2Bytes = Concat(CallRel32(method2Va, targetVa), Ret());
+        var gameAssemblyBytes = Concat(method1Bytes, method2Bytes);
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            method1Va, MethodOffsetInFile: 0, Rva: method1Va, "Foo.Bar", "Method1", []));
+        lookup.Add("Foo.Bar", "Method2", new NativeMethodCandidate(
+            method2Va, MethodOffsetInFile: method1Bytes.Length, Rva: method2Va, "Foo.Bar", "Method2", []));
+
+        var addressResolver = new FixedAddressResolver(AddressResolutionKind.Single, "Some.Target.Method");
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+            ["sym2"] = new ManagedSymbolDescriptor("Foo.Bar", "Method2", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(gameAssemblyBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(lookup, addressResolver),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        // MaxTraversalEdges is smaller than the 2 edges available across the two resolved
+        // symbols (1 each). If the budget were split per symbol instead of shared from a single
+        // pool, each symbol would independently get its own budget of 1 and this would recover
+        // 2 edges with IsComplete true. A shared pool must instead spend the whole budget on the
+        // first symbol, leaving nothing for the second.
+        var request = CreateRequest(["sym1", "sym2"], maxTraversalEdges: 1);
+
+        var record = await provider.RecoverAsync(request, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Equal(request, record.Request);
+        Assert.Single(record.Edges);
+        Assert.False(record.IsComplete);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    // `mov rax, [rcx+disp32]`: REX.W 8B /r, ModRM=10 000 001 (mod=disp32, reg=rax, rm=rcx).
+    private static byte[] MovRaxFromRcxDisp32(uint disp)
+    {
+        var bytes = new byte[7];
+        bytes[0] = 0x48; // REX.W
+        bytes[1] = 0x8B; // MOV r64, r/m64
+        bytes[2] = 0x81; // ModRM: mod=10, reg=000 (rax), rm=001 (rcx)
+        BitConverter.GetBytes(disp).CopyTo(bytes, 3);
+        return bytes;
+    }
+
+    [Fact]
+    public async Task RecoverAsync_InstanceMethodWithFieldReadOffRcx_RecordsThisGatedFieldAccess()
+    {
+        const ulong methodVa = 0x1000;
+        var methodBytes = Concat(MovRaxFromRcxDisp32(0x168), Ret());
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            methodVa, MethodOffsetInFile: 0, Rva: methodVa, "Foo.Bar", "Method1", [], IsStatic: false));
+
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(methodBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(
+                lookup, new FixedAddressResolver(AddressResolutionKind.None), new FixedFieldResolver("balance")),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var record = await provider.RecoverAsync(CreateRequest(["sym1"]), CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Equal(["this.balance @ 0x168"], record.FieldAccesses);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public async Task RecoverAsync_StaticMethodWithSameBytesOffRcx_RecordsNoFieldAccess()
+    {
+        const ulong methodVa = 0x1000;
+        var methodBytes = Concat(MovRaxFromRcxDisp32(0x168), Ret());
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            methodVa, MethodOffsetInFile: 0, Rva: methodVa, "Foo.Bar", "Method1", [], IsStatic: true));
+
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(methodBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(
+                lookup, new FixedAddressResolver(AddressResolutionKind.None), new FixedFieldResolver("balance")),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        // A static method's first integer argument also arrives in RCX, per the same x64 calling
+        // convention -- but RCX is NOT `this` for a static method, so the same bytes that produce
+        // this-gated evidence for an instance method must produce none here.
+        var record = await provider.RecoverAsync(CreateRequest(["sym1"]), CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Empty(record.FieldAccesses);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public void NormalizeSeparators_SlashPlusAndDot_AllProduceTheSameNormalizedValue()
+    {
+        var viaSlash = LibCpp2IlTypeNames.NormalizeSeparators("Ns.Outer/Inner");
+        var viaPlus = LibCpp2IlTypeNames.NormalizeSeparators("Ns.Outer+Inner");
+        var viaDot = LibCpp2IlTypeNames.NormalizeSeparators("Ns.Outer.Inner");
+
+        Assert.Equal("Ns.Outer.Inner", viaSlash);
+        Assert.Equal(viaSlash, viaPlus);
+        Assert.Equal(viaSlash, viaDot);
+    }
+
+    [Theory]
+    [InlineData("Ns.Outer/Inner")]
+    [InlineData("Ns.Outer+Inner")]
+    [InlineData("Ns.Outer.Inner")]
+    public void NormalizeSeparators_MatchingPredicate_TreatsDottedRequestAsEquivalentToStoredSeparatorForm(
+        string storedCandidateFullName)
+    {
+        const string requestedDeclaringTypeFullName = "Ns.Outer.Inner";
+
+        // Mirrors LibCpp2IlTypeNames.FindByFullName's own comparison: both sides normalized via
+        // NormalizeSeparators, then compared with Ordinal equality. A nested type recorded by
+        // IL2CPP with '/' or by the managed index with '+' or '.' must all match the same request.
+        var isMatch = string.Equals(
+            LibCpp2IlTypeNames.NormalizeSeparators(storedCandidateFullName),
+            LibCpp2IlTypeNames.NormalizeSeparators(requestedDeclaringTypeFullName),
+            StringComparison.Ordinal);
+
+        Assert.True(isMatch, $"Expected requested '{requestedDeclaringTypeFullName}' to match stored candidate '{storedCandidateFullName}'.");
+    }
+
+    private static void AssertAllEvidenceIsSummarySafe(NativeRecoveryRecord record)
+    {
+        foreach (var evidence in record.MappingEvidence)
+        {
+            Assert.True(NativeNameNormalizer.IsSummarySafe(evidence), $"Mapping evidence '{evidence}' is not summary-safe.");
+        }
+
+        foreach (var edge in record.Edges)
+        {
+            Assert.True(NativeNameNormalizer.IsSummarySafe(edge.SourceMethodPointer));
+            if (edge.TargetMethodPointer is not null)
+                Assert.True(NativeNameNormalizer.IsSummarySafe(edge.TargetMethodPointer));
+            if (edge.TargetText is not null)
+                Assert.True(NativeNameNormalizer.IsSummarySafe(edge.TargetText));
+            Assert.True(NativeNameNormalizer.IsSummarySafe(edge.Kind));
+            Assert.True(NativeNameNormalizer.IsSummarySafe(edge.Evidence));
+        }
+
+        foreach (var fieldAccess in record.FieldAccesses)
+        {
+            Assert.True(NativeNameNormalizer.IsSummarySafe(fieldAccess));
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // LocalGameRequired: exercises the REAL LibCpp2IL-backed adapters end-to-end against the
+    // installed Schedule I build. Skips (does not fail) when the game is not installed, mirroring
+    // the Task 1.1/1.2 spikes so CI without the game stays green.
+    // ---------------------------------------------------------------------------------------
+    [Collection(LibCpp2IlGlobalStateCollection.Name)]
+    [Trait("Category", "LocalGameRequired")]
+    public sealed class RealAdapterEndToEndTests(ITestOutputHelper output)
+    {
+        private sealed class RealNativeImageSource : INativeImageSource
+        {
+            public Task<NativeImage> GetImageAsync(CancellationToken cancellationToken)
+            {
+                var (binaryBytes, metadataBytes) = LocalGameFixture.ReadImageBytes();
+                var gameAssemblySha256 = Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(binaryBytes)).ToLowerInvariant();
+                var metadataSha256 = Convert.ToHexString(
+                    System.Security.Cryptography.SHA256.HashData(metadataBytes)).ToLowerInvariant();
+                return Task.FromResult(new NativeImage(binaryBytes, gameAssemblySha256, metadataBytes, metadataSha256));
+            }
+        }
+
+        private sealed class FixedSymbolIdentityResolver(ManagedSymbolDescriptor descriptor) : ISymbolIdentityResolver
+        {
+            public Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(
+                string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken)
+            {
+                IReadOnlyDictionary<string, ManagedSymbolDescriptor?> result = symbolIds.ToDictionary(
+                    symbolId => symbolId,
+                    ManagedSymbolDescriptor? (_) => descriptor);
+                return Task.FromResult(result);
+            }
+        }
+
+        [Fact]
+        public async Task RecoverAsync_CustomerEvaluateCounteroffer_RecoversAgainstRealBuild()
+        {
+            LocalGameFixture.SkipUnlessAvailable();
+
+            var imageCache = new Il2CppImageCache(async (_, gameAssemblyBytes, _, metadataBytes, unityVersion, _) =>
+            {
+                LibCpp2IL.LibCpp2IlMain.Reset();
+                var initialized = LibCpp2IL.LibCpp2IlMain.Initialize(gameAssemblyBytes, metadataBytes, unityVersion);
+                if (!initialized)
+                    throw new InvalidOperationException("LibCpp2IlMain.Initialize failed against the installed build.");
+                await Task.CompletedTask;
+            });
+
+            var descriptor = new ManagedSymbolDescriptor(
+                $"{CustomerLookup.DeclaringNamespace}.{CustomerLookup.TypeName}",
+                "EvaluateCounteroffer",
+                ["ScheduleOne.Product.ProductDefinition", "System.Int32", "System.Single"]);
+
+            var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+                imageCache,
+                new RealNativeImageSource(),
+                new FixedSymbolIdentityResolver(descriptor),
+                new LibCpp2IlAdapterFactory(),
+                AssetRipper.Primitives.UnityVersion.Parse(CustomerLookup.UnitySupportedVersion),
+                LibCpp2IlNativeBodyRecoveryProvider.LoadLibraryPinsFromConfig(FindLibrariesConfigPath()));
+
+            var request = new NativeRecoveryRequest(
+                BuildId: "local-build",
+                IndexId: "local-index",
+                GameAssemblySha256: new string('a', 64),
+                SymbolIds: ["customer-evaluate-counteroffer"],
+                MaxTraversalEdges: 50);
+
+            var record = await provider.RecoverAsync(request, CancellationToken.None);
+
+            Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+            Assert.Equal(request, record.Request);
+            Assert.NotEmpty(record.MappingEvidence);
+            Assert.NotEmpty(record.Edges);
+
+            // Task 2.7: EvaluateCounteroffer is an INSTANCE method, so field-access evidence is now
+            // this-gated (base register must currently alias RCX, the incoming `this` pointer). It
+            // must not have dropped to near-zero -- that would mean the this-alias model is wrong
+            // for this build. Every accepted access is prefixed "this." or "field ", by construction
+            // of NativeNameNormalizer.FieldAccess; only the "this."-prefixed ones actually resolved
+            // to a named Customer field via LibCpp2IlFieldResolver.
+            Assert.NotEmpty(record.FieldAccesses);
+
+            var resolvedCount = record.FieldAccesses.Count(a => a.StartsWith("this.", StringComparison.Ordinal));
+            var hitRate = 100.0 * resolvedCount / record.FieldAccesses.Count;
+            output.WriteLine(
+                $"This-gated field-access hit rate: {resolvedCount}/{record.FieldAccesses.Count} ({hitRate:F1}%).");
+            foreach (var access in record.FieldAccesses)
+            {
+                output.WriteLine($"  {access}");
+            }
+
+            // The Task 1.2 (AT-39) spike observed ~92% against the same method with a looser
+            // (non-invalidating) alias heuristic. This hardened, invalidation-aware model is
+            // strictly more conservative, so some drop is expected -- but it must stay well above
+            // zero to prove the this-alias model still holds for this build.
+            Assert.True(
+                hitRate >= 50.0,
+                $"Expected a reasonable this-gated field-access hit rate (spike saw ~92%), got {hitRate:F1}%.");
+
+            AssertAllEvidenceIsSummarySafe(record);
+        }
+
+        private static string FindLibrariesConfigPath()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory is not null)
+            {
+                var candidate = Path.Combine(directory.FullName, "config", "native-recovery", "libraries.json");
+                if (File.Exists(candidate))
+                    return candidate;
+
+                directory = directory.Parent;
+            }
+
+            throw new InvalidOperationException("Could not locate config/native-recovery/libraries.json.");
+        }
+    }
+}

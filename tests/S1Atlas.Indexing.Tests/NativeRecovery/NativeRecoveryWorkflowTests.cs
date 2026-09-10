@@ -319,7 +319,9 @@ public sealed class NativeRecoveryWorkflowTests
         Assert.Equal(NativeRecoveryStatus.Failed, result.Status);
         Assert.False(result.IsComplete);
         Assert.Empty(result.MappingEvidence);
-        Assert.Equal("Native recovery provider returned invalid evidence.", result.FailureMessage);
+        Assert.Equal(
+            "Native recovery provider returned invalid evidence: Native recovery did not return sufficient evidence.",
+            result.FailureMessage);
     }
 
     [Fact]
@@ -339,7 +341,9 @@ public sealed class NativeRecoveryWorkflowTests
 
         Assert.Equal(NativeRecoveryStatus.Failed, result.Status);
         Assert.DoesNotContain("secret", result.FailureMessage, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal("Native recovery provider returned invalid evidence.", result.FailureMessage);
+        Assert.Equal(
+            "Native recovery provider returned invalid evidence: MappingEvidence must be a bounded evidence summary.",
+            result.FailureMessage);
         Assert.Empty(result.MappingEvidence);
     }
 

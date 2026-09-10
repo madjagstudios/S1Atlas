@@ -28,6 +28,7 @@ using S1Atlas.Indexing.Query;
 using S1Atlas.Indexing.ReferenceMods;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Indexing.Diff;
+using S1Atlas.NativeRecovery;
 
 namespace S1Atlas.Cli;
 
@@ -40,6 +41,19 @@ public sealed class CliApplication
     private readonly TimeProvider _timeProvider;
     private readonly Func<IIl2CppExtractor> _processExtractorFactory;
     private readonly Func<int, bool> _isProcessAlive;
+
+    /// <summary>
+    /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/>.
+    /// Not yet consumed by a command (that is Task 3.2's <c>recover-native-body</c>); exposed so
+    /// that task, and this task's own tests, can drive them without re-deriving the composition.
+    /// </summary>
+    internal NativeRecoveryComposition? NativeRecoveryComposition { get; private set; }
+
+    /// <summary>
+    /// The composed native-recovery execution-context factory, built during
+    /// <see cref="InvokeCore"/>. See <see cref="NativeRecoveryComposition"/>.
+    /// </summary>
+    internal NativeRecoveryExecutionContextFactory? NativeRecoveryContextFactory { get; private set; }
 
     public CliApplication(string dataDirectory, string atlasVersion)
         : this(
@@ -313,6 +327,13 @@ public sealed class CliApplication
             sqliteRepository,
             sqliteRepository,
             sqliteRepository);
+        // Consumed by the `recover-native-body` command. Constructing this holder is cheap (no I/O),
+        // so it is safe to build unconditionally on every invocation.
+        NativeRecoveryComposition = new NativeRecoveryComposition(
+            sqliteRepository,
+            new WindowsScheduleOneLocator(),
+            _configurationPaths.NativeRecoveryLibrariesPath);
+        NativeRecoveryContextFactory = new NativeRecoveryExecutionContextFactory(fileHasher);
         var diffService = new BuildDiffService(sqliteRepository);
         var sceneIndexingWorkflow = new SceneIndexWorkflow(
             _paths.RootDirectory,
@@ -407,6 +428,15 @@ public sealed class CliApplication
         root.Subcommands.Add(DiffCommand.Create(
             diffService, sqliteRepository, sqliteRepository, sqliteRepository, repository,
             output, error, cancellationToken));
+        root.Subcommands.Add(RecoverNativeBodyCommand.Create(
+            NativeRecoveryComposition!,
+            NativeRecoveryContextFactory!,
+            authorityResolver,
+            repository,
+            sqliteRepository,
+            output,
+            error,
+            cancellationToken));
 
         return root.Parse(args).Invoke(new InvocationConfiguration
         {

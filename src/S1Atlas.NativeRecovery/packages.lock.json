@@ -1,0 +1,168 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "Iced": {
+        "type": "Direct",
+        "requested": "[1.21.0, )",
+        "resolved": "1.21.0",
+        "contentHash": "dv5+81Q1TBQvVMSOOOmRcjJmvWcX3BZPZsIq31+RLc5cNft0IHAyNlkdb7ZarOWG913PyBoFDsDXoCIlKmLclg=="
+      },
+      "Samboy063.LibCpp2IL": {
+        "type": "Direct",
+        "requested": "[2022.1.0-pre-release.21, )",
+        "resolved": "2022.1.0-pre-release.21",
+        "contentHash": "ipcm/4MmEPaCXA8EgkGRk0ffNzl4Zs2iTjC6Dj+yoA6Et1UJiOigXhvhSmwUdWzoW/iJx57LP9SlG8Br6ZM2rA==",
+        "dependencies": {
+          "AssetRipper.Primitives": "3.2.0",
+          "Samboy063.WasmDisassembler": "2022.1.0-pre-release.21"
+        }
+      },
+      "AssetRipper.Primitives": {
+        "type": "Transitive",
+        "resolved": "3.2.0",
+        "contentHash": "UtDpl72yG5/KUj3BsNP7k2sF13nqqeaJ4sTANZZd/gb+t9YULYYzcyNfxuvdptenlsQIUBmMwTVHUn6TZ61Jqg=="
+      },
+      "AssetsTools.NET": {
+        "type": "Transitive",
+        "resolved": "3.0.5",
+        "contentHash": "StvUj6ykBOSOdquRmpbjn6mfM7PyOCKdBB/Ed2Jn5aIhbfrl/Oz69tmgJEQCZdix7AZRVZin14/wytP2moJgAQ=="
+      },
+      "ICSharpCode.Decompiler": {
+        "type": "Transitive",
+        "resolved": "10.1.1.8388",
+        "contentHash": "Gel09L54mMdYMBivl6DSw8OtQR29joHvmqEPdsA+/lJE0Q8qgwCOyV7NkMIZC0BFCjluDNzqEQzUnRx/OtvB1Q==",
+        "dependencies": {
+          "System.Collections.Immutable": "9.0.0",
+          "System.Reflection.Metadata": "9.0.0"
+        }
+      },
+      "Microsoft.CodeAnalysis.Common": {
+        "type": "Transitive",
+        "resolved": "5.6.0",
+        "contentHash": "eWYNB5e92PSdkQ0xcmy2aLtrvBXNydnVi0Hj/VjaAely6XBqA3By+ClGAJaj4d16pzQmrXPLLK9RDVuS1Ec9xQ==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.3.0",
+          "System.Collections.Immutable": "10.0.1",
+          "System.Reflection.Metadata": "10.0.1"
+        }
+      },
+      "Microsoft.CodeAnalysis.CSharp": {
+        "type": "Transitive",
+        "resolved": "5.6.0",
+        "contentHash": "r1DrKQ/L0xTw03wJrLr36AMQNslyaeEKBFyFmQcOKa8HX3YvmhY//JEUafb6IR/m0gmaUVCfBTWitKJRNb7YAA==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "5.3.0",
+          "Microsoft.CodeAnalysis.Common": "[5.6.0]",
+          "System.Collections.Immutable": "10.0.1",
+          "System.Reflection.Metadata": "10.0.1"
+        }
+      },
+      "Microsoft.Data.Sqlite": {
+        "type": "Transitive",
+        "resolved": "8.0.29",
+        "contentHash": "UT01MJBITsT5CFLK9bhYWjz847BHlC2em7nhBNCCSYsI72mIzrXHfrQT8R+huQKJGZo94/a9GWGzKPn7mmlMyw==",
+        "dependencies": {
+          "Microsoft.Data.Sqlite.Core": "8.0.29",
+          "SQLitePCLRaw.bundle_e_sqlite3": "2.1.6"
+        }
+      },
+      "Microsoft.Data.Sqlite.Core": {
+        "type": "Transitive",
+        "resolved": "8.0.29",
+        "contentHash": "B/7Z0la03kNVdmZtgSN/PocA2nsPiVUq56iCh25oW8W31Yzg1ofrMWy79i0DcDOXuHjy7+jlsUlSNytwe9Et5A==",
+        "dependencies": {
+          "SQLitePCLRaw.core": "2.1.6"
+        }
+      },
+      "Samboy063.WasmDisassembler": {
+        "type": "Transitive",
+        "resolved": "2022.1.0-pre-release.21",
+        "contentHash": "weekI8YQsZnZ+C7jUdxHcmFcp4Kcod3Rxiv/dbIf9qTCXrdKmJAIAeoiSp12g2bC0mGpbF/hOlgSKGfCUgKHyg=="
+      },
+      "SQLitePCLRaw.bundle_e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.6",
+        "contentHash": "BmAf6XWt4TqtowmiWe4/5rRot6GerAeklmOPfviOvwLoF5WwgxcJHAxZtySuyW9r9w+HLILnm8VfJFLCUJYW8A==",
+        "dependencies": {
+          "SQLitePCLRaw.lib.e_sqlite3": "2.1.6",
+          "SQLitePCLRaw.provider.e_sqlite3": "2.1.6"
+        }
+      },
+      "SQLitePCLRaw.core": {
+        "type": "Transitive",
+        "resolved": "2.1.6",
+        "contentHash": "wO6v9GeMx9CUngAet8hbO7xdm+M42p1XeJq47ogyRoYSvNSp0NGLI+MgC0bhrMk9C17MTVFlLiN6ylyExLCc5w==",
+        "dependencies": {
+          "System.Memory": "4.5.3"
+        }
+      },
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.6",
+        "contentHash": "2ObJJLkIUIxRpOUlZNGuD4rICpBnrBR5anjyfUFQep4hMOIeqW+XGQYzrNmHSVz5xSWZ3klSbh7sFR6UyDj68Q=="
+      },
+      "SQLitePCLRaw.provider.e_sqlite3": {
+        "type": "Transitive",
+        "resolved": "2.1.6",
+        "contentHash": "PQ2Oq3yepLY4P7ll145P3xtx2bX8xF4PzaKPRpw9jZlKvfe4LE/saAV82inND9usn1XRpmxXk7Lal3MTI+6CNg==",
+        "dependencies": {
+          "SQLitePCLRaw.core": "2.1.6"
+        }
+      },
+      "System.Collections.Immutable": {
+        "type": "Transitive",
+        "resolved": "10.0.1",
+        "contentHash": "kdTe61B8P7i2M1pODC3MLbZ/CfFGjpC6c6jzxjQoB5DHZNewayCRqgFUmx3JKB6vLQtozpMQEiw+R5fO32Jv4g=="
+      },
+      "System.Memory": {
+        "type": "Transitive",
+        "resolved": "4.5.3",
+        "contentHash": "3oDzvc/zzetpTKWMShs1AADwZjQ/36HnsufHRPcOjyRAAMLDlu2iD33MBI2opxnezcVUtXyqDXXjoFMOU9c7SA=="
+      },
+      "System.Reflection.Metadata": {
+        "type": "Transitive",
+        "resolved": "10.0.1",
+        "contentHash": "zpcfT/wacPPhE17zcudozlxQtWN/84qyiMyZNGLnK4cj2IMBtLsZYwYjVnALUhPliwyUVj/P7kaZvBWYBCnf2Q==",
+        "dependencies": {
+          "System.Collections.Immutable": "10.0.1"
+        }
+      },
+      "s1atlas.application": {
+        "type": "Project",
+        "dependencies": {
+          "S1Atlas.Core": "[1.0.0, )",
+          "S1Atlas.Extraction": "[1.0.0, )",
+          "S1Atlas.Indexing": "[1.0.0, )",
+          "S1Atlas.Storage": "[1.0.0, )"
+        }
+      },
+      "s1atlas.core": {
+        "type": "Project"
+      },
+      "s1atlas.extraction": {
+        "type": "Project",
+        "dependencies": {
+          "AssetsTools.NET": "[3.0.5, )",
+          "S1Atlas.Core": "[1.0.0, )"
+        }
+      },
+      "s1atlas.indexing": {
+        "type": "Project",
+        "dependencies": {
+          "ICSharpCode.Decompiler": "[10.1.1.8388, )",
+          "Microsoft.CodeAnalysis.CSharp": "[5.6.0, )",
+          "S1Atlas.Core": "[1.0.0, )",
+          "S1Atlas.Extraction": "[1.0.0, )"
+        }
+      },
+      "s1atlas.storage": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[8.0.29, )",
+          "S1Atlas.Core": "[1.0.0, )"
+        }
+      }
+    }
+  }
+}

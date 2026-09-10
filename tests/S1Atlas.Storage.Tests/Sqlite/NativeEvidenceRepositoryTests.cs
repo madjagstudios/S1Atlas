@@ -2,8 +2,11 @@ using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
+using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
+using S1Atlas.Core.Tools;
+using S1Atlas.Indexing.NativeRecovery;
 using S1Atlas.Storage.Migrations;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
@@ -15,6 +18,9 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
     private const string GameAssemblySha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string ToolSha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     private const string OutputSha256 = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    private const string ToolInstanceId = "tool-instance-native-evidence";
+    private const string ProfileDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    private const string PolicyDigest = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
     private readonly string _root = Path.Combine(
         Path.GetTempPath(),
@@ -48,6 +54,60 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
         AssertRecordEqual(expected, Assert.Single(matches));
         Assert.Equal("UNKNOWN", matches[0].Edges[0].Kind);
         Assert.Equal("DirectCall", matches[0].Edges[1].Kind);
+    }
+
+    [Fact]
+    public async Task SaveNativeRecovery_ResavingTheIdenticalRecordIsAnIdempotentNoOp()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+        var record = Record(
+            recoveryId: new string('1', 64),
+            createdAtUtc: DateTimeOffset.Parse("2026-08-30T12:00:00Z"));
+
+        await repository.SaveNativeRecoveryAsync(record, cancellationToken);
+        var countsAfterFirstSave = await CountNativeRecoveryRowsAsync(cancellationToken);
+
+        // Re-saving the identical, content-addressed record must succeed as a no-op rather
+        // than throwing a SQLite unique-constraint violation on recovery_id.
+        await repository.SaveNativeRecoveryAsync(record, cancellationToken);
+
+        var countsAfterSecondSave = await CountNativeRecoveryRowsAsync(cancellationToken);
+        Assert.Equal(countsAfterFirstSave, countsAfterSecondSave);
+
+        var stored = await repository.GetNativeRecoveryAsync(record.RecoveryId, cancellationToken);
+        AssertRecordEqual(record, Assert.IsType<NativeRecoveryRecord>(stored));
+
+        // A genuinely different record (different content -> different, content-addressed
+        // RecoveryId) must still insert normally.
+        var differentRecord = Record(
+            recoveryId: new string('9', 64),
+            createdAtUtc: DateTimeOffset.Parse("2026-08-30T12:00:00Z"),
+            outputSha256: new string('d', 64));
+        Assert.NotEqual(record.RecoveryId, differentRecord.RecoveryId);
+        await repository.SaveNativeRecoveryAsync(differentRecord, cancellationToken);
+
+        var countsAfterDifferentRecord = await CountNativeRecoveryRowsAsync(cancellationToken);
+        Assert.True(countsAfterDifferentRecord.Runs > countsAfterSecondSave.Runs);
+    }
+
+    private async Task<(long Runs, long Edges, long Fields)> CountNativeRecoveryRowsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        await connection.OpenAsync(cancellationToken);
+        return (
+            await CountAsync(connection, "native_recovery_runs", cancellationToken),
+            await CountAsync(connection, "native_recovery_edges", cancellationToken),
+            await CountAsync(connection, "native_recovery_fields", cancellationToken));
+
+        static async Task<long> CountAsync(SqliteConnection connection, string table, CancellationToken ct)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COUNT(*) FROM {table};";
+            return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+        }
     }
 
     [Fact]
@@ -260,6 +320,321 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SaveNativeRecovery_LinksThroughValidatedExtractionsAndRejectsAnUnlinkedIndex()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+
+        // Sanity check on the fixture's shape: a real Schedule I/Installed code_snapshot
+        // always leaves environment_snapshot_id NULL, so this row must not carry one. If it
+        // did, SaveNativeRecoveryAsync succeeding below would prove nothing about the
+        // validated_extractions linkage -- it could just as well be passing through the old,
+        // incorrect environment_snapshots join.
+        await using (var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False"))
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT environment_snapshot_id FROM code_snapshots WHERE snapshot_id = 'native-snapshot';";
+            Assert.Equal(DBNull.Value, await command.ExecuteScalarAsync(cancellationToken));
+        }
+
+        var linked = Record(new string('2', 64), DateTimeOffset.Parse("2026-08-30T12:00:00Z"));
+        await repository.SaveNativeRecoveryAsync(linked, cancellationToken);
+        Assert.NotNull(await repository.GetNativeRecoveryAsync(linked.RecoveryId, cancellationToken));
+
+        // A second completed index whose code_snapshot.source_identity does not resolve to
+        // any validated_extractions row -- the real-world "no matching completed extraction"
+        // case -- must still be rejected by the precondition.
+        var orphanSnapshot = new CodeSnapshotRecord(
+            "native-snapshot-orphan",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "orphan-source-identity-with-no-validated-extraction",
+            "2026-08-30T10:05:00.0000000+00:00");
+        await _repository.CreateCodeSnapshotAsync(orphanSnapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(
+                "index-a-orphan",
+                orphanSnapshot.SnapshotId,
+                IndexRunStatus.Running,
+                "2026-08-30T10:05:00.0000000+00:00"),
+            cancellationToken);
+        await _repository.CompleteIndexRunAsync(
+            "index-a-orphan",
+            new IndexWriteSet([], [], [], [], []),
+            "2026-08-30T10:06:00.0000000+00:00",
+            cancellationToken);
+
+        var unlinkedRequest = Request() with { IndexId = "index-a-orphan" };
+        var unlinked = CreateCanonicalRecord(
+            unlinkedRequest,
+            "native-recovery-tool",
+            "1.2.3",
+            ToolSha256,
+            NativeRecoveryStatus.Recovered,
+            ["managed pointer 0x100", "native pointer 0x200"],
+            [
+                new NativeEvidenceEdge(
+                    new string('8', 64), "0x200", null, "runtime target", "UNKNOWN", "UNKNOWN indirect dispatch", false),
+                new NativeEvidenceEdge(
+                    new string('7', 64), "0x200", "0x220", "Demo.Target", "DirectCall", "direct target evidence", true)
+            ],
+            ["0x300 read", "0x320 write"],
+            false,
+            DateTimeOffset.Parse("2026-08-30T12:00:00Z"),
+            null);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => repository.SaveNativeRecoveryAsync(unlinked, cancellationToken));
+        Assert.Equal(
+            "Native recovery records require a completed Schedule I index matching the recorded build and GameAssembly hash.",
+            exception.Message);
+        Assert.Null(await repository.GetNativeRecoveryAsync(unlinked.RecoveryId, cancellationToken));
+    }
+
+    // AT-37 Task 4.2 / AC #5 durable no-leak guard: every string SaveNativeRecoveryAsync
+    // actually writes to native_recovery_runs, native_recovery_edges, and
+    // native_recovery_fields must be free of path separators, "://" schemes, ".bin", and
+    // "disassembly" -- no game binary, raw disassembly, or filesystem path can ever reach a
+    // persisted row. This discovers every TEXT column via PRAGMA table_info rather than
+    // hardcoding a column list, so a future column added to any of the three tables is
+    // automatically covered without editing this test.
+    [Fact]
+    public async Task SaveNativeRecovery_PersistedStringsAcrossAllTablesContainNoPathOrDisassemblyLeaks()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+
+        // Realistic record with a DirectCall edge, an UNKNOWN edge, and field accesses --
+        // reuses the same seeding/canonicalization helpers (InitializeCompletedIndexAsync,
+        // Record, CreateCanonicalRecord) as the other native-recovery persistence tests above.
+        var record = Record(new string('a', 64), DateTimeOffset.Parse("2026-08-30T12:00:00Z"));
+        await repository.SaveNativeRecoveryAsync(record, cancellationToken);
+
+        // A second record whose tool provenance uses the real libcpp2il/iced version-stamp
+        // format ("libcpp2il=<version>;iced=<version>"). ';', '=', '.', and '-' are all
+        // allowed by the sanitizer contract, so this string must survive untouched.
+        const string toolProvenanceVersion = "libcpp2il=2.10.1;iced=1.20.0";
+        var provenanceRecord = CreateCanonicalRecord(
+            Request() with { SymbolIds = ["native-symbol-c", "native-symbol-d"] },
+            "native-recovery-tool",
+            toolProvenanceVersion,
+            ToolSha256,
+            NativeRecoveryStatus.Recovered,
+            ["managed pointer 0x400", "native pointer 0x420"],
+            [
+                new NativeEvidenceEdge(
+                    new string('1', 64), "0x400", "0x420", "Demo.OtherTarget", "DirectCall", "direct target evidence 2", true)
+            ],
+            ["0x500 read"],
+            false,
+            DateTimeOffset.Parse("2026-08-30T12:05:00Z"),
+            null);
+        await repository.SaveNativeRecoveryAsync(provenanceRecord, cancellationToken);
+
+        var storedValues = await CollectPersistedNativeRecoveryStringsAsync(cancellationToken);
+        AssertNoLeakedTokens(storedValues);
+
+        // Sanity: prove the scan actually reached rows in all three tables and captured the
+        // provenance string verbatim (rather than passing vacuously over an empty result set).
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_runs"
+            && v.Column == "tool_version" && v.Value == toolProvenanceVersion);
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_runs"
+            && v.Column == "mapping_evidence_json" && v.Value.Contains("managed pointer 0x100"));
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_edges"
+            && v.Column == "kind" && v.Value == "DirectCall");
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_fields"
+            && v.Column == "field_access");
+    }
+
+    // AT-37 Task 4.2 / AC #5 negative guard: route a provider evidence value carrying a raw
+    // "/" through the full NativeRecoveryWorkflow -> SaveNativeRecoveryAsync path and prove
+    // the sanitizer backstop rejects it (Status=Failed, empty edges/evidence) before anything
+    // unsafe is persisted. This complements the existing workflow-level regression
+    // (NativeRecoveryWorkflowTests.RecoverAsync_rejects_artifact_like_provider_text_without_copying_it,
+    // which covers a Windows path with '\' and ".bin") by covering a bare '/' end-to-end
+    // through persistence, which no existing test exercises.
+    [Fact]
+    public async Task RecoverAsync_ProviderEvidenceContainingSlash_NeverReachesPersistedStorage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+
+        var request = Request();
+        var executionContext = new NativeRecoveryExecutionContext(
+            request.BuildId,
+            request.IndexId,
+            request.GameAssemblySha256,
+            "native-recovery-tool",
+            "1.2.3",
+            ToolSha256);
+        var workflow = new NativeRecoveryWorkflow(new SlashLeakingProvider(executionContext));
+
+        var result = await workflow.RecoverAsync(request, executionContext, cancellationToken);
+
+        Assert.Equal(NativeRecoveryStatus.Failed, result.Status);
+        Assert.Empty(result.Edges);
+        Assert.Empty(result.MappingEvidence);
+        Assert.NotNull(result.FailureMessage);
+        Assert.DoesNotContain('/', result.FailureMessage);
+
+        await repository.SaveNativeRecoveryAsync(result, cancellationToken);
+
+        var storedValues = await CollectPersistedNativeRecoveryStringsAsync(cancellationToken);
+        AssertNoLeakedTokens(storedValues);
+        Assert.DoesNotContain(storedValues, v => v.Value.Contains("managed/native", StringComparison.Ordinal));
+    }
+
+    private sealed class SlashLeakingProvider(NativeRecoveryExecutionContext executionContext)
+        : INativeBodyRecoveryProvider
+    {
+        public Task<NativeRecoveryRecord> RecoverAsync(
+            NativeRecoveryRequest request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new NativeRecoveryRecord(
+                new string('9', 64),
+                request,
+                executionContext.ToolName,
+                executionContext.ToolVersion,
+                executionContext.ToolSha256,
+                NativeRecoveryStatus.Recovered,
+                ["managed/native pointer 0x100"],
+                [
+                    new NativeEvidenceEdge(
+                        new string('8', 64), "0x100", "0x101", "Demo.Target", "DirectCall", "direct target evidence", true)
+                ],
+                [],
+                true,
+                new string('9', 64),
+                DateTimeOffset.Parse("2026-08-30T12:10:00Z"),
+                null));
+    }
+
+    private static readonly string[] ForbiddenSubstrings = ["://", ".bin", "disassembly"];
+
+    private async Task<IReadOnlyList<(string Table, string Column, string Value)>> CollectPersistedNativeRecoveryStringsAsync(
+        CancellationToken cancellationToken)
+    {
+        var values = new List<(string Table, string Column, string Value)>();
+        await using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        await connection.OpenAsync(cancellationToken);
+        foreach (var table in new[] { "native_recovery_runs", "native_recovery_edges", "native_recovery_fields" })
+        {
+            var textColumns = new List<string>();
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = $"PRAGMA table_info({table});";
+                await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (string.Equals(reader.GetString(2), "TEXT", StringComparison.OrdinalIgnoreCase))
+                        textColumns.Add(reader.GetString(1));
+                }
+            }
+
+            foreach (var column in textColumns)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT {column} FROM {table};";
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (!reader.IsDBNull(0))
+                        values.Add((table, column, reader.GetString(0)));
+                }
+            }
+        }
+
+        return values;
+    }
+
+    private static void AssertNoLeakedTokens(IReadOnlyList<(string Table, string Column, string Value)> values)
+    {
+        // Sanity: fail loudly if the scan itself found nothing, rather than passing vacuously.
+        Assert.NotEmpty(values);
+        foreach (var (table, column, value) in values)
+        {
+            Assert.True(!value.Contains('\\'), $"{table}.{column} leaked a backslash: '{value}'");
+            Assert.True(!value.Contains('/'), $"{table}.{column} leaked a forward slash: '{value}'");
+            Assert.True(!value.Contains('\0'), $"{table}.{column} leaked a NUL byte: '{value}'");
+            foreach (var forbidden in ForbiddenSubstrings)
+            {
+                Assert.True(
+                    value.IndexOf(forbidden, StringComparison.OrdinalIgnoreCase) < 0,
+                    $"{table}.{column} leaked forbidden token '{forbidden}': '{value}'");
+            }
+        }
+    }
+
+    // AT-37 read-path regression guard: GetCompletedIndexBuildIdAsync must resolve the build id
+    // for a completed ScheduleI index via the SAME linkage RequireCompletedNativeInputAsync
+    // relies on (code_snapshots.source_identity -> validated_extractions.extraction_id ->
+    // builds.build_id), not the environment_snapshots join that real ScheduleI/Installed
+    // code_snapshots never populate. Before the fix this returned null for every ScheduleI
+    // index, which made SeamInvestigationService.GetNativeEvidenceAsync report a persisted
+    // recovery record as InputChanged instead of surfacing it.
+    [Fact]
+    public async Task GetCompletedIndexBuildIdAsync_ResolvesScheduleIIndexViaExtractionLinkage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+
+        var buildId = await _repository.GetCompletedIndexBuildIdAsync("index-a", cancellationToken);
+
+        Assert.Equal("build-a", buildId);
+    }
+
+    // Companion coverage for the other shape GetCompletedIndexBuildIdAsync must keep resolving:
+    // an environment-captured codebase (e.g. S1Api installed) whose code_snapshot DOES carry an
+    // environment_snapshot_id. The codebase-aware COALESCE fix must not regress this path.
+    [Fact]
+    public async Task GetCompletedIndexBuildIdAsync_ResolvesApiIndexViaEnvironmentSnapshotLinkage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var timestamp = DateTimeOffset.Parse("2026-08-30T10:00:00Z");
+        var environment = new EnvironmentSnapshot(
+            2,
+            new GameBuild("build-api", GameAssemblySha256, new string('9', 64), timestamp, true),
+            new InstallationObservation(
+                "2022.3",
+                "3164500",
+                "456",
+                @"C:\games\native-build-api",
+                @"C:\games\native-build-api\GameAssembly.dll",
+                @"C:\games\native-build-api\global-metadata.dat"),
+            [],
+            "0.2.0-test",
+            timestamp);
+        await _repository.SaveSnapshotAsync(environment, cancellationToken);
+
+        var snapshot = new CodeSnapshotRecord(
+            "api-snapshot",
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "s1api:installed:api-source",
+            "2026-08-30T10:00:00.0000000+00:00",
+            EnvironmentSnapshotId.Create(environment));
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-api", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+        await _repository.CompleteIndexRunAsync(
+            "index-api",
+            new IndexWriteSet([], [], [], [], []),
+            "2026-08-30T10:01:00.0000000+00:00",
+            cancellationToken);
+
+        var buildId = await _repository.GetCompletedIndexBuildIdAsync("index-api", cancellationToken);
+
+        Assert.Equal("build-api", buildId);
+    }
+
+    [Fact]
     public async Task ReadOnlyRepository_QueriesWithoutChangingAtlasAndRejectsWrites()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -309,6 +684,13 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
         Assert.Equal(11L, Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)));
     }
 
+    // Real Schedule I/Installed code_snapshots always leave environment_snapshot_id NULL
+    // (only API-codebase snapshots set it); the index-to-build linkage instead flows
+    // through code_snapshots.source_identity -> validated_extractions.extraction_id ->
+    // builds.build_id. This fixture deliberately mirrors that real shape (rather than
+    // setting environment_snapshot_id, which would let the precondition query pass through
+    // the old, incorrect environment_snapshots join) so these tests exercise the same
+    // linkage RequireCompletedNativeInputAsync relies on in production.
     private async Task InitializeCompletedIndexAsync(CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);
@@ -333,13 +715,14 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
             "0.2.0-test",
             timestamp);
         await _repository.SaveSnapshotAsync(environment, cancellationToken);
+
+        var extractionId = await SeedValidatedExtractionAsync("build-a", cancellationToken);
         var snapshot = new CodeSnapshotRecord(
             "native-snapshot",
             CodebaseKind.ScheduleI,
             CodeChannel.Installed,
-            "native-source",
-            "2026-08-30T10:00:00.0000000+00:00",
-            EnvironmentSnapshotId.Create(environment));
+            extractionId,
+            "2026-08-30T10:00:00.0000000+00:00");
         await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
         await _repository.StartIndexRunAsync(
             new IndexRunRecord(
@@ -353,6 +736,172 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
             new IndexWriteSet([], [], [], [], []),
             "2026-08-30T10:01:00.0000000+00:00",
             cancellationToken);
+    }
+
+    private async Task<string> SeedValidatedExtractionAsync(string buildId, CancellationToken cancellationToken)
+    {
+        await SeedToolInstanceAsync(cancellationToken);
+        var baseTime = DateTimeOffset.Parse("2026-08-30T09:00:00Z");
+        var recipeId = new string('1', 64);
+        var manifest = new ArtifactManifest(1, [
+            new ArtifactManifestEntry(
+                "reconstructed/Assembly-CSharp.dll",
+                ArtifactKind.ManagedAssembly,
+                6,
+                Convert.ToHexString(SHA256.HashData([1, 2, 3, 4, 5, 6])).ToLowerInvariant(),
+                "Assembly-CSharp",
+                "Assembly-CSharp.dll",
+                1,
+                1,
+                0,
+                0,
+                0)
+        ]);
+        var digest = ArtifactManifestFingerprint.Create(manifest);
+        var extractionId = ExtractionId.Create(recipeId, digest);
+        var attempt = await CreateValidatingAttemptAsync(buildId, recipeId, extractionId[..32], baseTime, cancellationToken);
+        var statistics = new ExtractionStatistics(
+            1, 1, 1, 1, 1, 0, 0, 0, 6, 6,
+            [new AssemblyIdentityStatistics("Assembly-CSharp", 1, 6, 1, 1, 0, 0, 0)]);
+        var extraction = new ValidatedExtraction(
+            extractionId,
+            recipeId,
+            buildId,
+            ToolInstanceId,
+            attempt.AttemptId,
+            "default-profile",
+            1,
+            ProfileDigest,
+            1,
+            1,
+            digest,
+            Path.Combine(_root, "builds", buildId, "extractions", extractionId),
+            baseTime.AddMinutes(1),
+            ToolTrustLevel.ManagedPinned,
+            ValidationOutcome.Valid,
+            statistics);
+        var report = new ValidationReport(
+            1,
+            attempt.AttemptId,
+            ValidationSubjectKind.CandidateOutput,
+            null,
+            buildId,
+            recipeId,
+            "managed-assemblies-v1",
+            1,
+            PolicyDigest,
+            ValidationOutcome.Valid,
+            true,
+            true,
+            true,
+            digest,
+            statistics,
+            null,
+            [],
+            [],
+            true,
+            baseTime.AddMinutes(2));
+        await _repository.CommitValidatedExtractionAsync(
+            new ValidatedExtractionPromotion(
+                attempt with
+                {
+                    Status = ExtractionAttemptStatus.Succeeded,
+                    CompletedAtUtc = baseTime.AddMinutes(2),
+                    ResultExtractionId = extractionId
+                },
+                extraction,
+                manifest,
+                report,
+                null),
+            cancellationToken);
+        return extractionId;
+    }
+
+    private async Task<ExtractionAttempt> CreateValidatingAttemptAsync(
+        string buildId,
+        string recipeId,
+        string attemptId,
+        DateTimeOffset baseTime,
+        CancellationToken cancellationToken)
+    {
+        var created = new ExtractionAttempt(
+            attemptId,
+            recipeId,
+            buildId,
+            ToolInstanceId,
+            "default-profile",
+            1,
+            ProfileDigest,
+            "managed-assemblies-v1",
+            1,
+            PolicyDigest,
+            1,
+            1,
+            ExtractionInputSource.Live,
+            null,
+            ExtractionAttemptStatus.Created,
+            baseTime,
+            null,
+            null,
+            null,
+            null,
+            $"C:\\attempts\\{attemptId}\\work",
+            $"C:\\attempts\\{attemptId}\\stdout.log",
+            $"C:\\attempts\\{attemptId}\\stderr.log",
+            false,
+            false,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            0,
+            0,
+            null,
+            null);
+        await _repository.CreateAttemptAsync(created, cancellationToken);
+        var preparing = created with { Status = ExtractionAttemptStatus.Preparing, StartedAtUtc = baseTime };
+        await _repository.TransitionAttemptAsync(preparing, ExtractionAttemptStatus.Created, cancellationToken);
+        var running = preparing with { Status = ExtractionAttemptStatus.Running, ProcessId = 1234 };
+        await _repository.TransitionAttemptAsync(running, ExtractionAttemptStatus.Preparing, cancellationToken);
+        var completed = running with
+        {
+            Status = ExtractionAttemptStatus.ProcessCompleted,
+            ProcessExitCode = 0,
+            CandidateOutputPath = "C:\\candidate"
+        };
+        await _repository.TransitionAttemptAsync(completed, ExtractionAttemptStatus.Running, cancellationToken);
+        var validating = completed with { Status = ExtractionAttemptStatus.Validating };
+        await _repository.TransitionAttemptAsync(validating, ExtractionAttemptStatus.ProcessCompleted, cancellationToken);
+        return validating;
+    }
+
+    private async Task SeedToolInstanceAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new SqliteConnection(
+            new SqliteConnectionStringBuilder
+            {
+                DataSource = _databasePath,
+                Mode = SqliteOpenMode.ReadWrite,
+                Pooling = false
+            }.ToString());
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO tool_instances (
+                tool_instance_id, tool_name, version_label, platform, trust_level,
+                definition_digest, package_sha256, executable_sha256, observed_path,
+                first_observed_at_utc, last_verified_at_utc, status)
+            VALUES (
+                $id, 'cpp2il', 'test', 'win-x64', 'ManagedPinned', 'definition',
+                'package', 'executable', 'C:\tools\Cpp2IL.exe',
+                '2026-08-30T09:00:00.0000000+00:00', '2026-08-30T09:00:00.0000000+00:00', 'Verified');
+            """;
+        command.Parameters.AddWithValue("$id", ToolInstanceId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static NativeRecoveryRequest Request() =>

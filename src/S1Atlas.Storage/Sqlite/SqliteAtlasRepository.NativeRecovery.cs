@@ -21,6 +21,28 @@ public sealed partial class SqliteAtlasRepository
                 transaction,
                 canonicalRecord.Request,
                 cancellationToken);
+
+            var existingOutputSha256 = await TryGetExistingOutputSha256Async(
+                connection,
+                transaction,
+                canonicalRecord.RecoveryId,
+                cancellationToken);
+            if (existingOutputSha256 is not null)
+            {
+                // RecoveryId is content-addressed (derived from the request, tool identity, and
+                // OutputSha256), so an existing row with the same RecoveryId represents the
+                // identical record. Re-saving it is an idempotent no-op rather than a duplicate
+                // insert; only a hash mismatch under an identical ID would be a genuine anomaly.
+                if (!string.Equals(existingOutputSha256, canonicalRecord.OutputSha256, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"Native recovery '{canonicalRecord.RecoveryId}' already exists with a different output hash.");
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return;
+            }
+
             await InsertNativeRunAsync(connection, transaction, canonicalRecord, cancellationToken);
             await InsertNativeEdgesAsync(connection, transaction, canonicalRecord, cancellationToken);
             await InsertNativeFieldsAsync(connection, transaction, canonicalRecord, cancellationToken);
@@ -68,10 +90,10 @@ public sealed partial class SqliteAtlasRepository
             FROM index_runs AS run
             INNER JOIN code_snapshots AS snapshot
                 ON snapshot.snapshot_id = run.snapshot_id
-            INNER JOIN environment_snapshots AS environment
-                ON environment.snapshot_id = snapshot.environment_snapshot_id
+            INNER JOIN validated_extractions AS extraction
+                ON extraction.extraction_id = snapshot.source_identity
             INNER JOIN builds AS build
-                ON build.build_id = environment.build_id
+                ON build.build_id = extraction.build_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
               AND snapshot.codebase = 'ScheduleI'
@@ -87,6 +109,24 @@ public sealed partial class SqliteAtlasRepository
             throw new InvalidOperationException(
                 "Native recovery records require a completed Schedule I index matching the recorded build and GameAssembly hash.");
         }
+    }
+
+    private static async Task<string?> TryGetExistingOutputSha256Async(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string recoveryId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT output_sha256
+            FROM native_recovery_runs
+            WHERE recovery_id = $recoveryId;
+            """;
+        command.Parameters.AddWithValue("$recoveryId", recoveryId);
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result is null or DBNull ? null : (string)result;
     }
 
     private static async Task InsertNativeRunAsync(

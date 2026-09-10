@@ -33,14 +33,14 @@ The workflow accepts only:
 - one or more unique, explicitly selected symbol IDs; and
 - a traversal edge budget from 1 through 500.
 
-The caller also supplies the currently observed build, index, and `GameAssembly.dll` identities plus the configured provider tool name, version, and executable SHA-256. A mismatch between current and requested build, index, or binary identity returns `InputChanged` before provider execution. The provider receives the canonical symbol ordering and the same bounded request. Returned edges are deterministically ordered and truncated to the requested budget; truncation makes the record incomplete.
+The caller also supplies the currently observed build, index, and `GameAssembly.dll` identities plus the configured provider tool name, version, and tool SHA-256 (an executable hash, or — for an in-process pinned-library provider — the pinned-library identity digest; see "Provider identity: pinned library"). A mismatch between current and requested build, index, or binary identity returns `InputChanged` before provider execution. The provider receives the canonical symbol ordering and the same bounded request. Returned edges are deterministically ordered and truncated to the requested budget; truncation makes the record incomplete.
 
 ## Evidence output
 
 The record stores provenance and normalized facts only:
 
 - build ID, index ID, `GameAssembly.dll` SHA-256, selected symbol IDs, and traversal budget;
-- provider tool name, version, and executable SHA-256;
+- provider tool name, version, and tool SHA-256 (executable or pinned-library identity);
 - managed-wrapper-to-native pointer mapping evidence;
 - bounded direct native edges and field-access descriptions;
 - explicit status, completeness, output SHA-256, deterministic recovery ID, and observation timestamp; and
@@ -59,3 +59,11 @@ Only a directly evidenced `DirectCall` edge with a target method pointer can rem
 ## Licensing and distribution boundary
 
 The Cpp2IL identity above is an inventory reference to the existing reviewed MIT-licensed pin, not authorization to redistribute it or claim native recovery capability. This workflow does not download tools. Any future provider executable remains locally installed and hash-verified under a separately reviewed tool definition and license. Schedule I binaries and derived native artifacts remain outside source control and distribution.
+
+### Provider identity: pinned library
+
+A provider MAY be an in-process pinned library rather than an executable. Its `ToolName`, `ToolVersion`, and `ToolSha256` describe the pinned NuGet libraries instead of an executable's file identity. The `ToolSha256` is a SHA-256 computed over a canonical descriptor of `{packageId, version, contentHash}` entries taken from the committed `packages.lock.json`. The libraries are hash-verified at restore via lockfile locked-mode; no runtime download occurs. This pinned-library identity is an accepted alternative to the executable inventory; the same deterministic provenance guarantees apply.
+
+## Shipped
+
+The pinned-library provider described above is implemented: `Samboy063.LibCpp2IL` 2022.1.0-pre-release.21 + `Iced` 1.21.0, wired through `S1Atlas.NativeRecovery.LibCpp2IlNativeBodyRecoveryProvider` and composed by `NativeRecoveryComposition`. The CLI-only `recover-native-body` command (`src/S1Atlas.Cli/Commands/RecoverNativeBodyCommand.cs`) drives live recovery and persistence; `investigate_seam` (CLI and MCP) surfaces the persisted evidence read-only. See [docs/USAGE.md](../USAGE.md#recover-native-method-bodies) for user-facing usage and [the AT-37 implementation plan](2026-09-09-AT-37-native-body-recovery-plan.md) for the as-built implementation notes, including where real-build verification diverged from this design.

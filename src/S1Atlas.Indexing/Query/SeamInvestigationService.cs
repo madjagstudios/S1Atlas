@@ -203,12 +203,35 @@ public sealed class SeamInvestigationService
                 : await indexRepository.GetCodeSnapshotAsync(
                     completedIndex.SnapshotId,
                     cancellationToken);
-            if (snapshot.SnapshotId is null ||
-                codeSnapshot is null ||
-                !string.Equals(
+            if (codeSnapshot is null)
+            {
+                return new NativeEvidenceSummary(
+                    NativeRecoveryStatus.InputChanged,
+                    NativeEvidenceLookupStatus.InputChanged,
+                    false,
+                    [],
+                    [],
+                    [],
+                    "native-recovery-input-authority",
+                    string.Empty);
+            }
+
+            // Extraction-derived codebases (ScheduleI, ReferenceMod) have
+            // environment_snapshot_id NULL by design -- they link to their build via
+            // code_snapshots.source_identity -> validated_extractions.build_id instead. The
+            // build-id match above (via GetBuildIdAsync/GetCompletedIndexBuildIdAsync, which is
+            // codebase-aware) is already the correct freshness check for those codebases, so the
+            // environment_snapshot_id equality check only applies to environment-captured
+            // codebases (e.g. S1Api installed).
+            var requiresEnvironmentSnapshotMatch =
+                codeSnapshot.Codebase != CodebaseKind.ScheduleI &&
+                codeSnapshot.Codebase != CodebaseKind.ReferenceMod;
+            if (requiresEnvironmentSnapshotMatch &&
+                (snapshot.SnapshotId is null ||
+                 !string.Equals(
                     codeSnapshot.EnvironmentSnapshotId,
                     snapshot.SnapshotId,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal)))
             {
                 return new NativeEvidenceSummary(
                     NativeRecoveryStatus.InputChanged,
