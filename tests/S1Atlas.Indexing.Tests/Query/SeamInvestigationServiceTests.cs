@@ -1,8 +1,10 @@
 using System.Text;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
+using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
+using S1Atlas.Core.Tools;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
@@ -1559,14 +1561,20 @@ public sealed class SeamInvestigationServiceTests : IAsyncDisposable
         bool includeCallableSurface,
         string completedAtUtc = "2026-08-29T00:01:00Z")
     {
-        var environment = await _repository.GetCurrentSnapshotAsync(TestContext.Current.CancellationToken);
+        // Real Schedule I/Installed code_snapshots always leave environment_snapshot_id NULL
+        // (only environment-captured codebases like S1Api set it); the index-to-build linkage
+        // instead flows through code_snapshots.source_identity -> validated_extractions ->
+        // builds. This fixture mirrors that real shape -- rather than setting
+        // environment_snapshot_id, which would let native-evidence lookups pass through the old,
+        // incorrect environment_snapshots join and mask the AT-37 regression these fixtures
+        // guard against -- by seeding a matching validated extraction for the build.
+        var extractionId = await SeedGameExtractionAsync(buildId, indexId);
         var snapshot = new CodeSnapshotRecord(
             snapshotId,
             CodebaseKind.ScheduleI,
             CodeChannel.Installed,
-            "extraction-" + indexId,
-            "2026-08-29T00:00:00Z",
-            environment is null ? null : EnvironmentSnapshotId.Create(environment));
+            extractionId,
+            "2026-08-29T00:00:00Z");
         await _repository.CreateCodeSnapshotAsync(snapshot, TestContext.Current.CancellationToken);
         await _repository.StartIndexRunAsync(
             new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
@@ -1619,6 +1627,191 @@ public sealed class SeamInvestigationServiceTests : IAsyncDisposable
             sourceText,
             new UTF8Encoding(false),
             TestContext.Current.CancellationToken);
+    }
+
+    private const string ExtractionToolInstanceId = "tool-instance-seam-tests";
+    private const string ExtractionProfileDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string ExtractionPolicyDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string ExtractionRecipeId = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+    private bool _extractionToolInstanceSeeded;
+
+    // Seeds a validated_extractions row (and its backing tool_instances/builds rows) so a
+    // ScheduleI/Installed code_snapshot's source_identity resolves through the real
+    // source_identity -> validated_extractions.extraction_id -> builds.build_id linkage --
+    // the same linkage RequireCompletedNativeInputAsync and the codebase-aware
+    // GetCompletedIndexBuildIdAsync rely on in production. Returns the seeded extraction id to
+    // use as the code_snapshot's source_identity.
+    private async Task<string> SeedGameExtractionAsync(string buildId, string indexId)
+    {
+        await EnsureExtractionToolInstanceSeededAsync();
+
+        var extractionId = Sha256("extraction-" + indexId);
+        var baseTime = DateTimeOffset.Parse("2026-08-29T00:00:00Z");
+        var manifest = new ArtifactManifest(1, [
+            new ArtifactManifestEntry(
+                "reconstructed/Assembly-CSharp.dll",
+                ArtifactKind.ManagedAssembly,
+                6,
+                Sha256("manifest-" + indexId),
+                "Assembly-CSharp",
+                "Assembly-CSharp.dll",
+                1,
+                1,
+                0,
+                0,
+                0)
+        ]);
+        var digest = ArtifactManifestFingerprint.Create(manifest);
+        var attempt = await AdvanceExtractionAttemptToValidatingAsync(
+            buildId,
+            extractionId[..32],
+            baseTime,
+            TestContext.Current.CancellationToken);
+        var statistics = new ExtractionStatistics(
+            1, 1, 1, 1, 1, 0, 0, 0, 6, 6,
+            [new AssemblyIdentityStatistics("Assembly-CSharp", 1, 6, 1, 1, 0, 0, 0)]);
+        var extraction = new ValidatedExtraction(
+            extractionId,
+            ExtractionRecipeId,
+            buildId,
+            ExtractionToolInstanceId,
+            attempt.AttemptId,
+            "default-profile",
+            1,
+            ExtractionProfileDigest,
+            1,
+            1,
+            digest,
+            Path.Combine(_dataRoot, "builds", buildId, "extractions", extractionId),
+            baseTime.AddMinutes(1),
+            ToolTrustLevel.ManagedPinned,
+            ValidationOutcome.Valid,
+            statistics);
+        var report = new ValidationReport(
+            1,
+            attempt.AttemptId,
+            ValidationSubjectKind.CandidateOutput,
+            null,
+            buildId,
+            ExtractionRecipeId,
+            "managed-assemblies-v1",
+            1,
+            ExtractionPolicyDigest,
+            ValidationOutcome.Valid,
+            true,
+            true,
+            true,
+            digest,
+            statistics,
+            null,
+            [],
+            [],
+            true,
+            baseTime.AddMinutes(2));
+        await _repository.CommitValidatedExtractionAsync(
+            new ValidatedExtractionPromotion(
+                attempt with
+                {
+                    Status = ExtractionAttemptStatus.Succeeded,
+                    CompletedAtUtc = baseTime.AddMinutes(2),
+                    ResultExtractionId = extractionId
+                },
+                extraction,
+                manifest,
+                report,
+                null),
+            TestContext.Current.CancellationToken);
+
+        return extractionId;
+    }
+
+    private async Task<ExtractionAttempt> AdvanceExtractionAttemptToValidatingAsync(
+        string buildId,
+        string attemptId,
+        DateTimeOffset baseTime,
+        CancellationToken cancellationToken)
+    {
+        var created = new ExtractionAttempt(
+            attemptId,
+            ExtractionRecipeId,
+            buildId,
+            ExtractionToolInstanceId,
+            "default-profile",
+            1,
+            ExtractionProfileDigest,
+            "managed-assemblies-v1",
+            1,
+            ExtractionPolicyDigest,
+            1,
+            1,
+            ExtractionInputSource.Live,
+            null,
+            ExtractionAttemptStatus.Created,
+            baseTime,
+            null,
+            null,
+            null,
+            null,
+            $"C:\\attempts\\{attemptId}\\work",
+            $"C:\\attempts\\{attemptId}\\stdout.log",
+            $"C:\\attempts\\{attemptId}\\stderr.log",
+            false,
+            false,
+            0,
+            0,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            0,
+            0,
+            null,
+            null);
+        await _repository.CreateAttemptAsync(created, cancellationToken);
+        var preparing = created with { Status = ExtractionAttemptStatus.Preparing, StartedAtUtc = baseTime };
+        await _repository.TransitionAttemptAsync(preparing, ExtractionAttemptStatus.Created, cancellationToken);
+        var running = preparing with { Status = ExtractionAttemptStatus.Running, ProcessId = 1234 };
+        await _repository.TransitionAttemptAsync(running, ExtractionAttemptStatus.Preparing, cancellationToken);
+        var processCompleted = running with
+        {
+            Status = ExtractionAttemptStatus.ProcessCompleted,
+            ProcessExitCode = 0,
+            CandidateOutputPath = $"C:\\attempts\\{attemptId}\\candidate-output"
+        };
+        await _repository.TransitionAttemptAsync(processCompleted, ExtractionAttemptStatus.Running, cancellationToken);
+        var validating = processCompleted with { Status = ExtractionAttemptStatus.Validating };
+        await _repository.TransitionAttemptAsync(validating, ExtractionAttemptStatus.ProcessCompleted, cancellationToken);
+        return validating;
+    }
+
+    private async Task EnsureExtractionToolInstanceSeededAsync()
+    {
+        if (_extractionToolInstanceSeeded) return;
+
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+            {
+                DataSource = Path.Combine(_root, "atlas.db"),
+                Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite,
+                Pooling = false
+            }.ToString());
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO tool_instances (
+                tool_instance_id, tool_name, version_label, platform, trust_level,
+                definition_digest, package_sha256, executable_sha256, observed_path,
+                first_observed_at_utc, last_verified_at_utc, status)
+            VALUES (
+                $id, 'cpp2il', 'test', 'win-x64', 'ManagedPinned', 'definition',
+                'package', 'executable', 'C:\tools\Cpp2IL.exe',
+                '2026-08-29T00:00:00.0000000+00:00', '2026-08-29T00:00:00.0000000+00:00', 'Verified');
+            """;
+        command.Parameters.AddWithValue("$id", ExtractionToolInstanceId);
+        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        _extractionToolInstanceSeeded = true;
     }
 
     private static IndexSymbolRecord Method(

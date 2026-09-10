@@ -1215,11 +1215,19 @@ public sealed partial class SqliteAtlasRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         await using var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = connection.CreateCommand();
+        // Codebase-aware build linkage: environment-captured codebases (e.g. S1Api installed)
+        // link to their build via code_snapshots.environment_snapshot_id -> environment_snapshots.
+        // Extraction-derived codebases (ScheduleI, ReferenceMod) have environment_snapshot_id
+        // NULL by design and instead link via code_snapshots.source_identity (the extraction id)
+        // -> validated_extractions.build_id. COALESCE prefers the environment linkage when present
+        // and falls back to the extraction linkage otherwise, so both shapes resolve correctly.
         command.CommandText = """
-            SELECT env.build_id
+            SELECT COALESCE(env.build_id, extraction_build.build_id)
             FROM index_runs AS run
             INNER JOIN code_snapshots AS snapshot ON snapshot.snapshot_id = run.snapshot_id
-            INNER JOIN environment_snapshots AS env ON env.snapshot_id = snapshot.environment_snapshot_id
+            LEFT JOIN environment_snapshots AS env ON env.snapshot_id = snapshot.environment_snapshot_id
+            LEFT JOIN validated_extractions AS extraction ON extraction.extraction_id = snapshot.source_identity
+            LEFT JOIN builds AS extraction_build ON extraction_build.build_id = extraction.build_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
             LIMIT 1;

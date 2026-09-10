@@ -393,6 +393,70 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
         Assert.Null(await repository.GetNativeRecoveryAsync(unlinked.RecoveryId, cancellationToken));
     }
 
+    // AT-37 read-path regression guard: GetCompletedIndexBuildIdAsync must resolve the build id
+    // for a completed ScheduleI index via the SAME linkage RequireCompletedNativeInputAsync
+    // relies on (code_snapshots.source_identity -> validated_extractions.extraction_id ->
+    // builds.build_id), not the environment_snapshots join that real ScheduleI/Installed
+    // code_snapshots never populate. Before the fix this returned null for every ScheduleI
+    // index, which made SeamInvestigationService.GetNativeEvidenceAsync report a persisted
+    // recovery record as InputChanged instead of surfacing it.
+    [Fact]
+    public async Task GetCompletedIndexBuildIdAsync_ResolvesScheduleIIndexViaExtractionLinkage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+
+        var buildId = await _repository.GetCompletedIndexBuildIdAsync("index-a", cancellationToken);
+
+        Assert.Equal("build-a", buildId);
+    }
+
+    // Companion coverage for the other shape GetCompletedIndexBuildIdAsync must keep resolving:
+    // an environment-captured codebase (e.g. S1Api installed) whose code_snapshot DOES carry an
+    // environment_snapshot_id. The codebase-aware COALESCE fix must not regress this path.
+    [Fact]
+    public async Task GetCompletedIndexBuildIdAsync_ResolvesApiIndexViaEnvironmentSnapshotLinkage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var timestamp = DateTimeOffset.Parse("2026-08-30T10:00:00Z");
+        var environment = new EnvironmentSnapshot(
+            2,
+            new GameBuild("build-api", GameAssemblySha256, new string('9', 64), timestamp, true),
+            new InstallationObservation(
+                "2022.3",
+                "3164500",
+                "456",
+                @"C:\games\native-build-api",
+                @"C:\games\native-build-api\GameAssembly.dll",
+                @"C:\games\native-build-api\global-metadata.dat"),
+            [],
+            "0.2.0-test",
+            timestamp);
+        await _repository.SaveSnapshotAsync(environment, cancellationToken);
+
+        var snapshot = new CodeSnapshotRecord(
+            "api-snapshot",
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "s1api:installed:api-source",
+            "2026-08-30T10:00:00.0000000+00:00",
+            EnvironmentSnapshotId.Create(environment));
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-api", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+        await _repository.CompleteIndexRunAsync(
+            "index-api",
+            new IndexWriteSet([], [], [], [], []),
+            "2026-08-30T10:01:00.0000000+00:00",
+            cancellationToken);
+
+        var buildId = await _repository.GetCompletedIndexBuildIdAsync("index-api", cancellationToken);
+
+        Assert.Equal("build-api", buildId);
+    }
+
     [Fact]
     public async Task ReadOnlyRepository_QueriesWithoutChangingAtlasAndRejectsWrites()
     {
