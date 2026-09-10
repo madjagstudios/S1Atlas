@@ -8,6 +8,35 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 No changes yet.
 
+## [1.3.0] — 2026-09-10 — Native-body recovery
+
+The targeted native-body recovery that 1.2.0 could only *plan* is now
+implemented. For a game method exposed as nothing but a `throw null` stub, S1Atlas
+can map the managed symbol to its native `GameAssembly.dll` address and recover
+bounded, provenance-stamped evidence of what the method actually calls and reads —
+without executing the game.
+
+### Added
+
+- **`recover-native-body`** — a CLI command that maps a stubbed IL2CPP managed
+  method to its native address, decodes bounded direct-call and field-access
+  evidence, and persists a provenance-stamped record. Runs are deterministic and
+  idempotent. Recovered pseudocode is static evidence and requires runtime
+  validation before being treated as behavioral fact.
+- **Native evidence on `investigate_seam`** — the persisted record is surfaced
+  read-only on both the CLI and the MCP server through the same bounded evidence
+  model (`--native-symbol-id` / `--native-traversal-budget`).
+- **Pinned-library provenance** — the recovery provider is an in-process build on
+  `Samboy063.LibCpp2IL` and `Iced` (both MIT), pinned with a committed lockfile and
+  a CI lockfile-drift check; records are stamped with the library tool identity, the
+  build/index/GameAssembly provenance, and never carry a game binary, raw
+  disassembly, or a filesystem path.
+
+### Notes
+
+- The provider is read-only with respect to the game — it reads `GameAssembly.dll`
+  and `global-metadata.dat` and never launches or mutates the game.
+
 ## [1.2.0] — 2026-08-30 — Evidence-first agent parity
 
 This release makes S1Atlas more decisive and safer for Schedule I mod
