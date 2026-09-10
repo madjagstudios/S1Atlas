@@ -1,6 +1,7 @@
 namespace S1Atlas.Cli.Output;
 
 internal sealed record NativeRecoveryEdgeOutput(
+    string EdgeId,
     string SourceMethodPointer,
     string? TargetMethodPointer,
     string? TargetText,

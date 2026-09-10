@@ -155,6 +155,28 @@ public sealed class RecoverNativeBodyCliTests
         return (exitCode, output.ToString(), error.ToString());
     }
 
+    [Fact]
+    public void NativeRecoveryEdgeOutput_includes_EdgeId_in_json()
+    {
+        var edge = new S1Atlas.Cli.Output.NativeRecoveryEdgeOutput(
+            "edge-1",
+            "Foo::Bar()",
+            "Baz::Qux()",
+            null,
+            "Direct",
+            "evidence-123",
+            true);
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(edge, jsonOptions);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("edgeId", out var edgeIdElement));
+        Assert.Equal("edge-1", edgeIdElement.GetString());
+    }
+
     private static void AssertJsonErrorCode(string output, string expectedCode)
     {
         using var document = JsonDocument.Parse(output);

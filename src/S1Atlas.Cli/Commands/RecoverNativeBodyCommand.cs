@@ -172,6 +172,7 @@ internal static class RecoverNativeBodyCommand
             record.MappingEvidence,
             record.Edges
                 .Select(edge => new NativeRecoveryEdgeOutput(
+                    edge.EdgeId,
                     edge.SourceMethodPointer,
                     edge.TargetMethodPointer,
                     edge.TargetText,

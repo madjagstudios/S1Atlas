@@ -327,8 +327,8 @@ public sealed class CliApplication
             sqliteRepository,
             sqliteRepository,
             sqliteRepository);
-        // Not yet consumed by a command -- Task 3.2 adds `recover-native-body`. Constructing this
-        // holder is cheap (no I/O), so it is safe to build unconditionally on every invocation.
+        // Consumed by the `recover-native-body` command. Constructing this holder is cheap (no I/O),
+        // so it is safe to build unconditionally on every invocation.
         NativeRecoveryComposition = new NativeRecoveryComposition(
             sqliteRepository,
             new WindowsScheduleOneLocator(),
