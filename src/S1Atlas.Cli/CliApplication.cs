@@ -428,6 +428,15 @@ public sealed class CliApplication
         root.Subcommands.Add(DiffCommand.Create(
             diffService, sqliteRepository, sqliteRepository, sqliteRepository, repository,
             output, error, cancellationToken));
+        root.Subcommands.Add(RecoverNativeBodyCommand.Create(
+            NativeRecoveryComposition!,
+            NativeRecoveryContextFactory!,
+            authorityResolver,
+            repository,
+            sqliteRepository,
+            output,
+            error,
+            cancellationToken));
 
         return root.Parse(args).Invoke(new InvocationConfiguration
         {
