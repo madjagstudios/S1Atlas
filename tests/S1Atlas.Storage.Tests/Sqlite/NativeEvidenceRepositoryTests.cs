@@ -56,6 +56,60 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SaveNativeRecovery_ResavingTheIdenticalRecordIsAnIdempotentNoOp()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+        var record = Record(
+            recoveryId: new string('1', 64),
+            createdAtUtc: DateTimeOffset.Parse("2026-08-30T12:00:00Z"));
+
+        await repository.SaveNativeRecoveryAsync(record, cancellationToken);
+        var countsAfterFirstSave = await CountNativeRecoveryRowsAsync(cancellationToken);
+
+        // Re-saving the identical, content-addressed record must succeed as a no-op rather
+        // than throwing a SQLite unique-constraint violation on recovery_id.
+        await repository.SaveNativeRecoveryAsync(record, cancellationToken);
+
+        var countsAfterSecondSave = await CountNativeRecoveryRowsAsync(cancellationToken);
+        Assert.Equal(countsAfterFirstSave, countsAfterSecondSave);
+
+        var stored = await repository.GetNativeRecoveryAsync(record.RecoveryId, cancellationToken);
+        AssertRecordEqual(record, Assert.IsType<NativeRecoveryRecord>(stored));
+
+        // A genuinely different record (different content -> different, content-addressed
+        // RecoveryId) must still insert normally.
+        var differentRecord = Record(
+            recoveryId: new string('9', 64),
+            createdAtUtc: DateTimeOffset.Parse("2026-08-30T12:00:00Z"),
+            outputSha256: new string('d', 64));
+        Assert.NotEqual(record.RecoveryId, differentRecord.RecoveryId);
+        await repository.SaveNativeRecoveryAsync(differentRecord, cancellationToken);
+
+        var countsAfterDifferentRecord = await CountNativeRecoveryRowsAsync(cancellationToken);
+        Assert.True(countsAfterDifferentRecord.Runs > countsAfterSecondSave.Runs);
+    }
+
+    private async Task<(long Runs, long Edges, long Fields)> CountNativeRecoveryRowsAsync(
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        await connection.OpenAsync(cancellationToken);
+        return (
+            await CountAsync(connection, "native_recovery_runs", cancellationToken),
+            await CountAsync(connection, "native_recovery_edges", cancellationToken),
+            await CountAsync(connection, "native_recovery_fields", cancellationToken));
+
+        static async Task<long> CountAsync(SqliteConnection connection, string table, CancellationToken ct)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COUNT(*) FROM {table};";
+            return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+        }
+    }
+
+    [Fact]
     public async Task GetNativeRecoveries_RequiresExactInputTupleAndOrdersDeterministically()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
