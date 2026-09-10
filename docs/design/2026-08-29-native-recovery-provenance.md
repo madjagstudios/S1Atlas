@@ -63,3 +63,7 @@ The Cpp2IL identity above is an inventory reference to the existing reviewed MIT
 ### Provider identity: pinned library
 
 A provider MAY be an in-process pinned library rather than an executable. Its `ToolName`, `ToolVersion`, and `ToolSha256` describe the pinned NuGet libraries instead of an executable's file identity. The `ToolSha256` is a SHA-256 computed over a canonical descriptor of `{packageId, version, contentHash}` entries taken from the committed `packages.lock.json`. The libraries are hash-verified at restore via lockfile locked-mode; no runtime download occurs. This pinned-library identity is an accepted alternative to the executable inventory; the same deterministic provenance guarantees apply.
+
+## Shipped
+
+The pinned-library provider described above is implemented: `Samboy063.LibCpp2IL` 2022.1.0-pre-release.21 + `Iced` 1.21.0, wired through `S1Atlas.NativeRecovery.LibCpp2IlNativeBodyRecoveryProvider` and composed by `NativeRecoveryComposition`. The CLI-only `recover-native-body` command (`src/S1Atlas.Cli/Commands/RecoverNativeBodyCommand.cs`) drives live recovery and persistence; `investigate_seam` (CLI and MCP) surfaces the persisted evidence read-only. See [docs/USAGE.md](../USAGE.md#recover-native-method-bodies) for user-facing usage and [the AT-37 implementation plan](2026-09-09-AT-37-native-body-recovery-plan.md) for the as-built implementation notes, including where real-build verification diverged from this design.

@@ -222,6 +222,23 @@ statuses such as `NoBody`, `Failed`, `InputChanged`, and `Unsupported` remain
 visible and do not imply a recovered body. Native persistence is read-only at
 query time and stores no proprietary body, disassembly, path, or binary artifact.
 
+The only write path for native evidence is the CLI-only `recover-native-body`
+command (see [Recover native method bodies](USAGE.md#recover-native-method-bodies)
+in USAGE.md); there is no MCP tool that runs recovery. It persists a
+provenance-stamped `NativeRecoveryRecord` produced by an in-process,
+pinned-library provider (`Samboy063.LibCpp2IL` 2022.1.0-pre-release.21 +
+`Iced` 1.21.0), keyed by build ID, index ID, GameAssembly SHA-256, the
+selected symbol IDs, and traversal budget; an identical re-run reproduces the
+same `RecoveryId` and `OutputSha256` rather than creating a duplicate. This
+native-recovery status is a separate axis from the existing managed-side
+`BodyRecoveryStatus.StubOrUnavailable`: a stub's managed body being
+unavailable only means its managed source could not be recovered, and is
+independent of whether native recovery was ever attempted for that symbol.
+Recovered pseudocode, edges, and field accesses remain static evidence and
+require runtime validation before being treated as behavioral fact. See
+[Native recovery provenance](design/2026-08-29-native-recovery-provenance.md)
+for the full evidence, sanitization, and provider-identity contract.
+
 The API parity MCP surface includes `find_api_callers`, `find_api_callees`,
 `find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
 `find_api_field_references` in addition to API index, symbol, and source

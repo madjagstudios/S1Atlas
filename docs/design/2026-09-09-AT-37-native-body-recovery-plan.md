@@ -8,6 +8,16 @@
 
 **Tech Stack:** C# / .NET 8, `Samboy063.LibCpp2IL` 2022.1.0-pre-release.21 (MIT), `Iced` 1.21.0 (MIT), SQLite (existing storage), existing extraction/discovery/authority services.
 
+## Phase status
+
+| Phase | Status |
+| --- | --- |
+| Phase 0 — Dependencies, provenance, and tool identity | Complete |
+| Phase 1 — Spikes | Complete |
+| Phase 2 — Provider implementation | Complete |
+| Phase 3 — Composition, CLI write-path, MCP read surface | Complete |
+| Phase 4 — Documentation and close-out | In progress (Task 4.1 done; Task 4.2 verification pending) |
+
 ## Global Constraints
 
 - **Provider identity model:** pinned-library identity, not an executable. `ToolName`, `ToolVersion`, `ToolSha256` describe the pinned LibCpp2IL + Iced libraries. `ToolSha256` **must be exactly 64 lowercase hex characters** (workflow `RequireSha256`), computed as SHA-256 over a canonical library descriptor.
@@ -448,3 +458,20 @@ Unit tests in this phase use small synthetic byte buffers + a fake/loopback imag
 - **SETTLED (AT-39):** Traversal-budget division across symbols: **shared pool** (single decrementing budget), not a per-symbol split — edge density varies too much for an even split.
 - **SETTLED (AT-39):** `LibCpp2IlMain.Reset()` is **not strictly required** between loads (verified: identical `MethodPointer` across repeated loads), but `Il2CppImageCache` calls it **defensively before each (re-)initialization** since the different-image case was untested and the cost is negligible.
 - **SETTLED (AT-39) — API correction:** call-target resolution uses **`GetManagedMethodImplementationsAtAddress(ulong)`** (returns a `List`; 0/1/>1 ⇒ None/Single/Ambiguous), **not** `GetMethodDefinitionByGlobalAddress` (returns null universally). See Task 2.4 `IAddressResolver`.
+
+## As-built notes
+
+Real-build verification against the installed Schedule I game (Phase 3) surfaced four bugs the unit-test-only phases did not catch, each fixed in its own commit:
+
+- **Persistence linkage via `validated_extractions`:** `SaveNativeRecoveryAsync`'s precondition originally could not join a native recovery record back to its Schedule I extraction; it now links through `validated_extractions` so the persistence precondition resolves for the `ScheduleI` codebase (`114b1dc`).
+- **Call-site edge distinguisher:** multiple direct-call edges from the same source method were being rejected as duplicate IDs; edges are now distinguished by call site so distinct call instructions to different (or the same) targets each get a stable, non-colliding `EdgeId` (`67986b8`).
+- **Idempotent save:** re-running `recover-native-body` with identical inputs originally attempted a duplicate insert; persistence is now idempotent — an identical re-run reproduces the same `RecoveryId` without erroring or duplicating rows (`6307e2b`).
+- **Codebase-aware read linkage:** the `investigate_seam` native-evidence read path resolved the wrong index build when linking back to a ScheduleI index; it now resolves the build via extraction linkage scoped to the correct codebase (`b6121af`).
+
+Two structural decisions also differed from the original interface sketch:
+
+- `ISymbolIdentityResolver` (the seam that turns an S1Atlas symbol ID into a managed identity for native lookup) is **async and batched** — `Task<IReadOnlyDictionary<string, ManagedSymbolDescriptor?>> ResolveAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken)` — rather than the single-symbol synchronous shape implied by Task 2.3's plan sketch, so a multi-symbol `recover-native-body` call resolves all requested symbols in one index round trip.
+- Composition was consolidated into a single `NativeRecoveryComposition` (`src/S1Atlas.NativeRecovery/NativeRecoveryComposition.cs`) rather than spreading provider/workflow/execution-context wiring inline in `CliApplication.cs`; the CLI command depends on `NativeRecoveryComposition` and `NativeRecoveryExecutionContextFactory` directly.
+- The pinned-library tool definition lives at `config/native-recovery/libraries.json`, moved out of the typed `config/tools/` directory (which models executable tool pins) since a pinned-library identity has a different shape (`8578ce5`).
+
+No dedicated MCP write tool for native recovery was added — Task 3.3's decision gate held: `investigate_seam` already surfaces the same `NativeRecoveryRecord`/`NativeEvidenceEdge` model read-only on both CLI and MCP once the CLI write path persists a row, confirmed by an end-to-end parity test (`9779cce`).

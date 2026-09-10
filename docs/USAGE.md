@@ -246,6 +246,57 @@ status, mapping evidence, direct native edges, field accesses, tool identity,
 and an output hash. A no-body or failed record remains visible and does not
 become a positive seam claim.
 
+## Recover native method bodies
+
+A stubbed IL2CPP managed method (`BodyRecoveryStatus.StubOrUnavailable`) has no
+recovered managed source. `recover-native-body` is a separate, explicit,
+CLI-only step that maps such a method to its native `GameAssembly.dll` address
+and decodes bounded, static evidence around it:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- recover-native-body --symbol-id <symbol-id> --traversal-budget 100
+```
+
+It accepts one or more repeated `--symbol-id` values (at least one is
+required), `--traversal-budget` from `1` to `500` (default `100`), an optional
+`--build-id`, and `--json`. It resolves the current (or selected) build
+authority, locates the Schedule I installation, and requires a completed
+Schedule I `Installed` index; it fails with a precise error rather than a
+partial result if authority resolution, the installation, or the execution
+context is unavailable.
+
+The command reads only `GameAssembly.dll` and `global-metadata.dat` bytes; it
+never launches, patches, or otherwise mutates the game. Recovery is a
+read-only mapping and bounded x86-64 decode: it does not execute the native
+code and does not prove runtime behavior. Recovered pseudocode, edges, and
+field accesses are **static evidence only and require runtime validation**
+before being treated as a behavioral fact.
+
+Each run persists a provenance-stamped `NativeRecoveryRecord` keyed by build
+ID, index ID, `GameAssembly.dll` SHA-256, the selected symbol IDs, and the
+traversal budget. Running the same request again against unchanged inputs
+reproduces the identical `RecoveryId` and `OutputSha256` (idempotent), rather
+than creating a duplicate record. The result reports one of six statuses:
+`Recovered`, `NoBody`, `AmbiguousMapping`, `InputChanged`, `Failed`, or
+`Unsupported`. This is a distinct axis from the existing managed-side
+`BodyRecoveryStatus.StubOrUnavailable` — a stub's managed body being
+unavailable only means native recovery was never attempted; native recovery
+status only exists after this command explicitly attempts it for that symbol.
+
+The persisted record never contains a game binary, raw disassembly, or a local
+filesystem path; every stored evidence string is sanitized. Provenance also
+records the tool identity: this build ships an in-process, pinned-library
+provider (`Samboy063.LibCpp2IL` 2022.1.0-pre-release.21 + `Iced` 1.21.0, both
+MIT), not a subprocess, so `ToolName`/`ToolVersion`/`ToolSha256` describe the
+pinned libraries rather than an executable. See
+[Native recovery provenance](design/2026-08-29-native-recovery-provenance.md)
+for the full evidence and sanitization contract.
+
+`recover-native-body` is the only write path for native evidence; reading it
+back afterward goes through `investigate_seam` (see above), which surfaces the
+persisted record as read-only `nativeEvidence` on **both** the CLI and the MCP
+tool, using the same bounded evidence model.
+
 Upstream S1API/S1MAPI channels are cached explicitly before a release/preview
 index; `upstream status` is always offline and `upstream sync` is the only
 networked upstream command:
@@ -604,6 +655,7 @@ mods.
 | `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
 | `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL field readers and writers for one resolved field |
 | `investigate_seam <selector> --question <text> [--codebase <id>] [--channel <id>] [--build <id>] [--scope game\|reference\|all] [--collection <name-or-id>] [--relationship-limit <1-50>] [--owner-limit <1-50>] [--context <n>] [--native-symbol-id <id>] [--native-traversal-budget <0-500>] [--details] [--json]` | Investigate a supportable ownership seam with deterministic candidate ordering, coverage warnings, unknown dimensions, and bounded next actions |
+| `recover-native-body --symbol-id <id> [--symbol-id <id> ...] [--traversal-budget <1-500>] [--build-id <id>] [--json]` | Map a stubbed managed method to its native `GameAssembly.dll` address, decode bounded direct-call and field-access evidence, and persist the provenance-stamped, idempotent result (read-only w.r.t. the game) |
 | `upstream status [--codebase <s1api\|s1mapi>] [--json]` | Show cached upstream API status without network access |
 | `upstream sync <s1api\|s1mapi> --commit <sha> [--json]` | Fetch and cache one exact upstream commit for later indexing |
 | `index --scene [--build <id>] [--force] [--json]` | Build or reuse an offline, integrity-verified scene snapshot for the selected build |
