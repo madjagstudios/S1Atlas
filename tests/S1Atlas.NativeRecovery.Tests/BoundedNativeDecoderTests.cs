@@ -143,6 +143,81 @@ public class BoundedNativeDecoderTests
         Assert.True(NativeNameNormalizer.IsSummarySafe(edge.Evidence));
     }
 
+    // AT-37 regression coverage: BoundedNativeDecoder used to emit call edges with no per-call-site
+    // distinguishing data, so multiple call sites in the same method produced byte-identical edge
+    // tuples (identical SourceMethodPointer -- the enclosing method, not the site -- and identical
+    // Kind/Evidence/TargetMethodPointer/TargetText). NativeRecoveryWorkflow.CanonicalizeEdge then
+    // hashed those identical tuples to the SAME EdgeId, and its duplicate-edge-id guard rejected the
+    // whole record as Failed. This was proven for real against Customer.EvaluateCounteroffer, whose
+    // 14 unresolved-target call sites all collapsed to one duplicate group. These three tests pin the
+    // fix at the decoder level: distinct call sites must always produce distinct Evidence (and so
+    // distinct canonical identity), even when they share every other field.
+
+    [Fact]
+    public void Decode_SameResolvedTargetCalledFromTwoDistinctSites_YieldsTwoDistinctEdges()
+    {
+        const ulong target = 0x9000;
+        var call1 = CallRel32(StartAddress, target);
+        var call2 = CallRel32(StartAddress + (ulong)call1.Length, target);
+        var code = Concat(call1, call2);
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Some.Shared.Helper");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None);
+
+        Assert.Equal(2, result.Edges.Count);
+        Assert.All(result.Edges, edge =>
+        {
+            Assert.Equal("0x1000", edge.SourceMethodPointer);
+            Assert.Equal("DirectCall", edge.Kind);
+            Assert.Equal(NativeNameNormalizer.Pointer(target), edge.TargetMethodPointer);
+            Assert.True(NativeNameNormalizer.IsSummarySafe(edge.Evidence));
+        });
+        var distinctEvidence = result.Edges.Select(edge => edge.Evidence).Distinct(StringComparer.Ordinal);
+        Assert.Equal(2, distinctEvidence.Count());
+    }
+
+    [Fact]
+    public void Decode_MultipleUnresolvedDirectCallsFromDistinctSites_YieldsDistinctEdges()
+    {
+        // Mirrors the real Customer.EvaluateCounteroffer shape: several call sites whose targets all
+        // resolve to AddressResolutionKind.None, so TargetMethodPointer/TargetText/Kind are identical
+        // for every edge and only the call-site-qualified Evidence can tell them apart.
+        var call1 = CallRel32(StartAddress, 0x9000);
+        var call2 = CallRel32(StartAddress + (ulong)call1.Length, 0x9001);
+        var code = Concat(call1, call2);
+        var resolver = new FakeAddressResolver(AddressResolutionKind.None);
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None);
+
+        Assert.Equal(2, result.Edges.Count);
+        Assert.All(result.Edges, edge =>
+        {
+            Assert.Equal("RuntimeDispatch", edge.Kind);
+            Assert.Null(edge.TargetMethodPointer);
+            Assert.Null(edge.TargetText);
+            Assert.True(NativeNameNormalizer.IsSummarySafe(edge.Evidence));
+        });
+        var distinctEvidence = result.Edges.Select(edge => edge.Evidence).Distinct(StringComparer.Ordinal);
+        Assert.Equal(2, distinctEvidence.Count());
+    }
+
+    [Fact]
+    public void Decode_MultipleIndirectCallsFromDistinctSites_YieldsDistinctEdges()
+    {
+        var code = Concat(CallIndirectMemory(), CallIndirectMemory());
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Should.Not.Be.Used");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None);
+
+        Assert.Equal(2, result.Edges.Count);
+        Assert.All(result.Edges, edge => Assert.Equal("RuntimeDispatch", edge.Kind));
+        var distinctEvidence = result.Edges.Select(edge => edge.Evidence).Distinct(StringComparer.Ordinal);
+        Assert.Equal(2, distinctEvidence.Count());
+    }
+
     [Fact]
     public void Decode_IndirectMemoryCall_YieldsRuntimeDispatchEdge()
     {

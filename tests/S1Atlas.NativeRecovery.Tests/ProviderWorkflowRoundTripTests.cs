@@ -209,6 +209,88 @@ public class ProviderWorkflowRoundTripTests
     }
 
     [Fact]
+    public async Task RecoverAsync_ThroughRealWorkflow_SameTargetCalledFromTwoSites_RecoversBothEdgesWithoutDuplicateRejection()
+    {
+        // AT-37 regression, end to end through the real workflow: a method calling the same helper
+        // twice (or, as with the real Customer.EvaluateCounteroffer, multiple call sites that all
+        // resolve to AddressResolutionKind.None) used to collapse to byte-identical edge tuples that
+        // NativeRecoveryWorkflow's duplicate-edge-id guard rejected as Failed, even though the
+        // provider itself returned Recovered. This proves the call-site-qualified Evidence from
+        // BoundedNativeDecoder keeps both edges distinct all the way through CanonicalizeEdge, so the
+        // workflow no longer rejects the record.
+        const ulong methodVa = 0x1000;
+        const ulong targetVa = 0x9000;
+        var call1 = CallRel32(methodVa, targetVa);
+        var call2 = CallRel32(methodVa + (ulong)call1.Length, targetVa);
+        var methodBytes = Concat(call1, call2, Ret());
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            methodVa, MethodOffsetInFile: 0, Rva: methodVa, "Foo.Bar", "Method1", []));
+
+        var addressResolver = new FixedAddressResolver(AddressResolutionKind.Single, "Some.Shared.Helper");
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = CreateProvider(methodBytes, symbolIdentityResolver, new FakeAdapterFactory(lookup, addressResolver));
+        var workflow = new NativeRecoveryWorkflow(provider);
+
+        var request = CreateRequest(["sym1"]);
+        var executionContext = CreateMatchingExecutionContext(request);
+
+        var record = await workflow.RecoverAsync(request, executionContext, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Null(record.FailureMessage);
+        Assert.Equal(2, record.Edges.Count);
+        Assert.Equal(2, record.Edges.Select(edge => edge.EdgeId).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(record.Edges, edge =>
+        {
+            Assert.Equal("DirectCall", edge.Kind);
+            Assert.Equal(NativeNameNormalizer.Pointer(targetVa), edge.TargetMethodPointer);
+        });
+    }
+
+    [Fact]
+    public async Task RecoverAsync_ThroughRealWorkflow_MultipleUnresolvedCallSites_RecoversAllEdgesWithoutDuplicateRejection()
+    {
+        // The exact real-world shape: several call sites in one method whose targets all resolve to
+        // AddressResolutionKind.None (Customer.EvaluateCounteroffer had 14 of these). Every field
+        // except the call-site-qualified Evidence is identical across such edges.
+        const ulong methodVa = 0x1000;
+        var call1 = CallRel32(methodVa, 0x9000);
+        var call2 = CallRel32(methodVa + (ulong)call1.Length, 0x9001);
+        var call3 = CallRel32(methodVa + (ulong)call1.Length + (ulong)call2.Length, 0x9002);
+        var methodBytes = Concat(call1, call2, call3, Ret());
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            methodVa, MethodOffsetInFile: 0, Rva: methodVa, "Foo.Bar", "Method1", []));
+
+        var addressResolver = new FixedAddressResolver(AddressResolutionKind.None);
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = CreateProvider(methodBytes, symbolIdentityResolver, new FakeAdapterFactory(lookup, addressResolver));
+        var workflow = new NativeRecoveryWorkflow(provider);
+
+        var request = CreateRequest(["sym1"]);
+        var executionContext = CreateMatchingExecutionContext(request);
+
+        var record = await workflow.RecoverAsync(request, executionContext, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Null(record.FailureMessage);
+        Assert.Equal(3, record.Edges.Count);
+        Assert.Equal(3, record.Edges.Select(edge => edge.EdgeId).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(record.Edges, edge => Assert.Equal("UNKNOWN", edge.Kind));
+    }
+
+    [Fact]
     public async Task RecoverAsync_ThroughRealWorkflow_ProviderEvidenceContainsForbiddenChar_ReturnsFailedInvalidEvidence()
     {
         // The provider embeds the caller-supplied symbol id verbatim into its mapping-evidence
@@ -241,7 +323,9 @@ public class ProviderWorkflowRoundTripTests
         var record = await workflow.RecoverAsync(request, executionContext, CancellationToken.None);
 
         Assert.Equal(NativeRecoveryStatus.Failed, record.Status);
-        Assert.Equal("Native recovery provider returned invalid evidence.", record.FailureMessage);
+        Assert.Equal(
+            "Native recovery provider returned invalid evidence: MappingEvidence must be a bounded evidence summary.",
+            record.FailureMessage);
         Assert.Empty(record.Edges);
         Assert.Empty(record.MappingEvidence);
         Assert.False(record.IsComplete);

@@ -1,6 +1,7 @@
 using AssetRipper.Primitives;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
+using S1Atlas.Indexing.NativeRecovery;
 using S1Atlas.NativeRecovery.Tests.Spikes;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
@@ -15,6 +16,14 @@ namespace S1Atlas.NativeRecovery.Tests;
 /// <see cref="Core.Indexing.CanonicalSignatureParser"/>) actually match LibCpp2IL's own candidate
 /// param-type strings for overload disambiguation -- the format-matching risk called out in the
 /// Task 3.1 brief.
+///
+/// Recovery is driven through the real <see cref="NativeRecoveryWorkflow"/> -- not the provider
+/// directly -- because the workflow applies canonicalization, evidence sanitization, and the
+/// duplicate-edge-id guard that the provider's own output must survive. An earlier version of this
+/// gate called the provider directly and so never caught the AT-37 regression where
+/// <c>Customer.EvaluateCounteroffer</c>'s 14 unresolved-target call sites collapsed to
+/// byte-identical edge tuples: the provider alone returned <c>Recovered</c>, but the same output
+/// was rejected as <c>Failed</c> ("duplicate native edge ID") once it passed through the workflow.
 ///
 /// Skips (does not fail) when the game is not installed or no real completed index/current build
 /// exists locally to satisfy the persistence/authority preconditions, mirroring every other
@@ -130,13 +139,14 @@ public sealed class RealIndexBackedResolverEndToEndTests(ITestOutputHelper outpu
             await Task.CompletedTask;
         });
 
+        var libraryPins = LibCpp2IlNativeBodyRecoveryProvider.LoadLibraryPinsFromConfig(FindLibrariesConfigPath());
         var provider = new LibCpp2IlNativeBodyRecoveryProvider(
             imageCache,
             new RealNativeImageSource(),
             symbolResolver,
             new LibCpp2IlAdapterFactory(),
             UnityVersion.Parse(CustomerLookup.UnitySupportedVersion),
-            LibCpp2IlNativeBodyRecoveryProvider.LoadLibraryPinsFromConfig(FindLibrariesConfigPath()));
+            libraryPins);
 
         var request = new NativeRecoveryRequest(
             BuildId: buildId,
@@ -145,9 +155,26 @@ public sealed class RealIndexBackedResolverEndToEndTests(ITestOutputHelper outpu
             SymbolIds: [symbolRecord.SymbolId],
             MaxTraversalEdges: 50);
 
-        var record = await provider.RecoverAsync(request, cancellationToken);
+        // Task 2.4: drive recovery through the real NativeRecoveryWorkflow -- not the provider
+        // directly -- so this gate exercises the canonicalization, evidence sanitization, and
+        // duplicate-edge-id guard the provider's output must actually survive. Calling the provider
+        // alone (the prior version of this test) missed the AT-37 regression where distinct call
+        // sites with identical evidence tuples collapsed to one canonical EdgeId and made the
+        // WORKFLOW reject an otherwise-valid Recovered provider result as Failed.
+        var executionContext = new NativeRecoveryExecutionContext(
+            CurrentBuildId: request.BuildId,
+            CurrentIndexId: request.IndexId,
+            CurrentGameAssemblySha256: request.GameAssemblySha256,
+            ToolName: LibraryToolIdentity.ToolName,
+            ToolVersion: LibraryToolIdentity.ToolVersion(libraryPins),
+            ToolSha256: LibraryToolIdentity.ComputeToolSha256(libraryPins));
+        var workflow = new NativeRecoveryWorkflow(provider);
+
+        var record = await workflow.RecoverAsync(request, executionContext, cancellationToken);
 
         output.WriteLine($"Recovery status: {record.Status}");
+        output.WriteLine($"Failure message: {record.FailureMessage}");
+        output.WriteLine($"Edge count: {record.Edges.Count}");
         foreach (var evidence in record.MappingEvidence)
         {
             output.WriteLine($"  mapping evidence: {evidence}");

@@ -138,6 +138,16 @@ public static class BoundedNativeDecoder
     private static NativeEvidenceEdge ClassifyCall(
         in Instruction instruction, string sourcePointer, IAddressResolver addresses)
     {
+        // Every call edge from the same enclosing method carries the same SourceMethodPointer (the
+        // method entry, not the call site), so two distinct call instructions in one method body
+        // would otherwise produce byte-identical edge tuples that canonicalize to the same EdgeId
+        // and collide (AT-37 native-body-recovery regression). Threading the call instruction's own
+        // address (its IP -- the call site, never the method entry and never the target) into the
+        // Evidence string keeps every edge distinguishable, even when two sites call the same
+        // target. The formatted pointer is lowercase 0x-hex via NativeNameNormalizer.Pointer, which
+        // is always NativeNameNormalizer.IsSummarySafe (no '/', '\', "://", ".bin", "disassembly").
+        var callSitePointer = NativeNameNormalizer.Pointer(instruction.IP);
+
         if (instruction.Op0Kind is OpKind.NearBranch64 or OpKind.NearBranch32 or OpKind.NearBranch16)
         {
             var target = instruction.NearBranchTarget;
@@ -152,7 +162,7 @@ public static class BoundedNativeDecoder
                     TargetMethodPointer: targetPointer,
                     TargetText: resolution.ManagedName,
                     Kind: "DirectCall",
-                    Evidence: "direct call",
+                    Evidence: $"direct call at {callSitePointer}",
                     IsComplete: true),
                 AddressResolutionKind.Ambiguous => new NativeEvidenceEdge(
                     EdgeId: "",
@@ -160,7 +170,7 @@ public static class BoundedNativeDecoder
                     TargetMethodPointer: targetPointer,
                     TargetText: null,
                     Kind: "DirectCall",
-                    Evidence: "direct call ambiguous target",
+                    Evidence: $"direct call (ambiguous target) at {callSitePointer}",
                     IsComplete: false),
                 _ => new NativeEvidenceEdge(
                     EdgeId: "",
@@ -168,7 +178,7 @@ public static class BoundedNativeDecoder
                     TargetMethodPointer: null,
                     TargetText: null,
                     Kind: "RuntimeDispatch",
-                    Evidence: "unresolved direct call target",
+                    Evidence: $"unresolved call at {callSitePointer}",
                     IsComplete: false),
             };
         }
@@ -181,7 +191,7 @@ public static class BoundedNativeDecoder
             TargetMethodPointer: null,
             TargetText: null,
             Kind: "RuntimeDispatch",
-            Evidence: "indirect call",
+            Evidence: $"unresolved call at {callSitePointer}",
             IsComplete: false);
     }
 
