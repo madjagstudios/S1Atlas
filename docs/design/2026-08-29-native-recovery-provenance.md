@@ -33,14 +33,14 @@ The workflow accepts only:
 - one or more unique, explicitly selected symbol IDs; and
 - a traversal edge budget from 1 through 500.
 
-The caller also supplies the currently observed build, index, and `GameAssembly.dll` identities plus the configured provider tool name, version, and executable SHA-256. A mismatch between current and requested build, index, or binary identity returns `InputChanged` before provider execution. The provider receives the canonical symbol ordering and the same bounded request. Returned edges are deterministically ordered and truncated to the requested budget; truncation makes the record incomplete.
+The caller also supplies the currently observed build, index, and `GameAssembly.dll` identities plus the configured provider tool name, version, and tool SHA-256 (an executable hash, or — for an in-process pinned-library provider — the pinned-library identity digest; see "Provider identity: pinned library"). A mismatch between current and requested build, index, or binary identity returns `InputChanged` before provider execution. The provider receives the canonical symbol ordering and the same bounded request. Returned edges are deterministically ordered and truncated to the requested budget; truncation makes the record incomplete.
 
 ## Evidence output
 
 The record stores provenance and normalized facts only:
 
 - build ID, index ID, `GameAssembly.dll` SHA-256, selected symbol IDs, and traversal budget;
-- provider tool name, version, and executable SHA-256;
+- provider tool name, version, and tool SHA-256 (executable or pinned-library identity);
 - managed-wrapper-to-native pointer mapping evidence;
 - bounded direct native edges and field-access descriptions;
 - explicit status, completeness, output SHA-256, deterministic recovery ID, and observation timestamp; and
