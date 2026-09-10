@@ -69,6 +69,16 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
             throw new InvalidOperationException("Symbol identity lookup failed.");
     }
 
+    private sealed class ThrowingAdapterFactory : ILibCpp2IlAdapterFactory
+    {
+        public IIl2CppMethodLookup CreateMethodLookup() =>
+            throw new InvalidOperationException("Adapter factory failed to create the method lookup.");
+
+        public IAddressResolver CreateAddressResolver() => new FixedAddressResolver(AddressResolutionKind.None);
+
+        public IFieldResolver CreateFieldResolver(string declaringTypeFullName) => new NullFieldResolver();
+    }
+
     private sealed class FakeMethodLookup : IIl2CppMethodLookup
     {
         private readonly Dictionary<(string Type, string Name), List<NativeMethodCandidate>> _candidates = new();
@@ -242,6 +252,110 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
         var request = CreateRequest(["sym1"]);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.RecoverAsync(request, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RecoverAsync_AdapterFactoryThrows_ExceptionPropagates()
+    {
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(new byte[1024]),
+            symbolIdentityResolver,
+            new ThrowingAdapterFactory(),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        var request = CreateRequest(["sym1"]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.RecoverAsync(request, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RecoverAsync_BudgetSmallerThanTotalEdgesAcrossSymbols_SharesBudgetAcrossSymbolsRatherThanPerSymbol()
+    {
+        const ulong method1Va = 0x1000;
+        const ulong method2Va = 0x2000;
+        const ulong targetVa = 0x9000;
+
+        // Each method body is a single call followed by a ret, so each yields exactly 1 edge
+        // when decoded with its own full budget.
+        var method1Bytes = Concat(CallRel32(method1Va, targetVa), Ret());
+        var method2Bytes = Concat(CallRel32(method2Va, targetVa), Ret());
+        var gameAssemblyBytes = Concat(method1Bytes, method2Bytes);
+
+        var lookup = new FakeMethodLookup();
+        lookup.Add("Foo.Bar", "Method1", new NativeMethodCandidate(
+            method1Va, MethodOffsetInFile: 0, Rva: method1Va, "Foo.Bar", "Method1", []));
+        lookup.Add("Foo.Bar", "Method2", new NativeMethodCandidate(
+            method2Va, MethodOffsetInFile: method1Bytes.Length, Rva: method2Va, "Foo.Bar", "Method2", []));
+
+        var addressResolver = new FixedAddressResolver(AddressResolutionKind.Single, "Some.Target.Method");
+        var symbolIdentityResolver = new FakeSymbolIdentityResolver(new Dictionary<string, ManagedSymbolDescriptor?>
+        {
+            ["sym1"] = new ManagedSymbolDescriptor("Foo.Bar", "Method1", []),
+            ["sym2"] = new ManagedSymbolDescriptor("Foo.Bar", "Method2", []),
+        });
+
+        var provider = new LibCpp2IlNativeBodyRecoveryProvider(
+            CreateNoOpImageCache(),
+            new FakeNativeImageSource(gameAssemblyBytes),
+            symbolIdentityResolver,
+            new FakeAdapterFactory(lookup, addressResolver),
+            UnityVersion.Parse("2022.3.62f2"),
+            Pins);
+
+        // MaxTraversalEdges is smaller than the 2 edges available across the two resolved
+        // symbols (1 each). If the budget were split per symbol instead of shared from a single
+        // pool, each symbol would independently get its own budget of 1 and this would recover
+        // 2 edges with IsComplete true. A shared pool must instead spend the whole budget on the
+        // first symbol, leaving nothing for the second.
+        var request = CreateRequest(["sym1", "sym2"], maxTraversalEdges: 1);
+
+        var record = await provider.RecoverAsync(request, CancellationToken.None);
+
+        Assert.Equal(NativeRecoveryStatus.Recovered, record.Status);
+        Assert.Equal(request, record.Request);
+        Assert.Single(record.Edges);
+        Assert.False(record.IsComplete);
+
+        AssertAllEvidenceIsSummarySafe(record);
+    }
+
+    [Fact]
+    public void NormalizeSeparators_SlashPlusAndDot_AllProduceTheSameNormalizedValue()
+    {
+        var viaSlash = LibCpp2IlTypeNames.NormalizeSeparators("Ns.Outer/Inner");
+        var viaPlus = LibCpp2IlTypeNames.NormalizeSeparators("Ns.Outer+Inner");
+        var viaDot = LibCpp2IlTypeNames.NormalizeSeparators("Ns.Outer.Inner");
+
+        Assert.Equal("Ns.Outer.Inner", viaSlash);
+        Assert.Equal(viaSlash, viaPlus);
+        Assert.Equal(viaSlash, viaDot);
+    }
+
+    [Theory]
+    [InlineData("Ns.Outer/Inner")]
+    [InlineData("Ns.Outer+Inner")]
+    [InlineData("Ns.Outer.Inner")]
+    public void NormalizeSeparators_MatchingPredicate_TreatsDottedRequestAsEquivalentToStoredSeparatorForm(
+        string storedCandidateFullName)
+    {
+        const string requestedDeclaringTypeFullName = "Ns.Outer.Inner";
+
+        // Mirrors LibCpp2IlTypeNames.FindByFullName's own comparison: both sides normalized via
+        // NormalizeSeparators, then compared with Ordinal equality. A nested type recorded by
+        // IL2CPP with '/' or by the managed index with '+' or '.' must all match the same request.
+        var isMatch = string.Equals(
+            LibCpp2IlTypeNames.NormalizeSeparators(storedCandidateFullName),
+            LibCpp2IlTypeNames.NormalizeSeparators(requestedDeclaringTypeFullName),
+            StringComparison.Ordinal);
+
+        Assert.True(isMatch, $"Expected requested '{requestedDeclaringTypeFullName}' to match stored candidate '{storedCandidateFullName}'.");
     }
 
     private static void AssertAllEvidenceIsSummarySafe(NativeRecoveryRecord record)
