@@ -258,3 +258,5 @@ declared controls.
 
 - [V1 design specification](design/2026-08-12-s1atlas-design.md)
 - [Validated Cpp2IL extraction design](design/2026-08-12-cpp2il-extraction-design.md)
+- [Native recovery provenance and feasibility boundary](design/2026-08-29-native-recovery-provenance.md)
+- [AT-37 native-body recovery implementation plan](design/2026-09-09-AT-37-native-body-recovery-plan.md)
