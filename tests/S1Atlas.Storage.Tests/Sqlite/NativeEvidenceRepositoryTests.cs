@@ -6,6 +6,7 @@ using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
+using S1Atlas.Indexing.NativeRecovery;
 using S1Atlas.Storage.Migrations;
 using S1Atlas.Storage.Sqlite;
 using Xunit;
@@ -391,6 +392,182 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
             "Native recovery records require a completed Schedule I index matching the recorded build and GameAssembly hash.",
             exception.Message);
         Assert.Null(await repository.GetNativeRecoveryAsync(unlinked.RecoveryId, cancellationToken));
+    }
+
+    // AT-37 Task 4.2 / AC #5 durable no-leak guard: every string SaveNativeRecoveryAsync
+    // actually writes to native_recovery_runs, native_recovery_edges, and
+    // native_recovery_fields must be free of path separators, "://" schemes, ".bin", and
+    // "disassembly" -- no game binary, raw disassembly, or filesystem path can ever reach a
+    // persisted row. This discovers every TEXT column via PRAGMA table_info rather than
+    // hardcoding a column list, so a future column added to any of the three tables is
+    // automatically covered without editing this test.
+    [Fact]
+    public async Task SaveNativeRecovery_PersistedStringsAcrossAllTablesContainNoPathOrDisassemblyLeaks()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+
+        // Realistic record with a DirectCall edge, an UNKNOWN edge, and field accesses --
+        // reuses the same seeding/canonicalization helpers (InitializeCompletedIndexAsync,
+        // Record, CreateCanonicalRecord) as the other native-recovery persistence tests above.
+        var record = Record(new string('a', 64), DateTimeOffset.Parse("2026-08-30T12:00:00Z"));
+        await repository.SaveNativeRecoveryAsync(record, cancellationToken);
+
+        // A second record whose tool provenance uses the real libcpp2il/iced version-stamp
+        // format ("libcpp2il=<version>;iced=<version>"). ';', '=', '.', and '-' are all
+        // allowed by the sanitizer contract, so this string must survive untouched.
+        const string toolProvenanceVersion = "libcpp2il=2.10.1;iced=1.20.0";
+        var provenanceRecord = CreateCanonicalRecord(
+            Request() with { SymbolIds = ["native-symbol-c", "native-symbol-d"] },
+            "native-recovery-tool",
+            toolProvenanceVersion,
+            ToolSha256,
+            NativeRecoveryStatus.Recovered,
+            ["managed pointer 0x400", "native pointer 0x420"],
+            [
+                new NativeEvidenceEdge(
+                    new string('1', 64), "0x400", "0x420", "Demo.OtherTarget", "DirectCall", "direct target evidence 2", true)
+            ],
+            ["0x500 read"],
+            false,
+            DateTimeOffset.Parse("2026-08-30T12:05:00Z"),
+            null);
+        await repository.SaveNativeRecoveryAsync(provenanceRecord, cancellationToken);
+
+        var storedValues = await CollectPersistedNativeRecoveryStringsAsync(cancellationToken);
+        AssertNoLeakedTokens(storedValues);
+
+        // Sanity: prove the scan actually reached rows in all three tables and captured the
+        // provenance string verbatim (rather than passing vacuously over an empty result set).
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_runs"
+            && v.Column == "tool_version" && v.Value == toolProvenanceVersion);
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_runs"
+            && v.Column == "mapping_evidence_json" && v.Value.Contains("managed pointer 0x100"));
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_edges"
+            && v.Column == "kind" && v.Value == "DirectCall");
+        Assert.Contains(storedValues, v => v.Table == "native_recovery_fields"
+            && v.Column == "field_access");
+    }
+
+    // AT-37 Task 4.2 / AC #5 negative guard: route a provider evidence value carrying a raw
+    // "/" through the full NativeRecoveryWorkflow -> SaveNativeRecoveryAsync path and prove
+    // the sanitizer backstop rejects it (Status=Failed, empty edges/evidence) before anything
+    // unsafe is persisted. This complements the existing workflow-level regression
+    // (NativeRecoveryWorkflowTests.RecoverAsync_rejects_artifact_like_provider_text_without_copying_it,
+    // which covers a Windows path with '\' and ".bin") by covering a bare '/' end-to-end
+    // through persistence, which no existing test exercises.
+    [Fact]
+    public async Task RecoverAsync_ProviderEvidenceContainingSlash_NeverReachesPersistedStorage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await InitializeCompletedIndexAsync(cancellationToken);
+        INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest> repository = _repository;
+
+        var request = Request();
+        var executionContext = new NativeRecoveryExecutionContext(
+            request.BuildId,
+            request.IndexId,
+            request.GameAssemblySha256,
+            "native-recovery-tool",
+            "1.2.3",
+            ToolSha256);
+        var workflow = new NativeRecoveryWorkflow(new SlashLeakingProvider(executionContext));
+
+        var result = await workflow.RecoverAsync(request, executionContext, cancellationToken);
+
+        Assert.Equal(NativeRecoveryStatus.Failed, result.Status);
+        Assert.Empty(result.Edges);
+        Assert.Empty(result.MappingEvidence);
+        Assert.NotNull(result.FailureMessage);
+        Assert.DoesNotContain('/', result.FailureMessage);
+
+        await repository.SaveNativeRecoveryAsync(result, cancellationToken);
+
+        var storedValues = await CollectPersistedNativeRecoveryStringsAsync(cancellationToken);
+        AssertNoLeakedTokens(storedValues);
+        Assert.DoesNotContain(storedValues, v => v.Value.Contains("managed/native", StringComparison.Ordinal));
+    }
+
+    private sealed class SlashLeakingProvider(NativeRecoveryExecutionContext executionContext)
+        : INativeBodyRecoveryProvider
+    {
+        public Task<NativeRecoveryRecord> RecoverAsync(
+            NativeRecoveryRequest request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new NativeRecoveryRecord(
+                new string('9', 64),
+                request,
+                executionContext.ToolName,
+                executionContext.ToolVersion,
+                executionContext.ToolSha256,
+                NativeRecoveryStatus.Recovered,
+                ["managed/native pointer 0x100"],
+                [
+                    new NativeEvidenceEdge(
+                        new string('8', 64), "0x100", "0x101", "Demo.Target", "DirectCall", "direct target evidence", true)
+                ],
+                [],
+                true,
+                new string('9', 64),
+                DateTimeOffset.Parse("2026-08-30T12:10:00Z"),
+                null));
+    }
+
+    private static readonly string[] ForbiddenSubstrings = ["://", ".bin", "disassembly"];
+
+    private async Task<IReadOnlyList<(string Table, string Column, string Value)>> CollectPersistedNativeRecoveryStringsAsync(
+        CancellationToken cancellationToken)
+    {
+        var values = new List<(string Table, string Column, string Value)>();
+        await using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        await connection.OpenAsync(cancellationToken);
+        foreach (var table in new[] { "native_recovery_runs", "native_recovery_edges", "native_recovery_fields" })
+        {
+            var textColumns = new List<string>();
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = $"PRAGMA table_info({table});";
+                await using var reader = await pragma.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (string.Equals(reader.GetString(2), "TEXT", StringComparison.OrdinalIgnoreCase))
+                        textColumns.Add(reader.GetString(1));
+                }
+            }
+
+            foreach (var column in textColumns)
+            {
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"SELECT {column} FROM {table};";
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (!reader.IsDBNull(0))
+                        values.Add((table, column, reader.GetString(0)));
+                }
+            }
+        }
+
+        return values;
+    }
+
+    private static void AssertNoLeakedTokens(IReadOnlyList<(string Table, string Column, string Value)> values)
+    {
+        // Sanity: fail loudly if the scan itself found nothing, rather than passing vacuously.
+        Assert.NotEmpty(values);
+        foreach (var (table, column, value) in values)
+        {
+            Assert.True(!value.Contains('\\'), $"{table}.{column} leaked a backslash: '{value}'");
+            Assert.True(!value.Contains('/'), $"{table}.{column} leaked a forward slash: '{value}'");
+            Assert.True(!value.Contains('\0'), $"{table}.{column} leaked a NUL byte: '{value}'");
+            foreach (var forbidden in ForbiddenSubstrings)
+            {
+                Assert.True(
+                    value.IndexOf(forbidden, StringComparison.OrdinalIgnoreCase) < 0,
+                    $"{table}.{column} leaked forbidden token '{forbidden}': '{value}'");
+            }
+        }
     }
 
     // AT-37 read-path regression guard: GetCompletedIndexBuildIdAsync must resolve the build id
