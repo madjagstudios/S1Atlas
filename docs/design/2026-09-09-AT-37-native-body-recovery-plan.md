@@ -27,7 +27,7 @@
 - **Traversal budget:** integer `1..500` inclusive (`MaxTraversalEdges`); truncation marks the record incomplete.
 - **Read-only:** never launch or mutate the game. Recovery reads bytes from `GameAssembly.dll` + `global-metadata.dat` only. Raw disassembly is consumed in memory and never persisted.
 - **Determinism:** identical inputs reproduce identical `OutputSha256` and `RecoveryId`. `LibCpp2IlMain` is global static state — access is single-flighted and the loaded binary is cached keyed by `(gameAssemblySha256, metadataSha256)`.
-- **Repo policy:** public repo — **no `Co-Authored-By: Claude` / "Generated with" trailers** on commits or PRs. Keep worknotes local (`docs/worknotes/` is gitignored). CI runs a `dotnet format` verify gate — run it before pushing.
+- **Repo policy:** public repo — omit AI-attribution trailers (co-author or generated-with lines) on commits and PRs. Keep worknotes local (`docs/worknotes/` is gitignored). CI runs a `dotnet format` verify gate — run it before pushing.
 - **Unity version:** the codebase does not probe the engine version from the binary; scene indexing hard-codes the `2022.3.62` family. The provider passes a known supported `UnityVersion` and returns a negative result (not wrong data) if the build's metadata is incompatible.
 
 ---
