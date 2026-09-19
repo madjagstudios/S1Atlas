@@ -390,6 +390,29 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         Assert.Equal(SceneResolutionStatus.Resolved, reference.ResolutionStatus);
     }
 
+    // AT-47: with a class database every MonoBehaviour in sharedassets/resources decodes, and
+    // ScriptableObjects serialize an explicit null m_GameObject. They are assets, not component
+    // attachments, so the run must neither fail nor invent an owner for them.
+    [Fact]
+    public async Task Asset_level_mono_behaviour_with_null_game_object_is_not_a_component_and_not_a_failure()
+    {
+        var shared = Container(
+            "Schedule I_Data/sharedassets0.assets",
+            objects:
+            [
+                GameObject(1, "Owner", [new ParsedScenePPtr(0, 10)]),
+                Object(10, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 0), true)),
+                Object(11, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 0), new ParsedScenePPtr(0, 0), true))
+            ]);
+
+        var result = await NormalizeAsync([shared]);
+
+        var gameObject = Assert.Single(result.GameObjects);
+        var component = Assert.Single(result.Components);
+        Assert.Equal(gameObject.GameObjectId, component.GameObjectId);
+        Assert.Equal(10, component.LocalFileId);
+    }
+
     [Fact]
     public async Task Stripped_mono_behaviour_keeps_its_game_object_attachment_without_inventing_script_identity()
     {
