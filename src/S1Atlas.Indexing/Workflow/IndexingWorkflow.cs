@@ -114,7 +114,7 @@ public sealed class IndexingWorkflow
         else if (string.IsNullOrWhiteSpace(existingSnapshot.EnvironmentSnapshotId) &&
                  !string.IsNullOrWhiteSpace(currentEnvironment?.SnapshotId))
         {
-            // AT-44: a code snapshot created before EnvironmentSnapshotId was populated
+            // a code snapshot created before EnvironmentSnapshotId was populated
             // (or created without a matching environment) is healed in place, once, the
             // next time indexing runs against a build whose current environment snapshot
             // resolves. The snapshot_id already pins codebase/channel/source identity, so

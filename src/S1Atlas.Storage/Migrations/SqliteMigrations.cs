@@ -874,7 +874,7 @@ internal static class SqliteMigrations
         );
         """;
 
-    // AT-47: records which type-tree source decoded a scene snapshot (embedded type trees or the
+    // records which type-tree source decoded a scene snapshot (embedded type trees or the
     // pinned class database plus its version and hash) so readers can see the fidelity boundary.
     private const string SceneTypeTreeSourceV13Sql = """
         ALTER TABLE scene_snapshots ADD COLUMN type_tree_source TEXT NULL;

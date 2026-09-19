@@ -53,7 +53,7 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
     [Fact]
     public async Task Exact_game_object_name_lookup_resolves_through_a_completed_published_snapshot()
     {
-        // AT-45: the join with scene_snapshots shares a recovery_status column; the
+        // the join with scene_snapshots shares a recovery_status column; the
         // select list must stay table-qualified or SQLite rejects the query.
         var cancellationToken = TestContext.Current.CancellationToken;
         await SeedAuthoritiesAsync("build-a", cancellationToken);

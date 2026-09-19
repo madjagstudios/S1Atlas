@@ -8,25 +8,18 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
-- **Scene intelligence on stripped-type-tree builds** (AT-47) — Schedule I's
-  release containers carry no embedded Unity type tree, so the scene parser now
-  falls back to a pinned Unity class database: `config/tools/unity-classdata.win-x64.json`
-  pins UABEA's `classdata.tpk` (commit `5adb448`, 289,605 bytes, SHA-256
-  `129e1f80…`, MIT) as a data-only managed tool, installed with
-  `tools install unity-classdata` and re-hashed against the pin before every
-  read. RectTransform is decoded as a Transform so UI hierarchies stay in the
-  graph, and asset-level MonoBehaviours (ScriptableObjects, explicit null
-  GameObject) are no longer treated as corrupt component attachments. Each scene
-  snapshot records its type-tree source in a new `type_tree_source` column
-  (migration 13) — `embedded`, or the class database with its version, hash, and
-  the dump version that stood in for the container's Unity version — surfaced as
-  `typeTreeSource` by `index --scene`, `scenes`, `scene`, `gameobject`, `prefab`,
-  `component`, and the MCP scene tools, and the class database identity is part
-  of the scene snapshot identity. `gameobject` now returns the selected object's
-  transform (position, rotation, scale, parent, sibling index). A stripped build
-  without an installed class database still fails with
-  `SceneTypeTreeUnavailable`, now naming the install command. Verified on build
-  `0b86d6d8…`: 7 scenes, 211,409 game objects, 589,372 components. See
+- **Scene intelligence on release builds** (AT-46, AT-47) — Schedule I ships its
+  scene containers without embedded Unity type trees, so the scene parser could
+  not name a single object and `index --scene` published a completed, empty
+  snapshot. The parser now decodes stripped containers through a pinned Unity
+  class database, installed with `tools install unity-classdata` and re-hashed
+  against the pin before every read; each scene snapshot records its type-tree
+  source and surfaces it on every scene command and MCP scene tool. When a
+  stripped build has no matching class database the run fails with
+  `SceneTypeTreeUnavailable` instead of completing empty, and a snapshot that
+  recovered no GameObject fails with `NoRecoverableSceneObjects` and is not
+  served as a completed index. `gameobject` now returns the selected object's
+  transform. Pin, licence, and version-substitution details are in
   `docs/dependencies/unity-classdata-uabea-5adb448.md`.
 
 ### Fixed
@@ -40,22 +33,6 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - **`gameobject <scene-id>/<name>` lookup** (AT-45) — the exact-name query joined
   `scene_snapshots` with an unqualified select list, so SQLite rejected it with
   `ambiguous column name: recovery_status`. The select list is now table-qualified.
-- **Empty scene index published as Completed** (AT-46) — Schedule I's release
-  containers strip their Unity type trees (`TypeTreeEnabled=false`), and the
-  pinned `assetstools-net` parser decodes GameObject, Transform, MonoBehaviour,
-  MonoScript, and BuildSettings fields only from an embedded type tree, so every
-  object became a nameless stub and `index --scene` published a `Completed`,
-  `StubOrUnavailable` snapshot with 0 game objects, 0 roots, and no resolvable
-  names. The parser now records whether each container embeds its type tree;
-  the workflow fails a run whose containers cannot be decoded with
-  `SceneTypeTreeUnavailable` (naming the containers) and, as a defense in depth,
-  fails any write set that has object-table entries but no recovered GameObject
-  with `NoRecoverableSceneObjects`; both codes are persisted as the snapshot's
-  `failure_code`. A previously completed empty snapshot is no longer reused by
-  `index --scene`, and `scenes`/`scene`/`gameobject`/`prefab`/`component` and
-  the MCP scene tools report `NoRecoverableSceneObjects` for it instead of an
-  empty `Resolved` result. Recovering names and hierarchy from stripped
-  containers needs a Unity class database, which S1Atlas does not ship.
 
 ## [1.3.0] — 2026-09-10 — Native-body recovery
 

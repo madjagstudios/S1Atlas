@@ -390,7 +390,7 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         Assert.Equal(SceneResolutionStatus.Resolved, reference.ResolutionStatus);
     }
 
-    // AT-47: with a class database every MonoBehaviour in sharedassets/resources decodes, and
+    // with a class database every MonoBehaviour in sharedassets/resources decodes, and
     // ScriptableObjects serialize an explicit null m_GameObject. They are assets, not component
     // attachments, so the run must neither fail nor invent an owner for them.
     [Fact]

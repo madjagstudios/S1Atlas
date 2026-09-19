@@ -247,7 +247,7 @@ public sealed class SceneTools
             SceneQueryStatus.ComponentNotFound => ToolEnvelope<T>.NotFound(build, new ToolError("ComponentNotFound", "No indexed component matched the selector."), provenance),
             SceneQueryStatus.AmbiguousScene or SceneQueryStatus.AmbiguousGameObject or SceneQueryStatus.AmbiguousComponent => ToolEnvelope<T>.Ambiguous(build, candidates, provenance),
             SceneQueryStatus.UnresolvedCodeSymbol => ToolEnvelope<T>.NotFound(build, new ToolError("UnresolvedCodeSymbol", "The component has no exact resolved code symbol."), provenance),
-            SceneQueryStatus.NoRecoverableSceneObjects => ToolEnvelope<T>.Unavailable(new ToolError("NoRecoverableSceneObjects", "The completed scene snapshot recovered no GameObjects: its containers carry no embedded Unity type tree, so names, hierarchy, and components could not be decoded."), build, provenance),
+            SceneQueryStatus.NoRecoverableSceneObjects => ToolEnvelope<T>.Unavailable(new ToolError("NoRecoverableSceneObjects", "This completed scene snapshot recovered no GameObjects and cannot be queried. Rebuild it with the CLI (index --scene --force); the rerun reports why."), build, provenance),
             _ => ToolEnvelope<T>.Unavailable(new ToolError(status.ToString(), "The requested scene data is unavailable."), build, provenance)
         };
     }

@@ -285,7 +285,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         Assert.False(Directory.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, snapshot.SceneSnapshotId).StagingRoot));
     }
 
-    // AT-47: a configured class database that is not installed (or holds no dump) still fails
+    // a configured class database that is not installed (or holds no dump) still fails
     // the run, but the message now names the pin and the install command.
     [Fact]
     public async Task Stripped_type_tree_container_with_uninstalled_class_database_names_the_pin()
@@ -306,7 +306,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         Assert.Null(repository.CompletedSnapshot);
     }
 
-    // AT-47: a stripped container decoded through the pinned class database completes, and the
+    // a stripped container decoded through the pinned class database completes, and the
     // snapshot records which type-tree source (package, version, hash, substituted dump) did it.
     [Fact]
     public async Task Stripped_type_tree_container_decoded_with_class_database_completes_and_records_provenance()

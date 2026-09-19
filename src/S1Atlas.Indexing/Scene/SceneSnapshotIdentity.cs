@@ -50,7 +50,7 @@ public static class SceneSnapshotIdentity
         Append(hash, parserVersion);
         Append(hash, serializedFileSchemaVersion);
         // The class database changes what a stripped container decodes to, so it is part of the
-        // identity; omitting it keeps pre-AT-47 identities stable for parsers without one.
+        // identity; omitting it keeps identities stable for a parser configured without a class database.
         if (classDatabaseIdentity is not null)
         {
             RequireText(classDatabaseIdentity, nameof(classDatabaseIdentity));

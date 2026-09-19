@@ -4,7 +4,7 @@ using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Scene;
 
-// AT-47: a stripped-type-tree container (TypeTreeEnabled=false) decodes through the pinned
+// a stripped-type-tree container (TypeTreeEnabled=false) decodes through the pinned
 // class database when one matches, and stays an undecoded stub when none is configured.
 public sealed class ClassDatabaseParserTests
 {

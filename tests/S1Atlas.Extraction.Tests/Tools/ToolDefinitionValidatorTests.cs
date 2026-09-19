@@ -77,7 +77,7 @@ public sealed class ToolDefinitionValidatorTests
         Assert.Equal("ToolDefinitionInvalid", commaException.Code);
     }
 
-    // AT-47: a data-only package (the Unity class database) declares an empty probe list; the
+    // a data-only package (the Unity class database) declares an empty probe list; the
     // field itself stays mandatory so a missing list is still rejected.
     [Fact]
     public void Deserialize_WhenProbesAreEmpty_AcceptsDataOnlyPackage()

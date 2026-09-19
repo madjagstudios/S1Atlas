@@ -43,9 +43,8 @@ public sealed class CliApplication
     private readonly Func<int, bool> _isProcessAlive;
 
     /// <summary>
-    /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/>.
-    /// Not yet consumed by a command (that is Task 3.2's <c>recover-native-body</c>); exposed so
-    /// that task, and this task's own tests, can drive them without re-deriving the composition.
+    /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/> for
+    /// <c>recover-native-body</c>; exposed internally so its tests can drive them directly.
     /// </summary>
     internal NativeRecoveryComposition? NativeRecoveryComposition { get; private set; }
 

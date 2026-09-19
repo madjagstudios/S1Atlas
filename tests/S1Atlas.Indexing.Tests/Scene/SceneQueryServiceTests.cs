@@ -254,7 +254,7 @@ public sealed class SceneQueryServiceTests
         Assert.Equal(1, scenes.Page.TotalCount);
     }
 
-    // AT-47: the selected game object's own transform rides along with the query result so a
+    // the selected game object's own transform rides along with the query result so a
     // reader gets its local position without a second lookup.
     [Fact]
     public async Task Game_object_query_returns_the_selected_objects_transform()

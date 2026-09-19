@@ -224,7 +224,7 @@ public sealed class IndexingWorkflowTests
         }
     }
 
-    // AT-44: SceneIndexWorkflow.RequireCodeIndexAsync rejects a completed Schedule I
+    // SceneIndexWorkflow.RequireCodeIndexAsync rejects a completed Schedule I
     // Installed code snapshot whose EnvironmentSnapshotId is empty. The writer here
     // previously created the CodeSnapshotRecord with only 5 positional arguments,
     // leaving EnvironmentSnapshotId permanently null for every Schedule I Installed
@@ -287,7 +287,7 @@ public sealed class IndexingWorkflowTests
         }
     }
 
-    // AT-44: a code snapshot completed before this fix (or completed without a
+    // a code snapshot completed before this fix (or completed without a
     // resolvable environment) is healed in place the next time RunScheduleOneAsync
     // reuses it, once an environment snapshot for the same build becomes available.
     [Fact]

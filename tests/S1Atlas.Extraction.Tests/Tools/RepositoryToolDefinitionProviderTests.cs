@@ -56,7 +56,7 @@ public sealed class RepositoryToolDefinitionProviderTests
         Assert.Matches("^[0-9a-f]{64}$", resolved.DefinitionDigest);
     }
 
-    // AT-47: the Unity class database is a data-only pin (no executable, so no probes) fetched
+    // the Unity class database is a data-only pin (no executable, so no probes) fetched
     // from the UABEA repository at a fixed commit and verified by SHA-256.
     [Fact]
     public void GetRequired_UnityClassDatabaseWindowsX64_ReturnsApprovedDataOnlyPin()
