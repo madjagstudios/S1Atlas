@@ -248,12 +248,13 @@ internal static class IndexCommand
             sceneResult.ComponentCount,
             sceneResult.ReferenceCount,
             sceneResult.RecoveryCounts ?? new Dictionary<string, int>(),
-            sceneResult.Warnings ?? []);
+            sceneResult.Warnings ?? [],
+            sceneResult.TypeTreeSource);
         return commandOutput.Success(sceneData, writer =>
         {
             writer.WriteLine(
                 $"scene {sceneData.SceneSnapshotId} | build {sceneData.BuildId} | code index {sceneData.CodeIndexId} | " +
-                $"parser {sceneData.ParserId} {sceneData.ParserVersion} | {(sceneData.Reused ? "reused" : "rebuilt")} | " +
+                $"parser {sceneData.ParserId} {sceneData.ParserVersion} | type tree {sceneData.TypeTreeSource ?? "unknown"} | {(sceneData.Reused ? "reused" : "rebuilt")} | " +
                 $"containers {sceneData.ContainerCount} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | " +
                 $"transforms {sceneData.TransformCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}");
             writer.WriteLine("Recovery: " + string.Join(", ", sceneData.RecoveryCounts.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "=" + item.Value)));

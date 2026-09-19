@@ -23,7 +23,8 @@ public static class SceneSnapshotIdentity
         string parserId,
         string parserVersion,
         int serializedFileSchemaVersion,
-        IReadOnlyList<SceneSnapshotContainerFact> containers)
+        IReadOnlyList<SceneSnapshotContainerFact> containers,
+        string? classDatabaseIdentity = null)
     {
         RequireText(buildId, nameof(buildId));
         RequireText(validatedExtractionId, nameof(validatedExtractionId));
@@ -48,6 +49,15 @@ public static class SceneSnapshotIdentity
         Append(hash, parserId);
         Append(hash, parserVersion);
         Append(hash, serializedFileSchemaVersion);
+        // The class database changes what a stripped container decodes to, so it is part of the
+        // identity; omitting it keeps pre-AT-47 identities stable for parsers without one.
+        if (classDatabaseIdentity is not null)
+        {
+            RequireText(classDatabaseIdentity, nameof(classDatabaseIdentity));
+            Append(hash, "class-database");
+            Append(hash, classDatabaseIdentity);
+        }
+
         Append(hash, ordered.Length);
 
         foreach (var container in ordered)

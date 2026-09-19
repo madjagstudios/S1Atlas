@@ -138,7 +138,8 @@ public sealed class SceneIndexWorkflow
                 container.RelativePath,
                 container.ByteCount,
                 container.Sha256,
-                container.SidecarManifest)).ToArray());
+                container.SidecarManifest)).ToArray(),
+            ClassDatabaseIdentity(_parser.ClassDatabase));
 
         var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
         using var snapshotLock = SceneSnapshotLock.Acquire(paths.LockPath);
@@ -181,8 +182,12 @@ public sealed class SceneIndexWorkflow
 
             var parsed = await _parser.ParseAsync(verifiedInput.Containers, cancellationToken);
             RequireParserFacts(parsed, verifiedInput.Containers);
-            RequireDecodableContainers(parsed);
-            var writeSet = await _normalizer.NormalizeAsync(snapshot, verifiedInput.Containers, parsed, cancellationToken);
+            RequireDecodableContainers(parsed, _parser.ClassDatabase);
+            var writeSet = await _normalizer.NormalizeAsync(
+                snapshot with { TypeTreeSource = TypeTreeSourceLabel(parsed) },
+                verifiedInput.Containers,
+                parsed,
+                cancellationToken);
             RequireBoundedWriteSet(writeSet, verifiedInput.Containers.Count);
             RequireRecoveredGraph(writeSet);
             await WriteStagingManifestAsync(paths.StagingRoot, writeSet, verifiedInput.Containers, cancellationToken);
@@ -403,10 +408,10 @@ public sealed class SceneIndexWorkflow
     // that carries supported objects but no embedded type tree (a release build with stripped
     // type trees, TypeTreeEnabled=false) can only yield nameless stubs, so the run must fail
     // with the cause instead of completing an empty index.
-    private static void RequireDecodableContainers(IReadOnlyList<ParsedSceneContainer> parsed)
+    private static void RequireDecodableContainers(IReadOnlyList<ParsedSceneContainer> parsed, UnityClassDatabaseDescriptor? classDatabase)
     {
         var stripped = parsed
-            .Where(container => !container.TypeTreeEmbedded &&
+            .Where(container => container.DecodeSource.Kind == ParsedTypeTreeSourceKind.Unavailable &&
                                 container.Objects.Any(item => item.Kind is ParsedSceneObjectKind.GameObject or
                                     ParsedSceneObjectKind.Transform or
                                     ParsedSceneObjectKind.MonoBehaviour or
@@ -417,12 +422,33 @@ public sealed class SceneIndexWorkflow
             .ToArray();
         if (stripped.Length == 0)
             return;
+        var remedy = classDatabase is null
+            ? $"no pinned Unity class database is configured for this parser; install it with `tools install {UnityClassDatabasePin.ToolId}` and rerun `index --scene`."
+            : $"the pinned class database {classDatabase.PackageId} {classDatabase.PackageVersion} (sha256:{classDatabase.PackageSha256}) is not installed or holds no dump for the container's Unity version; run `tools install {UnityClassDatabasePin.ToolId}` (or `--repair`) and rerun `index --scene`.";
         throw new SceneIndexFailureException(
             SceneQueryStatus.SceneTypeTreeUnavailable,
             $"SerializedFile container(s) {string.Join(", ", stripped.Select(path => "'" + path + "'"))} carry no embedded Unity type tree (TypeTreeEnabled=false). " +
-            $"Parser {ParserId} {ParserVersion} decodes GameObject, Transform, MonoBehaviour, MonoScript, and BuildSettings fields only from an embedded type tree, " +
-            "so no object names, hierarchy, or component attachments can be recovered from this build; decoding stripped containers requires a class database for the container's Unity version, which S1Atlas does not ship.");
+            $"Parser {ParserId} {ParserVersion} decodes GameObject, Transform, MonoBehaviour, MonoScript, and BuildSettings fields only from an embedded type tree or a pinned class database, " +
+            $"so no object names, hierarchy, or component attachments can be recovered from this build: {remedy}");
     }
+
+    // One bounded, path-free label per distinct type-tree source across the parsed containers,
+    // recorded on the snapshot and surfaced by the CLI and MCP so a reader sees whether names
+    // and hierarchy came from embedded type trees or from the pinned class database (and which
+    // dump version stood in for the container's Unity version).
+    internal static string TypeTreeSourceLabel(IReadOnlyList<ParsedSceneContainer> parsed) =>
+        string.Join(
+            "; ",
+            parsed
+                .Select(container => container.DecodeSource.Label(container.UnityVersion))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(label => label, StringComparer.Ordinal)
+                .DefaultIfEmpty("embedded"));
+
+    private static string? ClassDatabaseIdentity(UnityClassDatabaseDescriptor? classDatabase) =>
+        classDatabase is null
+            ? null
+            : string.Join("", classDatabase.PackageId, classDatabase.PackageVersion, classDatabase.PackageSha256);
 
     // Defense in depth: never complete or publish a snapshot whose documents count objects
     // but whose graph holds no GameObject at all.
@@ -510,7 +536,8 @@ public sealed class SceneIndexWorkflow
             writeSet?.Components.Count ?? 0,
             writeSet?.References.Count ?? 0,
             writeSet is null ? new Dictionary<string, int>() : RecoveryCounts(writeSet),
-            []);
+            [],
+            snapshot.TypeTreeSource);
 
     private async Task<SceneIndexWorkflowResult> ToResultAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken)
     {
@@ -530,7 +557,8 @@ public sealed class SceneIndexWorkflow
             statistics.ComponentCount,
             statistics.ReferenceCount,
             statistics.RecoveryCounts,
-            []);
+            [],
+            snapshot.TypeTreeSource);
     }
 
     private static IReadOnlyDictionary<string, int> RecoveryCounts(SceneWriteSet writeSet) =>

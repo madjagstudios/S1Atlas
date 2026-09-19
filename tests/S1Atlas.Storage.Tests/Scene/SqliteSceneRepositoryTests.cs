@@ -581,6 +581,25 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
                 DateTimeOffset.Parse("2026-08-14T00:00:00Z")),
             cancellationToken);
 
+    [Fact]
+    public async Task Completion_records_the_type_tree_source_and_reads_it_back()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        const string label = "class-database unity-classdata uabea-5adb448 sha256:" + Digest + " (2022.3.26f1 layouts for 2022.3.62f2; nearest earlier dump)";
+        var writeSet = CreateWriteSet(snapshot with { TypeTreeSource = label });
+
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, writeSet, "2026-08-14T01:01:00Z", cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        var completed = await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken);
+        Assert.Equal(label, completed!.TypeTreeSource);
+        Assert.Equal(label, (await _repository.GetLatestCompletedSceneSnapshotAsync("build-a", cancellationToken))!.TypeTreeSource);
+    }
+
     private static SceneSnapshotRecord CreateSnapshot(string snapshotId, string buildId) =>
         new(snapshotId, buildId, "extraction-build-a", "input-build-a", "code-build-a", "index-build-a", "parser", "1", Digest, SceneSnapshotStatus.Running, SceneRecoveryStatus.FullyRecovered, "2026-08-14T00:00:00Z");
 
