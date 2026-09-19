@@ -112,7 +112,8 @@ public sealed record ParsedSceneContainer(
     int SerializedFileVersion,
     IReadOnlyList<ParsedSceneObject> Objects,
     IReadOnlyList<ParsedSceneExternalReference> ExternalReferences,
-    bool HasPrefabEvidence);
+    bool HasPrefabEvidence,
+    bool TypeTreeEmbedded = true);
 
 internal sealed record VerifiedSceneFile(
     string RelativePath,

@@ -218,6 +218,42 @@ public sealed class SceneQueryServiceTests
         Assert.Equal(["component-widget-a", "component-widget-b"], ambiguous.Candidates.Select(component => component.ComponentId));
     }
 
+    [Fact]
+    public async Task Completed_snapshot_that_recovered_no_game_object_is_reported_not_served_as_resolved()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot() with { RecoveryStatus = SceneRecoveryStatus.StubOrUnavailable };
+        repository.Statistics = new SceneIndexStatistics(9, 7, 0, 0, 0, 0, new Dictionary<string, int> { ["StubOrUnavailable"] = 7 });
+        repository.Documents = [Document("scene-a", "level1", recovery: SceneRecoveryStatus.StubOrUnavailable)];
+        var service = new SceneQueryService(repository);
+
+        var scenes = await service.ScenesAsync(new SceneListRequest(BuildId: "build-a"), TestContext.Current.CancellationToken);
+        var scene = await service.SceneAsync(new SceneQueryRequest("snapshot-a", "level1"), TestContext.Current.CancellationToken);
+        var gameObject = await service.GameObjectAsync(new GameObjectQueryRequest("snapshot-a", "scene-a/Nightclub"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, scenes.Status);
+        Assert.Equal("snapshot-a", scenes.Snapshot!.SceneSnapshotId);
+        Assert.Equal(0, scenes.Page.TotalCount);
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, scene.Status);
+        Assert.Null(scene.Scene);
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, gameObject.Status);
+        Assert.Equal(0, repository.ExactSceneNameLookups);
+    }
+
+    [Fact]
+    public async Task Stub_snapshot_with_recovered_game_objects_still_resolves()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot() with { RecoveryStatus = SceneRecoveryStatus.StubOrUnavailable };
+        repository.Statistics = new SceneIndexStatistics(9, 7, 3, 3, 0, 0, new Dictionary<string, int>());
+        repository.Documents = [Document("scene-a", "level1")];
+
+        var scenes = await new SceneQueryService(repository).ScenesAsync(new SceneListRequest(SceneSnapshotId: "snapshot-a"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.Resolved, scenes.Status);
+        Assert.Equal(1, scenes.Page.TotalCount);
+    }
+
     private static SceneSnapshotRecord Snapshot() => new(
         "snapshot-a", "build-a", "extraction-a", "input-a", "code-a", "index-a", "parser", "1",
         new string('a', 64), SceneSnapshotStatus.Completed, SceneRecoveryStatus.FullyRecovered, "2026-08-15T00:00:00Z");
@@ -237,10 +273,11 @@ public sealed class SceneQueryServiceTests
         public IReadOnlyList<SceneContainerRecord> Containers { get; set; } = [];
         public List<int> SceneLimits { get; } = [];
         public int ExactSceneNameLookups { get; private set; }
+        public SceneIndexStatistics? Statistics { get; set; }
 
         public Task<SceneSnapshotRecord?> GetCompletedSceneSnapshotAsync(string sceneSnapshotId, CancellationToken cancellationToken) => Task.FromResult(Snapshots.GetValueOrDefault(sceneSnapshotId));
         public Task<SceneSnapshotRecord?> GetLatestCompletedSceneSnapshotAsync(string buildId, CancellationToken cancellationToken) => Task.FromResult(Snapshots.Values.SingleOrDefault(snapshot => snapshot.BuildId == buildId));
-        public Task<SceneIndexStatistics?> GetSceneIndexStatisticsAsync(string sceneSnapshotId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<SceneIndexStatistics?> GetSceneIndexStatisticsAsync(string sceneSnapshotId, CancellationToken cancellationToken) => Statistics is null ? throw new NotSupportedException() : Task.FromResult<SceneIndexStatistics?>(Statistics);
         public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken)
         {
             SceneLimits.Add(options.Limit);

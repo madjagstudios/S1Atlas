@@ -103,7 +103,8 @@ public sealed class AssetsToolsUnitySerializedFileParser : IUnitySerializedFileP
             serializedFileVersion,
             objects,
             externals,
-            objects.Any(item => item.Kind == ParsedSceneObjectKind.PrefabEvidence));
+            objects.Any(item => item.Kind == ParsedSceneObjectKind.PrefabEvidence),
+            assetsFile.Metadata.TypeTreeEnabled);
     }
 
     private static AssetTypeValueField? ReadSupportedBaseField(

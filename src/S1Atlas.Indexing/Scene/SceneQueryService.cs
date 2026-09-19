@@ -27,7 +27,7 @@ public sealed class SceneQueryService
     {
         var snapshot = await ResolveSnapshotAsync(request.BuildId, request.SceneSnapshotId, cancellationToken);
         if (snapshot.Status != SceneQueryStatus.Resolved || snapshot.Snapshot is null)
-            return new SceneListResult(snapshot.Status, null, Empty<SceneDocumentRecord>());
+            return new SceneListResult(snapshot.Status, snapshot.Snapshot, Empty<SceneDocumentRecord>());
 
         var page = await _repository.ListScenesAsync(
             new SceneListQueryOptions(snapshot.Snapshot.SceneSnapshotId, request.Kind, request.Query, request.Limit), cancellationToken);
@@ -37,8 +37,8 @@ public sealed class SceneQueryService
     public async Task<SceneDocumentQueryResult> SceneAsync(SceneQueryRequest request, CancellationToken cancellationToken)
     {
         var snapshot = await ResolveSnapshotAsync(null, request.SceneSnapshotId, cancellationToken);
-        if (snapshot.Snapshot is null)
-            return new SceneDocumentQueryResult(snapshot.Status, null, null, [], Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
+        if (snapshot.Status != SceneQueryStatus.Resolved || snapshot.Snapshot is null)
+            return new SceneDocumentQueryResult(snapshot.Status, snapshot.Snapshot, null, [], Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
 
         var selection = await _selector.ResolveSceneAsync(snapshot.Snapshot.SceneSnapshotId, request.Selector, request.Kind, cancellationToken);
         if (selection.Selected is null)
@@ -60,8 +60,8 @@ public sealed class SceneQueryService
     public async Task<GameObjectQueryResult> GameObjectAsync(GameObjectQueryRequest request, CancellationToken cancellationToken)
     {
         var snapshot = await ResolveSnapshotAsync(null, request.SceneSnapshotId, cancellationToken);
-        if (snapshot.Snapshot is null)
-            return new GameObjectQueryResult(snapshot.Status, null, null, [], Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
+        if (snapshot.Status != SceneQueryStatus.Resolved || snapshot.Snapshot is null)
+            return new GameObjectQueryResult(snapshot.Status, snapshot.Snapshot, null, [], Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>());
         var selection = await _selector.ResolveGameObjectAsync(snapshot.Snapshot.SceneSnapshotId, request.Selector, cancellationToken);
         if (selection.Selected is null)
             return new GameObjectQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneGameObjectRecord>(), Empty<SceneComponentRecord>(), Empty<SceneReferenceRecord>(), await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, selection.Candidates.Select(row => row.ContainerId), cancellationToken));
@@ -85,8 +85,8 @@ public sealed class SceneQueryService
     public async Task<ComponentQueryResult> ComponentAsync(ComponentQueryRequest request, CancellationToken cancellationToken)
     {
         var snapshot = await ResolveSnapshotAsync(null, request.SceneSnapshotId, cancellationToken);
-        if (snapshot.Snapshot is null)
-            return new ComponentQueryResult(snapshot.Status, null, null, [], Empty<SceneReferenceRecord>());
+        if (snapshot.Status != SceneQueryStatus.Resolved || snapshot.Snapshot is null)
+            return new ComponentQueryResult(snapshot.Status, snapshot.Snapshot, null, [], Empty<SceneReferenceRecord>());
         var selection = await _selector.ResolveComponentAsync(snapshot.Snapshot.SceneSnapshotId, request.Selector, cancellationToken);
         if (selection.Selected is null)
             return new ComponentQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, Empty<SceneReferenceRecord>(), await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, selection.Candidates.Select(row => row.ContainerId), cancellationToken));
@@ -107,14 +107,14 @@ public sealed class SceneQueryService
             var specified = await _repository.GetCompletedSceneSnapshotAsync(sceneSnapshotId, cancellationToken);
             return specified is null
                 ? new SceneSnapshotQueryResult(SceneQueryStatus.SceneSnapshotNotFound, null)
-                : new SceneSnapshotQueryResult(SceneQueryStatus.Resolved, specified);
+                : await GuardRecoveredAsync(specified, cancellationToken);
         }
         if (!string.IsNullOrWhiteSpace(buildId))
         {
             var latest = await _repository.GetLatestCompletedSceneSnapshotAsync(buildId, cancellationToken);
             return latest is null
                 ? new SceneSnapshotQueryResult(SceneQueryStatus.NoCompletedSceneIndex, null)
-                : new SceneSnapshotQueryResult(SceneQueryStatus.Resolved, latest);
+                : await GuardRecoveredAsync(latest, cancellationToken);
         }
         if (_atlasRepository is null)
             return new SceneSnapshotQueryResult(SceneQueryStatus.NoCompletedSceneIndex, null);
@@ -125,7 +125,20 @@ public sealed class SceneQueryService
         var completed = await _repository.GetLatestCompletedSceneSnapshotAsync(current.Build.BuildId, cancellationToken);
         return completed is null
             ? new SceneSnapshotQueryResult(SceneQueryStatus.NoCompletedSceneIndex, null)
-            : new SceneSnapshotQueryResult(SceneQueryStatus.Resolved, completed);
+            : await GuardRecoveredAsync(completed, cancellationToken);
+    }
+
+    // A completed snapshot whose parser decoded no GameObject at all (snapshot recovery is
+    // StubOrUnavailable and game_objects is empty) is not usable scene intelligence. Report it
+    // as NoRecoverableSceneObjects instead of serving an empty index as Resolved.
+    private async Task<SceneSnapshotQueryResult> GuardRecoveredAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken)
+    {
+        if (snapshot.RecoveryStatus != SceneRecoveryStatus.StubOrUnavailable)
+            return new SceneSnapshotQueryResult(SceneQueryStatus.Resolved, snapshot);
+        var statistics = await _repository.GetSceneIndexStatisticsAsync(snapshot.SceneSnapshotId, cancellationToken);
+        return statistics is { GameObjectCount: 0 }
+            ? new SceneSnapshotQueryResult(SceneQueryStatus.NoRecoverableSceneObjects, snapshot)
+            : new SceneSnapshotQueryResult(SceneQueryStatus.Resolved, snapshot);
     }
 
     private static SceneQueryStatus Outcome(SceneRecoveryStatus recovery, ScenePageResult<SceneReferenceRecord> references) =>
@@ -162,7 +175,9 @@ public enum SceneQueryStatus
     ReplayVerifiedInputChanged,
     CodeIndexChanged,
     NoVerifiedSceneContainers,
-    SceneIndexInProgress
+    SceneIndexInProgress,
+    SceneTypeTreeUnavailable,
+    NoRecoverableSceneObjects
 }
 
 public sealed record SceneListRequest(string? BuildId = null, string? SceneSnapshotId = null, SceneDocumentKind? Kind = null, string? Query = null, int Limit = SceneQueryService.DefaultLimit);

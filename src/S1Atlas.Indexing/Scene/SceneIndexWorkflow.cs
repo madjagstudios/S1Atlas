@@ -146,7 +146,11 @@ public sealed class SceneIndexWorkflow
         {
             var completed = await _sceneRepository.GetCompletedSceneSnapshotAsync(sceneSnapshotId, cancellationToken);
             if (completed is not null)
-                return await ToResultAsync(completed, cancellationToken);
+            {
+                var reused = await ToResultAsync(completed, cancellationToken);
+                RequireRecoveredSnapshot(completed, reused);
+                return reused;
+            }
         }
 
         var snapshot = new SceneSnapshotRecord(
@@ -177,8 +181,10 @@ public sealed class SceneIndexWorkflow
 
             var parsed = await _parser.ParseAsync(verifiedInput.Containers, cancellationToken);
             RequireParserFacts(parsed, verifiedInput.Containers);
+            RequireDecodableContainers(parsed);
             var writeSet = await _normalizer.NormalizeAsync(snapshot, verifiedInput.Containers, parsed, cancellationToken);
             RequireBoundedWriteSet(writeSet, verifiedInput.Containers.Count);
+            RequireRecoveredGraph(writeSet);
             await WriteStagingManifestAsync(paths.StagingRoot, writeSet, verifiedInput.Containers, cancellationToken);
             await _inputVerifier.VerifyAfterParsingAsync(verifiedInput, cancellationToken);
             await RequireStableAuthoritiesAsync(authority, inputSnapshot, code, buildId, cancellationToken);
@@ -392,6 +398,55 @@ public sealed class SceneIndexWorkflow
             throw new InvalidDataException("Scene normalization produced an invalid container write set.");
     }
 
+    // The pinned parser decodes GameObject, Transform, MonoBehaviour, MonoScript, and
+    // BuildSettings fields only from a type tree embedded in the SerializedFile. A container
+    // that carries supported objects but no embedded type tree (a release build with stripped
+    // type trees, TypeTreeEnabled=false) can only yield nameless stubs, so the run must fail
+    // with the cause instead of completing an empty index.
+    private static void RequireDecodableContainers(IReadOnlyList<ParsedSceneContainer> parsed)
+    {
+        var stripped = parsed
+            .Where(container => !container.TypeTreeEmbedded &&
+                                container.Objects.Any(item => item.Kind is ParsedSceneObjectKind.GameObject or
+                                    ParsedSceneObjectKind.Transform or
+                                    ParsedSceneObjectKind.MonoBehaviour or
+                                    ParsedSceneObjectKind.MonoScript or
+                                    ParsedSceneObjectKind.BuildSettings))
+            .Select(container => container.RelativePath)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+        if (stripped.Length == 0)
+            return;
+        throw new SceneIndexFailureException(
+            SceneQueryStatus.SceneTypeTreeUnavailable,
+            $"SerializedFile container(s) {string.Join(", ", stripped.Select(path => "'" + path + "'"))} carry no embedded Unity type tree (TypeTreeEnabled=false). " +
+            $"Parser {ParserId} {ParserVersion} decodes GameObject, Transform, MonoBehaviour, MonoScript, and BuildSettings fields only from an embedded type tree, " +
+            "so no object names, hierarchy, or component attachments can be recovered from this build; decoding stripped containers requires a class database for the container's Unity version, which S1Atlas does not ship.");
+    }
+
+    // Defense in depth: never complete or publish a snapshot whose documents count objects
+    // but whose graph holds no GameObject at all.
+    private static void RequireRecoveredGraph(SceneWriteSet writeSet)
+    {
+        if (writeSet.GameObjects.Count > 0 || writeSet.Documents.All(document => document.ObjectCount == 0))
+            return;
+        var undecoded = writeSet.Documents.Where(document => document.ObjectCount > 0).Sum(document => (long)document.ObjectCount);
+        throw new SceneIndexFailureException(
+            SceneQueryStatus.NoRecoverableSceneObjects,
+            $"Scene normalization recovered no GameObject from {undecoded} object-table entries across {writeSet.Documents.Count(document => document.ObjectCount > 0)} document(s); the snapshot is not usable scene intelligence and was not completed.");
+    }
+
+    // A previously completed snapshot that recovered nothing (recorded before this gate
+    // existed) must not be reused as a Completed result.
+    private static void RequireRecoveredSnapshot(SceneSnapshotRecord snapshot, SceneIndexWorkflowResult statistics)
+    {
+        if (snapshot.RecoveryStatus != SceneRecoveryStatus.StubOrUnavailable || statistics.GameObjectCount > 0)
+            return;
+        throw new SceneIndexFailureException(
+            SceneQueryStatus.NoRecoverableSceneObjects,
+            $"Completed scene snapshot '{snapshot.SceneSnapshotId}' recovered no GameObject (recovery {snapshot.RecoveryStatus}, {statistics.SceneCount} document(s), 0 game objects) and is not usable scene intelligence. Rerun with --force to record the cause.");
+    }
+
     private void DeleteOwnedStaging(string buildId, string sceneSnapshotId)
     {
         var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
@@ -487,8 +542,12 @@ public sealed class SceneIndexWorkflow
             .GroupBy(status => status.ToString(), StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 
-    private static string FailureCode(Exception exception) =>
-        exception is OperationCanceledException ? "Canceled" : "SceneIndexingFailed";
+    private static string FailureCode(Exception exception) => exception switch
+    {
+        OperationCanceledException => "Canceled",
+        SceneIndexFailureException failure => failure.Status.ToString(),
+        _ => "SceneIndexingFailed"
+    };
 
     private sealed record CodeIndexAuthority(IndexRunRecord Run, CodeSnapshotRecord Snapshot);
     private sealed record SceneIndexStagingManifest(SceneIndexStagingPayload Payload, string SceneDataSha256);

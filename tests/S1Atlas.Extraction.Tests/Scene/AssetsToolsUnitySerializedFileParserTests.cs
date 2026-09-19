@@ -149,6 +149,21 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_ReportsWhetherTheContainerEmbedsItsTypeTree()
+    {
+        using var embedded = SanitizedSerializedFileFixture.Create(includeTypeTree: true);
+        using var stripped = SanitizedSerializedFileFixture.Create(includeTypeTree: false);
+        var parser = new AssetsToolsUnitySerializedFileParser();
+
+        var withTypeTree = Assert.Single(await parser.ParseAsync([embedded.VerifiedContainer], TestContext.Current.CancellationToken));
+        var withoutTypeTree = Assert.Single(await parser.ParseAsync([stripped.VerifiedContainer], TestContext.Current.CancellationToken));
+
+        Assert.True(withTypeTree.TypeTreeEmbedded);
+        Assert.False(withoutTypeTree.TypeTreeEmbedded);
+        Assert.Contains(withoutTypeTree.Objects, item => item.Kind == ParsedSceneObjectKind.GameObject && item.GameObject is null);
+    }
+
+    [Fact]
     public async Task ParseAsync_Unity2022Fixture_MapsExternalFileReferences()
     {
         using var fixture = SanitizedSerializedFileFixture.Create();

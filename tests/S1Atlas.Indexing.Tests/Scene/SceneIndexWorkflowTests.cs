@@ -259,6 +259,81 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Stripped_type_tree_container_fails_with_the_container_named_and_is_never_completed()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [
+                new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [], null, null, null, null, null),
+                new ParsedSceneObject(2, 4, 192, 64, ParsedSceneObjectKind.Transform, [], null, null, null, null, null)
+            ],
+            [], false, TypeTreeEmbedded: false)).ToArray());
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.SceneTypeTreeUnavailable, failure.Status);
+        Assert.Contains("'Schedule I_Data/level0'", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("TypeTreeEnabled=false", failure.Message, StringComparison.Ordinal);
+        var snapshot = Assert.Single(repository.CreatedSnapshots);
+        Assert.Null(repository.CompletedSnapshot);
+        Assert.Empty(repository.PublishedSnapshotIds);
+        Assert.Equal("SceneTypeTreeUnavailable", repository.FailureCodes[snapshot.SceneSnapshotId]);
+        Assert.False(Directory.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, snapshot.SceneSnapshotId).StagingRoot));
+    }
+
+    [Fact]
+    public async Task Stripped_type_tree_container_without_supported_objects_is_not_a_failure()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [new ParsedSceneObject(7, 23, 128, 64, ParsedSceneObjectKind.Other, [], null, null, null, null, null)],
+            [], false, TypeTreeEmbedded: false)).ToArray());
+
+        var result = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.False(result.Reused);
+        Assert.Equal(0, result.GameObjectCount);
+    }
+
+    [Fact]
+    public async Task Write_set_with_object_table_entries_but_no_game_object_fails_instead_of_completing()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [], null, null, null, null, null)],
+            [], false)).ToArray());
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, failure.Status);
+        var snapshot = Assert.Single(repository.CreatedSnapshots);
+        Assert.Null(repository.CompletedSnapshot);
+        Assert.Equal("NoRecoverableSceneObjects", repository.FailureCodes[snapshot.SceneSnapshotId]);
+    }
+
+    [Fact]
+    public async Task Completed_snapshot_that_recovered_no_game_object_is_not_reused()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority());
+        var first = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+        repository.CompletedSnapshot = repository.CompletedSnapshot! with { RecoveryStatus = SceneRecoveryStatus.StubOrUnavailable };
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, failure.Status);
+        Assert.Contains(first.SceneSnapshotId, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("--force", failure.Message, StringComparison.Ordinal);
+        Assert.Single(repository.CreatedSnapshots);
+    }
+
+    [Fact]
     public async Task Promoted_scene_index_contains_a_bounded_manifest_with_counts_and_hash()
     {
         var repository = CreateRepository(replayVerified: true);
@@ -520,8 +595,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public bool ThrowOnStart { get; set; }
         public List<SceneSnapshotRecord> CreatedSnapshots { get; } = [];
         public List<string> FailedSnapshotIds { get; } = [];
+        public Dictionary<string, string> FailureCodes { get; } = new(StringComparer.Ordinal);
         public List<string> PublishedSnapshotIds { get; } = [];
-        public SceneSnapshotRecord? CompletedSnapshot { get; private set; }
+        public SceneSnapshotRecord? CompletedSnapshot { get; set; }
         public SceneWriteSet? CompletedWriteSet { get; private set; }
         public string? LastCheckedSnapshotId { get; private set; }
         public Action<string>? BeforeCompletedSnapshotLookup { get; set; }
@@ -571,7 +647,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             CompletedWriteSet = writeSet;
             return Task.CompletedTask;
         }
-        public Task FailSceneSnapshotAsync(string sceneSnapshotId, string failureCode, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) { FailedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
+        public Task FailSceneSnapshotAsync(string sceneSnapshotId, string failureCode, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) { FailedSnapshotIds.Add(sceneSnapshotId); FailureCodes[sceneSnapshotId] = failureCode; return Task.CompletedTask; }
         public Task PublishSceneSnapshotAsync(string sceneSnapshotId, string publishedAtUtc, CancellationToken cancellationToken) { PublishedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
 
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
