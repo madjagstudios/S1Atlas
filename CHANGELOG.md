@@ -6,6 +6,29 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Added
+
+- **Scene intelligence on stripped-type-tree builds** (AT-47) — Schedule I's
+  release containers carry no embedded Unity type tree, so the scene parser now
+  falls back to a pinned Unity class database: `config/tools/unity-classdata.win-x64.json`
+  pins UABEA's `classdata.tpk` (commit `5adb448`, 289,605 bytes, SHA-256
+  `129e1f80…`, MIT) as a data-only managed tool, installed with
+  `tools install unity-classdata` and re-hashed against the pin before every
+  read. RectTransform is decoded as a Transform so UI hierarchies stay in the
+  graph, and asset-level MonoBehaviours (ScriptableObjects, explicit null
+  GameObject) are no longer treated as corrupt component attachments. Each scene
+  snapshot records its type-tree source in a new `type_tree_source` column
+  (migration 13) — `embedded`, or the class database with its version, hash, and
+  the dump version that stood in for the container's Unity version — surfaced as
+  `typeTreeSource` by `index --scene`, `scenes`, `scene`, `gameobject`, `prefab`,
+  `component`, and the MCP scene tools, and the class database identity is part
+  of the scene snapshot identity. `gameobject` now returns the selected object's
+  transform (position, rotation, scale, parent, sibling index). A stripped build
+  without an installed class database still fails with
+  `SceneTypeTreeUnavailable`, now naming the install command. Verified on build
+  `0b86d6d8…`: 7 scenes, 211,409 game objects, 589,372 components. See
+  `docs/dependencies/unity-classdata-uabea-5adb448.md`.
+
 ### Fixed
 
 - **Scene index prerequisite gate** (AT-44) — the Schedule I Installed code
