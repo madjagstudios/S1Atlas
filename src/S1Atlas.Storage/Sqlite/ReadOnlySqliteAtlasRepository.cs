@@ -1190,7 +1190,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT game_object_id, scene_id, container_id, local_file_id, name, active, layer, tag, recovery_status FROM game_objects AS item INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = item.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND item.scene_snapshot_id = $snapshot AND item.scene_id = $scene AND item.name = $name COLLATE BINARY ORDER BY item.game_object_id COLLATE BINARY LIMIT $limit;";
+            command.CommandText = "SELECT item.game_object_id, item.scene_id, item.container_id, item.local_file_id, item.name, item.active, item.layer, item.tag, item.recovery_status FROM game_objects AS item INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = item.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND item.scene_snapshot_id = $snapshot AND item.scene_id = $scene AND item.name = $name COLLATE BINARY ORDER BY item.game_object_id COLLATE BINARY LIMIT $limit;";
             command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
             command.Parameters.AddWithValue("$scene", sceneId);
             command.Parameters.AddWithValue("$name", name);

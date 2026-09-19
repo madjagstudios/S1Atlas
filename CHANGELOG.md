@@ -33,6 +33,10 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - **`gameobject <scene-id>/<name>` lookup** (AT-45) — the exact-name query joined
   `scene_snapshots` with an unqualified select list, so SQLite rejected it with
   `ambiguous column name: recovery_status`. The select list is now table-qualified.
+- **MCP `get_gameobject` with a `<scene-id>/<name>` selector** (AT-49) — the read-only
+  repository the MCP server uses carried its own copy of that query, so the same
+  lookup that AT-45 fixed on the CLI still failed on MCP with `UnexpectedToolFailure`.
+  Both copies are now qualified.
 
 ## [1.3.0] — 2026-09-10 — Native-body recovery
 
