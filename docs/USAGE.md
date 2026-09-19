@@ -370,6 +370,19 @@ An empty query or zero recovered graph rows is therefore not proof that the game
 contains no matching runtime objects. Inspect each row's recovery and resolution
 statuses and treat the recorded counts as measured coverage denominators.
 
+The pinned parser decodes GameObject, Transform, MonoBehaviour, MonoScript, and
+BuildSettings fields only from a type tree embedded in the SerializedFile. A
+release build whose containers strip their type trees (`TypeTreeEnabled=false`)
+yields nameless object-table stubs and nothing else, so `index --scene` refuses
+to complete such a run: it records the snapshot as `Failed` with failure code
+`SceneTypeTreeUnavailable` and a message naming every stripped container. A
+completed snapshot that holds object-table entries but no recovered GameObject is
+likewise not usable scene intelligence: `index --scene` will not reuse it, and
+`scenes`, `scene`, `gameobject`, `prefab`, `component`, and the MCP scene tools
+report `NoRecoverableSceneObjects` (with the snapshot identity) instead of an
+empty `Resolved` result. Decoding stripped containers would require a class
+database for the container's Unity version, which S1Atlas does not ship.
+
 For live input, S1Atlas re-hashes the selected build inputs before process
 execution and again afterward. A mismatch before execution requires a new
 `scan`; a change during execution rejects the output. `--snapshot-inputs`

@@ -17,6 +17,22 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - **`gameobject <scene-id>/<name>` lookup** (AT-45) — the exact-name query joined
   `scene_snapshots` with an unqualified select list, so SQLite rejected it with
   `ambiguous column name: recovery_status`. The select list is now table-qualified.
+- **Empty scene index published as Completed** (AT-46) — Schedule I's release
+  containers strip their Unity type trees (`TypeTreeEnabled=false`), and the
+  pinned `assetstools-net` parser decodes GameObject, Transform, MonoBehaviour,
+  MonoScript, and BuildSettings fields only from an embedded type tree, so every
+  object became a nameless stub and `index --scene` published a `Completed`,
+  `StubOrUnavailable` snapshot with 0 game objects, 0 roots, and no resolvable
+  names. The parser now records whether each container embeds its type tree;
+  the workflow fails a run whose containers cannot be decoded with
+  `SceneTypeTreeUnavailable` (naming the containers) and, as a defense in depth,
+  fails any write set that has object-table entries but no recovered GameObject
+  with `NoRecoverableSceneObjects`; both codes are persisted as the snapshot's
+  `failure_code`. A previously completed empty snapshot is no longer reused by
+  `index --scene`, and `scenes`/`scene`/`gameobject`/`prefab`/`component` and
+  the MCP scene tools report `NoRecoverableSceneObjects` for it instead of an
+  empty `Resolved` result. Recovering names and hierarchy from stripped
+  containers needs a Unity class database, which S1Atlas does not ship.
 
 ## [1.3.0] — 2026-09-10 — Native-body recovery
 
