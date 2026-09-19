@@ -113,7 +113,16 @@ public sealed record ParsedSceneContainer(
     IReadOnlyList<ParsedSceneObject> Objects,
     IReadOnlyList<ParsedSceneExternalReference> ExternalReferences,
     bool HasPrefabEvidence,
-    bool TypeTreeEmbedded = true);
+    bool TypeTreeEmbedded = true,
+    ParsedTypeTreeSource? TypeTreeSource = null)
+{
+    /// <summary>
+    /// The type-tree source that decoded this container's supported objects. Falls back to the
+    /// embedded flag when the parser did not record an explicit source.
+    /// </summary>
+    public ParsedTypeTreeSource DecodeSource =>
+        TypeTreeSource ?? (TypeTreeEmbedded ? ParsedTypeTreeSource.Embedded : ParsedTypeTreeSource.Unavailable);
+}
 
 internal sealed record VerifiedSceneFile(
     string RelativePath,

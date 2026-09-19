@@ -159,7 +159,9 @@ public sealed class AssetsToolsUnitySerializedFileParserTests
         var withoutTypeTree = Assert.Single(await parser.ParseAsync([stripped.VerifiedContainer], TestContext.Current.CancellationToken));
 
         Assert.True(withTypeTree.TypeTreeEmbedded);
+        Assert.Equal(ParsedTypeTreeSourceKind.Embedded, withTypeTree.DecodeSource.Kind);
         Assert.False(withoutTypeTree.TypeTreeEmbedded);
+        Assert.Equal(ParsedTypeTreeSourceKind.Unavailable, withoutTypeTree.DecodeSource.Kind);
         Assert.Contains(withoutTypeTree.Objects, item => item.Kind == ParsedSceneObjectKind.GameObject && item.GameObject is null);
     }
 

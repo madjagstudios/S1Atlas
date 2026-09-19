@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using AssetsTools.NET;
+using AssetsTools.NET.Extra;
 using S1Atlas.Extraction.Scene;
 
 namespace S1Atlas.Extraction.Tests.Scene;
@@ -44,10 +46,73 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         return new SanitizedSerializedFileFixture(root, primary);
     }
 
-    internal static byte[] CreateBytes(
-        string userInformation,
-        int? prefabClassId,
-        bool includeTypeTree)
+    /// <summary>
+    /// A synthetic AssetsTools.NET class database whose release layouts are the fixture's own
+    /// type trees, so a fixture written with <c>includeTypeTree: false</c> decodes through the
+    /// class-database path exactly as the embedded-type-tree fixture does. No Unity dump is
+    /// involved; the database is built in memory from the fixture node lists.
+    /// </summary>
+    internal static ClassDatabaseFile CreateClassDatabase(string unityVersion = UnityVersion)
+    {
+        var database = new ClassDatabaseFile
+        {
+            Header = new ClassDatabaseFileHeader
+            {
+                Magic = "CLDB",
+                FileVersion = 1,
+                Version = new UnityVersion(unityVersion),
+                CompressionType = ClassFileCompressionType.Uncompressed
+            },
+            StringTable = new ClassDatabaseStringTable { Strings = [] },
+            CommonStringBufferIndices = [],
+            Classes = []
+        };
+
+        foreach (var type in FixtureTypes(prefabClassId: null))
+        {
+            var root = BuildDatabaseNode(database.StringTable, type.Nodes, 0, out _);
+            database.Classes.Add(new ClassDatabaseType
+            {
+                ClassId = type.ClassId,
+                Name = database.StringTable.AddString(type.Name),
+                BaseName = database.StringTable.AddString(string.Empty),
+                Flags = ClassFileTypeFlags.HasReleaseRootNode,
+                ReleaseRootNode = root,
+                EditorRootNode = null
+            });
+        }
+
+        return database;
+    }
+
+    private static ClassDatabaseTypeNode BuildDatabaseNode(
+        ClassDatabaseStringTable strings,
+        IReadOnlyList<FixtureNode> nodes,
+        int index,
+        out int next)
+    {
+        var node = nodes[index];
+        var result = new ClassDatabaseTypeNode
+        {
+            TypeName = strings.AddString(node.Type),
+            FieldName = strings.AddString(node.Name),
+            ByteSize = -1,
+            Version = 1,
+            TypeFlags = node.IsArray ? (byte)1 : (byte)0,
+            MetaFlag = node.Aligned ? 0x4000u : 0u,
+            Children = []
+        };
+        var cursor = index + 1;
+        while (cursor < nodes.Count && nodes[cursor].Level > node.Level)
+        {
+            result.Children.Add(BuildDatabaseNode(strings, nodes, cursor, out cursor));
+        }
+
+        next = cursor;
+        return result;
+    }
+
+    private static List<FixtureType> FixtureTypes(int? prefabClassId)
     {
         var types = new List<FixtureType>
         {
@@ -65,6 +130,16 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
                 .. PPtrNodes(1, "PPtr<GameObject>", "m_RootGameObject")
             ]));
         }
+
+        return types;
+    }
+
+    internal static byte[] CreateBytes(
+        string userInformation,
+        int? prefabClassId,
+        bool includeTypeTree)
+    {
+        var types = FixtureTypes(prefabClassId);
 
         var objects = new List<FixtureObject>
         {
