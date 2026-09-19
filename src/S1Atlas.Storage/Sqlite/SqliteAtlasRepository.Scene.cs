@@ -146,12 +146,13 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             update.CommandText = """
                 UPDATE scene_snapshots
                 SET status = 'Completed', completed_at_utc = $completed,
-                    recovery_status = $recovery,
+                    recovery_status = $recovery, type_tree_source = $typeTreeSource,
                     failure_code = NULL, failure_message = NULL
                 WHERE scene_snapshot_id = $id AND status = 'Running';
                 """;
             update.Parameters.AddWithValue("$completed", completedAtUtc);
             update.Parameters.AddWithValue("$recovery", writeSet.Snapshot.RecoveryStatus.ToString());
+            update.Parameters.AddWithValue("$typeTreeSource", (object?)writeSet.Snapshot.TypeTreeSource ?? DBNull.Value);
             update.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
             if (await update.ExecuteNonQueryAsync(cancellationToken) != 1)
                 throw new InvalidOperationException($"Scene snapshot '{sceneSnapshotId}' could not be completed.");
@@ -432,7 +433,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
         await using var connection = await OpenConnectionAsync(cancellationToken); await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT game_object_id, scene_id, container_id, local_file_id, name, active, layer, tag, recovery_status FROM game_objects AS item INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = item.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND item.scene_snapshot_id = $snapshot AND item.scene_id = $scene AND item.name = $name COLLATE BINARY ORDER BY item.game_object_id COLLATE BINARY LIMIT $limit;";
+        command.CommandText = "SELECT item.game_object_id, item.scene_id, item.container_id, item.local_file_id, item.name, item.active, item.layer, item.tag, item.recovery_status FROM game_objects AS item INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = item.scene_snapshot_id WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND item.scene_snapshot_id = $snapshot AND item.scene_id = $scene AND item.name = $name COLLATE BINARY ORDER BY item.game_object_id COLLATE BINARY LIMIT $limit;";
         command.Parameters.AddWithValue("$snapshot", sceneSnapshotId); command.Parameters.AddWithValue("$scene", sceneId); command.Parameters.AddWithValue("$name", name); command.Parameters.AddWithValue("$limit", limit); var rows = new List<SceneGameObjectRecord>(); await using var reader = await command.ExecuteReaderAsync(cancellationToken); while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadGameObject(reader)); return rows;
     }
 
@@ -598,10 +599,43 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         return new ScenePageResult<SceneReferenceRecord>(total, rows.Count, rows, unresolved);
     }
 
+    public async Task<SceneTransformRecord?> GetTransformAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameObjectId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT transform.game_object_id, transform.parent_game_object_id, transform.sibling_index,
+                   transform.position_x, transform.position_y, transform.position_z,
+                   transform.rotation_x, transform.rotation_y, transform.rotation_z, transform.rotation_w,
+                   transform.scale_x, transform.scale_y, transform.scale_z, transform.recovery_status
+            FROM transforms AS transform
+            INNER JOIN game_objects AS game_object ON game_object.game_object_id = transform.game_object_id
+            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND transform.game_object_id = $id;
+            """;
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        command.Parameters.AddWithValue("$id", gameObjectId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+        float? Real(int ordinal) => reader.IsDBNull(ordinal) ? null : (float)reader.GetDouble(ordinal);
+        return new SceneTransformRecord(
+            reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetInt32(2),
+            Real(3), Real(4), Real(5),
+            Real(6), Real(7), Real(8), Real(9),
+            Real(10), Real(11), Real(12),
+            Enum.Parse<SceneRecoveryStatus>(reader.GetString(13)));
+    }
+
     private const string SnapshotSelectSql = """
         SELECT scene_snapshot_id, build_id, extraction_id, input_snapshot_id, code_snapshot_id,
                code_index_id, parser_id, parser_version, container_manifest_digest, status,
-               recovery_status, started_at_utc, completed_at_utc, failure_code, failure_message
+               recovery_status, started_at_utc, completed_at_utc, failure_code, failure_message,
+               type_tree_source
         FROM scene_snapshots
         """;
 
@@ -859,7 +893,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     private static string EscapeSceneLikePattern(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
 
-    private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14));
+    private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14), reader.IsDBNull(15) ? null : reader.GetString(15));
     private static SceneContainerRecord ReadContainer(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5), reader.GetInt64(6), reader.GetString(7), reader.GetString(8));
     private static SceneDocumentRecord ReadDocument(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), Enum.Parse<SceneDocumentKind>(reader.GetString(3)), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));
     private static SceneGameObjectRecord ReadGameObject(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5) != 0, reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetString(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));

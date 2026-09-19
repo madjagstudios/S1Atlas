@@ -56,6 +56,30 @@ public sealed class RepositoryToolDefinitionProviderTests
         Assert.Matches("^[0-9a-f]{64}$", resolved.DefinitionDigest);
     }
 
+    // the Unity class database is a data-only pin (no executable, so no probes) fetched
+    // from the UABEA repository at a fixed commit and verified by SHA-256.
+    [Fact]
+    public void GetRequired_UnityClassDatabaseWindowsX64_ReturnsApprovedDataOnlyPin()
+    {
+        var provider = new RepositoryToolDefinitionProvider(Path.Combine(ToolTestFixture.RepositoryRoot, "config", "tools"));
+
+        var definition = provider.GetRequired("unity-classdata", "win-x64").Definition;
+
+        Assert.Equal("unity-classdata", definition.ToolId);
+        Assert.Equal("uabea-5adb448", definition.Version);
+        Assert.Equal(ToolPackageKind.SingleFile, definition.Package.Kind);
+        Assert.Equal(
+            new Uri("https://raw.githubusercontent.com/nesrak1/UABEA/5adb448deeefa1b88881f1fa44243009b352db3a/ReleaseFiles/classdata.tpk"),
+            definition.Package.SourceUri);
+        Assert.Equal("classdata.tpk", definition.Package.AssetName);
+        Assert.Equal("classdata.tpk", definition.Package.ExecutableRelativePath);
+        Assert.Equal(289_605, definition.Package.ExpectedSize);
+        Assert.Equal("129e1f80f930415db6779fe6089afa75280cb51462bcee812beab6cd81a764c6", definition.Package.Sha256);
+        Assert.Equal("MIT", definition.License.SpdxIdentifier);
+        Assert.Empty(definition.Probes);
+        Assert.Equal(2, provider.GetAll().Count);
+    }
+
     [Fact]
     public void GetAll_WhenToolPlatformPairRepeats_Rejects()
     {

@@ -223,4 +223,138 @@ public sealed class IndexingWorkflowTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
+
+    // SceneIndexWorkflow.RequireCodeIndexAsync rejects a completed Schedule I
+    // Installed code snapshot whose EnvironmentSnapshotId is empty. The writer here
+    // previously created the CodeSnapshotRecord with only 5 positional arguments,
+    // leaving EnvironmentSnapshotId permanently null for every Schedule I Installed
+    // index even though the current environment snapshot matched the requested build.
+    // This regression test pins the writer to populate EnvironmentSnapshotId from the
+    // current, build-matching environment snapshot so the scene-index identity gate
+    // can be satisfied by a legitimately completed code index.
+    [Fact]
+    public async Task Schedule_one_code_snapshot_records_the_current_environment_snapshot_id()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-envid-" + Guid.NewGuid().ToString("N"));
+        var extractionRoot = Path.Combine(root, "extraction");
+        Directory.CreateDirectory(Path.Combine(extractionRoot, "reconstructed"));
+        File.Copy(typeof(S1Atlas.ManagedAssemblyFixture.FixtureRoot).Assembly.Location, Path.Combine(extractionRoot, "reconstructed", "Assembly-CSharp.dll"));
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+        var buildId = new string('7', 64);
+        var extractionId = new string('8', 64);
+        var now = DateTimeOffset.UtcNow;
+        var authority = new PreferredVerifiedExtraction(
+            buildId,
+            new PreferredExtraction(buildId, extractionId, now, ExtractionPreferenceReason.ManualPromotion),
+            new ValidatedExtraction(extractionId, "recipe", buildId, "tool", "attempt", "profile", 1, "profile-digest", 1, 1, "manifest", extractionRoot, now, ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid, new ExtractionStatistics(0, 0, 1, 0, 0, 0, 0, 0, 0, 0, [])));
+
+        try
+        {
+            await repository.InitializeAsync(TestContext.Current.CancellationToken);
+            var environmentSnapshot = new EnvironmentSnapshot(
+                2,
+                new GameBuild(buildId, new string('1', 64), new string('2', 64), now, true),
+                new InstallationObservation("2022.3.62", "3164500", "fixture", root, null, null),
+                [
+                    new DependencyVersion(DependencyKind.S1Api, null, null, false),
+                    new DependencyVersion(DependencyKind.S1Mapi, null, null, false),
+                    new DependencyVersion(DependencyKind.MelonLoader, null, null, false),
+                    new DependencyVersion(DependencyKind.Sideload, null, null, false)
+                ],
+                "0.1.0-test",
+                now);
+            await repository.SaveSnapshotAsync(environmentSnapshot, TestContext.Current.CancellationToken);
+            var expectedEnvironmentSnapshotId = EnvironmentSnapshotId.Create(environmentSnapshot);
+            var workflow = new S1Atlas.Indexing.Workflow.IndexingWorkflow(
+                root,
+                repository,
+                (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(authority),
+                new S1Atlas.Indexing.Workflow.ScheduleOneIndexSource(new IlSpyManagedDecompiler()),
+                repository);
+
+            var result = await workflow.RunScheduleOneAsync(buildId, false, TestContext.Current.CancellationToken);
+
+            var snapshot = await repository.GetCodeSnapshotAsync(result.SnapshotId, TestContext.Current.CancellationToken);
+            Assert.NotNull(snapshot);
+            Assert.False(string.IsNullOrWhiteSpace(snapshot!.EnvironmentSnapshotId));
+            Assert.Equal(expectedEnvironmentSnapshotId, snapshot.EnvironmentSnapshotId);
+            Assert.Equal(extractionId, snapshot.SourceIdentity);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    // a code snapshot completed before this fix (or completed without a
+    // resolvable environment) is healed in place the next time RunScheduleOneAsync
+    // reuses it, once an environment snapshot for the same build becomes available.
+    [Fact]
+    public async Task Schedule_one_reuse_heals_a_previously_null_environment_snapshot_id()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-heal-" + Guid.NewGuid().ToString("N"));
+        var extractionRoot = Path.Combine(root, "extraction");
+        Directory.CreateDirectory(Path.Combine(extractionRoot, "reconstructed"));
+        File.Copy(typeof(S1Atlas.ManagedAssemblyFixture.FixtureRoot).Assembly.Location, Path.Combine(extractionRoot, "reconstructed", "Assembly-CSharp.dll"));
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+        var buildId = new string('9', 64);
+        var extractionId = new string('a', 64);
+        var now = DateTimeOffset.UtcNow;
+        var authority = new PreferredVerifiedExtraction(
+            buildId,
+            new PreferredExtraction(buildId, extractionId, now, ExtractionPreferenceReason.ManualPromotion),
+            new ValidatedExtraction(extractionId, "recipe", buildId, "tool", "attempt", "profile", 1, "profile-digest", 1, 1, "manifest", extractionRoot, now, ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid, new ExtractionStatistics(0, 0, 1, 0, 0, 0, 0, 0, 0, 0, [])));
+
+        try
+        {
+            await repository.InitializeAsync(TestContext.Current.CancellationToken);
+
+            // First run: no atlasRepository wired in, matching the historical behavior
+            // that left environment_snapshot_id null for every Schedule I Installed row.
+            var unhealedWorkflow = new S1Atlas.Indexing.Workflow.IndexingWorkflow(
+                root,
+                repository,
+                (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(authority),
+                new S1Atlas.Indexing.Workflow.ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+            var first = await unhealedWorkflow.RunScheduleOneAsync(buildId, false, TestContext.Current.CancellationToken);
+            var beforeHeal = await repository.GetCodeSnapshotAsync(first.SnapshotId, TestContext.Current.CancellationToken);
+            Assert.NotNull(beforeHeal);
+            Assert.Null(beforeHeal!.EnvironmentSnapshotId);
+
+            var environmentSnapshot = new EnvironmentSnapshot(
+                2,
+                new GameBuild(buildId, new string('1', 64), new string('2', 64), now, true),
+                new InstallationObservation("2022.3.62", "3164500", "fixture", root, null, null),
+                [
+                    new DependencyVersion(DependencyKind.S1Api, null, null, false),
+                    new DependencyVersion(DependencyKind.S1Mapi, null, null, false),
+                    new DependencyVersion(DependencyKind.MelonLoader, null, null, false),
+                    new DependencyVersion(DependencyKind.Sideload, null, null, false)
+                ],
+                "0.1.0-test",
+                now);
+            await repository.SaveSnapshotAsync(environmentSnapshot, TestContext.Current.CancellationToken);
+            var expectedEnvironmentSnapshotId = EnvironmentSnapshotId.Create(environmentSnapshot);
+
+            var healedWorkflow = new S1Atlas.Indexing.Workflow.IndexingWorkflow(
+                root,
+                repository,
+                (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(authority),
+                new S1Atlas.Indexing.Workflow.ScheduleOneIndexSource(new IlSpyManagedDecompiler()),
+                repository);
+            var second = await healedWorkflow.RunScheduleOneAsync(buildId, false, TestContext.Current.CancellationToken);
+            Assert.True(second.Reused);
+            Assert.Equal(first.SnapshotId, second.SnapshotId);
+
+            var afterHeal = await repository.GetCodeSnapshotAsync(second.SnapshotId, TestContext.Current.CancellationToken);
+            Assert.NotNull(afterHeal);
+            Assert.Equal(expectedEnvironmentSnapshotId, afterHeal!.EnvironmentSnapshotId);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 }

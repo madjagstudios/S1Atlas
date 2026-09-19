@@ -39,9 +39,18 @@ dotnet run --project src/S1Atlas.Cli -- tools install cpp2il
 dotnet run --project src/S1Atlas.Cli -- tools install cpp2il --repair
 ```
 
+Install the pinned Unity class database that `index --scene` needs on release
+builds whose containers strip their type trees (see
+[Scene intelligence](#scene-intelligence) below):
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- tools status unity-classdata
+dotnet run --project src/S1Atlas.Cli -- tools install unity-classdata
+```
+
 `tools status` is always offline. Of the implemented commands, only
-`tools install cpp2il` can access the network, and installation never happens
-implicitly during a scan or status query.
+`tools install <tool-id>` can access the network, and installation never happens
+implicitly during a scan, index, or status query.
 
 Run an extraction against the current indexed build and verified managed pin:
 
@@ -369,6 +378,40 @@ Scene intelligence reports only facts proven by the selected serialized files:
 An empty query or zero recovered graph rows is therefore not proof that the game
 contains no matching runtime objects. Inspect each row's recovery and resolution
 statuses and treat the recorded counts as measured coverage denominators.
+
+The pinned parser decodes GameObject, Transform (including RectTransform),
+MonoBehaviour, MonoScript, and BuildSettings fields from one of two type-tree
+sources: the type tree embedded in the SerializedFile, or, when a container
+strips its type tree (`TypeTreeEnabled=false`, the case for every Schedule I
+release container), the pinned Unity class database installed by
+`tools install unity-classdata` (see
+[docs/dependencies/unity-classdata-uabea-5adb448.md](dependencies/unity-classdata-uabea-5adb448.md)).
+The class database is a hash-pinned download that never ships in this
+repository; the parser re-verifies its SHA-256 before reading it and resolves the
+class layouts for the container's Unity version. Every snapshot records which
+source decoded it in `typeTreeSource`, shown by `index --scene`, `scenes`,
+`scene`, `gameobject`, `prefab`, `component`, and the MCP scene tools:
+`embedded`, or
+`class-database unity-classdata <version> sha256:<hash> (<dump> layouts for <unity>; nearest earlier dump)`
+when the package holds no dump for the exact Unity version and the newest earlier
+one stood in (`(<dump> exact)` otherwise). That substitution is the fidelity
+boundary of a class-database snapshot: the engine classes S1Atlas decodes did not
+change layout between the resolved dump and the container version on the
+verified build, but a future engine update must be re-verified end to end. The
+class database identity is part of the scene snapshot identity, so changing the
+pin produces a new snapshot rather than altering an existing one. Asset-level
+MonoBehaviours (ScriptableObjects) carry an explicit null GameObject and are not
+recorded as component attachments.
+
+Without an installed, matching class database a stripped build still yields
+nameless object-table stubs and nothing else, so `index --scene` refuses to
+complete such a run: it records the snapshot as `Failed` with failure code
+`SceneTypeTreeUnavailable` and a message naming every stripped container and the
+`tools install unity-classdata` remedy. A completed snapshot that holds
+object-table entries but no recovered GameObject is likewise not usable scene
+intelligence: `index --scene` will not reuse it, and the scene commands and MCP
+scene tools report `NoRecoverableSceneObjects` (with the snapshot identity)
+instead of an empty `Resolved` result.
 
 For live input, S1Atlas re-hashes the selected build inputs before process
 execution and again afterward. A mismatch before execution requires a new

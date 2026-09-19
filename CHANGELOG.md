@@ -6,7 +6,33 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- **Scene intelligence on release builds** (AT-46, AT-47) — Schedule I ships its
+  scene containers without embedded Unity type trees, so the scene parser could
+  not name a single object and `index --scene` published a completed, empty
+  snapshot. The parser now decodes stripped containers through a pinned Unity
+  class database, installed with `tools install unity-classdata` and re-hashed
+  against the pin before every read; each scene snapshot records its type-tree
+  source and surfaces it on every scene command and MCP scene tool. When a
+  stripped build has no matching class database the run fails with
+  `SceneTypeTreeUnavailable` instead of completing empty, and a snapshot that
+  recovered no GameObject fails with `NoRecoverableSceneObjects` and is not
+  served as a completed index. `gameobject` now returns the selected object's
+  transform. Pin, licence, and version-substitution details are in
+  `docs/dependencies/unity-classdata-uabea-5adb448.md`.
+
+### Fixed
+
+- **Scene index prerequisite gate** (AT-44) — the Schedule I Installed code
+  snapshot never recorded its environment snapshot id, so `index --scene` always
+  failed with `CrossBuildCodeIndex` even when the preferred extraction was
+  replay-verified and the code index was current. The code snapshot now records
+  the build-matching environment snapshot id, and a pre-existing null is healed
+  in place on the next `index` run without overwriting a populated value.
+- **`gameobject <scene-id>/<name>` lookup** (AT-45) — the exact-name query joined
+  `scene_snapshots` with an unqualified select list, so SQLite rejected it with
+  `ambiguous column name: recovery_status`. The select list is now table-qualified.
 
 ## [1.3.0] — 2026-09-10 — Native-body recovery
 

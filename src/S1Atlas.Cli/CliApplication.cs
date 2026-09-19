@@ -43,9 +43,8 @@ public sealed class CliApplication
     private readonly Func<int, bool> _isProcessAlive;
 
     /// <summary>
-    /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/>.
-    /// Not yet consumed by a command (that is Task 3.2's <c>recover-native-body</c>); exposed so
-    /// that task, and this task's own tests, can drive them without re-deriving the composition.
+    /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/> for
+    /// <c>recover-native-body</c>; exposed internally so its tests can drive them directly.
     /// </summary>
     internal NativeRecoveryComposition? NativeRecoveryComposition { get; private set; }
 
@@ -342,7 +341,7 @@ public sealed class CliApplication
             repository,
             new PreferredVerifiedExtractionResolver(_paths.RootDirectory, sqliteRepository, integrityVerifier),
             new SceneInputVerifier(fileHasher),
-            new AssetsToolsUnitySerializedFileParser(),
+            new AssetsToolsUnitySerializedFileParser(ResolveClassDatabaseSource(definitionProvider)),
             new SceneNormalizer(new SceneCodeSymbolResolver(sqliteRepository), new SceneRecoveryClassifier()));
         var sceneQueryService = new SceneQueryService(sqliteRepository, repository);
 
@@ -466,6 +465,47 @@ public sealed class CliApplication
             // clean up rather than risk racing an in-flight extraction.
             return true;
         }
+    }
+
+    // The pinned Unity class database is an optional, offline scene-parser input: it is located
+    // through the same repository tool definition that `tools install unity-classdata` uses, and
+    // the parser verifies the file's SHA-256 against the pin before reading it. No definition
+    // (for example a test configuration that only pins Cpp2IL) means no fallback, and stripped
+    // containers then fail with SceneTypeTreeUnavailable as before.
+    private AssetsToolsUnitySerializedFileParser.ClassPackageSource? ResolveClassDatabaseSource(IToolDefinitionProvider definitionProvider)
+    {
+        // Composition must stay lazy about tool definitions: a data directory without a
+        // config/tools folder (scene and query commands never needed one) is not an error here.
+        if (!Directory.Exists(_configurationPaths.ToolDefinitionsDirectory))
+            return null;
+
+        var platform = ToolPlatform.GetCurrent();
+        ResolvedToolDefinition? definition;
+        try
+        {
+            definition = definitionProvider.GetAll().FirstOrDefault(candidate =>
+                string.Equals(candidate.Definition.ToolId, UnityClassDatabasePin.ToolId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(candidate.Definition.Platform, platform, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (ToolOperationException)
+        {
+            // An invalid definition set is reported by `tools status`/`tools install`, which
+            // read the same directory; the scene parser simply runs without a fallback.
+            return null;
+        }
+
+        if (definition is null)
+            return null;
+
+        var packagePath = ToolPathPolicy.ResolveContainedRelativePath(
+            ToolPathPolicy.GetManagedInstallRoot(_paths.ToolsDirectory, definition.Definition),
+            definition.Definition.Package.ExecutableRelativePath);
+        return new AssetsToolsUnitySerializedFileParser.ClassPackageSource(
+            packagePath,
+            new UnityClassDatabaseDescriptor(
+                definition.Definition.ToolId,
+                definition.Definition.Version,
+                definition.Definition.Package.Sha256));
     }
 
     private static HttpClient CreateProductionToolHttpClient(string atlasVersion)

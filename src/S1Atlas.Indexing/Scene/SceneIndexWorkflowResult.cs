@@ -14,4 +14,5 @@ public sealed record SceneIndexWorkflowResult(
     int ComponentCount,
     int ReferenceCount,
     IReadOnlyDictionary<string, int>? RecoveryCounts = null,
-    IReadOnlyList<string>? Warnings = null);
+    IReadOnlyList<string>? Warnings = null,
+    string? TypeTreeSource = null);

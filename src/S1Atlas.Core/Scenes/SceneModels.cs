@@ -19,7 +19,8 @@ public sealed record SceneSnapshotRecord(
     string StartedAtUtc,
     string? CompletedAtUtc = null,
     string? FailureCode = null,
-    string? FailureMessage = null)
+    string? FailureMessage = null,
+    string? TypeTreeSource = null)
 {
     public string SceneSnapshotId { get; init; } = SceneContract.RequireId(SceneSnapshotId, nameof(SceneSnapshotId));
     public string BuildId { get; init; } = SceneContract.RequireId(BuildId, nameof(BuildId));

@@ -874,6 +874,12 @@ internal static class SqliteMigrations
         );
         """;
 
+    // records which type-tree source decoded a scene snapshot (embedded type trees or the
+    // pinned class database plus its version and hash) so readers can see the fidelity boundary.
+    private const string SceneTypeTreeSourceV13Sql = """
+        ALTER TABLE scene_snapshots ADD COLUMN type_tree_source TEXT NULL;
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -887,6 +893,7 @@ internal static class SqliteMigrations
         new(9, "callable-surface-v9", CallableSurfaceV9Sql),
         new(10, "reference-mods-v10", ReferenceModsV10Sql, RequiresTransaction: false),
         new(11, "relationship-query-target-text-v11", RelationshipQueryTargetTextV11Sql),
-        new(12, "native-evidence-v12", NativeEvidenceV12Sql)
+        new(12, "native-evidence-v12", NativeEvidenceV12Sql),
+        new(13, "scene-type-tree-source-v13", SceneTypeTreeSourceV13Sql)
     ];
 }

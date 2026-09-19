@@ -259,6 +259,175 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Stripped_type_tree_container_fails_with_the_container_named_and_is_never_completed()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [
+                new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [], null, null, null, null, null),
+                new ParsedSceneObject(2, 4, 192, 64, ParsedSceneObjectKind.Transform, [], null, null, null, null, null)
+            ],
+            [], false, TypeTreeEmbedded: false)).ToArray());
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.SceneTypeTreeUnavailable, failure.Status);
+        Assert.Contains("'Schedule I_Data/level0'", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("TypeTreeEnabled=false", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("no pinned Unity class database is configured", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("tools install unity-classdata", failure.Message, StringComparison.Ordinal);
+        var snapshot = Assert.Single(repository.CreatedSnapshots);
+        Assert.Null(repository.CompletedSnapshot);
+        Assert.Empty(repository.PublishedSnapshotIds);
+        Assert.Equal("SceneTypeTreeUnavailable", repository.FailureCodes[snapshot.SceneSnapshotId]);
+        Assert.False(Directory.Exists(OwnedScenePaths.ForScheduleOne(_root, _buildId, snapshot.SceneSnapshotId).StagingRoot));
+    }
+
+    // a configured class database that is not installed (or holds no dump) still fails
+    // the run, but the message now names the pin and the install command.
+    [Fact]
+    public async Task Stripped_type_tree_container_with_uninstalled_class_database_names_the_pin()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var descriptor = new UnityClassDatabaseDescriptor("unity-classdata", "uabea-5adb448", new string('d', 64));
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [], null, null, null, null, null)],
+            [], false, TypeTreeEmbedded: false, TypeTreeSource: ParsedTypeTreeSource.Unavailable)).ToArray(), classDatabase: descriptor);
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.SceneTypeTreeUnavailable, failure.Status);
+        Assert.Contains("unity-classdata uabea-5adb448 (sha256:" + new string('d', 64) + ") is not installed", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("tools install unity-classdata", failure.Message, StringComparison.Ordinal);
+        Assert.Null(repository.CompletedSnapshot);
+    }
+
+    // a stripped container decoded through the pinned class database completes, and the
+    // snapshot records which type-tree source (package, version, hash, substituted dump) did it.
+    [Fact]
+    public async Task Stripped_type_tree_container_decoded_with_class_database_completes_and_records_provenance()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var descriptor = new UnityClassDatabaseDescriptor("unity-classdata", "uabea-5adb448", new string('d', 64));
+        var source = ParsedTypeTreeSource.FromClassDatabase(descriptor, "2022.3.26f1", exactVersionMatch: false);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [
+                new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [],
+                    new ParsedGameObjectData("Recovered Root", 0, 0, true, [new ParsedScenePPtr(0, 2)]), null, null, null, null),
+                new ParsedSceneObject(2, 4, 192, 64, ParsedSceneObjectKind.Transform, [], null,
+                    new ParsedTransformData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 0), [], new ParsedSceneVector3(1, 2, 3), new ParsedSceneQuaternion(0, 0, 0, 1), new ParsedSceneVector3(1, 1, 1), 0),
+                    null, null, null)
+            ],
+            [], false, TypeTreeEmbedded: false, TypeTreeSource: source)).ToArray(), classDatabase: descriptor);
+
+        var result = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.False(result.Reused);
+        Assert.Equal(1, result.GameObjectCount);
+        const string expectedLabel = "class-database unity-classdata uabea-5adb448 sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd (2022.3.26f1 layouts for 2022.3.62f1; nearest earlier dump)";
+        Assert.Equal(expectedLabel, result.TypeTreeSource);
+        Assert.Equal(expectedLabel, repository.CompletedSnapshot!.TypeTreeSource);
+        Assert.Single(repository.PublishedSnapshotIds);
+
+        var reused = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+        Assert.True(reused.Reused);
+        Assert.Equal(expectedLabel, reused.TypeTreeSource);
+    }
+
+    [Fact]
+    public async Task Class_database_pin_is_part_of_the_scene_snapshot_identity()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var descriptor = new UnityClassDatabaseDescriptor("unity-classdata", "uabea-5adb448", new string('d', 64));
+        var without = CreateWorkflow(repository, Authority());
+        var first = await without.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+        var with = CreateWorkflow(repository, Authority(), classDatabase: descriptor);
+
+        var second = await with.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(first.SceneSnapshotId, second.SceneSnapshotId);
+        Assert.False(second.Reused);
+        Assert.Equal("embedded", second.TypeTreeSource);
+    }
+
+    [Fact]
+    public void Type_tree_source_label_is_deduplicated_sorted_and_bounded()
+    {
+        var descriptor = new UnityClassDatabaseDescriptor("unity-classdata", "uabea-5adb448", new string('d', 64));
+        ParsedSceneContainer Container(string path, ParsedTypeTreeSource? source, bool embedded) =>
+            new(path, "C:/secret/" + path, [], new string('e', 64), "2022.3.62f2", 22, [], [], false, embedded, source);
+
+        var label = SceneIndexWorkflow.TypeTreeSourceLabel(
+        [
+            Container("b", ParsedTypeTreeSource.FromClassDatabase(descriptor, "2022.3.26f1", false), false),
+            Container("a", null, true),
+            Container("c", ParsedTypeTreeSource.FromClassDatabase(descriptor, "2022.3.26f1", false), false),
+            Container("d", null, false)
+        ]);
+
+        Assert.Equal(
+            "class-database unity-classdata uabea-5adb448 sha256:" + new string('d', 64) + " (2022.3.26f1 layouts for 2022.3.62f2; nearest earlier dump); embedded; unavailable",
+            label);
+        Assert.DoesNotContain("secret", label, StringComparison.Ordinal);
+        Assert.Equal("embedded", SceneIndexWorkflow.TypeTreeSourceLabel([]));
+    }
+
+    [Fact]
+    public async Task Stripped_type_tree_container_without_supported_objects_is_not_a_failure()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [new ParsedSceneObject(7, 23, 128, 64, ParsedSceneObjectKind.Other, [], null, null, null, null, null)],
+            [], false, TypeTreeEmbedded: false)).ToArray());
+
+        var result = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.False(result.Reused);
+        Assert.Equal(0, result.GameObjectCount);
+    }
+
+    [Fact]
+    public async Task Write_set_with_object_table_entries_but_no_game_object_fails_instead_of_completing()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) => containers.Select(container => new ParsedSceneContainer(
+            container.RelativePath, container.PrimaryPath, container.SidecarPaths, container.Sha256, container.UnityVersion, container.SerializedFileVersion,
+            [new ParsedSceneObject(1, 1, 128, 64, ParsedSceneObjectKind.GameObject, [], null, null, null, null, null)],
+            [], false)).ToArray());
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, failure.Status);
+        var snapshot = Assert.Single(repository.CreatedSnapshots);
+        Assert.Null(repository.CompletedSnapshot);
+        Assert.Equal("NoRecoverableSceneObjects", repository.FailureCodes[snapshot.SceneSnapshotId]);
+    }
+
+    [Fact]
+    public async Task Completed_snapshot_that_recovered_no_game_object_is_not_reused()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority());
+        var first = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+        repository.CompletedSnapshot = repository.CompletedSnapshot! with { RecoveryStatus = SceneRecoveryStatus.StubOrUnavailable };
+
+        var failure = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.NoRecoverableSceneObjects, failure.Status);
+        Assert.Contains(first.SceneSnapshotId, failure.Message, StringComparison.Ordinal);
+        Assert.Contains("--force", failure.Message, StringComparison.Ordinal);
+        Assert.Single(repository.CreatedSnapshots);
+    }
+
+    [Fact]
     public async Task Promoted_scene_index_contains_a_bounded_manifest_with_counts_and_hash()
     {
         var repository = CreateRepository(replayVerified: true);
@@ -395,7 +564,8 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         WorkflowRepository repository,
         Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> authority,
         Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, IReadOnlyList<ParsedSceneContainer>>? parse = null,
-        string unityVersion = "2022.3.62f1")
+        string unityVersion = "2022.3.62f1",
+        UnityClassDatabaseDescriptor? classDatabase = null)
     {
         var installRoot = repository.Environment.Installation.InstallationRoot!;
         Directory.CreateDirectory(Path.Combine(installRoot, "Schedule I_Data"));
@@ -405,7 +575,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             repository.ParserCalls++;
             repository.LastParsedContainers = containers;
             return Task.FromResult(parse?.Invoke(containers, cancellationToken) ?? Parsed(containers));
-        });
+        }, classDatabase);
         var resolver = new SceneCodeSymbolResolver(
             repository,
             (_, _) => Task.FromResult<SceneCodeBuildAuthority?>(new(_extractionId, _buildId)));
@@ -497,8 +667,11 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private sealed class DelegateParser(Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, Task<IReadOnlyList<ParsedSceneContainer>>> parse) : IUnitySerializedFileParser
+    private sealed class DelegateParser(
+        Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, Task<IReadOnlyList<ParsedSceneContainer>>> parse,
+        UnityClassDatabaseDescriptor? classDatabase = null) : IUnitySerializedFileParser
     {
+        public UnityClassDatabaseDescriptor? ClassDatabase => classDatabase;
         public Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(IReadOnlyList<VerifiedSceneContainer> containers, CancellationToken cancellationToken) => parse(containers, cancellationToken);
     }
 
@@ -520,8 +693,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public bool ThrowOnStart { get; set; }
         public List<SceneSnapshotRecord> CreatedSnapshots { get; } = [];
         public List<string> FailedSnapshotIds { get; } = [];
+        public Dictionary<string, string> FailureCodes { get; } = new(StringComparer.Ordinal);
         public List<string> PublishedSnapshotIds { get; } = [];
-        public SceneSnapshotRecord? CompletedSnapshot { get; private set; }
+        public SceneSnapshotRecord? CompletedSnapshot { get; set; }
         public SceneWriteSet? CompletedWriteSet { get; private set; }
         public string? LastCheckedSnapshotId { get; private set; }
         public Action<string>? BeforeCompletedSnapshotLookup { get; set; }
@@ -571,7 +745,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             CompletedWriteSet = writeSet;
             return Task.CompletedTask;
         }
-        public Task FailSceneSnapshotAsync(string sceneSnapshotId, string failureCode, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) { FailedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
+        public Task FailSceneSnapshotAsync(string sceneSnapshotId, string failureCode, string failureMessage, string completedAtUtc, CancellationToken cancellationToken) { FailedSnapshotIds.Add(sceneSnapshotId); FailureCodes[sceneSnapshotId] = failureCode; return Task.CompletedTask; }
         public Task PublishSceneSnapshotAsync(string sceneSnapshotId, string publishedAtUtc, CancellationToken cancellationToken) { PublishedSnapshotIds.Add(sceneSnapshotId); return Task.CompletedTask; }
 
         public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -634,6 +808,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneGameObjectRecord>(CompletedWriteSet?.GameObjects.Count ?? 0, 0, []));
         public Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneGameObjectRecord?> GetGameObjectAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<SceneTransformRecord?> GetTransformAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneComponentRecord>(CompletedWriteSet?.Components.Count ?? 0, 0, []));
         public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => throw new NotSupportedException();

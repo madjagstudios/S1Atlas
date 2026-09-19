@@ -234,6 +234,11 @@ public sealed class SceneNormalizer
             };
             if (ownerPointer is null)
                 continue;
+            // An explicit null m_GameObject marks an asset-level MonoBehaviour (a ScriptableObject
+            // or other non-component asset in sharedassets/resources); it owns no GameObject and
+            // is not a component attachment, so it is skipped rather than treated as corruption.
+            if (pair.Value.Kind == ParsedSceneObjectKind.MonoBehaviour && ownerPointer.Value.LocalFileId == 0)
+                continue;
             var owner = pointers.Resolve(pair.Key.ContainerPath, ownerPointer.Value);
             if (owner.Target is null || !gameObjectKeys.Contains(owner.Target.Value))
                 throw new InvalidDataException("A component's GameObject PPtr does not resolve to a parsed GameObject.");

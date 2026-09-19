@@ -84,7 +84,8 @@ public sealed class IndexingWorkflow
     {
         var authority = await _authorityResolver(buildId, cancellationToken)
             ?? throw new InvalidOperationException("No preferred integrity-verified extraction is available.");
-        var selectedInteropPath = await ResolveInteropPathAsync(buildId, interopPath, cancellationToken);
+        var currentEnvironment = await ResolveMatchingEnvironmentAsync(buildId, cancellationToken);
+        var selectedInteropPath = ResolveInteropPath(currentEnvironment, interopPath);
         var interopInputSha256 = selectedInteropPath is null
             ? null
             : await HashFileAsync(selectedInteropPath, cancellationToken);
@@ -101,7 +102,26 @@ public sealed class IndexingWorkflow
         if (existingSnapshot is null)
         {
             await _repository.CreateCodeSnapshotAsync(
-                new CodeSnapshotRecord(snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, authority.Extraction.ExtractionId, DateTimeOffset.UtcNow.ToString("O")),
+                new CodeSnapshotRecord(
+                    snapshotId,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    authority.Extraction.ExtractionId,
+                    DateTimeOffset.UtcNow.ToString("O"),
+                    currentEnvironment?.SnapshotId),
+                cancellationToken);
+        }
+        else if (string.IsNullOrWhiteSpace(existingSnapshot.EnvironmentSnapshotId) &&
+                 !string.IsNullOrWhiteSpace(currentEnvironment?.SnapshotId))
+        {
+            // a code snapshot created before EnvironmentSnapshotId was populated
+            // (or created without a matching environment) is healed in place, once, the
+            // next time indexing runs against a build whose current environment snapshot
+            // resolves. The snapshot_id already pins codebase/channel/source identity, so
+            // this only fills a previously-empty field; the storage layer refuses to
+            // overwrite an already-populated environment_snapshot_id.
+            await _repository.CreateCodeSnapshotAsync(
+                existingSnapshot with { EnvironmentSnapshotId = currentEnvironment!.SnapshotId },
                 cancellationToken);
         }
 
@@ -191,22 +211,29 @@ public sealed class IndexingWorkflow
         }
     }
 
-    private async Task<string?> ResolveInteropPathAsync(
+    private async Task<S1Atlas.Core.Environment.EnvironmentSnapshot?> ResolveMatchingEnvironmentAsync(
         string buildId,
-        string? overridePath,
         CancellationToken cancellationToken)
+    {
+        if (_atlasRepository is null)
+            return null;
+        var current = await _atlasRepository.GetCurrentSnapshotAsync(cancellationToken);
+        if (current is null || !string.Equals(current.Build.BuildId, buildId, StringComparison.Ordinal))
+            return null;
+        return current;
+    }
+
+    private static string? ResolveInteropPath(
+        S1Atlas.Core.Environment.EnvironmentSnapshot? currentEnvironment,
+        string? overridePath)
     {
         if (!string.IsNullOrWhiteSpace(overridePath))
             return ResolveInteropPath(overridePath);
 
-        if (_atlasRepository is null)
-            return null;
-        var current = await _atlasRepository.GetCurrentSnapshotAsync(cancellationToken);
-        if (current is null || !string.Equals(current.Build.BuildId, buildId, StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(current.Installation.InstallationRoot))
+        if (currentEnvironment is null || string.IsNullOrWhiteSpace(currentEnvironment.Installation.InstallationRoot))
             return null;
         return ResolveInteropPath(Path.Combine(
-            current.Installation.InstallationRoot,
+            currentEnvironment.Installation.InstallationRoot,
             "MelonLoader",
             "Il2CppAssemblies",
             "Assembly-CSharp.dll"));
