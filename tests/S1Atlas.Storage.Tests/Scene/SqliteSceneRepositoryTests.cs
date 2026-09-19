@@ -51,6 +51,31 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Exact_game_object_name_lookup_resolves_through_a_completed_published_snapshot()
+    {
+        // AT-45: the join with scene_snapshots shares a recovery_status column; the
+        // select list must stay table-qualified or SQLite rejects the query.
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, CreateWriteSet(snapshot, includeSecondDocument: true), "2026-08-14T01:01:00Z", cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        var listed = await _repository.ListGameObjectsAsync(new GameObjectListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken);
+        var expected = listed.Rows[0];
+
+        var found = await _repository.FindGameObjectsByExactNameAsync(snapshot.SceneSnapshotId, expected.SceneId, expected.Name, 5, cancellationToken);
+
+        var match = Assert.Single(found);
+        Assert.Equal(expected.GameObjectId, match.GameObjectId);
+        Assert.Equal(expected.SceneId, match.SceneId);
+        Assert.Equal(expected.Name, match.Name);
+        Assert.Empty(await _repository.FindGameObjectsByExactNameAsync(snapshot.SceneSnapshotId, expected.SceneId, "No Such Object", 5, cancellationToken));
+    }
+
+    [Fact]
     public async Task Scene_queries_escape_percent_underscore_and_backslash_and_remain_bounded()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

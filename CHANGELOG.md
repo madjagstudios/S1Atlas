@@ -14,6 +14,9 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   replay-verified and the code index was current. The code snapshot now records
   the build-matching environment snapshot id, and a pre-existing null is healed
   in place on the next `index` run without overwriting a populated value.
+- **`gameobject <scene-id>/<name>` lookup** (AT-45) — the exact-name query joined
+  `scene_snapshots` with an unqualified select list, so SQLite rejected it with
+  `ambiguous column name: recovery_status`. The select list is now table-qualified.
 
 ## [1.3.0] — 2026-09-10 — Native-body recovery
 
