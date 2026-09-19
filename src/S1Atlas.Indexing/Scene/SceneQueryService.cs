@@ -76,7 +76,10 @@ public sealed class SceneQueryService
         var references = request.IncludeReferences
             ? await _repository.ListReferencesAsync(new ReferenceListQueryOptions(snapshot.Snapshot.SceneSnapshotId, GameObjectId: gameObject.GameObjectId, Limit: request.Limit), cancellationToken)
             : Empty<SceneReferenceRecord>();
-        return new GameObjectQueryResult(Outcome(gameObject.RecoveryStatus, references), snapshot.Snapshot, gameObject, [], children, components, references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { gameObject.ContainerId }.Concat(children.Rows.Select(row => row.ContainerId)).Concat(components.Rows.Select(row => row.ContainerId)).Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
+        // The selected object's own transform (local position, rotation, scale, parent, sibling
+        // index) is always returned: it is one row and the primary spatial fact a reader wants.
+        var transform = await _repository.GetTransformAsync(snapshot.Snapshot.SceneSnapshotId, gameObject.GameObjectId, cancellationToken);
+        return new GameObjectQueryResult(Outcome(gameObject.RecoveryStatus, references), snapshot.Snapshot, gameObject, [], children, components, references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { gameObject.ContainerId }.Concat(children.Rows.Select(row => row.ContainerId)).Concat(components.Rows.Select(row => row.ContainerId)).Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken), transform);
     }
 
     public Task<SceneDocumentQueryResult> PrefabAsync(PrefabQueryRequest request, CancellationToken cancellationToken) =>
@@ -188,5 +191,5 @@ public sealed record ComponentQueryRequest(string? SceneSnapshotId, string Selec
 public sealed record SceneSnapshotQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot);
 public sealed record SceneListResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, ScenePageResult<SceneDocumentRecord> Page, IReadOnlyList<SceneContainerRecord>? Containers = null);
 public sealed record SceneDocumentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneDocumentRecord? Scene, IReadOnlyList<SceneDocumentRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null);
-public sealed record GameObjectQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneGameObjectRecord? GameObject, IReadOnlyList<SceneGameObjectRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null);
+public sealed record GameObjectQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneGameObjectRecord? GameObject, IReadOnlyList<SceneGameObjectRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null, SceneTransformRecord? Transform = null);
 public sealed record ComponentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneComponentRecord? Component, IReadOnlyList<SceneComponentRecord> Candidates, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null);

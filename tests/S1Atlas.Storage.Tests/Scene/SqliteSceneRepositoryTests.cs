@@ -600,6 +600,31 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
         Assert.Equal(label, (await _repository.GetLatestCompletedSceneSnapshotAsync("build-a", cancellationToken))!.TypeTreeSource);
     }
 
+    [Fact]
+    public async Task Transform_of_a_published_game_object_is_readable_and_unpublished_snapshots_hide_it()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, CreateWriteSet(snapshot), "2026-08-14T01:01:00Z", cancellationToken);
+
+        Assert.Null(await _repository.GetTransformAsync(snapshot.SceneSnapshotId, "object-a", cancellationToken));
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+
+        var transform = await _repository.GetTransformAsync(snapshot.SceneSnapshotId, "object-a", cancellationToken);
+        Assert.NotNull(transform);
+        Assert.Equal("object-a", transform.GameObjectId);
+        Assert.Null(transform.ParentGameObjectId);
+        Assert.Equal(0, transform.SiblingIndex);
+        Assert.Equal((0f, 0f, 0f), (transform.PositionX, transform.PositionY, transform.PositionZ));
+        Assert.Equal(1f, transform.RotationW);
+        Assert.Equal((1f, 1f, 1f), (transform.ScaleX, transform.ScaleY, transform.ScaleZ));
+        Assert.Equal(SceneRecoveryStatus.FullyRecovered, transform.RecoveryStatus);
+        Assert.Null(await _repository.GetTransformAsync(snapshot.SceneSnapshotId, "missing", cancellationToken));
+    }
+
     private static SceneSnapshotRecord CreateSnapshot(string snapshotId, string buildId) =>
         new(snapshotId, buildId, "extraction-build-a", "input-build-a", "code-build-a", "index-build-a", "parser", "1", Digest, SceneSnapshotStatus.Running, SceneRecoveryStatus.FullyRecovered, "2026-08-14T00:00:00Z");
 

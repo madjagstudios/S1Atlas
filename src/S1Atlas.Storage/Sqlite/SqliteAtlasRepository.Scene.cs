@@ -599,6 +599,38 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         return new ScenePageResult<SceneReferenceRecord>(total, rows.Count, rows, unresolved);
     }
 
+    public async Task<SceneTransformRecord?> GetTransformAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameObjectId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT transform.game_object_id, transform.parent_game_object_id, transform.sibling_index,
+                   transform.position_x, transform.position_y, transform.position_z,
+                   transform.rotation_x, transform.rotation_y, transform.rotation_z, transform.rotation_w,
+                   transform.scale_x, transform.scale_y, transform.scale_z, transform.recovery_status
+            FROM transforms AS transform
+            INNER JOIN game_objects AS game_object ON game_object.game_object_id = transform.game_object_id
+            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
+            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot AND transform.game_object_id = $id;
+            """;
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        command.Parameters.AddWithValue("$id", gameObjectId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+        float? Real(int ordinal) => reader.IsDBNull(ordinal) ? null : (float)reader.GetDouble(ordinal);
+        return new SceneTransformRecord(
+            reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetString(1),
+            reader.IsDBNull(2) ? null : reader.GetInt32(2),
+            Real(3), Real(4), Real(5),
+            Real(6), Real(7), Real(8), Real(9),
+            Real(10), Real(11), Real(12),
+            Enum.Parse<SceneRecoveryStatus>(reader.GetString(13)));
+    }
+
     private const string SnapshotSelectSql = """
         SELECT scene_snapshot_id, build_id, extraction_id, input_snapshot_id, code_snapshot_id,
                code_index_id, parser_id, parser_version, container_manifest_digest, status,

@@ -254,6 +254,28 @@ public sealed class SceneQueryServiceTests
         Assert.Equal(1, scenes.Page.TotalCount);
     }
 
+    // AT-47: the selected game object's own transform rides along with the query result so a
+    // reader gets its local position without a second lookup.
+    [Fact]
+    public async Task Game_object_query_returns_the_selected_objects_transform()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Documents = [Document("scene-a", "level1")];
+        repository.GameObjects = [new SceneGameObjectRecord("object-a", "scene-a", "container-a", 2616, "desert town hall", true, 0, "0", SceneRecoveryStatus.FullyRecovered)];
+        repository.Transforms = [new SceneTransformRecord("object-a", "object-parent", 3, 1.5f, -2f, 3.25f, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered)];
+        var service = new SceneQueryService(repository);
+
+        var result = await service.GameObjectAsync(new GameObjectQueryRequest("snapshot-a", "scene-a/desert town hall"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.Resolved, result.Status);
+        Assert.Equal("object-a", result.GameObject!.GameObjectId);
+        Assert.NotNull(result.Transform);
+        Assert.Equal((1.5f, -2f, 3.25f), (result.Transform.PositionX, result.Transform.PositionY, result.Transform.PositionZ));
+        Assert.Equal("object-parent", result.Transform.ParentGameObjectId);
+        Assert.Equal(3, result.Transform.SiblingIndex);
+    }
+
     private static SceneSnapshotRecord Snapshot() => new(
         "snapshot-a", "build-a", "extraction-a", "input-a", "code-a", "index-a", "parser", "1",
         new string('a', 64), SceneSnapshotStatus.Completed, SceneRecoveryStatus.FullyRecovered, "2026-08-15T00:00:00Z");
@@ -271,6 +293,8 @@ public sealed class SceneQueryServiceTests
         public IReadOnlyList<SceneComponentRecord> Components { get; set; } = [];
         public IReadOnlyList<SceneReferenceRecord> References { get; set; } = [];
         public IReadOnlyList<SceneContainerRecord> Containers { get; set; } = [];
+        public IReadOnlyList<SceneGameObjectRecord> GameObjects { get; set; } = [];
+        public IReadOnlyList<SceneTransformRecord> Transforms { get; set; } = [];
         public List<int> SceneLimits { get; } = [];
         public int ExactSceneNameLookups { get; private set; }
         public SceneIndexStatistics? Statistics { get; set; }
@@ -291,8 +315,9 @@ public sealed class SceneQueryServiceTests
         public Task<IReadOnlyList<SceneContainerRecord>> GetSceneContainersAsync(string sceneSnapshotId, IReadOnlyList<string> containerIds, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneContainerRecord>>(Containers.Where(container => container.SceneSnapshotId == sceneSnapshotId && containerIds.Contains(container.ContainerId, StringComparer.Ordinal)).ToArray());
         public Task<IReadOnlyList<SceneDocumentRecord>> FindScenesByExactNameAsync(string sceneSnapshotId, string name, SceneDocumentKind? kind, int limit, CancellationToken cancellationToken) { ExactSceneNameLookups++; return Task.FromResult<IReadOnlyList<SceneDocumentRecord>>(Documents.Where(document => document.SceneSnapshotId == sceneSnapshotId && document.Kind == (kind ?? document.Kind) && document.Name == name).Take(limit).ToArray()); }
         public Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneGameObjectRecord>(0, 0, []));
-        public Task<SceneGameObjectRecord?> GetGameObjectAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => Task.FromResult<SceneGameObjectRecord?>(null);
-        public Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneGameObjectRecord>>([]);
+        public Task<SceneGameObjectRecord?> GetGameObjectAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => Task.FromResult(GameObjects.SingleOrDefault(row => row.GameObjectId == gameObjectId));
+        public Task<SceneTransformRecord?> GetTransformAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken) => Task.FromResult(Transforms.SingleOrDefault(row => row.GameObjectId == gameObjectId));
+        public Task<IReadOnlyList<SceneGameObjectRecord>> FindGameObjectsByExactNameAsync(string sceneSnapshotId, string sceneId, string name, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneGameObjectRecord>>(GameObjects.Where(row => row.SceneId == sceneId && row.Name == name).Take(limit).ToArray());
         public Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken)
         {
             var rows = Components.Where(component => options.Query is null || component.Kind.Contains(options.Query, StringComparison.OrdinalIgnoreCase)).Take(options.Limit).ToArray();
