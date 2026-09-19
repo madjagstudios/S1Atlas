@@ -6,7 +6,14 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
-No changes yet.
+### Fixed
+
+- **Scene index prerequisite gate** (AT-44) — the Schedule I Installed code
+  snapshot never recorded its environment snapshot id, so `index --scene` always
+  failed with `CrossBuildCodeIndex` even when the preferred extraction was
+  replay-verified and the code index was current. The code snapshot now records
+  the build-matching environment snapshot id, and a pre-existing null is healed
+  in place on the next `index` run without overwriting a populated value.
 
 ## [1.3.0] — 2026-09-10 — Native-body recovery
 
