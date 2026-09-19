@@ -18,7 +18,11 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = """
             INSERT INTO code_snapshots
                 (snapshot_id, codebase, channel, environment_snapshot_id, source_identity, created_at_utc)
-            VALUES ($id, $codebase, $channel, $environment, $identity, $created);
+            VALUES ($id, $codebase, $channel, $environment, $identity, $created)
+            ON CONFLICT(snapshot_id) DO UPDATE SET
+                environment_snapshot_id = excluded.environment_snapshot_id
+            WHERE code_snapshots.environment_snapshot_id IS NULL
+              AND excluded.environment_snapshot_id IS NOT NULL;
             """;
         AddSnapshotParameters(command, snapshot);
         await command.ExecuteNonQueryAsync(cancellationToken);
