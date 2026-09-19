@@ -77,6 +77,25 @@ public sealed class ToolDefinitionValidatorTests
         Assert.Equal("ToolDefinitionInvalid", commaException.Code);
     }
 
+    // AT-47: a data-only package (the Unity class database) declares an empty probe list; the
+    // field itself stays mandatory so a missing list is still rejected.
+    [Fact]
+    public void Deserialize_WhenProbesAreEmpty_AcceptsDataOnlyPackage()
+    {
+        var root = JsonNode.Parse(ToolTestFixture.ValidDefinitionJson)!.AsObject();
+        root["probes"] = new JsonArray();
+
+        var resolved = new ToolDefinitionSerializer().Deserialize(root.ToJsonString(), "fixture.json");
+
+        Assert.Empty(resolved.Definition.Probes);
+    }
+
+    [Fact]
+    public void Deserialize_WhenProbesAreMissing_Rejects()
+    {
+        AssertInvalid(root => root.Remove("probes"));
+    }
+
     private static JsonObject Package(JsonObject root) =>
         root["package"]!.AsObject();
 

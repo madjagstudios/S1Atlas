@@ -247,12 +247,15 @@ internal sealed class ToolDefinitionValidator
         List<ToolProbeDocument?>? documents,
         string sourceName)
     {
-        if (documents is null || documents.Count == 0)
+        // A data-only package (a class database, for example) has nothing to execute, so an
+        // empty probe list is permitted; the list itself remains mandatory so the omission is
+        // an explicit declaration rather than a forgotten field.
+        if (documents is null)
         {
             throw Invalid(
                 sourceName,
                 "probes",
-                "must contain at least one probe.");
+                "is required (an empty list declares a data-only package).");
         }
 
         var probeIds = new HashSet<string>(StringComparer.Ordinal);

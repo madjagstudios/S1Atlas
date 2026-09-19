@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "toolId": "unity-classdata",
+  "displayName": "Unity class database (UABEA classdata.tpk)",
+  "version": "uabea-5adb448",
+  "platform": "win-x64",
+  "package": {
+    "kind": "singleFile",
+    "archiveFormat": null,
+    "sourceUrl": "https://raw.githubusercontent.com/nesrak1/UABEA/5adb448deeefa1b88881f1fa44243009b352db3a/ReleaseFiles/classdata.tpk",
+    "releaseUrl": "https://github.com/nesrak1/UABEA/tree/5adb448deeefa1b88881f1fa44243009b352db3a/ReleaseFiles",
+    "assetName": "classdata.tpk",
+    "expectedSize": 289605,
+    "sha256": "129e1f80f930415db6779fe6089afa75280cb51462bcee812beab6cd81a764c6",
+    "executableRelativePath": "classdata.tpk",
+    "limits": {
+      "maximumDownloadBytes": 289605,
+      "maximumExpandedBytes": 289605,
+      "maximumFileCount": 1
+    }
+  },
+  "license": {
+    "spdxIdentifier": "MIT",
+    "sourceUrl": "https://github.com/nesrak1/UABEA/blob/5adb448deeefa1b88881f1fa44243009b352db3a/license"
+  },
+  "probes": []
+}
