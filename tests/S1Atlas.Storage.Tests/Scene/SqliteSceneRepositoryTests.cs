@@ -51,6 +51,29 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Read_only_repository_resolves_exact_game_object_names_through_a_published_snapshot()
+    {
+        // The MCP host composes the read-only repository, which carries its own copy of the
+        // exact-name query; it must stay table-qualified like the writable one.
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-a", "build-a");
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, CreateWriteSet(snapshot, includeSecondDocument: true), "2026-08-14T01:01:00Z", cancellationToken);
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-08-14T01:02:00Z", cancellationToken);
+        var expected = (await _repository.ListGameObjectsAsync(new GameObjectListQueryOptions(snapshot.SceneSnapshotId, Limit: 1), cancellationToken)).Rows[0];
+
+        var readOnly = new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(_databasePath));
+        var found = await readOnly.FindGameObjectsByExactNameAsync(snapshot.SceneSnapshotId, expected.SceneId, expected.Name, 5, cancellationToken);
+
+        var match = Assert.Single(found);
+        Assert.Equal(expected.GameObjectId, match.GameObjectId);
+        Assert.Equal(expected.Name, match.Name);
+        Assert.Empty(await readOnly.FindGameObjectsByExactNameAsync(snapshot.SceneSnapshotId, expected.SceneId, "No Such Object", 5, cancellationToken));
+    }
+
+    [Fact]
     public async Task Exact_game_object_name_lookup_resolves_through_a_completed_published_snapshot()
     {
         // the join with scene_snapshots shares a recovery_status column; the
