@@ -6,6 +6,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+No changes yet.
+
+## [1.4.0] — 2026-09-20 — Scene intelligence on release builds
+
+Scene intelligence now works on the game as it actually ships. Schedule I strips
+the Unity type trees from its scene containers, which left every earlier scene
+index empty; 1.4.0 decodes those containers through a pinned Unity class database,
+records the type-tree source on every snapshot, and fails loudly instead of
+publishing an empty index when it cannot decode. Three gate and lookup bugs found
+on the way are fixed in the same release.
+
 ### Added
 
 - **Scene intelligence on release builds** (AT-46, AT-47) — Schedule I ships its
