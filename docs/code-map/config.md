@@ -8,6 +8,7 @@ Roots: config
 |---|---|
 | config/ | 1 |
 | config/extraction/ | 1 |
-| config/tools/ | 1 |
+| config/native-recovery/ | 1 |
+| config/tools/ | 2 |
 | config/validation/ | 1 |
 

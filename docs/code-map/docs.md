@@ -7,8 +7,8 @@ Roots: docs
 | Directory | Files |
 |---|---|
 | docs/ | 2 |
-| docs/dependencies/ | 1 |
-| docs/design/ | 10 |
+| docs/dependencies/ | 2 |
+| docs/design/ | 11 |
 | docs/performance/ | 2 |
 | docs/smoke-tests/ | 4 |
 | docs/superpowers/plans/ | 3 |
