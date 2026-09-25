@@ -9,7 +9,7 @@ namespace S1Atlas.IntegrationTests.Extraction;
 public sealed class ExtractionCliTests
 {
     private const string DefaultProfileId =
-        "cpp2il-reconstructed-assemblies-v1";
+        "cpp2il-reconstructed-assemblies-v2";
 
     [Fact]
     public async Task RootHelp_ListsExtractAndEverySupportedOption()

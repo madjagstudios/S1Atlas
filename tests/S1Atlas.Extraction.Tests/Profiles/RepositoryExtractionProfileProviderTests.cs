@@ -7,6 +7,44 @@ namespace S1Atlas.Extraction.Tests.Profiles;
 public sealed class RepositoryExtractionProfileProviderTests
 {
     [Fact]
+    public void GetRequired_LoadsAttributeRestoringProductionProfile()
+    {
+        var provider = new RepositoryExtractionProfileProvider(ProfileTestFixture.ExtractionDirectory);
+
+        var resolved = provider.GetRequired("cpp2il-reconstructed-assemblies-v2");
+        var v1 = provider.GetRequired("cpp2il-reconstructed-assemblies-v1");
+
+        Assert.Equal(2, resolved.Profile.ProfileVersion);
+        Assert.Equal(["attributeanalyzer", "attributeinjector"], resolved.Profile.Cpp2IlProcessors);
+        Assert.Equal("dll_il_recovery", resolved.Profile.OutputFormat);
+        Assert.Equal(v1.Profile.SnapshotInputs, resolved.Profile.SnapshotInputs);
+        Assert.Empty(v1.Profile.Cpp2IlProcessors);
+        Assert.NotEqual(v1.ProfileDigest, resolved.ProfileDigest);
+    }
+
+    [Fact]
+    public void Validate_V1ProfileWithProcessors_IsRejected()
+    {
+        ProfileTestFixture.AssertExtractionRejected(ProfileTestFixture.ValidExtractionJson.Replace(
+            "\"unityVersionSources\"",
+            "\"cpp2IlProcessors\": [\"attributeanalyzer\", \"attributeinjector\"], \"unityVersionSources\"",
+            StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_V2ProfileWithoutExactProcessors_IsRejected()
+    {
+        var v2 = ProfileTestFixture.ValidExtractionJson
+            .Replace("cpp2il-reconstructed-assemblies-v1", "cpp2il-reconstructed-assemblies-v2", StringComparison.Ordinal)
+            .Replace("\"profileVersion\": 1", "\"profileVersion\": 2", StringComparison.Ordinal);
+        ProfileTestFixture.AssertExtractionRejected(v2);
+        ProfileTestFixture.AssertExtractionRejected(v2.Replace(
+            "\"unityVersionSources\"",
+            "\"cpp2IlProcessors\": [\"attributeinjector\"], \"unityVersionSources\"",
+            StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GetRequired_LoadsExactProductionProfile()
     {
         var profilePath = Path.Combine(

@@ -1,11 +1,15 @@
 using System.Text.RegularExpressions;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Tools;
+using S1Atlas.Extraction.Cpp2Il;
 
 namespace S1Atlas.Extraction.Profiles;
 
 internal sealed class ExtractionProfileValidator
 {
+    internal const string ReconstructedProfileId = "cpp2il-reconstructed-assemblies-v1";
+    internal const string AttributeRestoringProfileId = "cpp2il-reconstructed-assemblies-v2";
+
     private static readonly Regex IdPattern = new(
         "^[a-z0-9][a-z0-9.-]*$",
         RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
@@ -20,7 +24,8 @@ internal sealed class ExtractionProfileValidator
 
         RequireExact(document.SchemaVersion, 1, sourceName, "schemaVersion");
         var profileId = RequireId(document.ProfileId, sourceName, "profileId");
-        RequireExact(document.ProfileVersion, 1, sourceName, "profileVersion");
+        if (document.ProfileVersion is not (1 or 2))
+            throw Invalid(sourceName, "profileVersion", "must be 1 or 2.");
         RequireExact(document.AdapterVersion, 1, sourceName, "adapterVersion");
         RequireExact(document.ExtractionSchemaVersion, 1, sourceName, "extractionSchemaVersion");
         var executableName = RequireString(document.ExecutableName, sourceName, "executableName");
@@ -32,20 +37,31 @@ internal sealed class ExtractionProfileValidator
         var identities = RequireDistinctStrings(document.RequiredAssemblyIdentities, sourceName, "requiredAssemblyIdentities");
         var snapshotInputs = ValidateSnapshotInputs(document.SnapshotInputs, sourceName);
         var unityVersionSources = RequireDistinctContainedPaths(document.UnityVersionSources, sourceName, "unityVersionSources");
+        var processors = document.Cpp2IlProcessors is null
+            ? []
+            : RequireDistinctStrings(document.Cpp2IlProcessors, sourceName, "cpp2IlProcessors");
 
-        if (profileId == "cpp2il-reconstructed-assemblies-v1" &&
+        if ((profileId == ReconstructedProfileId || profileId == AttributeRestoringProfileId) &&
             (!string.Equals(executableName, "Schedule I", StringComparison.Ordinal) ||
              !string.Equals(outputFormat, "dll_il_recovery", StringComparison.Ordinal)))
         {
             throw Invalid(sourceName, "profile", "must use the approved Schedule I dll_il_recovery values.");
         }
 
+        if (profileId == ReconstructedProfileId && (document.ProfileVersion != 1 || processors.Count != 0))
+            throw Invalid(sourceName, "profile", "v1 must be profileVersion 1 with no Cpp2IL processors.");
+        if (profileId == AttributeRestoringProfileId &&
+            (document.ProfileVersion != 2 || !processors.SequenceEqual(Cpp2IlArgumentBuilder.AttributeProcessors, StringComparer.Ordinal)))
+            throw Invalid(sourceName, "profile", "v2 must be profileVersion 2 with Cpp2IL processors [attributeanalyzer, attributeinjector].");
+        if (document.ProfileVersion == 2 && processors.Count == 0)
+            throw Invalid(sourceName, "cpp2IlProcessors", "is required for profileVersion 2.");
+
         return new ExtractionProfile(
             document.SchemaVersion!.Value, profileId, document.ProfileVersion!.Value,
             document.AdapterVersion!.Value, document.ExtractionSchemaVersion!.Value,
             executableName, outputFormat, TimeSpan.FromSeconds(document.TimeoutSeconds!.Value),
             maximumOutputBytes, maximumErrorBytes, acceptedExitCodes, identities,
-            snapshotInputs, unityVersionSources);
+            snapshotInputs, unityVersionSources, processors);
     }
 
     private static IReadOnlyList<SnapshotInputDefinition> ValidateSnapshotInputs(List<SnapshotInputDocument?>? values, string sourceName)

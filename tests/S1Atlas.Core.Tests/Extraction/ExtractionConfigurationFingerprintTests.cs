@@ -22,6 +22,7 @@ public sealed class ExtractionConfigurationFingerprintTests
         yield return [new Func<ExtractionProfile, ExtractionProfile>(value => value with { SnapshotInputs = [new SnapshotInputDefinition("Other.dll", "gameAssembly")] })];
         yield return [new Func<ExtractionProfile, ExtractionProfile>(value => value with { SnapshotInputs = [new SnapshotInputDefinition("GameAssembly.dll", "otherRole")] })];
         yield return [new Func<ExtractionProfile, ExtractionProfile>(value => value with { UnityVersionSources = ["Other"] })];
+        yield return [new Func<ExtractionProfile, ExtractionProfile>(value => value with { Cpp2IlProcessors = ["attributeanalyzer", "attributeinjector"] })];
     }
 
     public static IEnumerable<object[]> PolicyMutations()
@@ -56,6 +57,25 @@ public sealed class ExtractionConfigurationFingerprintTests
         Assert.NotEqual(
             ValidationPolicyFingerprint.Create(PolicyFixture.Valid),
             ValidationPolicyFingerprint.Create(mutate(PolicyFixture.Valid)));
+    }
+
+    [Fact]
+    public void Create_WithNoProcessors_MatchesDigestOfProfileWithoutProcessorsMember()
+    {
+        var profile = ProfileFixture.Valid;
+        Assert.Empty(profile.Cpp2IlProcessors);
+        Assert.Equal(
+            ExtractionProfileFingerprint.Create(profile),
+            ExtractionProfileFingerprint.Create(profile with { Cpp2IlProcessors = [] }));
+    }
+
+    [Fact]
+    public void Create_WhenProcessorOrderChanges_ChangesDigest()
+    {
+        var profile = ProfileFixture.Valid;
+        Assert.NotEqual(
+            ExtractionProfileFingerprint.Create(profile with { Cpp2IlProcessors = ["attributeanalyzer", "attributeinjector"] }),
+            ExtractionProfileFingerprint.Create(profile with { Cpp2IlProcessors = ["attributeinjector", "attributeanalyzer"] }));
     }
 
     [Fact]

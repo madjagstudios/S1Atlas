@@ -14,7 +14,12 @@ public sealed record ExtractionProfile(
     IReadOnlyList<int> AcceptedExitCodes,
     IReadOnlyList<string> RequiredAssemblyIdentities,
     IReadOnlyList<SnapshotInputDefinition> SnapshotInputs,
-    IReadOnlyList<string> UnityVersionSources);
+    IReadOnlyList<string> UnityVersionSources,
+    IReadOnlyList<string>? Cpp2IlProcessors = null)
+{
+    // Cpp2IL processing layers, in execution order. Empty for profiles that run none.
+    public IReadOnlyList<string> Cpp2IlProcessors { get; init; } = Cpp2IlProcessors ?? [];
+}
 
 public sealed record SnapshotInputDefinition(string RelativePath, string Role);
 

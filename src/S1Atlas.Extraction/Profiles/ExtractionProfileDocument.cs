@@ -16,6 +16,7 @@ internal sealed class ExtractionProfileDocument
     public List<string?>? RequiredAssemblyIdentities { get; init; }
     public List<SnapshotInputDocument?>? SnapshotInputs { get; init; }
     public List<string?>? UnityVersionSources { get; init; }
+    public List<string?>? Cpp2IlProcessors { get; init; }
 }
 
 internal sealed class SnapshotInputDocument
