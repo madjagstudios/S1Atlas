@@ -428,6 +428,79 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Restored_reconstruction_passes_script_layouts_and_records_the_source()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var extractionRoot = CreateExtractionRoot(restored: true);
+        var workflow = CreateWorkflow(repository, Authority(extractionRoot));
+
+        await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        var layouts = Assert.Single(repository.ScriptLayoutsSeen);
+        Assert.NotNull(layouts);
+        Assert.Equal(Path.Combine(extractionRoot, "reconstructed"), layouts.ManagedAssembliesPath);
+        Assert.Contains(_extractionId, layouts.Identity, StringComparison.Ordinal);
+        Assert.StartsWith($"{SceneIndexWorkflow.ScriptLayoutGenerator} over extraction {_extractionId}", repository.CompletedSnapshot!.ScriptLayoutSource);
+    }
+
+    [Fact]
+    public async Task Unrestored_reconstruction_passes_no_layouts_and_says_why()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(CreateExtractionRoot(restored: false)));
+
+        await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.Null(Assert.Single(repository.ScriptLayoutsSeen));
+        var label = repository.CompletedSnapshot!.ScriptLayoutSource;
+        Assert.StartsWith("unavailable:", label);
+        Assert.Contains("cpp2il-reconstructed-assemblies-v2", label, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Script_layouts_change_the_scene_snapshot_identity()
+    {
+        var withoutLayouts = await RunForSnapshotIdAsync(CreateExtractionRoot(restored: false));
+        var withLayouts = await RunForSnapshotIdAsync(CreateExtractionRoot(restored: true));
+
+        Assert.NotEqual(withoutLayouts, withLayouts);
+    }
+
+    [Fact]
+    public void Script_layout_identity_is_part_of_the_identity_hash()
+    {
+        SceneSnapshotContainerFact[] containers = [new("Schedule I_Data/level0", 10, new string('a', 64), "[]")];
+        string Create(string? layouts) => SceneSnapshotIdentity.Create(
+            "build", "extraction", new string('b', 64), "index", "assetstools-net", SceneIndexWorkflow.ParserVersion, 22, containers,
+            classDatabaseIdentity: "db", scriptLayoutIdentity: layouts);
+
+        Assert.NotEqual(Create(null), Create("layouts-a"));
+        Assert.NotEqual(Create("layouts-a"), Create("layouts-b"));
+        Assert.Equal(Create("layouts-a"), Create("layouts-a"));
+    }
+
+    private async Task<string> RunForSnapshotIdAsync(string extractionRoot)
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var workflow = CreateWorkflow(repository, Authority(extractionRoot));
+        return (await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken)).SceneSnapshotId;
+    }
+
+    // An extraction root whose reconstructed/Assembly-CSharp.dll either carries restored
+    // [SerializeField] attributes (the script-layout fixture) or none (the managed fixture, like v1).
+    private string CreateExtractionRoot(bool restored)
+    {
+        var root = Path.Combine(_root, "extractions", restored ? "restored" : "unrestored");
+        var reconstructed = Path.Combine(root, "reconstructed");
+        Directory.CreateDirectory(reconstructed);
+        var source = restored
+            ? Path.Combine(AppContext.BaseDirectory, "script-layout-fixture", "Assembly-CSharp.dll")
+            : Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll");
+        File.Copy(source, Path.Combine(reconstructed, "Assembly-CSharp.dll"), overwrite: true);
+        return root;
+    }
+
+    [Fact]
     public async Task Promoted_scene_index_contains_a_bounded_manifest_with_counts_and_hash()
     {
         var repository = CreateRepository(replayVerified: true);
@@ -575,7 +648,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             repository.ParserCalls++;
             repository.LastParsedContainers = containers;
             return Task.FromResult(parse?.Invoke(containers, cancellationToken) ?? Parsed(containers));
-        }, classDatabase);
+        }, classDatabase, repository.ScriptLayoutsSeen.Add);
         var resolver = new SceneCodeSymbolResolver(
             repository,
             (_, _) => Task.FromResult<SceneCodeBuildAuthority?>(new(_extractionId, _buildId)));
@@ -622,12 +695,12 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
             new CodeSnapshotRecord(_codeSnapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, _extractionId, "2026-08-15T00:00:00Z", "environment"));
     }
 
-    private Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> Authority() =>
+    private Func<string, CancellationToken, Task<PreferredVerifiedExtraction?>> Authority(string rootPath = "validated") =>
         (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(new(
             _buildId,
             new PreferredExtraction(_buildId, _extractionId, DateTimeOffset.UnixEpoch, ExtractionPreferenceReason.ManualPromotion),
             new ValidatedExtraction(_extractionId, "recipe", _buildId, "tool", "attempt", "profile", 1, "profile", 1, 1,
-                new string('4', 64), "validated", DateTimeOffset.UtcNow, ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid,
+                new string('4', 64), rootPath, DateTimeOffset.UtcNow, ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid,
                 new ExtractionStatistics(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, []))));
 
     private static IReadOnlyList<ParsedSceneContainer> Parsed(IReadOnlyList<VerifiedSceneContainer> containers) =>
@@ -669,10 +742,16 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
 
     private sealed class DelegateParser(
         Func<IReadOnlyList<VerifiedSceneContainer>, CancellationToken, Task<IReadOnlyList<ParsedSceneContainer>>> parse,
-        UnityClassDatabaseDescriptor? classDatabase = null) : IUnitySerializedFileParser
+        UnityClassDatabaseDescriptor? classDatabase = null,
+        Action<SceneScriptLayoutSource?>? onScriptLayouts = null) : IUnitySerializedFileParser
     {
         public UnityClassDatabaseDescriptor? ClassDatabase => classDatabase;
         public Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(IReadOnlyList<VerifiedSceneContainer> containers, CancellationToken cancellationToken) => parse(containers, cancellationToken);
+        public Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(IReadOnlyList<VerifiedSceneContainer> containers, SceneScriptLayoutSource? scriptLayouts, CancellationToken cancellationToken)
+        {
+            onScriptLayouts?.Invoke(scriptLayouts);
+            return parse(containers, cancellationToken);
+        }
     }
 
     private sealed class WorkflowRepository(
@@ -688,6 +767,7 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public IndexRunRecord IndexRun { get; set; } = indexRun;
         public CodeSnapshotRecord CodeSnapshot { get; set; } = codeSnapshot;
         public int ParserCalls { get; set; }
+        public List<SceneScriptLayoutSource?> ScriptLayoutsSeen { get; } = [];
         public IReadOnlyList<VerifiedSceneContainer> LastParsedContainers { get; set; } = [];
         public bool ThrowOnComplete { get; set; }
         public bool ThrowOnStart { get; set; }
@@ -813,6 +893,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneReferenceRecord>(CompletedWriteSet?.References.Count ?? 0, 0, []));
+        public Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken) => Task.FromResult(CompletedWriteSet?.ScriptFieldSets.SingleOrDefault(row => row.OwnerId == ownerId));
+        public Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken) => Task.FromResult(CompletedWriteSet?.ScriptableAssets.SingleOrDefault(row => row.AssetId == assetId));
+        public Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneScriptableAssetRecord>>([]);
         public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

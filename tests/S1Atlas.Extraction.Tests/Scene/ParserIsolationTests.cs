@@ -42,18 +42,21 @@ public sealed class ParserIsolationTests
     {
         var repositoryRoot = FindRepositoryRoot();
         var sourceRoot = Path.Combine(repositoryRoot, "src");
-        var adapterPath = Path.GetFullPath(Path.Combine(
-            sourceRoot,
-            "S1Atlas.Extraction",
-            "Scene",
-            "AssetsToolsUnitySerializedFileParser.cs"));
+        // The adapter may span partial files (AssetsToolsUnitySerializedFileParser*.cs) in its own
+        // directory; no other source file may import the parser's namespaces.
+        var adapterDirectory = Path.GetFullPath(Path.Combine(sourceRoot, "S1Atlas.Extraction", "Scene"));
         var parserSourceFiles = Directory.EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
             .Where(path => File.ReadAllText(path).Contains(ParserNamespace, StringComparison.Ordinal))
             .Select(Path.GetFullPath)
             .Order(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        Assert.Equal([adapterPath], parserSourceFiles, StringComparer.OrdinalIgnoreCase);
+        Assert.NotEmpty(parserSourceFiles);
+        Assert.All(parserSourceFiles, path =>
+        {
+            Assert.Equal(adapterDirectory, Path.GetDirectoryName(path), StringComparer.OrdinalIgnoreCase);
+            Assert.StartsWith("AssetsToolsUnitySerializedFileParser", Path.GetFileName(path), StringComparison.Ordinal);
+        });
 
         var projectsWithParserPackage = Directory
             .EnumerateFiles(sourceRoot, "*.csproj", SearchOption.AllDirectories)
@@ -197,11 +200,9 @@ public sealed class ParserIsolationTests
     private static bool ReferencesParserPackage(string projectPath)
     {
         var document = XDocument.Load(projectPath);
+        // Covers the whole AssetsTools.NET package family (e.g. AssetsTools.NET.MonoCecil).
         return document.Descendants("PackageReference").Any(element =>
-            string.Equals(
-                (string?)element.Attribute("Include"),
-                ParserNamespace,
-                StringComparison.OrdinalIgnoreCase));
+            ((string?)element.Attribute("Include"))?.StartsWith(ParserNamespace, StringComparison.OrdinalIgnoreCase) == true);
     }
 
     private static void AssertNoParserMetadataReferences(string assemblyPath)

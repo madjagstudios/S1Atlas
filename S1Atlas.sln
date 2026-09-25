@@ -44,6 +44,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.NativeRecovery", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.NativeRecovery.Tests", "tests\S1Atlas.NativeRecovery.Tests\S1Atlas.NativeRecovery.Tests.csproj", "{9BC3649C-30DC-4BF8-803D-A8C0F1C68D02}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "S1Atlas.ScriptLayoutFixture", "tests\Fixtures\S1Atlas.ScriptLayoutFixture\S1Atlas.ScriptLayoutFixture.csproj", "{B06CD0B5-F82E-4569-A1C5-76EB5E4A2464}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -126,10 +128,15 @@ Global
 		{9BC3649C-30DC-4BF8-803D-A8C0F1C68D02}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9BC3649C-30DC-4BF8-803D-A8C0F1C68D02}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9BC3649C-30DC-4BF8-803D-A8C0F1C68D02}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B06CD0B5-F82E-4569-A1C5-76EB5E4A2464}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B06CD0B5-F82E-4569-A1C5-76EB5E4A2464}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B06CD0B5-F82E-4569-A1C5-76EB5E4A2464}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B06CD0B5-F82E-4569-A1C5-76EB5E4A2464}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2A117793-FB4E-42C1-9A89-6E501D206FE2} = {12460D1E-0336-46BF-BD1A-B51D06414D84}
 		{910A2258-A186-4C22-8025-5DFC38AF9D8B} = {2A117793-FB4E-42C1-9A89-6E501D206FE2}
 		{9BC3649C-30DC-4BF8-803D-A8C0F1C68D02} = {12460D1E-0336-46BF-BD1A-B51D06414D84}
+		{B06CD0B5-F82E-4569-A1C5-76EB5E4A2464} = {2A117793-FB4E-42C1-9A89-6E501D206FE2}
 	EndGlobalSection
 EndGlobal

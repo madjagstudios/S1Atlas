@@ -24,4 +24,8 @@ public interface ISceneRepository
     Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken);
     Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken);
     Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken);
+    Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken);
+    Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken);
+    // Exact asset name, or exact Namespace.Class.
+    Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken);
 }

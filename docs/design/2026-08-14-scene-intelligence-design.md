@@ -91,6 +91,26 @@ Therefore v1 does not claim to recover arbitrary serialized values when:
 
 V1 stores field paths and declared types only for serialized references when supplied by the parser's type information. It stores built-in Transform values only when the known Unity schema and byte boundaries are unambiguous. It stores PPtrs as references, not as guessed names. It does not persist a general custom-field value table. Unsupported nested data, custom MonoBehaviour values without a reviewed type schema, large opaque blobs, textures, meshes, audio, shaders, and arbitrary asset payloads remain unavailable.
 
+### 2.4 Amendment (2026-09-24, AT-50): game-script field values
+
+The "later, separately justified milestone" above arrived. Mod design work needed the game's own economy numbers, such as property prices, employee wages, and special-customer order sizes. S1Atlas could name every field but return no values, and these questions come back with every new feature and every game update.
+
+The v1 rule stands: no guessed schema. AT-50 defines when a layout derived from the IL2CPP reconstruction counts as **reviewed**. Both of these must hold:
+
+1. **Restored attributes.** The preferred extraction ran Cpp2IL's attribute processors (profile `cpp2il-reconstructed-assemblies-v2`), and its `reconstructed/Assembly-CSharp.dll` carries `UnityEngine.SerializeField` attributes. Without them, every private `[SerializeField]` field is silently dropped and every later field misaligns.
+2. **Per-object byte check.** Decoding an object with the generated layout (AssetsTools.NET.MonoCecil) consumes exactly the object's serialized byte count. A pre-walk inside the object's own byte slice stops misaligned layouts from allocating garbage-length arrays.
+
+Neither check alone is enough. In the AT-50 spike on build `3871b66f…`, 113,877 of 113,880 MonoBehaviours decoded byte-exact with restored attributes; the 3 failures were UIElements `StyleSheet`. Without restored attributes, `SCD_Bikers` consumed exactly 388 of 388 bytes while every value was misaligned.
+
+What changes:
+
+- A MonoBehaviour component whose fields decode this way is `FullyRecovered`, and its values are FACT (MCP provenance source `serialized-script-fields`). Anything failing either check stays `GraphOnly` with a stored reason, and no values are stored for it.
+- Values are stored as one JSON field set per component, or per asset-level MonoBehaviour (`scriptable_assets`), in `script_field_sets`. Each set is capped at 256 leaves, 32 elements per array, 512-character strings, and byte arrays of 256 bytes (stored as hex). A set hitting a cap is still decoded but flagged `truncated`. Each snapshot records its `script_layout_source`: the generator and extraction, or `unavailable: …` with the remedy.
+- The "no general `serialized_fields` table" line in §7 is superseded for byte-verified script fields only.
+- Values are serialized defaults. Anything computed at load time still needs in-game verification.
+
+Out of scope, as follow-ups: field values from embedded type trees (builds that ship them), and resolving script-field PPtrs into `serialized_refs`.
+
 Every scene, component, serialized field, and serialized reference has a `SceneRecovery` availability classification:
 
 ```text
@@ -253,7 +273,7 @@ serialized_refs
   resolution_status, evidence, recovery_status
 ```
 
-The table names and keys are deliberate. Local file IDs are not globally unique, so every persisted object identity is scoped by the scene snapshot and container. `scenes.kind = Prefab` avoids a second graph model for proven prefab roots. `serialized_refs` is the normalized cross-object/code edge table; unresolved target columns remain null while raw target identity/text remains present. There is deliberately no general `serialized_fields` table in v1: custom field values are not the milestone's authority or success criterion.
+The table names and keys are deliberate. Local file IDs are not globally unique, so every persisted object identity is scoped by the scene snapshot and container. `scenes.kind = Prefab` avoids a second graph model for proven prefab roots. `serialized_refs` is the normalized cross-object/code edge table; unresolved target columns remain null while raw target identity/text remains present. There is deliberately no general `serialized_fields` table in v1: custom field values are not the milestone's authority or success criterion. (Superseded for byte-verified game-script fields by AT-50; see §2.4.)
 
 Required indexes include:
 
@@ -328,6 +348,7 @@ class-ID-based prefab classification without a second graph model; marker string
 TypeTree decoding for supported built-in/reference cases only
 missing/stripped TypeTree -> GraphOnly, never guessed field values
 custom MonoBehaviour fields without a reviewed type database -> GraphOnly, never guessed values
+  (AT-50: a restored-attribute script layout that decodes the object byte-exact is reviewed; see §2.4)
 exact MonoScript -> SymbolIdentity resolution, missing, and ambiguous cases
 same-build enforcement for scene snapshot and code index
 migration 8 creation, checksum/idempotence, foreign keys, and indexes

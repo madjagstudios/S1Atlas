@@ -20,7 +20,7 @@ namespace S1Atlas.IntegrationTests.Extraction;
 internal sealed class Phase4ExtractionCliFixture : IAsyncDisposable
 {
     private const string AtlasVersion = "0.1.0-test";
-    private const string ProfileId = "cpp2il-reconstructed-assemblies-v1";
+    private const string ProfileId = "cpp2il-reconstructed-assemblies-v2";
 
     private readonly string _temporaryDirectory = Path.Combine(
         Path.GetTempPath(),
@@ -164,12 +164,13 @@ internal sealed class Phase4ExtractionCliFixture : IAsyncDisposable
             """
             {
               "schemaVersion": 1,
-              "profileId": "cpp2il-reconstructed-assemblies-v1",
-              "profileVersion": 1,
+              "profileId": "cpp2il-reconstructed-assemblies-v2",
+              "profileVersion": 2,
               "adapterVersion": 1,
               "extractionSchemaVersion": 1,
               "executableName": "Schedule I",
               "outputFormat": "dll_il_recovery",
+              "cpp2IlProcessors": ["attributeanalyzer", "attributeinjector"],
               "timeoutSeconds": 1800,
               "maximumRetainedStandardOutputBytes": 1048576,
               "maximumRetainedStandardErrorBytes": 1048576,

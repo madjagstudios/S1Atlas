@@ -34,6 +34,48 @@ public sealed class Cpp2IlArgumentBuilderTests : IDisposable
             arguments);
     }
 
+    [Fact]
+    public void Build_V2ProfileWithAttributeProcessors_AppendsUseProcessor()
+    {
+        var gameRoot = Path.GetFullPath(_temporaryDirectory);
+        var outputRoot = CreateAtlasOutputRoot();
+        var profile = InputTestFixture.Profile with
+        {
+            ProfileVersion = 2,
+            Cpp2IlProcessors = ["attributeanalyzer", "attributeinjector"]
+        };
+
+        var arguments = Cpp2IlArgumentBuilder.Build(profile, gameRoot, outputRoot);
+
+        Assert.Equal(
+        [
+            $"--game-path={gameRoot}",
+            "--exe-name=Schedule I",
+            $"--output-to={Path.GetFullPath(outputRoot)}",
+            "--output-as=dll_il_recovery",
+            "--use-processor=attributeanalyzer,attributeinjector"
+        ], arguments);
+    }
+
+    [Theory]
+    [InlineData(1, "attributeanalyzer,attributeinjector")]
+    [InlineData(2, "")]
+    [InlineData(2, "attributeinjector,attributeanalyzer")]
+    [InlineData(2, "attributeanalyzer,attributeinjector,callanalyzer")]
+    public void Build_WhenProcessorsDoNotMatchProfileVersion_RejectsProfile(int version, string processors)
+    {
+        var profile = InputTestFixture.Profile with
+        {
+            ProfileVersion = version,
+            Cpp2IlProcessors = processors.Length == 0 ? [] : processors.Split(',')
+        };
+
+        Assert.Throws<ArgumentException>(() => Cpp2IlArgumentBuilder.Build(
+            profile,
+            Path.GetFullPath(_temporaryDirectory),
+            CreateAtlasOutputRoot()));
+    }
+
     [Theory]
     [InlineData("schema")]
     [InlineData("profile")]

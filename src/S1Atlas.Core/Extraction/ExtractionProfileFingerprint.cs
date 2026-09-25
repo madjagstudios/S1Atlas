@@ -30,6 +30,15 @@ public static class ExtractionProfileFingerprint
         }
 
         AppendOrdered(writer, profile.UnityVersionSources);
+
+        // Appended only when present so profiles without processors keep their existing digest
+        // (and existing extractions keep their recipe IDs). Order is significant to Cpp2IL.
+        if (profile.Cpp2IlProcessors.Count > 0)
+        {
+            writer.AppendString("cpp2il-processors");
+            AppendOrdered(writer, profile.Cpp2IlProcessors);
+        }
+
         return writer.Complete();
     }
 

@@ -4,7 +4,7 @@ using AssetsTools.NET.Extra;
 
 namespace S1Atlas.Extraction.Scene;
 
-public sealed class AssetsToolsUnitySerializedFileParser : IUnitySerializedFileParser
+public sealed partial class AssetsToolsUnitySerializedFileParser : IUnitySerializedFileParser
 {
     private readonly IClassDatabaseSource? _classDatabase;
 
@@ -31,6 +31,11 @@ public sealed class AssetsToolsUnitySerializedFileParser : IUnitySerializedFileP
 
     public Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(
         IReadOnlyList<VerifiedSceneContainer> containers,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(ParseContainers(containers, cancellationToken));
+
+    private IReadOnlyList<ParsedSceneContainer> ParseContainers(
+        IReadOnlyList<VerifiedSceneContainer> containers,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(containers);
@@ -44,7 +49,7 @@ public sealed class AssetsToolsUnitySerializedFileParser : IUnitySerializedFileP
             parsed.Add(ParseContainer(container));
         }
 
-        return Task.FromResult<IReadOnlyList<ParsedSceneContainer>>(parsed.ToArray());
+        return parsed.ToArray();
     }
 
     private ParsedSceneContainer ParseContainer(VerifiedSceneContainer container)
@@ -261,7 +266,8 @@ public sealed class AssetsToolsUnitySerializedFileParser : IUnitySerializedFileP
         new(
             ReadPointer(field["m_GameObject"]),
             ReadPointer(field["m_Script"]),
-            field["m_Enabled"].AsByte != 0);
+            field["m_Enabled"].AsByte != 0,
+            field["m_Name"].IsDummy ? string.Empty : field["m_Name"].AsString);
 
     private static ParsedMonoScriptData ReadMonoScript(AssetTypeValueField field) =>
         new(

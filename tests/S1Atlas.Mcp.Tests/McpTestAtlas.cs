@@ -82,6 +82,7 @@ internal sealed class McpTestAtlas : IAsyncDisposable
     public string GameObjectSelector => "Downtown Root";
     public string PrefabSelector => "Dealer Prefab";
     public string ComponentSelector => "DealerController";
+    public string ScriptableAssetSelector => "SCD_Bikers";
 
     public async Task<ReferenceSeed> SeedReferenceCollectionAsync(string collection)
     {
@@ -664,6 +665,26 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             includeCodeHandoff ? indexId : null,
             includeCodeHandoff ? SceneResolutionStatus.Resolved : SceneResolutionStatus.NotIndexed,
             recoveryStatus);
+        var scriptableAsset = new SceneScriptableAssetRecord(
+            "asset-" + buildId,
+            sceneSnapshotId,
+            container.ContainerId,
+            5,
+            "SCD_Bikers",
+            "Assembly-CSharp",
+            "Demo",
+            "CustomerData",
+            null,
+            null,
+            SceneResolutionStatus.NotIndexed,
+            SceneRecoveryStatus.FullyRecovered);
+        SceneScriptFieldSetRecord[] fieldSets =
+        [
+            new(component.ComponentId, sceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false,
+                [new SceneScriptField("Price", "float", SceneScriptFieldValueKind.Float, "50000")]),
+            new(scriptableAsset.AssetId, sceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset, SceneScriptFieldSetStatus.Decoded, null, false,
+                [new SceneScriptField("MaxBuyQuantity", "int", SceneScriptFieldValueKind.Integer, "100")])
+        ];
 
         await _repository.CreateSceneSnapshotAsync(snapshot, CancellationToken.None);
         await _repository.CompleteSceneSnapshotAsync(
@@ -675,7 +696,9 @@ internal sealed class McpTestAtlas : IAsyncDisposable
                 [gameObject],
                 [new SceneTransformRecord(gameObject.GameObjectId, null, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered)],
                 [component],
-                []),
+                [],
+                [scriptableAsset],
+                fieldSets),
             BaseTime.AddMinutes(31).ToString("O"),
             CancellationToken.None);
         await _repository.PublishSceneSnapshotAsync(

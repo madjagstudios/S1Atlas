@@ -6,7 +6,21 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
-No changes yet.
+### Added
+
+- **Serialized field values for game scripts** (AT-50) — scene indexes now decode
+  the serialized fields of Schedule I MonoBehaviours and ScriptableObjects
+  (property prices, employee wages, special-customer order sizes) instead of
+  stopping at `GraphOnly`. A new extraction profile,
+  `cpp2il-reconstructed-assemblies-v2` (now the default), keeps the
+  `[SerializeField]` attributes Cpp2IL otherwise drops. Layouts built from them are
+  trusted per object only when they decode it byte-exact; anything else stays
+  `GraphOnly` with a stored reason. `get_component` / `component` return the
+  values with FACT provenance, and the new `get_scriptable_object` tool /
+  `scriptable-object` command covers ScriptableObjects such as
+  `SpecialCustomerData`. Every scene snapshot records its script-layout source.
+  Existing builds need a v2 extraction, `extractions promote`, a code-index
+  rebuild, and `index --scene` to gain values.
 
 ## [1.4.0] — 2026-09-20 — Scene intelligence on release builds
 

@@ -16,7 +16,9 @@ namespace S1Atlas.Indexing.Scene;
 public sealed class SceneIndexWorkflow
 {
     public const string ParserId = "assetstools-net";
-    public const string ParserVersion = "3.0.5";
+    public const string ParserVersion = "3.0.5+script-layouts.1";
+    public const string ScriptLayoutGenerator = "assetstools-net-monocecil 3.0.4";
+    private const string ScriptLayoutProfileId = "cpp2il-reconstructed-assemblies-v2";
     public const int SerializedFileSchemaVersion = 22;
 
     private static readonly string[] SupportedContainerPaths =
@@ -125,6 +127,7 @@ public sealed class SceneIndexWorkflow
             throw new SceneIndexFailureException(SceneQueryStatus.SceneInputIntegrityFailure, exception.Message, exception);
         }
         RequireSupportedUnityVersion(verifiedInput.Containers);
+        var scriptLayouts = ResolveScriptLayouts(authority, out var scriptLayoutLabel);
         var parserVersion = force ? _parserVersion + ":forced:" + Guid.NewGuid().ToString("N") : _parserVersion;
         var sceneSnapshotId = SceneSnapshotIdentity.Create(
             buildId,
@@ -139,7 +142,8 @@ public sealed class SceneIndexWorkflow
                 container.ByteCount,
                 container.Sha256,
                 container.SidecarManifest)).ToArray(),
-            ClassDatabaseIdentity(_parser.ClassDatabase));
+            ClassDatabaseIdentity(_parser.ClassDatabase),
+            scriptLayouts?.Identity);
 
         var paths = OwnedScenePaths.ForScheduleOne(_dataRoot, buildId, sceneSnapshotId);
         using var snapshotLock = SceneSnapshotLock.Acquire(paths.LockPath);
@@ -180,11 +184,11 @@ public sealed class SceneIndexWorkflow
             Directory.CreateDirectory(paths.StagingRoot);
             await _sceneRepository.StartSceneSnapshotAsync(sceneSnapshotId, DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
 
-            var parsed = await _parser.ParseAsync(verifiedInput.Containers, cancellationToken);
+            var parsed = await _parser.ParseAsync(verifiedInput.Containers, scriptLayouts, cancellationToken);
             RequireParserFacts(parsed, verifiedInput.Containers);
             RequireDecodableContainers(parsed, _parser.ClassDatabase);
             var writeSet = await _normalizer.NormalizeAsync(
-                snapshot with { TypeTreeSource = TypeTreeSourceLabel(parsed) },
+                snapshot with { TypeTreeSource = TypeTreeSourceLabel(parsed), ScriptLayoutSource = scriptLayoutLabel },
                 verifiedInput.Containers,
                 parsed,
                 cancellationToken);
@@ -445,6 +449,23 @@ public sealed class SceneIndexWorkflow
                 .OrderBy(label => label, StringComparer.Ordinal)
                 .DefaultIfEmpty("embedded"));
 
+    private static SceneScriptLayoutSource? ResolveScriptLayouts(PreferredVerifiedExtraction authority, out string label)
+    {
+        var extraction = authority.Extraction;
+        var managed = Path.Combine(extraction.RootPath, "reconstructed");
+        if (!ScriptLayoutProbe.HasRestoredSerializationAttributes(managed))
+        {
+            label = $"unavailable: extraction {extraction.ExtractionId} (profile {extraction.ProfileId}) has no restored [SerializeField] attributes; " +
+                    $"extract with profile {ScriptLayoutProfileId}, promote it, rebuild the code index, then rerun `index --scene`";
+            return null;
+        }
+
+        label = $"{ScriptLayoutGenerator} over extraction {extraction.ExtractionId} (profile {extraction.ProfileId})";
+        return new SceneScriptLayoutSource(
+            managed,
+            string.Join('|', ScriptLayoutGenerator, extraction.ExtractionId, extraction.ArtifactManifestDigest));
+    }
+
     private static string? ClassDatabaseIdentity(UnityClassDatabaseDescriptor? classDatabase) =>
         classDatabase is null
             ? null
@@ -537,7 +558,8 @@ public sealed class SceneIndexWorkflow
             writeSet?.References.Count ?? 0,
             writeSet is null ? new Dictionary<string, int>() : RecoveryCounts(writeSet),
             [],
-            snapshot.TypeTreeSource);
+            snapshot.TypeTreeSource,
+            snapshot.ScriptLayoutSource);
 
     private async Task<SceneIndexWorkflowResult> ToResultAsync(SceneSnapshotRecord snapshot, CancellationToken cancellationToken)
     {
@@ -558,7 +580,8 @@ public sealed class SceneIndexWorkflow
             statistics.ReferenceCount,
             statistics.RecoveryCounts,
             [],
-            snapshot.TypeTreeSource);
+            snapshot.TypeTreeSource,
+            snapshot.ScriptLayoutSource);
     }
 
     private static IReadOnlyDictionary<string, int> RecoveryCounts(SceneWriteSet writeSet) =>

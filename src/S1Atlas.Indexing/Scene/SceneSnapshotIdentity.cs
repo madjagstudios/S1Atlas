@@ -24,7 +24,8 @@ public static class SceneSnapshotIdentity
         string parserVersion,
         int serializedFileSchemaVersion,
         IReadOnlyList<SceneSnapshotContainerFact> containers,
-        string? classDatabaseIdentity = null)
+        string? classDatabaseIdentity = null,
+        string? scriptLayoutIdentity = null)
     {
         RequireText(buildId, nameof(buildId));
         RequireText(validatedExtractionId, nameof(validatedExtractionId));
@@ -56,6 +57,15 @@ public static class SceneSnapshotIdentity
             RequireText(classDatabaseIdentity, nameof(classDatabaseIdentity));
             Append(hash, "class-database");
             Append(hash, classDatabaseIdentity);
+        }
+
+        // Script layouts change which game-script fields decode, so they enter the identity; a run
+        // without layouts keeps the identity it had before script layouts existed.
+        if (scriptLayoutIdentity is not null)
+        {
+            RequireText(scriptLayoutIdentity, nameof(scriptLayoutIdentity));
+            Append(hash, "script-layouts");
+            Append(hash, scriptLayoutIdentity);
         }
 
         Append(hash, ordered.Length);

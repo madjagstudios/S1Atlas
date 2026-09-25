@@ -97,9 +97,10 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             reference.ResolutionStatus == SceneResolutionStatus.Resolved &&
             reference.TargetSymbolId == _symbolId);
 
+        // No script layouts in this fixture, so no field sets.
         Assert.Equal(0, await ScalarAsync<long>(
             setup.DatabasePath,
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'serialized_fields';"));
+            $"SELECT COUNT(*) FROM script_field_sets WHERE scene_snapshot_id = '{result.SceneSnapshotId}';"));
 
         var network = new RejectingNetworkHandler();
         var processExtractor = new RejectingProcessExtractor();
@@ -180,9 +181,10 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
         Assert.DoesNotContain(behaviourReferences, reference =>
             reference.FieldPath is "m_LocalTarget" or "m_ExternalTarget" or "m_MissingTarget");
 
+        // No script layouts in this fixture, so no field sets.
         Assert.Equal(0, await ScalarAsync<long>(
             setup.DatabasePath,
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'serialized_fields';"));
+            $"SELECT COUNT(*) FROM script_field_sets WHERE scene_snapshot_id = '{result.SceneSnapshotId}';"));
         Assert.Equal(0, await ScalarAsync<long>(
             setup.DatabasePath,
             "SELECT COUNT(*) FROM pragma_table_info('components') WHERE lower(name) IN ('field', 'value', 'payload', 'blob');"));

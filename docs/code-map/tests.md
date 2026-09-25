@@ -8,13 +8,14 @@ Roots: tests
 |---|---|
 | tests/Fixtures/S1Atlas.InteropAssemblyFixture/ | 3 |
 | tests/Fixtures/S1Atlas.ManagedAssemblyFixture/ | 2 |
+| tests/Fixtures/S1Atlas.ScriptLayoutFixture/ | 3 |
 | tests/S1Atlas.Core.Tests/ | 2 |
 | tests/S1Atlas.Core.Tests/Builds/ | 1 |
 | tests/S1Atlas.Core.Tests/Environment/ | 1 |
 | tests/S1Atlas.Core.Tests/Extraction/ | 8 |
 | tests/S1Atlas.Core.Tests/Identity/ | 1 |
-| tests/S1Atlas.Core.Tests/Indexing/ | 4 |
-| tests/S1Atlas.Core.Tests/Scenes/ | 1 |
+| tests/S1Atlas.Core.Tests/Indexing/ | 5 |
+| tests/S1Atlas.Core.Tests/Scenes/ | 2 |
 | tests/S1Atlas.Core.Tests/Tools/ | 2 |
 | tests/S1Atlas.Docs.Tests/ | 2 |
 | tests/S1Atlas.Docs.Tests/Content/ | 1 |
@@ -35,7 +36,7 @@ Roots: tests
 | tests/S1Atlas.Extraction.Tests/Processes/ | 3 |
 | tests/S1Atlas.Extraction.Tests/Profiles/ | 3 |
 | tests/S1Atlas.Extraction.Tests/Promotion/ | 5 |
-| tests/S1Atlas.Extraction.Tests/Scene/ | 6 |
+| tests/S1Atlas.Extraction.Tests/Scene/ | 11 |
 | tests/S1Atlas.Extraction.Tests/Steam/ | 2 |
 | tests/S1Atlas.Extraction.Tests/Tools/ | 14 |
 | tests/S1Atlas.Extraction.Tests/Validation/ | 7 |
@@ -60,11 +61,14 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |
 | tests/S1Atlas.IntegrationTests/Indexing/ | 4 |
+| tests/S1Atlas.IntegrationTests/NativeRecovery/ | 1 |
 | tests/S1Atlas.IntegrationTests/Performance/ | 1 |
 | tests/S1Atlas.IntegrationTests/Repository/ | 1 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
-| tests/S1Atlas.Mcp.Tests/ | 12 |
+| tests/S1Atlas.Mcp.Tests/ | 13 |
+| tests/S1Atlas.NativeRecovery.Tests/ | 13 |
+| tests/S1Atlas.NativeRecovery.Tests/Spikes/ | 3 |
 | tests/S1Atlas.Storage.Tests/ | 4 |
 | tests/S1Atlas.Storage.Tests/Indexing/ | 1 |
 | tests/S1Atlas.Storage.Tests/Migrations/ | 10 |

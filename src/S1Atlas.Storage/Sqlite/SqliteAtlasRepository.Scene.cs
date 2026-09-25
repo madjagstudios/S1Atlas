@@ -36,6 +36,8 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             {
                 reconcile.Transaction = transaction;
                 reconcile.CommandText = """
+                    DELETE FROM script_field_sets WHERE scene_snapshot_id = $id;
+                    DELETE FROM scriptable_assets WHERE scene_snapshot_id = $id;
                     DELETE FROM serialized_refs WHERE scene_snapshot_id = $id;
                     DELETE FROM transforms
                     WHERE game_object_id IN (
@@ -140,6 +142,10 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
                 await InsertComponentAsync(connection, transaction, component, cancellationToken);
             foreach (var reference in writeSet.References)
                 await InsertReferenceAsync(connection, transaction, reference, cancellationToken);
+            foreach (var asset in writeSet.ScriptableAssets)
+                await InsertScriptableAssetAsync(connection, transaction, asset, cancellationToken);
+            foreach (var fieldSet in writeSet.ScriptFieldSets)
+                await InsertScriptFieldSetAsync(connection, transaction, fieldSet, cancellationToken);
 
             await using var update = connection.CreateCommand();
             update.Transaction = transaction;
@@ -147,12 +153,14 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
                 UPDATE scene_snapshots
                 SET status = 'Completed', completed_at_utc = $completed,
                     recovery_status = $recovery, type_tree_source = $typeTreeSource,
+                    script_layout_source = $scriptLayoutSource,
                     failure_code = NULL, failure_message = NULL
                 WHERE scene_snapshot_id = $id AND status = 'Running';
                 """;
             update.Parameters.AddWithValue("$completed", completedAtUtc);
             update.Parameters.AddWithValue("$recovery", writeSet.Snapshot.RecoveryStatus.ToString());
             update.Parameters.AddWithValue("$typeTreeSource", (object?)writeSet.Snapshot.TypeTreeSource ?? DBNull.Value);
+            update.Parameters.AddWithValue("$scriptLayoutSource", (object?)writeSet.Snapshot.ScriptLayoutSource ?? DBNull.Value);
             update.Parameters.AddWithValue("$id", snapshot.SceneSnapshotId);
             if (await update.ExecuteNonQueryAsync(cancellationToken) != 1)
                 throw new InvalidOperationException($"Scene snapshot '{sceneSnapshotId}' could not be completed.");
@@ -476,6 +484,50 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         return new ScenePageResult<SceneComponentRecord>(total, rows.Count, rows);
     }
 
+    public async Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = SceneScriptFieldRows.SelectFieldSetSql;
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        command.Parameters.AddWithValue("$owner", ownerId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? SceneScriptFieldRows.ReadFieldSet(reader) : null;
+    }
+
+    public async Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(assetId);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = SceneScriptFieldRows.SelectAssetByIdSql;
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        command.Parameters.AddWithValue("$id", assetId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? SceneScriptFieldRows.ReadAsset(reader) : null;
+    }
+
+    public async Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = SceneScriptFieldRows.FindAssetsSql;
+        command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+        command.Parameters.AddWithValue("$selector", selector);
+        command.Parameters.AddWithValue("$limit", limit);
+        var rows = new List<SceneScriptableAssetRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add(SceneScriptFieldRows.ReadAsset(reader));
+        return rows;
+    }
+
     public async Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
@@ -635,7 +687,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         SELECT scene_snapshot_id, build_id, extraction_id, input_snapshot_id, code_snapshot_id,
                code_index_id, parser_id, parser_version, container_manifest_digest, status,
                recovery_status, started_at_utc, completed_at_utc, failure_code, failure_message,
-               type_tree_source
+               type_tree_source, script_layout_source
         FROM scene_snapshots
         """;
 
@@ -644,13 +696,21 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         if (!string.Equals(writeSet.Snapshot.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal) ||
             writeSet.Containers.Any(row => !string.Equals(row.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal)) ||
             writeSet.Documents.Any(row => !string.Equals(row.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal)) ||
-            writeSet.References.Any(row => !string.Equals(row.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal)))
+            writeSet.References.Any(row => !string.Equals(row.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal)) ||
+            writeSet.ScriptableAssets.Any(row => !string.Equals(row.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal)) ||
+            writeSet.ScriptFieldSets.Any(row => !string.Equals(row.SceneSnapshotId, sceneSnapshotId, StringComparison.Ordinal)))
             throw new InvalidOperationException("Scene write-set rows must belong to the running snapshot.");
 
         var containers = writeSet.Containers.Select(row => row.ContainerId).ToHashSet(StringComparer.Ordinal);
         var documents = writeSet.Documents.Select(row => row.SceneId).ToHashSet(StringComparer.Ordinal);
         var gameObjects = writeSet.GameObjects.Select(row => row.GameObjectId).ToHashSet(StringComparer.Ordinal);
         var components = writeSet.Components.Select(row => row.ComponentId).ToHashSet(StringComparer.Ordinal);
+        var assets = writeSet.ScriptableAssets.Select(row => row.AssetId).ToHashSet(StringComparer.Ordinal);
+        if (writeSet.ScriptableAssets.Any(row => !containers.Contains(row.ContainerId)) ||
+            writeSet.ScriptFieldSets.Any(row => row.OwnerKind == SceneScriptFieldOwnerKind.Component
+                ? !components.Contains(row.OwnerId)
+                : !assets.Contains(row.OwnerId)))
+            throw new InvalidOperationException("Scene write-set child rows must belong to parents in the running snapshot.");
         if (writeSet.Documents.Any(row => !containers.Contains(row.ContainerId)) ||
             writeSet.GameObjects.Any(row => !documents.Contains(row.SceneId) || !containers.Contains(row.ContainerId)) ||
             writeSet.Transforms.Any(row => !gameObjects.Contains(row.GameObjectId) || (row.ParentGameObjectId is not null && !gameObjects.Contains(row.ParentGameObjectId))) ||
@@ -848,6 +908,22 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task InsertScriptableAssetAsync(SqliteConnection connection, SqliteTransaction transaction, SceneScriptableAssetRecord row, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        command.CommandText = "INSERT INTO scriptable_assets(asset_id, scene_snapshot_id, container_id, local_file_id, name, script_assembly, script_namespace, script_class, resolved_type_symbol_id, resolved_code_index_id, type_resolution_status, recovery_status) VALUES ($id,$snapshot,$container,$local,$name,$assembly,$namespace,$scriptClass,$symbol,$index,$resolution,$recovery);";
+        command.Parameters.AddWithValue("$id", row.AssetId); command.Parameters.AddWithValue("$snapshot", row.SceneSnapshotId); command.Parameters.AddWithValue("$container", row.ContainerId); command.Parameters.AddWithValue("$local", row.LocalFileId); command.Parameters.AddWithValue("$name", row.Name); command.Parameters.AddWithValue("$assembly", (object?)row.ScriptAssembly ?? DBNull.Value); command.Parameters.AddWithValue("$namespace", (object?)row.ScriptNamespace ?? DBNull.Value); command.Parameters.AddWithValue("$scriptClass", (object?)row.ScriptClass ?? DBNull.Value); command.Parameters.AddWithValue("$symbol", (object?)row.ResolvedTypeSymbolId ?? DBNull.Value); command.Parameters.AddWithValue("$index", (object?)row.ResolvedCodeIndexId ?? DBNull.Value); command.Parameters.AddWithValue("$resolution", row.TypeResolutionStatus.ToString()); command.Parameters.AddWithValue("$recovery", row.RecoveryStatus.ToString());
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task InsertScriptFieldSetAsync(SqliteConnection connection, SqliteTransaction transaction, SceneScriptFieldSetRecord row, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand(); command.Transaction = transaction;
+        command.CommandText = "INSERT INTO script_field_sets(owner_id, scene_snapshot_id, owner_kind, status, unavailable_reason, truncated, field_count, fields_json) VALUES ($owner,$snapshot,$kind,$status,$reason,$truncated,$count,$json);";
+        command.Parameters.AddWithValue("$owner", row.OwnerId); command.Parameters.AddWithValue("$snapshot", row.SceneSnapshotId); command.Parameters.AddWithValue("$kind", row.OwnerKind.ToString()); command.Parameters.AddWithValue("$status", row.Status.ToString()); command.Parameters.AddWithValue("$reason", (object?)row.UnavailableReason ?? DBNull.Value); command.Parameters.AddWithValue("$truncated", row.Truncated ? 1 : 0); command.Parameters.AddWithValue("$count", row.Fields.Count); command.Parameters.AddWithValue("$json", SceneScriptFieldJson.Serialize(row.Fields));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task InsertReferenceAsync(SqliteConnection connection, SqliteTransaction transaction, SceneReferenceRecord row, CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand(); command.Transaction = transaction;
@@ -893,7 +969,7 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     private static string EscapeSceneLikePattern(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
 
-    private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14), reader.IsDBNull(15) ? null : reader.GetString(15));
+    private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14), reader.IsDBNull(15) ? null : reader.GetString(15), reader.IsDBNull(16) ? null : reader.GetString(16));
     private static SceneContainerRecord ReadContainer(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5), reader.GetInt64(6), reader.GetString(7), reader.GetString(8));
     private static SceneDocumentRecord ReadDocument(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), Enum.Parse<SceneDocumentKind>(reader.GetString(3)), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));
     private static SceneGameObjectRecord ReadGameObject(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5) != 0, reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetString(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));

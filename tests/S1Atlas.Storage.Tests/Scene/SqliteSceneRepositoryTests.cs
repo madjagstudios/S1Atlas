@@ -22,6 +22,70 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Field_sets_and_scriptable_assets_round_trip_on_published_snapshots_only()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-fields", "build-a") with { ScriptLayoutSource = "assetstools-net-monocecil 3.0.4 over extraction e" };
+        var asset = new SceneScriptableAssetRecord("asset-a", snapshot.SceneSnapshotId, "container-a", 40, "SCD_Bikers",
+            "Assembly-CSharp.dll", "ScheduleOne.SpecialCustomers", "SpecialCustomerData", null, null,
+            SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.FullyRecovered);
+        var componentFields = new SceneScriptFieldSetRecord("component-a", snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.Component,
+            SceneScriptFieldSetStatus.Decoded, null, Truncated: true,
+            [new SceneScriptField("Price", "float", SceneScriptFieldValueKind.Float, "50000"), new SceneScriptField("Stock.Array.size", "int", SceneScriptFieldValueKind.ArraySize, "3")]);
+        var assetFields = new SceneScriptFieldSetRecord("asset-a", snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset,
+            SceneScriptFieldSetStatus.Unavailable, "layout-mismatch: consumed 8 of 12 bytes", false, []);
+        var writeSet = CreateWriteSet(snapshot) with { ScriptableAssets = [asset], ScriptFieldSets = [componentFields, assetFields] };
+
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-09-24T00:00:00Z", cancellationToken);
+        await _repository.CompleteSceneSnapshotAsync(snapshot.SceneSnapshotId, writeSet, "2026-09-24T00:01:00Z", cancellationToken);
+
+        Assert.Null(await _repository.GetScriptFieldSetAsync(snapshot.SceneSnapshotId, "component-a", cancellationToken));
+        Assert.Null(await _repository.GetScriptableAssetAsync(snapshot.SceneSnapshotId, "asset-a", cancellationToken));
+
+        await _repository.PublishSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-09-24T00:02:00Z", cancellationToken);
+
+        var fields = await _repository.GetScriptFieldSetAsync(snapshot.SceneSnapshotId, "component-a", cancellationToken);
+        Assert.NotNull(fields);
+        Assert.True(fields.Truncated);
+        Assert.Equal(componentFields.Fields, fields.Fields);
+        var unavailable = await _repository.GetScriptFieldSetAsync(snapshot.SceneSnapshotId, "asset-a", cancellationToken);
+        Assert.Equal(SceneScriptFieldSetStatus.Unavailable, unavailable!.Status);
+        Assert.Equal("layout-mismatch: consumed 8 of 12 bytes", unavailable.UnavailableReason);
+        Assert.Equal(asset, await _repository.GetScriptableAssetAsync(snapshot.SceneSnapshotId, "asset-a", cancellationToken));
+        Assert.Equal([asset], await _repository.FindScriptableAssetsAsync(snapshot.SceneSnapshotId, "SCD_Bikers", 10, cancellationToken));
+        Assert.Equal([asset], await _repository.FindScriptableAssetsAsync(snapshot.SceneSnapshotId, "ScheduleOne.SpecialCustomers.SpecialCustomerData", 10, cancellationToken));
+        Assert.Empty(await _repository.FindScriptableAssetsAsync(snapshot.SceneSnapshotId, "scd_bikers", 10, cancellationToken));
+        var stored = await _repository.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken);
+        Assert.Equal(snapshot.ScriptLayoutSource, stored!.ScriptLayoutSource);
+
+        var readOnly = new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(_databasePath));
+        Assert.Equal(componentFields.Fields, (await readOnly.GetScriptFieldSetAsync(snapshot.SceneSnapshotId, "component-a", cancellationToken))!.Fields);
+        Assert.Equal(asset, await readOnly.GetScriptableAssetAsync(snapshot.SceneSnapshotId, "asset-a", cancellationToken));
+        Assert.Equal([asset], await readOnly.FindScriptableAssetsAsync(snapshot.SceneSnapshotId, "SCD_Bikers", 10, cancellationToken));
+        var readOnlySnapshot = await readOnly.GetCompletedSceneSnapshotAsync(snapshot.SceneSnapshotId, cancellationToken);
+        Assert.Equal(snapshot.ScriptLayoutSource, readOnlySnapshot!.ScriptLayoutSource);
+    }
+
+    [Fact]
+    public async Task Field_set_for_an_owner_outside_the_write_set_is_rejected()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedAuthoritiesAsync("build-a", cancellationToken);
+        var snapshot = CreateSnapshot("snapshot-orphan", "build-a");
+        var writeSet = CreateWriteSet(snapshot) with
+        {
+            ScriptFieldSets = [new SceneScriptFieldSetRecord("no-such-owner", snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false, [])]
+        };
+        await _repository.CreateSceneSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartSceneSnapshotAsync(snapshot.SceneSnapshotId, "2026-09-24T00:00:00Z", cancellationToken);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _repository.CompleteSceneSnapshotAsync(
+            snapshot.SceneSnapshotId, writeSet, "2026-09-24T00:01:00Z", cancellationToken));
+    }
+
+    [Fact]
     public async Task Completion_inserts_parents_before_children_and_returns_sorted_limited_pages_with_exact_counts()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

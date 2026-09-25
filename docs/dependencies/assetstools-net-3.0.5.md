@@ -29,7 +29,7 @@ As reviewed on 2026-08-14, `dotnet list src/S1Atlas.Extraction/S1Atlas.Extractio
 
 ## S1Atlas use and isolation
 
-The package is pinned only in `src/S1Atlas.Extraction/S1Atlas.Extraction.csproj`. Core, Storage, Indexing, and CLI have no direct package reference and expose no AssetsTools.NET type. `AssetsToolsUnitySerializedFileParser` is the only production source file that imports AssetsTools.NET namespaces; its public contract accepts and returns S1Atlas-owned records.
+The package is pinned only in `src/S1Atlas.Extraction/S1Atlas.Extraction.csproj`. Core, Storage, Indexing, and CLI have no direct package reference and expose no AssetsTools.NET type. `AssetsToolsUnitySerializedFileParser` (its partial files `AssetsToolsUnitySerializedFileParser*.cs`) is the only production code that imports AssetsTools.NET namespaces; its public contract accepts and returns S1Atlas-owned records. Since AT-50 the adapter also uses the companion `AssetsTools.NET.MonoCecil` package to decode game-script fields; see `assetstools-net-monocecil-3.0.4.md`.
 
 The adapter uses the package only to read Unity SerializedFile headers, object tables, class IDs, and external-file metadata. It does not invoke bundle extraction, texture, mesh, audio, shader, or payload-export APIs. It does not load Unity, the game, mods, managed game assemblies, or serialized code. Prefab evidence is based only on `PrefabInstance`/`Prefab` class IDs; object payload strings are not classification evidence.
 

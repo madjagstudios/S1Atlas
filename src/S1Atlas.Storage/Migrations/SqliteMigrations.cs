@@ -880,6 +880,51 @@ internal static class SqliteMigrations
         ALTER TABLE scene_snapshots ADD COLUMN type_tree_source TEXT NULL;
         """;
 
+    // Decoded game-script fields: one JSON field set per owner (a component or an asset-level
+    // MonoBehaviour), and the script-layout source each snapshot used.
+    private const string SceneScriptFieldsV14Sql = """
+        ALTER TABLE scene_snapshots ADD COLUMN script_layout_source TEXT NULL;
+
+        CREATE TABLE scriptable_assets (
+            asset_id TEXT NOT NULL PRIMARY KEY,
+            scene_snapshot_id TEXT NOT NULL,
+            container_id TEXT NOT NULL,
+            local_file_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            script_assembly TEXT NULL,
+            script_namespace TEXT NULL,
+            script_class TEXT NULL,
+            resolved_type_symbol_id TEXT NULL,
+            resolved_code_index_id TEXT NULL,
+            type_resolution_status TEXT NOT NULL CHECK (type_resolution_status IN ('Resolved', 'UnresolvedText', 'Ambiguous', 'NotIndexed', 'Unavailable')),
+            recovery_status TEXT NOT NULL CHECK (recovery_status IN ('FullyRecovered', 'PartiallyRecovered', 'GraphOnly', 'StubOrUnavailable', 'Unknown')),
+            FOREIGN KEY (scene_snapshot_id) REFERENCES scene_snapshots(scene_snapshot_id),
+            FOREIGN KEY (container_id) REFERENCES scene_containers(container_id),
+            FOREIGN KEY (resolved_type_symbol_id) REFERENCES symbols(symbol_id),
+            FOREIGN KEY (resolved_code_index_id) REFERENCES index_runs(index_id)
+        );
+
+        CREATE INDEX ix_scriptable_assets_snapshot_name
+        ON scriptable_assets(scene_snapshot_id, name);
+        CREATE INDEX ix_scriptable_assets_snapshot_script
+        ON scriptable_assets(scene_snapshot_id, script_namespace, script_class);
+
+        CREATE TABLE script_field_sets (
+            owner_id TEXT NOT NULL PRIMARY KEY,
+            scene_snapshot_id TEXT NOT NULL,
+            owner_kind TEXT NOT NULL CHECK (owner_kind IN ('Component', 'ScriptableAsset')),
+            status TEXT NOT NULL CHECK (status IN ('Decoded', 'Unavailable')),
+            unavailable_reason TEXT NULL,
+            truncated INTEGER NOT NULL CHECK (truncated IN (0, 1)),
+            field_count INTEGER NOT NULL CHECK (field_count >= 0),
+            fields_json TEXT NOT NULL,
+            FOREIGN KEY (scene_snapshot_id) REFERENCES scene_snapshots(scene_snapshot_id)
+        );
+
+        CREATE INDEX ix_script_field_sets_snapshot
+        ON script_field_sets(scene_snapshot_id);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -894,6 +939,7 @@ internal static class SqliteMigrations
         new(10, "reference-mods-v10", ReferenceModsV10Sql, RequiresTransaction: false),
         new(11, "relationship-query-target-text-v11", RelationshipQueryTargetTextV11Sql),
         new(12, "native-evidence-v12", NativeEvidenceV12Sql),
-        new(13, "scene-type-tree-source-v13", SceneTypeTreeSourceV13Sql)
+        new(13, "scene-type-tree-source-v13", SceneTypeTreeSourceV13Sql),
+        new(14, "scene-script-fields-v14", SceneScriptFieldsV14Sql)
     ];
 }

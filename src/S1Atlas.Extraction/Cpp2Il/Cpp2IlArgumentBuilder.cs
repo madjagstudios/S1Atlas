@@ -27,24 +27,39 @@ internal static class Cpp2IlArgumentBuilder
         var normalizedOutputRoot = NormalizeFullyQualified(outputRoot, nameof(outputRoot));
         ValidateOwnedOutput(normalizedOutputRoot, getFileAttributes);
 
-        return
-        [
+        var arguments = new List<string>
+        {
             $"--game-path={normalizedGameRoot}",
             "--exe-name=Schedule I",
             $"--output-to={normalizedOutputRoot}",
             "--output-as=dll_il_recovery"
-        ];
+        };
+        if (profile.Cpp2IlProcessors.Count > 0)
+            arguments.Add("--use-processor=" + string.Join(',', profile.Cpp2IlProcessors));
+        return arguments;
     }
+
+    // Version-2 profiles additionally run the attribute processors so reconstructed assemblies
+    // keep custom attributes such as [SerializeField]; no other processor set is accepted.
+    internal static IReadOnlyList<string> AttributeProcessors { get; } = ["attributeanalyzer", "attributeinjector"];
 
     private static void ValidateProfile(ExtractionProfile profile)
     {
         if (profile.SchemaVersion != 1 ||
-            profile.ProfileVersion != 1 ||
+            profile.ProfileVersion is not (1 or 2) ||
             profile.AdapterVersion != 1 ||
             profile.ExtractionSchemaVersion != 1)
         {
             throw new ArgumentException(
-                "The typed Cpp2IL adapter supports only version-1 extraction profiles.",
+                "The typed Cpp2IL adapter supports only version-1 schema, adapter, and extraction profiles at profile version 1 or 2.",
+                nameof(profile));
+        }
+
+        var expectedProcessors = profile.ProfileVersion == 2 ? AttributeProcessors : [];
+        if (!profile.Cpp2IlProcessors.SequenceEqual(expectedProcessors, StringComparer.Ordinal))
+        {
+            throw new ArgumentException(
+                "Version-1 profiles run no Cpp2IL processors; version-2 profiles run exactly attributeanalyzer,attributeinjector.",
                 nameof(profile));
         }
 

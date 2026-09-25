@@ -119,9 +119,17 @@ own answer or decision record, never write a citation back to Atlas.
    failure may omit the neighborhood and report a notice while leaving the
    verified source result available.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
-   `scene`, `gameobject`, `prefab`, and `component`, or MCP `list_scenes`,
-   `get_scene`, `get_gameobject`, `get_prefab`, and `get_component`. For
-   environment/dependency facts use CLI `env --json` or MCP `get_environment`.
+   `scene`, `gameobject`, `prefab`, `component`, and `scriptable-object`, or MCP
+   `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component`,
+   and `get_scriptable_object`. For game-balance values (prices, wages,
+   capacities, order sizes) read the serialized fields these return: a decoded
+   field set is FACT (provenance `serialized-script-fields`) for the serialized
+   default only, so values computed at load time still need in-game
+   verification. A `GraphOnly` component or an `unavailable: …` script-layout
+   source means no values were decoded; do not infer them. ScriptableObjects
+   such as `SpecialCustomerData` are not components; use
+   `get_scriptable_object`. For environment/dependency facts use CLI
+   `env --json` or MCP `get_environment`.
 6. **Recheck after change.** After a Schedule I game update, use CLI `builds`
    and `diff <build-before> <build-after>`, or MCP `list_builds` and
    `compare_symbol` (which requires two explicit build IDs). Then repeat the
@@ -146,7 +154,7 @@ own answer or decision record, never write a citation back to Atlas.
 | Field readers/writers | `fieldrefs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
-| Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component` | `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component` |
+| Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component`, `get_scriptable_object` |
 | S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes`, `search_api_symbols`, `get_api_source`, and the `find_api_*` relationship tools |
 
 Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.

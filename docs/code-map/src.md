@@ -12,9 +12,9 @@ Roots: src
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 2 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 46 |
+| src/S1Atlas.Cli/Commands/ | 48 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
-| src/S1Atlas.Cli/Output/ | 14 |
+| src/S1Atlas.Cli/Output/ | 15 |
 | src/S1Atlas.Cli/Performance/ | 1 |
 | src/S1Atlas.Cli/Properties/ | 1 |
 | src/S1Atlas.Core/ | 1 |
@@ -24,7 +24,7 @@ Roots: src
 | src/S1Atlas.Core/Extraction/ | 34 |
 | src/S1Atlas.Core/Hashing/ | 1 |
 | src/S1Atlas.Core/Identity/ | 1 |
-| src/S1Atlas.Core/Indexing/ | 14 |
+| src/S1Atlas.Core/Indexing/ | 15 |
 | src/S1Atlas.Core/Properties/ | 1 |
 | src/S1Atlas.Core/ReferenceMods/ | 1 |
 | src/S1Atlas.Core/Scenes/ | 3 |
@@ -50,7 +50,7 @@ Roots: src
 | src/S1Atlas.Extraction/Profiles/ | 8 |
 | src/S1Atlas.Extraction/Promotion/ | 5 |
 | src/S1Atlas.Extraction/Properties/ | 1 |
-| src/S1Atlas.Extraction/Scene/ | 4 |
+| src/S1Atlas.Extraction/Scene/ | 7 |
 | src/S1Atlas.Extraction/Steam/ | 3 |
 | src/S1Atlas.Extraction/Tools/ | 16 |
 | src/S1Atlas.Extraction/Validation/ | 8 |
@@ -73,8 +73,10 @@ Roots: src
 | src/S1Atlas.Mcp/Mapping/ | 1 |
 | src/S1Atlas.Mcp/Serialization/ | 1 |
 | src/S1Atlas.Mcp/Tools/ | 8 |
+| src/S1Atlas.NativeRecovery/ | 12 |
+| src/S1Atlas.NativeRecovery/Properties/ | 1 |
 | src/S1Atlas.Storage/ | 1 |
 | src/S1Atlas.Storage/Migrations/ | 7 |
 | src/S1Atlas.Storage/Properties/ | 1 |
-| src/S1Atlas.Storage/Sqlite/ | 14 |
+| src/S1Atlas.Storage/Sqlite/ | 16 |
 

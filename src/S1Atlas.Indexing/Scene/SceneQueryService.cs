@@ -100,7 +100,22 @@ public sealed class SceneQueryService
         var status = request.IncludeCode && component.ResolvedTypeSymbolId is null
             ? SceneQueryStatus.UnresolvedCodeSymbol
             : Outcome(component.RecoveryStatus, references);
-        return new ComponentQueryResult(status, snapshot.Snapshot, component, [], references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { component.ContainerId }.Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken));
+        var scriptFields = await _repository.GetScriptFieldSetAsync(snapshot.Snapshot.SceneSnapshotId, component.ComponentId, cancellationToken);
+        return new ComponentQueryResult(status, snapshot.Snapshot, component, [], references, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, new[] { component.ContainerId }.Concat(references.Rows.SelectMany(row => new[] { row.SourceContainerId, row.TargetContainerId }.OfType<string>())), cancellationToken), scriptFields);
+    }
+
+    public async Task<ScriptableAssetQueryResult> ScriptableAssetAsync(ScriptableAssetQueryRequest request, CancellationToken cancellationToken)
+    {
+        var snapshot = await ResolveSnapshotAsync(null, request.SceneSnapshotId, cancellationToken);
+        if (snapshot.Status != SceneQueryStatus.Resolved || snapshot.Snapshot is null)
+            return new ScriptableAssetQueryResult(snapshot.Status, snapshot.Snapshot, null, [], null);
+        var snapshotId = snapshot.Snapshot.SceneSnapshotId;
+        var selection = await _selector.ResolveScriptableAssetAsync(snapshotId, request.Selector, cancellationToken);
+        if (selection.Selected is null)
+            return new ScriptableAssetQueryResult(selection.Status, snapshot.Snapshot, null, selection.Candidates, null, await ContainersAsync(snapshotId, selection.Candidates.Select(row => row.ContainerId), cancellationToken));
+        var asset = selection.Selected;
+        var fields = await _repository.GetScriptFieldSetAsync(snapshotId, asset.AssetId, cancellationToken);
+        return new ScriptableAssetQueryResult(SceneQueryStatus.Resolved, snapshot.Snapshot, asset, [], fields, await ContainersAsync(snapshotId, [asset.ContainerId], cancellationToken));
     }
 
     private async Task<SceneSnapshotQueryResult> ResolveSnapshotAsync(string? buildId, string? sceneSnapshotId, CancellationToken cancellationToken)
@@ -180,7 +195,9 @@ public enum SceneQueryStatus
     NoVerifiedSceneContainers,
     SceneIndexInProgress,
     SceneTypeTreeUnavailable,
-    NoRecoverableSceneObjects
+    NoRecoverableSceneObjects,
+    ScriptableAssetNotFound,
+    AmbiguousScriptableAsset
 }
 
 public sealed record SceneListRequest(string? BuildId = null, string? SceneSnapshotId = null, SceneDocumentKind? Kind = null, string? Query = null, int Limit = SceneQueryService.DefaultLimit);
@@ -192,4 +209,6 @@ public sealed record SceneSnapshotQueryResult(SceneQueryStatus Status, SceneSnap
 public sealed record SceneListResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, ScenePageResult<SceneDocumentRecord> Page, IReadOnlyList<SceneContainerRecord>? Containers = null);
 public sealed record SceneDocumentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneDocumentRecord? Scene, IReadOnlyList<SceneDocumentRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null);
 public sealed record GameObjectQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneGameObjectRecord? GameObject, IReadOnlyList<SceneGameObjectRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null, SceneTransformRecord? Transform = null);
-public sealed record ComponentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneComponentRecord? Component, IReadOnlyList<SceneComponentRecord> Candidates, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null);
+public sealed record ComponentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneComponentRecord? Component, IReadOnlyList<SceneComponentRecord> Candidates, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null, SceneScriptFieldSetRecord? ScriptFields = null);
+public sealed record ScriptableAssetQueryRequest(string? SceneSnapshotId, string Selector);
+public sealed record ScriptableAssetQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneScriptableAssetRecord? Asset, IReadOnlyList<SceneScriptableAssetRecord> Candidates, SceneScriptFieldSetRecord? ScriptFields, IReadOnlyList<SceneContainerRecord>? Containers = null);

@@ -10,7 +10,7 @@ namespace S1Atlas.Cli.Commands;
 internal static class ExtractCommand
 {
     private const string DefaultProfileId =
-        "cpp2il-reconstructed-assemblies-v1";
+        "cpp2il-reconstructed-assemblies-v2";
 
     public static Command Create(
         ValidatedExtractionWorkflow workflow,

@@ -53,6 +53,76 @@ public sealed class SceneToolTests
     }
 
     [Fact]
+    public async Task GetComponent_ReturnsDecodedFieldsWithFactProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetComponentAsync(
+            selector: atlas.ComponentSelector,
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal("50000", Assert.Single(envelope.Data!.ScriptFields!.Fields).Value);
+        Assert.Contains(envelope.Provenance, entry =>
+            entry.Classification == ProvenanceClassification.Fact &&
+            entry.Source == "serialized-script-fields");
+    }
+
+    [Fact]
+    public async Task GetScriptableObject_ReturnsFieldsByNameWithFactProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetScriptableObjectAsync(
+            selector: atlas.ScriptableAssetSelector,
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal("SCD_Bikers", envelope.Data!.Asset!.Name);
+        Assert.Equal("100", Assert.Single(envelope.Data.ScriptFields!.Fields).Value);
+        Assert.Contains(envelope.Provenance, entry =>
+            entry.Classification == ProvenanceClassification.Fact &&
+            entry.Source == "serialized-script-fields");
+    }
+
+    [Fact]
+    public async Task GetScriptableObject_UnknownSelector_ReturnsNotFound()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetScriptableObjectAsync(
+            selector: "NoSuchAsset",
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Equal("ScriptableAssetNotFound", envelope.Error!.Code);
+    }
+
+    [Fact]
+    public async Task GetScriptableObject_BlankSelector_ReturnsInvalid()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetScriptableObjectAsync(
+            selector: " ",
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Invalid, envelope.Status);
+    }
+
+    [Fact]
     public async Task GetComponent_WithCode_ReturnsSymbolHandoff()
     {
         await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();

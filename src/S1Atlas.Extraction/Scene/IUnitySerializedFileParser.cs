@@ -11,4 +11,14 @@ public interface IUnitySerializedFileParser
     Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(
         IReadOnlyList<VerifiedSceneContainer> containers,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Parses containers and, when <paramref name="scriptLayouts"/> is supplied, also decodes
+    /// game-script serialized fields. Parsers without script support ignore the layouts.
+    /// </summary>
+    Task<IReadOnlyList<ParsedSceneContainer>> ParseAsync(
+        IReadOnlyList<VerifiedSceneContainer> containers,
+        SceneScriptLayoutSource? scriptLayouts,
+        CancellationToken cancellationToken) =>
+        ParseAsync(containers, cancellationToken);
 }

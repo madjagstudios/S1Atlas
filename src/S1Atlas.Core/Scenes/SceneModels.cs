@@ -3,6 +3,9 @@ namespace S1Atlas.Core.Scenes;
 public enum SceneDocumentKind { Scene, Prefab }
 public enum SceneSnapshotStatus { Running, Completed, Failed }
 public enum SceneResolutionStatus { Resolved, UnresolvedText, Ambiguous, NotIndexed, Unavailable }
+public enum SceneScriptFieldOwnerKind { Component, ScriptableAsset }
+public enum SceneScriptFieldSetStatus { Decoded, Unavailable }
+public enum SceneScriptFieldValueKind { Integer, Float, Boolean, String, PPtr, ArraySize, Bytes }
 
 public sealed record SceneSnapshotRecord(
     string SceneSnapshotId,
@@ -20,7 +23,8 @@ public sealed record SceneSnapshotRecord(
     string? CompletedAtUtc = null,
     string? FailureCode = null,
     string? FailureMessage = null,
-    string? TypeTreeSource = null)
+    string? TypeTreeSource = null,
+    string? ScriptLayoutSource = null)
 {
     public string SceneSnapshotId { get; init; } = SceneContract.RequireId(SceneSnapshotId, nameof(SceneSnapshotId));
     public string BuildId { get; init; } = SceneContract.RequireId(BuildId, nameof(BuildId));
@@ -155,6 +159,73 @@ public sealed record SceneReferenceRecord(
     public string? TargetSymbolId { get; init; } = SceneContract.RequireOptionalId(TargetSymbolId, nameof(TargetSymbolId));
 }
 
+/// <summary>
+/// An asset-level MonoBehaviour (a ScriptableObject or other script asset whose m_GameObject is
+/// null). It is not a component attachment, so it has no GameObject owner.
+/// </summary>
+public sealed record SceneScriptableAssetRecord(
+    string AssetId,
+    string SceneSnapshotId,
+    string ContainerId,
+    long LocalFileId,
+    string Name,
+    string? ScriptAssembly,
+    string? ScriptNamespace,
+    string? ScriptClass,
+    string? ResolvedTypeSymbolId,
+    string? ResolvedCodeIndexId,
+    SceneResolutionStatus TypeResolutionStatus,
+    SceneRecoveryStatus RecoveryStatus)
+{
+    public string AssetId { get; init; } = SceneContract.RequireId(AssetId, nameof(AssetId));
+    public string SceneSnapshotId { get; init; } = SceneContract.RequireId(SceneSnapshotId, nameof(SceneSnapshotId));
+    public string ContainerId { get; init; } = SceneContract.RequireId(ContainerId, nameof(ContainerId));
+    public long LocalFileId { get; init; } = SceneContract.RequirePositiveLocalFileId(LocalFileId, nameof(LocalFileId));
+    public string Name { get; init; } = Name ?? throw new ArgumentNullException(nameof(Name));
+    public string? ResolvedTypeSymbolId { get; init; } = SceneContract.RequireOptionalId(ResolvedTypeSymbolId, nameof(ResolvedTypeSymbolId));
+    public string? ResolvedCodeIndexId { get; init; } = SceneContract.RequireOptionalId(ResolvedCodeIndexId, nameof(ResolvedCodeIndexId));
+}
+
+/// <summary>One flattened serialized leaf value, as invariant-culture text.</summary>
+public sealed record SceneScriptField(
+    string Path,
+    string TypeName,
+    SceneScriptFieldValueKind Kind,
+    string Value)
+{
+    public string Path { get; init; } = SceneContract.RequireId(Path, nameof(Path));
+    public string TypeName { get; init; } = SceneContract.RequireId(TypeName, nameof(TypeName));
+    public string Value { get; init; } = Value ?? throw new ArgumentNullException(nameof(Value));
+}
+
+/// <summary>
+/// The decoded serialized fields of one component or scriptable asset, or the reason they are
+/// unavailable.
+/// </summary>
+public sealed record SceneScriptFieldSetRecord(
+    string OwnerId,
+    string SceneSnapshotId,
+    SceneScriptFieldOwnerKind OwnerKind,
+    SceneScriptFieldSetStatus Status,
+    string? UnavailableReason,
+    bool Truncated,
+    IReadOnlyList<SceneScriptField> Fields)
+{
+    public string OwnerId { get; init; } = SceneContract.RequireId(OwnerId, nameof(OwnerId));
+    public string SceneSnapshotId { get; init; } = SceneContract.RequireId(SceneSnapshotId, nameof(SceneSnapshotId));
+    public string? UnavailableReason { get; init; } = RequireReason(Status, UnavailableReason, Fields);
+    public IReadOnlyList<SceneScriptField> Fields { get; init; } = Fields ?? throw new ArgumentNullException(nameof(Fields));
+
+    private static string? RequireReason(SceneScriptFieldSetStatus status, string? reason, IReadOnlyList<SceneScriptField>? fields)
+    {
+        if (status == SceneScriptFieldSetStatus.Decoded && reason is not null)
+            throw new ArgumentException("A decoded field set has no unavailable reason.", nameof(UnavailableReason));
+        if (status == SceneScriptFieldSetStatus.Unavailable && (string.IsNullOrWhiteSpace(reason) || fields is { Count: > 0 }))
+            throw new ArgumentException("An unavailable field set needs a reason and no fields.", nameof(UnavailableReason));
+        return reason;
+    }
+}
+
 public sealed record SceneWriteSet(
     SceneSnapshotRecord Snapshot,
     IReadOnlyList<SceneContainerRecord> Containers,
@@ -162,7 +233,13 @@ public sealed record SceneWriteSet(
     IReadOnlyList<SceneGameObjectRecord> GameObjects,
     IReadOnlyList<SceneTransformRecord> Transforms,
     IReadOnlyList<SceneComponentRecord> Components,
-    IReadOnlyList<SceneReferenceRecord> References);
+    IReadOnlyList<SceneReferenceRecord> References,
+    IReadOnlyList<SceneScriptableAssetRecord>? ScriptableAssets = null,
+    IReadOnlyList<SceneScriptFieldSetRecord>? ScriptFieldSets = null)
+{
+    public IReadOnlyList<SceneScriptableAssetRecord> ScriptableAssets { get; init; } = ScriptableAssets ?? [];
+    public IReadOnlyList<SceneScriptFieldSetRecord> ScriptFieldSets { get; init; } = ScriptFieldSets ?? [];
+}
 
 public sealed record SceneIndexStatistics(
     int ContainerCount,

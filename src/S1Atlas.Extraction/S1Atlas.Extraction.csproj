@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
   <ItemGroup><ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" /></ItemGroup>
-  <ItemGroup><PackageReference Include="AssetsTools.NET" Version="3.0.5" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
+    <PackageReference Include="AssetsTools.NET.MonoCecil" Version="3.0.4" />
+  </ItemGroup>
 </Project>
