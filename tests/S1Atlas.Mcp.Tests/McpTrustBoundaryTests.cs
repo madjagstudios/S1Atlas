@@ -44,6 +44,7 @@ public sealed class McpTrustBoundaryTests
                 "get_method",
                 "get_prefab",
                 "get_scene",
+                "get_scriptable_object",
                 "get_source",
                 "get_type",
                 "investigate_seam",

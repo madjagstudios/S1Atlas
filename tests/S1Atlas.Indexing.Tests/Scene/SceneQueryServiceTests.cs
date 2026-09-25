@@ -124,6 +124,61 @@ public sealed class SceneQueryServiceTests
         Assert.Null(result.ScriptFields);
     }
 
+    [Theory]
+    [InlineData("asset-a")]
+    [InlineData("SCD_Bikers")]
+    [InlineData("ScheduleOne.SpecialCustomers.SpecialCustomerData")]
+    public async Task Scriptable_asset_resolves_by_id_name_or_type_with_fields(string selector)
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Assets.Add(Asset("asset-a", 40, "SCD_Bikers"));
+        repository.FieldSets.Add(new SceneScriptFieldSetRecord("asset-a", "snapshot-a", SceneScriptFieldOwnerKind.ScriptableAsset,
+            SceneScriptFieldSetStatus.Decoded, null, false, [new SceneScriptField("MaxBuyQuantity", "int", SceneScriptFieldValueKind.Integer, "100")]));
+
+        var result = await new SceneQueryService(repository).ScriptableAssetAsync(
+            new ScriptableAssetQueryRequest("snapshot-a", selector),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.Resolved, result.Status);
+        Assert.Equal("asset-a", result.Asset!.AssetId);
+        Assert.Equal("100", Assert.Single(result.ScriptFields!.Fields).Value);
+    }
+
+    [Fact]
+    public async Task Scriptable_asset_selector_matching_two_assets_is_ambiguous()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Assets.Add(Asset("asset-a", 40, "SCD_Bikers"));
+        repository.Assets.Add(Asset("asset-b", 41, "SCD_Hippies"));
+
+        var result = await new SceneQueryService(repository).ScriptableAssetAsync(
+            new ScriptableAssetQueryRequest("snapshot-a", "ScheduleOne.SpecialCustomers.SpecialCustomerData"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.AmbiguousScriptableAsset, result.Status);
+        Assert.Null(result.Asset);
+        Assert.Equal(["asset-a", "asset-b"], result.Candidates.Select(candidate => candidate.AssetId));
+    }
+
+    [Fact]
+    public async Task Unknown_scriptable_asset_is_not_found()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+
+        var result = await new SceneQueryService(repository).ScriptableAssetAsync(
+            new ScriptableAssetQueryRequest("snapshot-a", "NoSuchAsset"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.ScriptableAssetNotFound, result.Status);
+    }
+
+    private static SceneScriptableAssetRecord Asset(string id, long localFileId, string name) =>
+        new(id, "snapshot-a", "container-a", localFileId, name, "Assembly-CSharp", "ScheduleOne.SpecialCustomers", "SpecialCustomerData",
+            null, null, SceneResolutionStatus.NotIndexed, SceneRecoveryStatus.FullyRecovered);
+
     [Fact]
     public async Task Prefabs_returns_a_valid_empty_proven_prefab_page()
     {

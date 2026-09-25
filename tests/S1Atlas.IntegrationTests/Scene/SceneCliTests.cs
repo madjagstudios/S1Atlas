@@ -182,6 +182,36 @@ public sealed class SceneCliTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Scriptable_object_command_prints_the_asset_and_its_fields_in_human_and_json()
+    {
+        await SeedPublishedSceneAsync();
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var humanOutput = new StringWriter(); using var humanError = new StringWriter(); using var jsonOutput = new StringWriter(); using var jsonError = new StringWriter();
+
+        var humanExit = application.Invoke(["scriptable-object", "SCD_Bikers"], humanOutput, humanError, TestContext.Current.CancellationToken);
+        var jsonExit = application.Invoke(["scriptable-object", "Game.CustomerData", "--json"], jsonOutput, jsonError, TestContext.Current.CancellationToken);
+
+        Assert.True(humanExit == 0, humanOutput.ToString() + humanError); Assert.True(jsonExit == 0, jsonOutput.ToString() + jsonError);
+        Assert.Contains("Asset: SCD_Bikers | asset-a", humanOutput.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Field: MaxBuyQuantity (int) = 100", humanOutput.ToString(), StringComparison.Ordinal);
+        using var json = System.Text.Json.JsonDocument.Parse(jsonOutput.ToString());
+        Assert.Equal("asset-a", json.RootElement.GetProperty("data").GetProperty("asset").GetProperty("assetId").GetString());
+    }
+
+    [Fact]
+    public async Task Scriptable_object_command_for_an_unknown_selector_fails_with_not_found()
+    {
+        await SeedPublishedSceneAsync();
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter(); using var error = new StringWriter();
+
+        var exit = application.Invoke(["scriptable-object", "NoSuchAsset", "--json"], output, error, TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(0, exit);
+        Assert.Contains("ScriptableAssetNotFound", output.ToString() + error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Component_command_prints_decoded_fields_in_human_and_json()
     {
         await SeedPublishedSceneAsync();

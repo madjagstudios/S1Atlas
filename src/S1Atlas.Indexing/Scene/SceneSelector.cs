@@ -90,6 +90,30 @@ public sealed class SceneSelector
             _ => SceneSelectionResult<SceneComponentRecord>.Ambiguous(SceneQueryStatus.AmbiguousComponent, matches)
         };
     }
+
+    public async Task<SceneSelectionResult<SceneScriptableAssetRecord>> ResolveScriptableAssetAsync(
+        string sceneSnapshotId,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+
+        var byId = await _repository.GetScriptableAssetAsync(sceneSnapshotId, selector, cancellationToken);
+        if (byId is not null)
+            return SceneSelectionResult<SceneScriptableAssetRecord>.Resolved(byId);
+
+        var matches = (await _repository.FindScriptableAssetsAsync(sceneSnapshotId, selector, CandidateLimit, cancellationToken))
+            .OrderBy(row => row.Name, StringComparer.Ordinal)
+            .ThenBy(row => row.AssetId, StringComparer.Ordinal)
+            .ToArray();
+        return matches.Length switch
+        {
+            0 => SceneSelectionResult<SceneScriptableAssetRecord>.NotFound(SceneQueryStatus.ScriptableAssetNotFound),
+            1 => SceneSelectionResult<SceneScriptableAssetRecord>.Resolved(matches[0]),
+            _ => SceneSelectionResult<SceneScriptableAssetRecord>.Ambiguous(SceneQueryStatus.AmbiguousScriptableAsset, matches)
+        };
+    }
 }
 
 public sealed record SceneSelectionResult<T>(SceneQueryStatus Status, T? Selected, IReadOnlyList<T> Candidates)

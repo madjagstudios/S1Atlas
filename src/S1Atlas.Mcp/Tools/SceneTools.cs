@@ -111,6 +111,25 @@ public sealed class SceneTools
         CancellationToken ct = default) =>
         GetDocumentAsync(selector, buildId, sceneSnapshotId, "Prefab", includeObjects, includeComponents, includeReferences, limit, ct, prefab: true);
 
+    [McpServerTool(Name = "get_scriptable_object"), Description("Resolve one indexed Schedule I ScriptableObject asset (an asset-level MonoBehaviour with no GameObject, such as SpecialCustomerData) by asset ID, exact asset name, or exact Namespace.Class, including its decoded serialized script field values when the scene index had restored script layouts.")]
+    public async Task<ToolEnvelope<ScriptableAssetQueryResult>> GetScriptableObjectAsync(
+        [Description("Asset ID, exact asset name (m_Name), or exact Namespace.Class.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId,
+        [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId,
+        CancellationToken ct = default)
+    {
+        return await WithAuthorityAsync(buildId, ct, async authority =>
+        {
+            if (TrySelectorError(selector, authority, out ToolEnvelope<ScriptableAssetQueryResult> error)) return error;
+            return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
+            {
+                var result = await _services.SceneQueryService.ScriptableAssetAsync(
+                    new ScriptableAssetQueryRequest(snapshot.SceneSnapshotId, selector), ct);
+                return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scriptable-asset-query", DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
+            });
+        });
+    }
+
     [McpServerTool(Name = "get_component"), Description("Resolve one indexed Schedule I component, including its decoded serialized script field values (when the scene index had restored script layouts) and its resolved code-symbol handoff when requested.")]
     public async Task<ToolEnvelope<ComponentQueryResult>> GetComponentAsync(
         [Description("Exact or fuzzy component selector.")] string selector,
@@ -249,6 +268,8 @@ public sealed class SceneTools
             SceneQueryStatus.AmbiguousScene or SceneQueryStatus.AmbiguousGameObject or SceneQueryStatus.AmbiguousComponent => ToolEnvelope<T>.Ambiguous(build, candidates, provenance),
             SceneQueryStatus.UnresolvedCodeSymbol => ToolEnvelope<T>.NotFound(build, new ToolError("UnresolvedCodeSymbol", "The component has no exact resolved code symbol."), provenance),
             SceneQueryStatus.NoRecoverableSceneObjects => ToolEnvelope<T>.Unavailable(new ToolError("NoRecoverableSceneObjects", "This completed scene snapshot recovered no GameObjects and cannot be queried. Rebuild it with the CLI (index --scene --force); the rerun reports why."), build, provenance),
+            SceneQueryStatus.ScriptableAssetNotFound => ToolEnvelope<T>.NotFound(build, new ToolError("ScriptableAssetNotFound", "No indexed scriptable asset matched the selector."), provenance),
+            SceneQueryStatus.AmbiguousScriptableAsset => ToolEnvelope<T>.Ambiguous(build, candidates, provenance),
             _ => ToolEnvelope<T>.Unavailable(new ToolError(status.ToString(), "The requested scene data is unavailable."), build, provenance)
         };
     }
