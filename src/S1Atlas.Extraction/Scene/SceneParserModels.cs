@@ -1,3 +1,5 @@
+using S1Atlas.Core.Scenes;
+
 namespace S1Atlas.Extraction.Scene;
 
 public sealed record SceneContainerDeclaration(
@@ -75,7 +77,8 @@ public sealed record ParsedTransformData(
 public sealed record ParsedMonoBehaviourData(
     ParsedScenePPtr GameObject,
     ParsedScenePPtr Script,
-    bool Enabled);
+    bool Enabled,
+    string Name = "");
 
 public sealed record ParsedMonoScriptData(
     string AssemblyName,
@@ -96,7 +99,8 @@ public sealed record ParsedSceneObject(
     ParsedTransformData? Transform,
     ParsedMonoBehaviourData? MonoBehaviour,
     ParsedMonoScriptData? MonoScript,
-    ParsedBuildSettingsData? BuildSettings);
+    ParsedBuildSettingsData? BuildSettings,
+    ParsedScriptFields? ScriptFields = null);
 
 public sealed record ParsedSceneExternalReference(
     int FileId,
@@ -130,3 +134,33 @@ internal sealed record VerifiedSceneFile(
     long ByteCount,
     DateTimeOffset LastWriteUtc,
     string Sha256);
+
+/// <summary>
+/// Where reconstructed script assemblies with restored serialization attributes live, and a
+/// stable identity for them that enters the scene snapshot identity.
+/// </summary>
+public sealed record SceneScriptLayoutSource(string ManagedAssembliesPath, string Identity)
+{
+    public string ManagedAssembliesPath { get; init; } = Require(ManagedAssembliesPath, nameof(ManagedAssembliesPath));
+    public string Identity { get; init; } = Require(Identity, nameof(Identity));
+
+    private static string Require(string value, string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, name);
+        return value;
+    }
+}
+
+/// <summary>
+/// A MonoBehaviour's decoded game-script fields, or why they could not be decoded. Only parsers
+/// given script layouts produce these.
+/// </summary>
+public sealed record ParsedScriptFields(
+    SceneScriptFieldSetStatus Status,
+    string? UnavailableReason,
+    IReadOnlyList<SceneScriptField> Fields,
+    bool Truncated)
+{
+    public static ParsedScriptFields Unavailable(string reason) =>
+        new(SceneScriptFieldSetStatus.Unavailable, reason, [], false);
+}
