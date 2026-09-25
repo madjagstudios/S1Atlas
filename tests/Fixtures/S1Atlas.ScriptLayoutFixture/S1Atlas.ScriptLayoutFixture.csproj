@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Synthetic stand-in for a Cpp2IL-reconstructed Assembly-CSharp: fake UnityEngine types plus
+       script classes, compiled into one assembly so MonoCecilTempGenerator resolves the whole
+       inheritance chain without any real Unity or game binary. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Assembly-CSharp</AssemblyName>
+    <RootNamespace>Fixture.Game</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+    <NoWarn>$(NoWarn);CS0169;CS0414;CS0649</NoWarn>
+  </PropertyGroup>
+</Project>
