@@ -12,7 +12,8 @@ namespace S1Atlas.Extraction.Tests.Scene;
 /// for the classes in S1Atlas.ScriptLayoutFixture. Path IDs:
 /// 101 GameObject "Shop Owner"; 103 Shop; 110 Catalog (asset-level, m_GameObject null);
 /// 112 UnattributedShop (payload has Price, class lacks [SerializeField]); 113 Inventory
-/// (corrupt array length); 114 script class missing from the assembly; 104/111/115/116/117 MonoScripts.
+/// (corrupt array length); 114 script class missing from the assembly; 118 Blob (3-byte and
+/// 300-byte arrays); 104/111/115/116/117/119 MonoScripts.
 /// </summary>
 internal sealed class ScriptFieldSerializedFileFixture : IDisposable
 {
@@ -132,7 +133,13 @@ internal sealed class ScriptFieldSerializedFileFixture : IDisposable
             })),
             new(116, 2, MonoScriptPayload("Inventory", "Fixture.Game", "Assembly-CSharp.dll")),
             new(114, 1, Behaviour(101, 117, "", _ => { })),
-            new(117, 2, MonoScriptPayload("DoesNotExist", "Fixture.Game", "Assembly-CSharp.dll"))
+            new(117, 2, MonoScriptPayload("DoesNotExist", "Fixture.Game", "Assembly-CSharp.dll")),
+            new(118, 1, Behaviour(101, 119, "", writer =>
+            {
+                WriteBytes(writer, [0x01, 0xAB, 0xFF]);                           // Small
+                WriteBytes(writer, Enumerable.Range(0, 300).Select(i => (byte)i).ToArray()); // Large
+            })),
+            new(119, 2, MonoScriptPayload("Blob", "Fixture.Game", "Assembly-CSharp.dll"))
         };
         var types = Types();
 
@@ -198,6 +205,14 @@ internal sealed class ScriptFieldSerializedFileFixture : IDisposable
         }
 
         return result.ToArray();
+    }
+
+    // Unity serializes byte[] as a length-prefixed byte run, aligned to 4 afterwards.
+    private static void WriteBytes(BinaryWriter writer, byte[] bytes)
+    {
+        writer.Write(bytes.Length);
+        writer.Write(bytes);
+        Align(writer, 4);
     }
 
     private static byte[] Behaviour(long gameObject, long script, string name, Action<BinaryWriter> writeFields) => Payload(writer =>

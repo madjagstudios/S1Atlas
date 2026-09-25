@@ -32,4 +32,10 @@ namespace Fixture.Game
     {
         public List<int> Stock;
     }
+
+    public class Blob : MonoBehaviour
+    {
+        public byte[] Small;
+        public byte[] Large;
+    }
 }

@@ -254,9 +254,12 @@ public sealed partial class AssetsToolsUnitySerializedFileParser
         {
             if (field.Value?.ValueType == AssetValueType.ByteArray)
             {
+                // Lower-case hex, bounded like strings; a longer array keeps its leading bytes.
+                var bytes = field.AsByteArray;
+                var kept = Math.Min(bytes.Length, MaxScriptStringLength / 2);
                 fields.Add(new SceneScriptField(path, field.TypeName, SceneScriptFieldValueKind.Bytes,
-                    field.AsByteArray.Length.ToString(CultureInfo.InvariantCulture)));
-                return true;
+                    Convert.ToHexString(bytes, 0, kept).ToLowerInvariant()));
+                return kept == bytes.Length;
             }
 
             fields.Add(new SceneScriptField(path + ".size", "int", SceneScriptFieldValueKind.ArraySize,

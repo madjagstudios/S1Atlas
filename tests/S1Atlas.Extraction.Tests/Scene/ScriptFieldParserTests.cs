@@ -65,6 +65,21 @@ public sealed class ScriptFieldParserTests
     }
 
     [Fact]
+    public async Task Byte_arrays_are_stored_as_hex_and_long_ones_mark_the_set_truncated()
+    {
+        var blob = await ParseObjectAsync(118);
+
+        var fields = Assert.IsType<ParsedScriptFields>(blob.ScriptFields);
+        Assert.Equal(SceneScriptFieldSetStatus.Decoded, fields.Status);
+        Assert.Contains(fields.Fields, field => field is { Path: "Small.Array", Kind: SceneScriptFieldValueKind.Bytes, Value: "01abff" });
+        var large = Assert.Single(fields.Fields, field => field.Path == "Large.Array");
+        Assert.Equal(SceneScriptFieldValueKind.Bytes, large.Kind);
+        Assert.Equal(AssetsToolsUnitySerializedFileParser.MaxScriptStringLength, large.Value.Length);
+        Assert.StartsWith("000102", large.Value, StringComparison.Ordinal);
+        Assert.True(fields.Truncated);
+    }
+
+    [Fact]
     public async Task Script_class_missing_from_the_assembly_is_unavailable()
     {
         var missing = await ParseObjectAsync(114);

@@ -105,7 +105,7 @@ Neither check alone is enough. In the AT-50 spike on build `3871b66f…`, 113,87
 What changes:
 
 - A MonoBehaviour component whose fields decode this way is `FullyRecovered`, and its values are FACT (MCP provenance source `serialized-script-fields`). Anything failing either check stays `GraphOnly` with a stored reason, and no values are stored for it.
-- Values are stored as one JSON field set per component, or per asset-level MonoBehaviour (`scriptable_assets`), in `script_field_sets`. Each set is capped at 256 leaves, 32 elements per array, and 512-character strings. A set hitting a cap is still decoded but flagged `truncated`. Each snapshot records its `script_layout_source`: the generator and extraction, or `unavailable: …` with the remedy.
+- Values are stored as one JSON field set per component, or per asset-level MonoBehaviour (`scriptable_assets`), in `script_field_sets`. Each set is capped at 256 leaves, 32 elements per array, 512-character strings, and byte arrays of 256 bytes (stored as hex). A set hitting a cap is still decoded but flagged `truncated`. Each snapshot records its `script_layout_source`: the generator and extraction, or `unavailable: …` with the remedy.
 - The "no general `serialized_fields` table" line in §7 is superseded for byte-verified script fields only.
 - Values are serialized defaults. Anything computed at load time still needs in-game verification.
 

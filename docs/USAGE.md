@@ -437,9 +437,9 @@ The new extraction does not replace an existing preferred one automatically
 rebuilt for it before `index --scene`. `component` and `scriptable-object` then
 print `Field: <path> (<type>) = <value>` lines, and the MCP tools return the field
 set with a FACT provenance entry `serialized-script-fields`. Field sets are capped
-at 256 leaves, 32 elements per array, and 512-character strings; a capped set is
-marked `truncated`. Values are serialized defaults: anything the game computes at
-load time still needs in-game verification.
+at 256 leaves, 32 elements per array, 512-character strings, and 256-byte byte
+arrays (shown as hex); a capped set is marked `truncated`. Values are serialized
+defaults: anything the game computes at load time still needs in-game verification.
 
 Without an installed, matching class database a stripped build still yields
 nameless object-table stubs and nothing else, so `index --scene` refuses to
