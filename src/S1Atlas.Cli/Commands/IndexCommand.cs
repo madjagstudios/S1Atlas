@@ -249,7 +249,8 @@ internal static class IndexCommand
             sceneResult.ReferenceCount,
             sceneResult.RecoveryCounts ?? new Dictionary<string, int>(),
             sceneResult.Warnings ?? [],
-            sceneResult.TypeTreeSource);
+            sceneResult.TypeTreeSource,
+            sceneResult.ScriptLayoutSource);
         return commandOutput.Success(sceneData, writer =>
         {
             writer.WriteLine(
@@ -257,6 +258,7 @@ internal static class IndexCommand
                 $"parser {sceneData.ParserId} {sceneData.ParserVersion} | type tree {sceneData.TypeTreeSource ?? "unknown"} | {(sceneData.Reused ? "reused" : "rebuilt")} | " +
                 $"containers {sceneData.ContainerCount} | documents {sceneData.DocumentCount} | objects {sceneData.GameObjectCount} | " +
                 $"transforms {sceneData.TransformCount} | components {sceneData.ComponentCount} | references {sceneData.ReferenceCount}");
+            writer.WriteLine("Script layouts: " + (sceneData.ScriptLayoutSource ?? "unknown"));
             writer.WriteLine("Recovery: " + string.Join(", ", sceneData.RecoveryCounts.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "=" + item.Value)));
             foreach (var warning in sceneData.Warnings) writer.WriteLine("Warning: " + warning);
         });

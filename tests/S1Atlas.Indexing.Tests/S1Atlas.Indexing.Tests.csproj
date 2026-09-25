@@ -16,4 +16,14 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <!-- The script-layout fixture is also named Assembly-CSharp, so it is copied into its own
+       subfolder instead of beside the ManagedAssemblyFixture. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fixtures\S1Atlas.ScriptLayoutFixture\S1Atlas.ScriptLayoutFixture.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="ScriptLayoutFixtureAssembly" />
+  </ItemGroup>
+  <Target Name="CopyScriptLayoutFixture" AfterTargets="Build">
+    <Copy SourceFiles="@(ScriptLayoutFixtureAssembly)" DestinationFolder="$(OutDir)script-layout-fixture" SkipUnchangedFiles="true" />
+  </Target>
 </Project>
