@@ -390,6 +390,80 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         Assert.Equal(SceneResolutionStatus.Resolved, reference.ResolutionStatus);
     }
 
+    [Fact]
+    public async Task Decoded_script_fields_make_the_component_fully_recovered_and_emit_a_field_set()
+    {
+        var decoded = new ParsedScriptFields(SceneScriptFieldSetStatus.Decoded, null,
+            [new SceneScriptField("Price", "int", SceneScriptFieldValueKind.Integer, "50000")], Truncated: false);
+        var level = Container(
+            "Schedule I_Data/level0",
+            objects:
+            [
+                GameObject(1, "Docks", [new ParsedScenePPtr(0, 10), new ParsedScenePPtr(0, 11)]),
+                Object(10, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 20), true)) with { ScriptFields = decoded },
+                Object(11, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 20), true)) with { ScriptFields = ParsedScriptFields.Unavailable("layout-mismatch: consumed 8 of 12 bytes") },
+                Object(20, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne.Property", "Property"))
+            ]);
+
+        var result = await NormalizeAsync([level]);
+
+        var byLocal = result.Components.ToDictionary(item => item.LocalFileId);
+        Assert.Equal(SceneRecoveryStatus.FullyRecovered, byLocal[10].RecoveryStatus);
+        Assert.Equal(SceneRecoveryStatus.GraphOnly, byLocal[11].RecoveryStatus);
+        var decodedSet = Assert.Single(result.ScriptFieldSets, set => set.OwnerId == byLocal[10].ComponentId);
+        Assert.Equal(SceneScriptFieldOwnerKind.Component, decodedSet.OwnerKind);
+        Assert.Equal("50000", Assert.Single(decodedSet.Fields).Value);
+        var unavailable = Assert.Single(result.ScriptFieldSets, set => set.OwnerId == byLocal[11].ComponentId);
+        Assert.Equal(SceneScriptFieldSetStatus.Unavailable, unavailable.Status);
+        Assert.Equal("layout-mismatch: consumed 8 of 12 bytes", unavailable.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task Asset_level_mono_behaviour_with_a_script_becomes_a_scriptable_asset_with_fields()
+    {
+        var fields = new ParsedScriptFields(SceneScriptFieldSetStatus.Decoded, null,
+            [new SceneScriptField("MaxBuyQuantity", "int", SceneScriptFieldValueKind.Integer, "100")], Truncated: false);
+        var shared = Container(
+            "Schedule I_Data/sharedassets1.assets",
+            objects:
+            [
+                GameObject(1, "Anchor"),
+                Object(30, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 0), new ParsedScenePPtr(0, 31), true, "SCD_Bikers")) with { ScriptFields = fields },
+                Object(31, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne.SpecialCustomers", "SpecialCustomerData"))
+            ]);
+
+        var result = await NormalizeAsync([shared]);
+
+        var asset = Assert.Single(result.ScriptableAssets);
+        Assert.Equal("SCD_Bikers", asset.Name);
+        Assert.Equal(30, asset.LocalFileId);
+        Assert.Equal("SpecialCustomerData", asset.ScriptClass);
+        Assert.Equal(SceneRecoveryStatus.FullyRecovered, asset.RecoveryStatus);
+        Assert.DoesNotContain(result.Components, component => component.LocalFileId == 30);
+        var set = Assert.Single(result.ScriptFieldSets);
+        Assert.Equal(asset.AssetId, set.OwnerId);
+        Assert.Equal(SceneScriptFieldOwnerKind.ScriptableAsset, set.OwnerKind);
+    }
+
+    [Fact]
+    public async Task Components_without_parsed_script_fields_stay_graph_only_with_no_field_set()
+    {
+        var level = Container(
+            "Schedule I_Data/level0",
+            objects:
+            [
+                GameObject(1, "Player", [new ParsedScenePPtr(0, 10)]),
+                Object(10, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 20), true)),
+                Object(20, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne", "PlayerController"))
+            ]);
+
+        var result = await NormalizeAsync([level]);
+
+        Assert.Equal(SceneRecoveryStatus.GraphOnly, Assert.Single(result.Components).RecoveryStatus);
+        Assert.Empty(result.ScriptFieldSets);
+        Assert.Empty(result.ScriptableAssets);
+    }
+
     // with a class database every MonoBehaviour in sharedassets/resources decodes, and
     // ScriptableObjects serialize an explicit null m_GameObject. They are assets, not component
     // attachments, so the run must neither fail nor invent an owner for them.

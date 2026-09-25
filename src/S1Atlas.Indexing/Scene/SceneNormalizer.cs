@@ -135,6 +135,7 @@ public sealed class SceneNormalizer
                 pair => HashId(snapshot.SceneSnapshotId, "component", pair.Key.ContainerPath, pair.Key.LocalFileId.ToString(CultureInfo.InvariantCulture)));
         var scriptResolutions = new Dictionary<ObjectKey, SceneCodeSymbolResolution>();
         var components = new List<SceneComponentRecord>(componentIds.Count);
+        var fieldSets = new List<SceneScriptFieldSetRecord>();
         foreach (var componentKey in componentIds.Keys.OrderBy(key => key.ContainerPath, StringComparer.Ordinal).ThenBy(key => key.LocalFileId))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -169,6 +170,45 @@ public sealed class SceneNormalizer
                 scriptResolution?.CodeIndexId,
                 scriptResolution?.Status ?? SceneResolutionStatus.NotIndexed,
                 ComponentRecovery(item, transformFacts.TryGetValue(componentKey, out var transform) && transform.SchemaValid)));
+            if (item.ScriptFields is not null)
+                fieldSets.Add(FieldSet(componentIds[componentKey], snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.Component, item.ScriptFields));
+        }
+
+        // Asset-level MonoBehaviours (ScriptableObjects) have an explicit null m_GameObject and are
+        // skipped as components; with a script they are recorded as scriptable assets instead.
+        var scriptableAssets = new List<SceneScriptableAssetRecord>();
+        foreach (var pair in objects
+                     .Where(pair => pair.Value is { Kind: ParsedSceneObjectKind.MonoBehaviour, MonoBehaviour: { } data } &&
+                                    data.GameObject.LocalFileId == 0 &&
+                                    data.Script.LocalFileId != 0)
+                     .OrderBy(pair => pair.Key.ContainerPath, StringComparer.Ordinal)
+                     .ThenBy(pair => pair.Key.LocalFileId))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var resolution = await ResolveMonoBehaviourScriptAsync(
+                snapshot,
+                pair.Key,
+                pair.Value,
+                objects,
+                pointers,
+                scriptResolutions,
+                cancellationToken);
+            var assetId = HashId(snapshot.SceneSnapshotId, "scriptable-asset", pair.Key.ContainerPath, pair.Key.LocalFileId.ToString(CultureInfo.InvariantCulture));
+            scriptableAssets.Add(new SceneScriptableAssetRecord(
+                assetId,
+                snapshot.SceneSnapshotId,
+                containerIds[pair.Key.ContainerPath],
+                pair.Key.LocalFileId,
+                pair.Value.MonoBehaviour!.Name,
+                resolution.RawAssemblyName,
+                resolution.RawNamespace,
+                resolution.RawClassName,
+                resolution.SymbolId,
+                resolution.CodeIndexId,
+                resolution.Status,
+                ComponentRecovery(pair.Value, transformSchemaValid: false)));
+            if (pair.Value.ScriptFields is not null)
+                fieldSets.Add(FieldSet(assetId, snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset, pair.Value.ScriptFields));
         }
 
         var references = await BuildReferencesAsync(
@@ -186,6 +226,7 @@ public sealed class SceneNormalizer
                 .Concat(gameObjects.Select(item => item.RecoveryStatus))
                 .Concat(transforms.Select(item => item.RecoveryStatus))
                 .Concat(components.Select(item => item.RecoveryStatus))
+                .Concat(scriptableAssets.Select(item => item.RecoveryStatus))
                 .Concat(references.Select(item => item.RecoveryStatus)));
 
         return new SceneWriteSet(
@@ -195,7 +236,9 @@ public sealed class SceneNormalizer
             gameObjects,
             transforms,
             components,
-            references);
+            references,
+            scriptableAssets,
+            fieldSets);
     }
 
     private static Dictionary<ObjectKey, ObjectKey> BuildComponentOwners(
@@ -677,9 +720,19 @@ public sealed class SceneNormalizer
         item.Kind switch
         {
             ParsedSceneObjectKind.Transform => _recoveryClassifier.Classify(new SceneRecoveryFacts(true, true, true, transformSchemaValid, transformSchemaValid)),
-            ParsedSceneObjectKind.MonoBehaviour => _recoveryClassifier.Classify(new SceneRecoveryFacts(true, true, true, false, false)),
+            ParsedSceneObjectKind.MonoBehaviour => _recoveryClassifier.Classify(new SceneRecoveryFacts(true, true, true, HasDecodedFields(item), HasDecodedFields(item))),
             _ => _recoveryClassifier.Classify(new SceneRecoveryFacts(true, true, true, false, false))
         };
+
+    private static bool HasDecodedFields(ParsedSceneObject item) =>
+        item.ScriptFields?.Status == SceneScriptFieldSetStatus.Decoded;
+
+    private static SceneScriptFieldSetRecord FieldSet(
+        string ownerId,
+        string sceneSnapshotId,
+        SceneScriptFieldOwnerKind ownerKind,
+        ParsedScriptFields fields) =>
+        new(ownerId, sceneSnapshotId, ownerKind, fields.Status, fields.UnavailableReason, fields.Truncated, fields.Fields);
 
     private static bool HasKnownSchemaAndBounds(
         ParsedSceneContainer container,
