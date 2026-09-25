@@ -6,6 +6,8 @@ public enum SceneResolutionStatus { Resolved, UnresolvedText, Ambiguous, NotInde
 public enum SceneScriptFieldOwnerKind { Component, ScriptableAsset }
 public enum SceneScriptFieldSetStatus { Decoded, Unavailable }
 public enum SceneScriptFieldValueKind { Integer, Float, Boolean, String, PPtr, ArraySize, Bytes }
+public enum SceneScriptFieldTargetStatus { Resolved, Null, Unresolved }
+public enum SceneScriptFieldTargetKind { GameObject, Component, ScriptableAsset, MonoScript, Asset }
 
 public sealed record SceneSnapshotRecord(
     string SceneSnapshotId,
@@ -186,16 +188,45 @@ public sealed record SceneScriptableAssetRecord(
     public string? ResolvedCodeIndexId { get; init; } = SceneContract.RequireOptionalId(ResolvedCodeIndexId, nameof(ResolvedCodeIndexId));
 }
 
-/// <summary>One flattened serialized leaf value, as invariant-culture text.</summary>
+/// <summary>
+/// One flattened serialized leaf value, as invariant-culture text. A PPtr value keeps its raw
+/// "fileId:localFileId" text; <see cref="Target"/> says what it points to in the same snapshot.
+/// </summary>
 public sealed record SceneScriptField(
     string Path,
     string TypeName,
     SceneScriptFieldValueKind Kind,
-    string Value)
+    string Value,
+    SceneScriptFieldTarget? Target = null)
 {
     public string Path { get; init; } = SceneContract.RequireId(Path, nameof(Path));
     public string TypeName { get; init; } = SceneContract.RequireId(TypeName, nameof(TypeName));
     public string Value { get; init; } = Value ?? throw new ArgumentNullException(nameof(Value));
+    public SceneScriptFieldTarget? Target { get; init; } = Target is null || Kind == SceneScriptFieldValueKind.PPtr
+        ? Target
+        : throw new ArgumentException("Only a PPtr field has a target.", nameof(Target));
+}
+
+/// <summary>
+/// The object a PPtr field value points to. <see cref="Id"/> is the indexed record ID when the
+/// target is an indexed GameObject, component or scriptable asset.
+/// </summary>
+public sealed record SceneScriptFieldTarget(
+    SceneScriptFieldTargetStatus Status,
+    SceneScriptFieldTargetKind? Kind = null,
+    string? Id = null,
+    string? Name = null,
+    string? TypeName = null,
+    string? ContainerId = null,
+    long? LocalFileId = null,
+    string? Reason = null)
+{
+    public SceneScriptFieldTargetKind? Kind { get; init; } = Status == SceneScriptFieldTargetStatus.Resolved && (Kind is null || ContainerId is null || LocalFileId is null)
+        ? throw new ArgumentException("A resolved target needs a kind, container and local file ID.", nameof(Kind))
+        : Kind;
+    public string? Reason { get; init; } = Status == SceneScriptFieldTargetStatus.Unresolved && string.IsNullOrWhiteSpace(Reason)
+        ? throw new ArgumentException("An unresolved target needs a reason.", nameof(Reason))
+        : Reason;
 }
 
 /// <summary>

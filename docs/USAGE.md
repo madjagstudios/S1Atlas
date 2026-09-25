@@ -441,6 +441,23 @@ at 256 leaves, 32 elements per array, 512-character strings, and 256-byte byte
 arrays (shown as hex); a capped set is marked `truncated`. Values are serialized
 defaults: anything the game computes at load time still needs in-game verification.
 
+An object-reference field (`PPtr<…>`) keeps its raw `fileId:localFileId` value
+and also says what it points to, resolved within the same scene snapshot:
+
+```text
+Field: Leader.Data (PPtr<$BaseNPCDataObject>) = 0:6973 -> ScriptableAsset "Diesel" (ScheduleOne.NPCs.Framework.NPCDataObject) | id <asset-id>
+Field: Backup (PPtr<$Widget>) = 0:0 -> null
+Field: Icon (PPtr<$Sprite>) = 3:12 -> unresolved (fileId=3;localFileId=12;external=<path>)
+```
+
+The target kind is `GameObject`, `Component`, `ScriptableAsset`, `MonoScript`,
+or `Asset` (any other Unity object, named by class ID). An indexed target carries
+its record ID, which `gameobject`, `component` and `scriptable-object` accept;
+anything else carries its container and local file ID. A target is `unresolved`
+when its external file is not one of the indexed containers or the object does
+not exist there. JSON and MCP output carry the same data as a `target` object on
+each pointer field.
+
 Without an installed, matching class database a stripped build still yields
 nameless object-table stubs and nothing else, so `index --scene` refuses to
 complete such a run: it records the snapshot as `Failed` with failure code

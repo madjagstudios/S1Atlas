@@ -126,8 +126,10 @@ own answer or decision record, never write a citation back to Atlas.
    field set is FACT (provenance `serialized-script-fields`) for the serialized
    default only, so values computed at load time still need in-game
    verification. A `GraphOnly` component or an `unavailable: …` script-layout
-   source means no values were decoded; do not infer them. ScriptableObjects
-   such as `SpecialCustomerData` are not components; use
+   source means no values were decoded; do not infer them. Object-reference
+   fields carry a `target` (kind, name, type, and an ID to look up next);
+   follow that ID rather than guessing from the raw `fileId:localFileId`.
+   ScriptableObjects such as `SpecialCustomerData` are not components; use
    `get_scriptable_object`. For environment/dependency facts use CLI
    `env --json` or MCP `get_environment`.
 6. **Recheck after change.** After a Schedule I game update, use CLI `builds`

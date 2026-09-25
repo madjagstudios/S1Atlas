@@ -29,6 +29,24 @@ public sealed class SceneScriptFieldModelTests
     }
 
     [Fact]
+    public void Only_pointer_fields_carry_a_target()
+    {
+        Assert.Null(new SceneScriptField("Price", "int", SceneScriptFieldValueKind.Integer, "1").Target);
+        Assert.Throws<ArgumentException>(() => new SceneScriptField("Price", "int", SceneScriptFieldValueKind.Integer, "1",
+            new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Null)));
+    }
+
+    [Fact]
+    public void Target_status_requires_its_fields()
+    {
+        Assert.Throws<ArgumentException>(() => new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Resolved));
+        Assert.Throws<ArgumentException>(() => new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Unresolved));
+        var resolved = new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Resolved, SceneScriptFieldTargetKind.ScriptableAsset,
+            "asset", "Diesel", "ScheduleOne.NPCs.NPCDataObject", "container", 6973);
+        Assert.Equal("Diesel", resolved.Name);
+    }
+
+    [Fact]
     public void Scriptable_asset_requires_a_positive_local_file_id()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SceneScriptableAssetRecord(

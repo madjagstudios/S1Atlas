@@ -72,6 +72,6 @@ Roots: tests
 | tests/S1Atlas.Storage.Tests/ | 4 |
 | tests/S1Atlas.Storage.Tests/Indexing/ | 1 |
 | tests/S1Atlas.Storage.Tests/Migrations/ | 10 |
-| tests/S1Atlas.Storage.Tests/Scene/ | 2 |
+| tests/S1Atlas.Storage.Tests/Scene/ | 3 |
 | tests/S1Atlas.Storage.Tests/Sqlite/ | 11 |
 

@@ -7,9 +7,11 @@ namespace S1Atlas.Storage.Sqlite;
 // Stores a field set's leaves as one JSON array per owner; the list is written and read whole.
 internal static class SceneScriptFieldJson
 {
+    // Most leaves have no target, so null properties are not written.
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new JsonStringEnumConverter() }
+        Converters = { new JsonStringEnumConverter() },
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
     public static string Serialize(IReadOnlyList<SceneScriptField> fields) =>

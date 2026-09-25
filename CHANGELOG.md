@@ -21,6 +21,12 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   `SpecialCustomerData`. Every scene snapshot records its script-layout source.
   Existing builds need a v2 extraction, `extractions promote`, a code-index
   rebuild, and `index --scene` to gain values.
+- **Named targets for object-reference fields** (AT-53) — a decoded `PPtr` field
+  now names what it points to (the GameObject, component, ScriptableObject, script
+  or other asset, with its name, type and indexed ID) alongside its raw
+  `fileId:localFileId`. Null and unresolvable pointers are labelled as such. The
+  scene parser version is now `3.0.5+script-layouts.2`, so `index --scene`
+  rebuilds existing snapshots to gain targets.
 
 ## [1.4.0] — 2026-09-20 — Scene intelligence on release builds
 

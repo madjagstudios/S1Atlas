@@ -683,7 +683,12 @@ internal sealed class McpTestAtlas : IAsyncDisposable
             new(component.ComponentId, sceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false,
                 [new SceneScriptField("Price", "float", SceneScriptFieldValueKind.Float, "50000")]),
             new(scriptableAsset.AssetId, sceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset, SceneScriptFieldSetStatus.Decoded, null, false,
-                [new SceneScriptField("MaxBuyQuantity", "int", SceneScriptFieldValueKind.Integer, "100")])
+                [
+                    new SceneScriptField("MaxBuyQuantity", "int", SceneScriptFieldValueKind.Integer, "100"),
+                    new SceneScriptField("Leader.Data", "PPtr<$Widget>", SceneScriptFieldValueKind.PPtr, $"0:{component.LocalFileId}",
+                        new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Resolved, SceneScriptFieldTargetKind.Component,
+                            component.ComponentId, "Root", "Demo.Widget", container.ContainerId, component.LocalFileId))
+                ])
         ];
 
         await _repository.CreateSceneSnapshotAsync(snapshot, CancellationToken.None);
