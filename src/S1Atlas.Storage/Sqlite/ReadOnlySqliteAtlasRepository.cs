@@ -89,7 +89,8 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
     private const string SnapshotSelectSql = """
         SELECT scene_snapshot_id, build_id, extraction_id, input_snapshot_id, code_snapshot_id,
                code_index_id, parser_id, parser_version, container_manifest_digest, status,
-               recovery_status, started_at_utc, completed_at_utc, failure_code, failure_message
+               recovery_status, started_at_utc, completed_at_utc, failure_code, failure_message,
+               type_tree_source, script_layout_source
         FROM scene_snapshots
         """;
 
@@ -1323,6 +1324,50 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             return (IReadOnlyList<SceneComponentRecord>)rows;
         }, cancellationToken);
 
+    public Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = SceneScriptFieldRows.SelectFieldSetSql;
+            command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+            command.Parameters.AddWithValue("$owner", ownerId);
+            await using var reader = await command.ExecuteReaderAsync();
+            return await reader.ReadAsync() ? SceneScriptFieldRows.ReadFieldSet(reader) : null;
+        }, cancellationToken);
+
+    public Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken) =>
+        WithConnectionAsync(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(assetId);
+            await using var command = connection.CreateCommand();
+            command.CommandText = SceneScriptFieldRows.SelectAssetByIdSql;
+            command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+            command.Parameters.AddWithValue("$id", assetId);
+            await using var reader = await command.ExecuteReaderAsync();
+            return await reader.ReadAsync() ? SceneScriptFieldRows.ReadAsset(reader) : null;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) =>
+        WithConnectionAsync<IReadOnlyList<SceneScriptableAssetRecord>>(async connection =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(sceneSnapshotId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+            await using var command = connection.CreateCommand();
+            command.CommandText = SceneScriptFieldRows.FindAssetsSql;
+            command.Parameters.AddWithValue("$snapshot", sceneSnapshotId);
+            command.Parameters.AddWithValue("$selector", selector);
+            command.Parameters.AddWithValue("$limit", limit);
+            var rows = new List<SceneScriptableAssetRecord>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                rows.Add(SceneScriptFieldRows.ReadAsset(reader));
+            return rows;
+        }, cancellationToken);
+
     public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) =>
         WithConnectionAsync(async connection =>
         {
@@ -1699,7 +1744,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
         new(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.IsDBNull(4) ? null : reader.GetInt32(4), reader.IsDBNull(5) ? null : reader.GetInt32(5));
 
     private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14));
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14), reader.IsDBNull(15) ? null : reader.GetString(15), reader.IsDBNull(16) ? null : reader.GetString(16));
 
     private static SceneContainerRecord ReadContainer(SqliteDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5), reader.GetInt64(6), reader.GetString(7), reader.GetString(8));

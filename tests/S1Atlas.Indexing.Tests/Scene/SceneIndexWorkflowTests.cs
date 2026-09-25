@@ -813,6 +813,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<IReadOnlyList<SceneComponentRecord>> FindComponentsByExactTypeAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneReferenceRecord>(CompletedWriteSet?.References.Count ?? 0, 0, []));
+        public Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken) => Task.FromResult(CompletedWriteSet?.ScriptFieldSets.SingleOrDefault(row => row.OwnerId == ownerId));
+        public Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken) => Task.FromResult(CompletedWriteSet?.ScriptableAssets.SingleOrDefault(row => row.AssetId == assetId));
+        public Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneScriptableAssetRecord>>([]);
         public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

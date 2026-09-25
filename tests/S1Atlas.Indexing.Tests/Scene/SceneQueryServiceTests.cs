@@ -288,6 +288,11 @@ public sealed class SceneQueryServiceTests
 
     private sealed class QueryRepository : ISceneRepository
     {
+        public List<SceneScriptFieldSetRecord> FieldSets { get; } = [];
+        public List<SceneScriptableAssetRecord> Assets { get; } = [];
+        public Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken) => Task.FromResult(FieldSets.SingleOrDefault(row => row.SceneSnapshotId == sceneSnapshotId && row.OwnerId == ownerId));
+        public Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken) => Task.FromResult(Assets.SingleOrDefault(row => row.SceneSnapshotId == sceneSnapshotId && row.AssetId == assetId));
+        public Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneScriptableAssetRecord>>(Assets.Where(row => row.SceneSnapshotId == sceneSnapshotId && (row.Name == selector || $"{row.ScriptNamespace}.{row.ScriptClass}" == selector)).Take(limit).ToArray());
         public Dictionary<string, SceneSnapshotRecord> Snapshots { get; } = [];
         public IReadOnlyList<SceneDocumentRecord> Documents { get; set; } = [];
         public IReadOnlyList<SceneComponentRecord> Components { get; set; } = [];
