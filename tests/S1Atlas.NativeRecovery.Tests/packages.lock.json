@@ -37,6 +37,15 @@
         "resolved": "3.0.5",
         "contentHash": "StvUj6ykBOSOdquRmpbjn6mfM7PyOCKdBB/Ed2Jn5aIhbfrl/Oz69tmgJEQCZdix7AZRVZin14/wytP2moJgAQ=="
       },
+      "AssetsTools.NET.MonoCecil": {
+        "type": "Transitive",
+        "resolved": "3.0.4",
+        "contentHash": "cWchJC+FR5h9ULKYFYPZL5zVBXRzKLBMQTNspQGH9pq4lXtwFTWd1QtOkX5HsHirGrmm651h/TfwrBZ2ru9PvA==",
+        "dependencies": {
+          "AssetsTools.NET": "3.0.0",
+          "Mono.Cecil": "0.11.3"
+        }
+      },
       "Iced": {
         "type": "Transitive",
         "resolved": "1.21.0",
@@ -166,6 +175,11 @@
           "System.Security.AccessControl": "5.0.0",
           "System.Security.Principal.Windows": "5.0.0"
         }
+      },
+      "Mono.Cecil": {
+        "type": "Transitive",
+        "resolved": "0.11.3",
+        "contentHash": "DNYE+io5XfEE8+E+5padThTPHJARJHbz1mhbhMPNrrWGKVKKqj/KEeLvbawAmbIcT73NuxLV7itHZaYCZcVWGg=="
       },
       "Samboy063.LibCpp2IL": {
         "type": "Transitive",
@@ -331,6 +345,7 @@
         "type": "Project",
         "dependencies": {
           "AssetsTools.NET": "[3.0.5, )",
+          "AssetsTools.NET.MonoCecil": "[3.0.4, )",
           "S1Atlas.Core": "[1.0.0, )"
         }
       },

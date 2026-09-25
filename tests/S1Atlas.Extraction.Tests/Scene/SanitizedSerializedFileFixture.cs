@@ -8,8 +8,8 @@ namespace S1Atlas.Extraction.Tests.Scene;
 
 internal sealed class SanitizedSerializedFileFixture : IDisposable
 {
-    private const string UnityVersion = "2022.3.62f1";
-    private const int SerializedFileVersion = 22;
+    internal const string UnityVersion = "2022.3.62f1";
+    internal const int SerializedFileVersion = 22;
 
     private SanitizedSerializedFileFixture(string rootPath, string primaryPath)
     {
@@ -85,7 +85,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         return database;
     }
 
-    private static ClassDatabaseTypeNode BuildDatabaseNode(
+    internal static ClassDatabaseTypeNode BuildDatabaseNode(
         ClassDatabaseStringTable strings,
         IReadOnlyList<FixtureNode> nodes,
         int index,
@@ -235,7 +235,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         return result.ToArray();
     }
 
-    private static FixtureType GameObjectType() => new(1, "GameObject",
+    internal static FixtureType GameObjectType() => new(1, "GameObject",
     [
         Node(0, "GameObject", "Base"),
         Node(1, "vector", "m_Component"),
@@ -288,7 +288,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         .. PPtrNodes(1, "PPtr<GameObject>", "m_MissingTarget")
     ], ScriptTypeIndex: 0);
 
-    private static FixtureType MonoScriptType() => new(115, "MonoScript",
+    internal static FixtureType MonoScriptType() => new(115, "MonoScript",
     [
         Node(0, "MonoScript", "Base"),
         Node(1, "string", "m_Name"),
@@ -322,14 +322,14 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         Node(5, "int", "size"), Node(5, "char", "data")
     ]);
 
-    private static FixtureNode[] PPtrNodes(byte level, string type, string name) =>
+    internal static FixtureNode[] PPtrNodes(byte level, string type, string name) =>
     [
         Node(level, type, name),
         Node((byte)(level + 1), "int", "m_FileID"),
         Node((byte)(level + 1), "SInt64", "m_PathID")
     ];
 
-    private static byte[] GameObjectPayload(
+    internal static byte[] GameObjectPayload(
         string name,
         IReadOnlyList<(int FileId, long PathId)> components,
         uint layer,
@@ -386,7 +386,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         WritePPtr(writer, missingTarget);
     });
 
-    private static byte[] MonoScriptPayload(
+    internal static byte[] MonoScriptPayload(
         string className,
         string @namespace,
         string assemblyName) => Payload(writer =>
@@ -408,7 +408,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
             }
         });
 
-    private static byte[] Payload(Action<BinaryWriter> write)
+    internal static byte[] Payload(Action<BinaryWriter> write)
     {
         using var stream = new MemoryStream();
         using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
@@ -419,16 +419,16 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         return stream.ToArray();
     }
 
-    private static (int FileId, long PathId) PPtr(int fileId, long pathId) =>
+    internal static (int FileId, long PathId) PPtr(int fileId, long pathId) =>
         (fileId, pathId);
 
-    private static void WritePPtr(BinaryWriter writer, (int FileId, long PathId) pointer)
+    internal static void WritePPtr(BinaryWriter writer, (int FileId, long PathId) pointer)
     {
         writer.Write(pointer.FileId);
         writer.Write(pointer.PathId);
     }
 
-    private static void WriteString(BinaryWriter writer, string value)
+    internal static void WriteString(BinaryWriter writer, string value)
     {
         var bytes = Encoding.UTF8.GetBytes(value);
         writer.Write(bytes.Length);
@@ -436,7 +436,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         Align(writer, 4);
     }
 
-    private static FixtureNode Node(
+    internal static FixtureNode Node(
         byte level,
         string type,
         string name,
@@ -444,7 +444,7 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         bool aligned = false) =>
         new(level, type, name, isArray, aligned);
 
-    private static void WriteType(
+    internal static void WriteType(
         BinaryWriter writer,
         FixtureType type,
         bool includeTypeTree)
@@ -505,10 +505,10 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         return stream.ToArray();
     }
 
-    private static int Align(int value, int alignment) =>
+    internal static int Align(int value, int alignment) =>
         (value + alignment - 1) / alignment * alignment;
 
-    private static void Align(BinaryWriter writer, int alignment)
+    internal static void Align(BinaryWriter writer, int alignment)
     {
         while (writer.BaseStream.Position % alignment != 0)
         {
@@ -516,13 +516,13 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         }
     }
 
-    private static void WriteNullTerminated(BinaryWriter writer, string value)
+    internal static void WriteNullTerminated(BinaryWriter writer, string value)
     {
         writer.Write(Encoding.UTF8.GetBytes(value));
         writer.Write((byte)0);
     }
 
-    private static void WriteExternal(BinaryWriter writer, string path)
+    internal static void WriteExternal(BinaryWriter writer, string path)
     {
         WriteNullTerminated(writer, string.Empty);
         writer.Write(new byte[16]);
@@ -530,14 +530,14 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         WriteNullTerminated(writer, path);
     }
 
-    private static void WriteBigEndian(BinaryWriter writer, uint value)
+    internal static void WriteBigEndian(BinaryWriter writer, uint value)
     {
         var bytes = BitConverter.GetBytes(value);
         Array.Reverse(bytes);
         writer.Write(bytes);
     }
 
-    private static void WriteBigEndian(BinaryWriter writer, long value)
+    internal static void WriteBigEndian(BinaryWriter writer, long value)
     {
         var bytes = BitConverter.GetBytes(value);
         Array.Reverse(bytes);
@@ -552,20 +552,20 @@ internal sealed class SanitizedSerializedFileFixture : IDisposable
         }
     }
 
-    private sealed record FixtureType(
+    internal sealed record FixtureType(
         int ClassId,
         string Name,
         IReadOnlyList<FixtureNode> Nodes,
         ushort ScriptTypeIndex = ushort.MaxValue);
 
-    private sealed record FixtureNode(
+    internal sealed record FixtureNode(
         byte Level,
         string Type,
         string Name,
         bool IsArray,
         bool Aligned);
 
-    private sealed class FixtureObject(
+    internal sealed class FixtureObject(
         long pathId,
         int typeIndex,
         byte[] payload)
