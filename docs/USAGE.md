@@ -330,6 +330,7 @@ dotnet run --project src/S1Atlas.Cli -- scene <scene-id-or-exact-name> --childre
 dotnet run --project src/S1Atlas.Cli -- gameobject <game-object-id-or-scene-id/name> --children --components --refs
 dotnet run --project src/S1Atlas.Cli -- prefab <prefab-id-or-exact-name> --objects --components
 dotnet run --project src/S1Atlas.Cli -- component <component-id-or-exact-type> --refs --code --json
+dotnet run --project src/S1Atlas.Cli -- scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
 ```
 
 Compare two indexed builds to see what changed:
@@ -361,7 +362,9 @@ Scene intelligence reports only facts proven by the selected serialized files:
   `Unknown` are categorical availability states, not confidence scores.
 - A custom MonoBehaviour without a reviewed field schema is `GraphOnly` when its
   identity and attachment graph are available. S1Atlas does not invent custom
-  fields or values and v1 has no general serialized-field value table.
+  fields or values. Game-script field values are stored only when decoded through
+  a verified script layout (see "Game-script field values" below); such a
+  component is `FullyRecovered` and its values are FACT.
 - MonoBehaviour-to-code links require one exact same-build Schedule I Installed
   `SymbolIdentity` match. Missing, ambiguous, unavailable, and not-indexed links
   remain explicit; no fuzzy match is substituted.
@@ -401,7 +404,42 @@ verified build, but a future engine update must be re-verified end to end. The
 class database identity is part of the scene snapshot identity, so changing the
 pin produces a new snapshot rather than altering an existing one. Asset-level
 MonoBehaviours (ScriptableObjects) carry an explicit null GameObject and are not
-recorded as component attachments.
+recorded as component attachments; those with a script are recorded as scriptable
+assets instead (`scriptable-object`, MCP `get_scriptable_object`).
+
+#### Game-script field values
+
+The class database describes only Unity's own classes. Game scripts' serialized
+fields (property prices, employee wages, special-customer order sizes) are decoded
+from layouts generated from the preferred extraction's reconstructed
+`Assembly-CSharp.dll`, and only when that reconstruction kept its
+`[SerializeField]` attributes. Cpp2IL keeps them only when its attribute
+processors run, which the default extraction profile
+`cpp2il-reconstructed-assemblies-v2` does. Each object is accepted only if its
+generated layout decodes it byte-exact; anything else stays `GraphOnly` with the
+reason stored, never guessed values.
+
+Every snapshot records its script-layout source, shown by `index --scene`
+(`Script layouts: …`) and the scene commands (`script layouts …`). An older
+extraction without restored attributes reports
+`unavailable: extraction <id> (profile …) has no restored [SerializeField] attributes; …`.
+To get field values for such a build:
+
+```powershell
+dotnet run --project src/S1Atlas.Cli -- extract --input-snapshot <replay-verified-input-id> --retry
+dotnet run --project src/S1Atlas.Cli -- extractions promote <new-extraction-id>
+dotnet run --project src/S1Atlas.Cli -- index
+dotnet run --project src/S1Atlas.Cli -- index --scene
+```
+
+The new extraction does not replace an existing preferred one automatically
+(same Cpp2IL tool instance), so it must be promoted, and the code index must be
+rebuilt for it before `index --scene`. `component` and `scriptable-object` then
+print `Field: <path> (<type>) = <value>` lines, and the MCP tools return the field
+set with a FACT provenance entry `serialized-script-fields`. Field sets are capped
+at 256 leaves, 32 elements per array, and 512-character strings; a capped set is
+marked `truncated`. Values are serialized defaults: anything the game computes at
+load time still needs in-game verification.
 
 Without an installed, matching class database a stripped build still yields
 nameless object-table stubs and nothing else, so `index --scene` refuses to
@@ -565,7 +603,7 @@ local reference collections through these tools:
 `find_callees`, `find_call_sites`, `find_field_references`,
 `find_references`, `find_related_types`, `compare_symbol`, `list_builds`,
 `get_environment`, `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`,
-`get_component`, and `list_reference_collections`.
+`get_component`, `get_scriptable_object`, and `list_reference_collections`.
 
 `search_symbols`, `get_source`, `find_callers`, `find_callees`,
 `find_call_sites`, `find_field_references`, `find_references`, and
@@ -707,7 +745,8 @@ mods.
 | `scene <id\|exact-name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one scene and optionally its bounded graph pages |
 | `gameobject <id\|scene-id/name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one GameObject and optionally its bounded graph pages |
 | `prefab <id\|exact-name> [--objects] [--components] [--limit <n>] [--json]` | Inspect one parser-proven prefab document |
-| `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, serialized references, and an exact code-symbol handoff |
+| `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, its decoded serialized fields, serialized references, and an exact code-symbol handoff |
+| `scriptable-object <id\|exact-name\|Namespace.Class> [--json]` | Inspect one ScriptableObject asset (an asset-level MonoBehaviour such as `SpecialCustomerData`) and its decoded serialized fields |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
 | `docs generate [--build <id>] [--output <dir>]` | Generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
 | `S1Atlas.Mcp mcp serve` | Launch the read-only Schedule I Installed MCP server over stdio |

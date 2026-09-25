@@ -7,7 +7,7 @@ Roots: config
 | Directory | Files |
 |---|---|
 | config/ | 1 |
-| config/extraction/ | 1 |
+| config/extraction/ | 2 |
 | config/native-recovery/ | 1 |
 | config/tools/ | 2 |
 | config/validation/ | 1 |

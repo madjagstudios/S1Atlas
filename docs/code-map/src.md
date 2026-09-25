@@ -12,7 +12,7 @@ Roots: src
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 2 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 47 |
+| src/S1Atlas.Cli/Commands/ | 48 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 15 |
 | src/S1Atlas.Cli/Performance/ | 1 |
@@ -50,7 +50,7 @@ Roots: src
 | src/S1Atlas.Extraction/Profiles/ | 8 |
 | src/S1Atlas.Extraction/Promotion/ | 5 |
 | src/S1Atlas.Extraction/Properties/ | 1 |
-| src/S1Atlas.Extraction/Scene/ | 5 |
+| src/S1Atlas.Extraction/Scene/ | 7 |
 | src/S1Atlas.Extraction/Steam/ | 3 |
 | src/S1Atlas.Extraction/Tools/ | 16 |
 | src/S1Atlas.Extraction/Validation/ | 8 |
@@ -78,5 +78,5 @@ Roots: src
 | src/S1Atlas.Storage/ | 1 |
 | src/S1Atlas.Storage/Migrations/ | 7 |
 | src/S1Atlas.Storage/Properties/ | 1 |
-| src/S1Atlas.Storage/Sqlite/ | 14 |
+| src/S1Atlas.Storage/Sqlite/ | 16 |
 
