@@ -135,7 +135,8 @@ public sealed class SceneNormalizer
                 pair => HashId(snapshot.SceneSnapshotId, "component", pair.Key.ContainerPath, pair.Key.LocalFileId.ToString(CultureInfo.InvariantCulture)));
         var scriptResolutions = new Dictionary<ObjectKey, SceneCodeSymbolResolution>();
         var components = new List<SceneComponentRecord>(componentIds.Count);
-        var fieldSets = new List<SceneScriptFieldSetRecord>();
+        var componentRecords = new Dictionary<ObjectKey, SceneComponentRecord>(componentIds.Count);
+        var pendingFieldSets = new List<PendingFieldSet>();
         foreach (var componentKey in componentIds.Keys.OrderBy(key => key.ContainerPath, StringComparer.Ordinal).ThenBy(key => key.LocalFileId))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -156,7 +157,7 @@ public sealed class SceneNormalizer
                         cancellationToken);
             }
 
-            components.Add(new SceneComponentRecord(
+            var componentRecord = new SceneComponentRecord(
                 componentIds[componentKey],
                 gameObjectIds[owner],
                 containerIds[componentKey.ContainerPath],
@@ -169,14 +170,17 @@ public sealed class SceneNormalizer
                 scriptResolution?.SymbolId,
                 scriptResolution?.CodeIndexId,
                 scriptResolution?.Status ?? SceneResolutionStatus.NotIndexed,
-                ComponentRecovery(item, transformFacts.TryGetValue(componentKey, out var transform) && transform.SchemaValid)));
+                ComponentRecovery(item, transformFacts.TryGetValue(componentKey, out var transform) && transform.SchemaValid));
+            components.Add(componentRecord);
+            componentRecords[componentKey] = componentRecord;
             if (item.ScriptFields is not null)
-                fieldSets.Add(FieldSet(componentIds[componentKey], snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.Component, item.ScriptFields));
+                pendingFieldSets.Add(new PendingFieldSet(componentRecord.ComponentId, SceneScriptFieldOwnerKind.Component, componentKey, item.ScriptFields));
         }
 
         // Asset-level MonoBehaviours (ScriptableObjects) have an explicit null m_GameObject and are
         // skipped as components; with a script they are recorded as scriptable assets instead.
         var scriptableAssets = new List<SceneScriptableAssetRecord>();
+        var assetRecords = new Dictionary<ObjectKey, SceneScriptableAssetRecord>();
         foreach (var pair in objects
                      .Where(pair => pair.Value is { Kind: ParsedSceneObjectKind.MonoBehaviour, MonoBehaviour: { } data } &&
                                     data.GameObject.LocalFileId == 0 &&
@@ -194,7 +198,7 @@ public sealed class SceneNormalizer
                 scriptResolutions,
                 cancellationToken);
             var assetId = HashId(snapshot.SceneSnapshotId, "scriptable-asset", pair.Key.ContainerPath, pair.Key.LocalFileId.ToString(CultureInfo.InvariantCulture));
-            scriptableAssets.Add(new SceneScriptableAssetRecord(
+            var assetRecord = new SceneScriptableAssetRecord(
                 assetId,
                 snapshot.SceneSnapshotId,
                 containerIds[pair.Key.ContainerPath],
@@ -206,10 +210,23 @@ public sealed class SceneNormalizer
                 resolution.SymbolId,
                 resolution.CodeIndexId,
                 resolution.Status,
-                ComponentRecovery(pair.Value, transformSchemaValid: false)));
+                ComponentRecovery(pair.Value, transformSchemaValid: false));
+            scriptableAssets.Add(assetRecord);
+            assetRecords[pair.Key] = assetRecord;
             if (pair.Value.ScriptFields is not null)
-                fieldSets.Add(FieldSet(assetId, snapshot.SceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset, pair.Value.ScriptFields));
+                pendingFieldSets.Add(new PendingFieldSet(assetId, SceneScriptFieldOwnerKind.ScriptableAsset, pair.Key, pair.Value.ScriptFields));
         }
+
+        // Pointer targets are attached once every component, asset and GameObject has its ID.
+        var fieldTargets = new FieldTargetResolver(pointers, objects, containerIds, gameObjectIds, componentOwners, componentRecords, assetRecords);
+        var fieldSets = pendingFieldSets
+            .Select(pending => FieldSet(
+                pending.OwnerId,
+                snapshot.SceneSnapshotId,
+                pending.OwnerKind,
+                pending.Fields,
+                fieldTargets.Attach(pending.Owner.ContainerPath, pending.Fields.Fields)))
+            .ToList();
 
         var references = await BuildReferencesAsync(
             snapshot,
@@ -731,8 +748,9 @@ public sealed class SceneNormalizer
         string ownerId,
         string sceneSnapshotId,
         SceneScriptFieldOwnerKind ownerKind,
-        ParsedScriptFields fields) =>
-        new(ownerId, sceneSnapshotId, ownerKind, fields.Status, fields.UnavailableReason, fields.Truncated, fields.Fields);
+        ParsedScriptFields fields,
+        IReadOnlyList<SceneScriptField> targetedFields) =>
+        new(ownerId, sceneSnapshotId, ownerKind, fields.Status, fields.UnavailableReason, fields.Truncated, targetedFields);
 
     private static bool HasKnownSchemaAndBounds(
         ParsedSceneContainer container,
@@ -873,6 +891,88 @@ public sealed class SceneNormalizer
         bool SchemaValid,
         bool HierarchyComplete);
     private sealed record PrefabRoot(ObjectKey Evidence, ObjectKey? Root);
+    private sealed record PendingFieldSet(string OwnerId, SceneScriptFieldOwnerKind OwnerKind, ObjectKey Owner, ParsedScriptFields Fields);
+
+    private sealed class FieldTargetResolver(
+        PointerResolver pointers,
+        IReadOnlyDictionary<ObjectKey, ParsedSceneObject> objects,
+        IReadOnlyDictionary<string, string> containerIds,
+        IReadOnlyDictionary<ObjectKey, string> gameObjectIds,
+        IReadOnlyDictionary<ObjectKey, ObjectKey> componentOwners,
+        IReadOnlyDictionary<ObjectKey, SceneComponentRecord> components,
+        IReadOnlyDictionary<ObjectKey, SceneScriptableAssetRecord> assets)
+    {
+        public IReadOnlyList<SceneScriptField> Attach(string ownerContainerPath, IReadOnlyList<SceneScriptField> fields)
+        {
+            if (!fields.Any(field => field.Kind == SceneScriptFieldValueKind.PPtr))
+                return fields;
+            return fields
+                .Select(field => field.Kind == SceneScriptFieldValueKind.PPtr
+                    ? field with { Target = Target(ownerContainerPath, field.Value) }
+                    : field)
+                .ToArray();
+        }
+
+        private SceneScriptFieldTarget Target(string ownerContainerPath, string value)
+        {
+            var separator = value.IndexOf(':', StringComparison.Ordinal);
+            if (separator < 0 ||
+                !int.TryParse(value.AsSpan(0, separator), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var fileId) ||
+                !long.TryParse(value.AsSpan(separator + 1), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var localFileId))
+                return new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Unresolved, Reason: $"unparsed-pointer={value}");
+            if (localFileId == 0)
+                return new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Null);
+
+            var pointer = pointers.TryResolve(ownerContainerPath, new ParsedScenePPtr(fileId, localFileId));
+            if (pointer.Target is not { } key)
+                return new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Unresolved, Reason: pointer.TargetText);
+
+            var containerId = containerIds[key.ContainerPath];
+            if (components.TryGetValue(key, out var component))
+                return Resolved(SceneScriptFieldTargetKind.Component, component.ComponentId, GameObjectName(componentOwners[key]), ComponentTypeName(component));
+            if (assets.TryGetValue(key, out var asset))
+                return Resolved(SceneScriptFieldTargetKind.ScriptableAsset, asset.AssetId, asset.Name, Qualified(asset.ScriptNamespace, asset.ScriptClass));
+
+            var target = objects[key];
+            return target.Kind switch
+            {
+                ParsedSceneObjectKind.GameObject => Resolved(SceneScriptFieldTargetKind.GameObject, gameObjectIds.GetValueOrDefault(key), target.GameObject?.Name, null),
+                ParsedSceneObjectKind.MonoScript => Resolved(SceneScriptFieldTargetKind.MonoScript, null, null, Qualified(target.MonoScript?.Namespace, target.MonoScript?.ClassName)),
+                ParsedSceneObjectKind.MonoBehaviour or ParsedSceneObjectKind.Transform => Resolved(SceneScriptFieldTargetKind.Component, null, UnindexedComponentName(key, target), ScriptTypeName(key, target)),
+                _ => Resolved(SceneScriptFieldTargetKind.Asset, null, null, "UnityClass:" + target.UnityClassId.ToString(CultureInfo.InvariantCulture))
+            };
+
+            SceneScriptFieldTarget Resolved(SceneScriptFieldTargetKind kind, string? id, string? name, string? typeName) =>
+                new(SceneScriptFieldTargetStatus.Resolved, kind, id, name, typeName, containerId, key.LocalFileId);
+        }
+
+        private string? GameObjectName(ObjectKey gameObject) =>
+            objects.TryGetValue(gameObject, out var item) ? item.GameObject?.Name : null;
+
+        // Named like an indexed component, after its owning GameObject, falling back to m_Name.
+        private string? UnindexedComponentName(ObjectKey key, ParsedSceneObject target)
+        {
+            var owner = target.MonoBehaviour?.GameObject ?? target.Transform?.GameObject;
+            var name = owner is { } pointer && pointers.TryResolve(key.ContainerPath, pointer).Target is { } ownerKey
+                ? GameObjectName(ownerKey)
+                : null;
+            return name ?? EmptyToNull(target.MonoBehaviour?.Name ?? string.Empty);
+        }
+
+        private static string ComponentTypeName(SceneComponentRecord component) =>
+            Qualified(component.ScriptNamespace, component.ScriptClass) ?? component.Kind;
+
+        private string? ScriptTypeName(ObjectKey key, ParsedSceneObject target)
+        {
+            if (target.MonoBehaviour is null)
+                return target.Kind == ParsedSceneObjectKind.Transform ? "Transform" : null;
+            var script = pointers.TryResolve(key.ContainerPath, target.MonoBehaviour.Script).Target;
+            return script is { } scriptKey && objects[scriptKey].MonoScript is { } data ? Qualified(data.Namespace, data.ClassName) : null;
+        }
+
+        private static string? Qualified(string? ns, string? className) =>
+            string.IsNullOrWhiteSpace(className) ? null : string.IsNullOrWhiteSpace(ns) ? className : ns + "." + className;
+    }
     private sealed record DocumentAssignments(
         IReadOnlyList<SceneDocumentRecord> Documents,
         IReadOnlyDictionary<ObjectKey, string> GameObjectSceneIds);
@@ -890,12 +990,24 @@ public sealed class SceneNormalizer
             _objects = objects;
         }
 
-        public PointerTarget Resolve(string sourceContainerPath, ParsedScenePPtr pointer)
+        public PointerTarget Resolve(string sourceContainerPath, ParsedScenePPtr pointer) =>
+            Resolve(sourceContainerPath, pointer, strict: true);
+
+        // Used for pointers inside script field values. Those are game data, so a dangling or
+        // malformed one is reported as unresolved.
+        public PointerTarget TryResolve(string sourceContainerPath, ParsedScenePPtr pointer) =>
+            Resolve(sourceContainerPath, pointer, strict: false);
+
+        private PointerTarget Resolve(string sourceContainerPath, ParsedScenePPtr pointer, bool strict)
         {
             if (pointer.LocalFileId == 0)
                 return new PointerTarget(null, SceneResolutionStatus.Unavailable, $"fileId={pointer.FileId};localFileId=0", IsExplicitNull: true);
             if (pointer.LocalFileId < 0)
-                throw new InvalidDataException("Negative PPtr local file IDs are invalid.");
+            {
+                if (strict)
+                    throw new InvalidDataException("Negative PPtr local file IDs are invalid.");
+                return new PointerTarget(null, SceneResolutionStatus.UnresolvedText, $"fileId={pointer.FileId};localFileId={pointer.LocalFileId};target=<invalid-local-file-id>");
+            }
 
             var targetPath = sourceContainerPath;
             string? externalText = null;
@@ -913,6 +1025,8 @@ public sealed class SceneNormalizer
             }
 
             var key = new ObjectKey(targetPath, pointer.LocalFileId);
+            if (!_objects.ContainsKey(key) && !strict)
+                return new PointerTarget(null, SceneResolutionStatus.UnresolvedText, $"fileId={pointer.FileId};localFileId={pointer.LocalFileId};target=<missing-object>");
             if (!_objects.ContainsKey(key))
                 throw new InvalidDataException($"PPtr target '{targetPath}' local file ID '{pointer.LocalFileId}' does not exist in the parsed container.");
             return new PointerTarget(key, SceneResolutionStatus.Resolved, externalText ?? string.Empty);

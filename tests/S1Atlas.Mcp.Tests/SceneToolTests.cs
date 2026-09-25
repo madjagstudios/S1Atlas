@@ -85,7 +85,9 @@ public sealed class SceneToolTests
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Equal("SCD_Bikers", envelope.Data!.Asset!.Name);
-        Assert.Equal("100", Assert.Single(envelope.Data.ScriptFields!.Fields).Value);
+        var fields = envelope.Data.ScriptFields!.Fields;
+        Assert.Equal("100", fields[0].Value);
+        Assert.Equal((S1Atlas.Core.Scenes.SceneScriptFieldTargetStatus.Resolved, "Root"), (fields[1].Target!.Status, fields[1].Target!.Name));
         Assert.Contains(envelope.Provenance, entry =>
             entry.Classification == ProvenanceClassification.Fact &&
             entry.Source == "serialized-script-fields");

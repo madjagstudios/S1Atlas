@@ -446,6 +446,88 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Pointer_targets_cover_every_resolvable_and_unresolvable_kind()
+    {
+        static SceneScriptField Pointer(string path, int fileId, long localFileId) =>
+            new(path, "PPtr<$Object>", SceneScriptFieldValueKind.PPtr, $"{fileId}:{localFileId}");
+        var fields = new ParsedScriptFields(SceneScriptFieldSetStatus.Decoded, null,
+        [
+            new SceneScriptField("MaxBuyQuantity", "int", SceneScriptFieldValueKind.Integer, "100"),
+            Pointer("Leader.Data", 0, 40),
+            Pointer("Effects.Array[0]", 7, 60),
+            Pointer("Idle", 0, 10),
+            Pointer("Point", 0, 1),
+            Pointer("Script", 0, 31),
+            Pointer("Material", 0, 50),
+            Pointer("Nothing", 0, 0),
+            Pointer("NoTable", 9, 5),
+            Pointer("Dangling", 0, 999),
+            Pointer("OtherFileComponent", 7, 71)
+        ], Truncated: false);
+        var shared = Container(
+            "Schedule I_Data/level0",
+            objects:
+            [
+                GameObject(1, "Botanist", [new ParsedScenePPtr(0, 10)]),
+                Object(10, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 31), true)),
+                Object(30, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 0), new ParsedScenePPtr(0, 31), true, "SCD_Bikers")) with { ScriptFields = fields },
+                Object(31, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne.SpecialCustomers", "SpecialCustomerData")),
+                Object(40, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 0), new ParsedScenePPtr(0, 41), true, "Diesel")),
+                Object(41, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne.NPCs", "NPCDataObject")),
+                Object(50, 21, ParsedSceneObjectKind.Other)
+            ],
+            externals: [new ParsedSceneExternalReference(7, "sharedassets0.assets", "archive:/CAB/sharedassets0.assets")]);
+        var effects = Container(
+            "Schedule I_Data/sharedassets0.assets",
+            objects:
+            [
+                Object(60, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 0), new ParsedScenePPtr(0, 61), true, "Spicy")),
+                Object(61, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne.Effects", "Spicy")),
+                GameObject(70, "Loose Prefab"),
+                Object(71, 114, ParsedSceneObjectKind.MonoBehaviour, monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 70), new ParsedScenePPtr(0, 61), true))
+            ]);
+
+        var result = await NormalizeAsync([shared, effects]);
+
+        var set = Assert.Single(result.ScriptFieldSets);
+        var byPath = set.Fields.ToDictionary(field => field.Path);
+        var containers = result.Containers.ToDictionary(item => item.RelativePath, item => item.ContainerId);
+        Assert.Null(byPath["MaxBuyQuantity"].Target);
+        Assert.Equal("0:40", byPath["Leader.Data"].Value);
+
+        var leader = byPath["Leader.Data"].Target!;
+        var diesel = Assert.Single(result.ScriptableAssets, asset => asset.Name == "Diesel");
+        Assert.Equal((SceneScriptFieldTargetStatus.Resolved, SceneScriptFieldTargetKind.ScriptableAsset, diesel.AssetId, "Diesel", "ScheduleOne.NPCs.NPCDataObject"),
+            (leader.Status, leader.Kind, leader.Id, leader.Name, leader.TypeName));
+        Assert.Equal((containers["Schedule I_Data/level0"], 40L), (leader.ContainerId, leader.LocalFileId));
+
+        var effect = byPath["Effects.Array[0]"].Target!;
+        Assert.Equal((SceneScriptFieldTargetKind.ScriptableAsset, "Spicy", containers["Schedule I_Data/sharedassets0.assets"]),
+            (effect.Kind, effect.Name, effect.ContainerId));
+
+        var idle = byPath["Idle"].Target!;
+        Assert.Equal((SceneScriptFieldTargetKind.Component, Assert.Single(result.Components, item => item.LocalFileId == 10).ComponentId, "Botanist", "ScheduleOne.SpecialCustomers.SpecialCustomerData"),
+            (idle.Kind, idle.Id, idle.Name, idle.TypeName));
+        var point = byPath["Point"].Target!;
+        Assert.Equal((SceneScriptFieldTargetKind.GameObject, Assert.Single(result.GameObjects, item => item.Name == "Botanist").GameObjectId, "Botanist"), (point.Kind, point.Id, point.Name));
+        var script = byPath["Script"].Target!;
+        Assert.Equal((SceneScriptFieldTargetKind.MonoScript, (string?)null, "ScheduleOne.SpecialCustomers.SpecialCustomerData"), (script.Kind, script.Id, script.TypeName));
+        var material = byPath["Material"].Target!;
+        Assert.Equal((SceneScriptFieldTargetKind.Asset, (string?)null, "UnityClass:21", 50L), (material.Kind, material.Id, material.TypeName, material.LocalFileId));
+
+        Assert.Equal(SceneScriptFieldTargetStatus.Null, byPath["Nothing"].Target!.Status);
+        var noTable = byPath["NoTable"].Target!;
+        Assert.Equal(SceneScriptFieldTargetStatus.Unresolved, noTable.Status);
+        Assert.Contains("missing-table-entry", noTable.Reason, StringComparison.Ordinal);
+        var dangling = byPath["Dangling"].Target!;
+        Assert.Equal(SceneScriptFieldTargetStatus.Unresolved, dangling.Status);
+        Assert.Contains("target=<missing-object>", dangling.Reason, StringComparison.Ordinal);
+        var otherFile = byPath["OtherFileComponent"].Target!;
+        Assert.Equal((SceneScriptFieldTargetKind.Component, Assert.Single(result.Components, item => item.LocalFileId == 71).ComponentId, "Loose Prefab", "ScheduleOne.Effects.Spicy"),
+            (otherFile.Kind, otherFile.Id, otherFile.Name, otherFile.TypeName));
+    }
+
+    [Fact]
     public async Task Components_without_parsed_script_fields_stay_graph_only_with_no_field_set()
     {
         var level = Container(

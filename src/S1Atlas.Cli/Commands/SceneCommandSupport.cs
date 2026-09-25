@@ -33,8 +33,16 @@ internal static class SceneCommandSupport
         if (fields is null) return;
         if (fields.Status == SceneScriptFieldSetStatus.Unavailable) { writer.WriteLine($"Fields: unavailable ({fields.UnavailableReason})"); return; }
         writer.WriteLine($"Fields: {fields.Fields.Count}{(fields.Truncated ? " (truncated)" : string.Empty)}");
-        foreach (var field in fields.Fields) writer.WriteLine($"Field: {field.Path} ({field.TypeName}) = {field.Value}");
+        foreach (var field in fields.Fields) writer.WriteLine($"Field: {field.Path} ({field.TypeName}) = {field.Value}{TargetText(field.Target)}");
     }
+    private static string TargetText(S1Atlas.Core.Scenes.SceneScriptFieldTarget? target) => target?.Status switch
+    {
+        null => string.Empty,
+        S1Atlas.Core.Scenes.SceneScriptFieldTargetStatus.Null => " -> null",
+        S1Atlas.Core.Scenes.SceneScriptFieldTargetStatus.Unresolved => $" -> unresolved ({target.Reason})",
+        _ => $" -> {target.Kind}{(target.Name is null ? string.Empty : $" \"{target.Name}\"")}{(target.TypeName is null ? string.Empty : $" ({target.TypeName})")} | " +
+             (target.Id is null ? $"container {target.ContainerId} | local {target.LocalFileId}" : $"id {target.Id}")
+    };
     public static void WriteComponent(ComponentOutput data, TextWriter writer) { WriteSnapshot(data.Snapshot, writer); if (data.Component is not null) writer.WriteLine($"Component: {data.Component.Kind} | {data.Component.ComponentId} | object {data.Component.GameObjectId} | local {data.Component.LocalFileId} | class {data.Component.UnityClassId} | script {data.Component.ScriptAssembly}/{data.Component.ScriptNamespace}.{data.Component.ScriptClass} | {ContainerText(data.Component.ContainerId, data.Containers)} | symbol {data.Component.ResolvedTypeSymbolId ?? "unresolved"} | index {data.Component.ResolvedCodeIndexId ?? "unresolved"} | {data.Component.TypeResolutionStatus} | {data.Component.RecoveryStatus}"); if (data.CodeSymbol is not null) writer.WriteLine($"Code: {data.CodeSymbol.QualifiedName} | {data.CodeSymbol.Signature} | {data.CodeSymbol.SymbolId} | index {data.CodeSymbol.IndexId}"); WriteScriptFields(data.ScriptFields, writer); foreach (var candidate in data.Candidates) writer.WriteLine($"Candidate: {candidate.Kind} | {candidate.ComponentId} | {ContainerText(candidate.ContainerId, data.Containers)} | {candidate.RecoveryStatus}"); WriteReferences(data.References, data.Containers, writer); }
     private static string Real(float? value) => value?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";
     private static void WriteSnapshot(S1Atlas.Core.Scenes.SceneSnapshotRecord? snapshot, TextWriter writer) { if (snapshot is not null) writer.WriteLine($"Snapshot: {snapshot.SceneSnapshotId} | build {snapshot.BuildId} | extraction {snapshot.ExtractionId} | code snapshot {snapshot.CodeSnapshotId} | index {snapshot.CodeIndexId} | parser {snapshot.ParserId} {snapshot.ParserVersion} | type tree {snapshot.TypeTreeSource ?? "unknown"} | script layouts {snapshot.ScriptLayoutSource ?? "unknown"} | recovery {snapshot.RecoveryStatus}"); }

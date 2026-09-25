@@ -16,7 +16,8 @@ namespace S1Atlas.Indexing.Scene;
 public sealed class SceneIndexWorkflow
 {
     public const string ParserId = "assetstools-net";
-    public const string ParserVersion = "3.0.5+script-layouts.1";
+    // Bump the suffix whenever normalized output changes, so existing snapshots are rebuilt.
+    public const string ParserVersion = "3.0.5+script-layouts.2";
     public const string ScriptLayoutGenerator = "assetstools-net-monocecil 3.0.4";
     private const string ScriptLayoutProfileId = "cpp2il-reconstructed-assemblies-v2";
     public const int SerializedFileSchemaVersion = 22;
