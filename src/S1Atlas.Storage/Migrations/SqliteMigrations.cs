@@ -925,6 +925,15 @@ internal static class SqliteMigrations
         ON script_field_sets(scene_snapshot_id);
         """;
 
+    // Native evidence recorded before v15 came from a decoder that could run past a method's end
+    // into the next function. It is derived data, so it is dropped rather than served;
+    // recover-native-body rebuilds it.
+    private const string NativeEvidenceMethodExtentV15Sql = """
+        DELETE FROM native_recovery_fields;
+        DELETE FROM native_recovery_edges;
+        DELETE FROM native_recovery_runs;
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -940,6 +949,7 @@ internal static class SqliteMigrations
         new(11, "relationship-query-target-text-v11", RelationshipQueryTargetTextV11Sql),
         new(12, "native-evidence-v12", NativeEvidenceV12Sql),
         new(13, "scene-type-tree-source-v13", SceneTypeTreeSourceV13Sql),
-        new(14, "scene-script-fields-v14", SceneScriptFieldsV14Sql)
+        new(14, "scene-script-fields-v14", SceneScriptFieldsV14Sql),
+        new(15, "native-evidence-method-extent-v15", NativeEvidenceMethodExtentV15Sql)
     ];
 }

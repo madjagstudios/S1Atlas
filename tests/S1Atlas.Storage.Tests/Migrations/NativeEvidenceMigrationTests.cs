@@ -28,7 +28,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
 
         await using var connection = await OpenAsync(cancellationToken);
 
-        Assert.Equal(14L, await ScalarAsync(
+        Assert.Equal(15L, await ScalarAsync(
             connection,
             "SELECT MAX(version) FROM schema_migrations;",
             cancellationToken));
@@ -137,7 +137,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
             .MigrateAsync(cancellationToken);
 
         await using var migrated = await OpenAsync(cancellationToken);
-        Assert.Equal(14L, await ScalarAsync(
+        Assert.Equal(15L, await ScalarAsync(
             migrated,
             "SELECT MAX(version) FROM schema_migrations;",
             cancellationToken));
@@ -149,6 +149,51 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
             migrated,
             "SELECT COUNT(*) FROM pragma_foreign_key_check;",
             cancellationToken));
+    }
+
+    [Fact]
+    public async Task V14Database_DropsNativeEvidenceRecordedByTheUnboundedDecoder()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await new SqliteMigrationRunner(
+            _databasePath,
+            Path.Combine(_root, "backups-v14"),
+            SqliteMigrations.All.Take(14).ToArray())
+            .MigrateAsync(cancellationToken);
+
+        var sha = new string('a', 64);
+        await using (var connection = await OpenAsync(cancellationToken))
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"""
+                PRAGMA foreign_keys = OFF;
+                INSERT INTO native_recovery_runs (
+                    recovery_id, build_id, index_id, game_assembly_sha256, symbol_ids_json, max_traversal_edges,
+                    tool_name, tool_version, tool_sha256, status, mapping_evidence_json, is_complete, output_sha256,
+                    created_at_utc)
+                VALUES ('run-a', 'build-a', 'index-a', '{sha}', '["symbol-a"]', 50,
+                    'tool', '1', '{sha}', 'Recovered', '[]', 1, '{sha}', '2026-09-01T00:00:00Z');
+                INSERT INTO native_recovery_edges (recovery_id, ordinal, edge_id, source_method_pointer, kind, evidence, is_complete)
+                VALUES ('run-a', 0, '{sha}', '0x1000', 'UNKNOWN', 'unresolved call at 0x1010', 0);
+                INSERT INTO native_recovery_fields (recovery_id, ordinal, field_access)
+                VALUES ('run-a', 0, 'this.field @ 0x10');
+                PRAGMA foreign_keys = ON;
+                """;
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await new SqliteMigrationRunner(
+            _databasePath,
+            Path.Combine(_root, "backups-v14-upgrade"))
+            .MigrateAsync(cancellationToken);
+
+        await using var migrated = await OpenAsync(cancellationToken);
+        Assert.Equal(1L, await ScalarAsync(
+            migrated,
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 15 AND name = 'native-evidence-method-extent-v15';",
+            cancellationToken));
+        foreach (var table in new[] { "native_recovery_runs", "native_recovery_edges", "native_recovery_fields" })
+            Assert.Equal(0L, await ScalarAsync(migrated, $"SELECT COUNT(*) FROM {table};", cancellationToken));
     }
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)

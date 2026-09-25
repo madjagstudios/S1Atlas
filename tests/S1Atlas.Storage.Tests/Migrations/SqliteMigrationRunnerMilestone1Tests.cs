@@ -18,9 +18,9 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public void MigrationsThroughFourteen_HaveCommittedNamesAndChecksums_AndEarlierMigrationsRemainPinned()
+    public void MigrationsThroughFifteen_HaveCommittedNamesAndChecksums_AndEarlierMigrationsRemainPinned()
     {
-        Assert.Equal(14, SqliteMigrations.All.Count);
+        Assert.Equal(15, SqliteMigrations.All.Count);
         Assert.Equal("d03021f97dfe3cd5e52305ae945258aa7fdbc8ccb086808a8255df7df0d10bb0", SqliteMigrations.All[6].Checksum);
         Assert.Equal(8, SqliteMigrations.All[7].Version);
         Assert.Equal("scene-intelligence-v8", SqliteMigrations.All[7].Name);
@@ -36,6 +36,8 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
         Assert.Equal("scene-type-tree-source-v13", SqliteMigrations.All[12].Name);
         Assert.Equal(14, SqliteMigrations.All[13].Version);
         Assert.Equal("scene-script-fields-v14", SqliteMigrations.All[13].Name);
+        Assert.Equal(15, SqliteMigrations.All[14].Version);
+        Assert.Equal("native-evidence-method-extent-v15", SqliteMigrations.All[14].Name);
         Assert.Equal(
             [
                 "90ee69e49a9763c6443b4db0b5b2752ff78292fb7a7f7e7b5d86fd22137fd92e",
@@ -47,10 +49,10 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task VersionEightDatabase_MigratesToFourteen_WithCallableSurfaceVisibilityReferenceTablesAndRelationshipQueryIndex()
+    public async Task VersionEightDatabase_MigratesToFifteen_WithCallableSurfaceVisibilityReferenceTablesAndRelationshipQueryIndex()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        Assert.Equal(14, SqliteMigrations.All.Count);
+        Assert.Equal(15, SqliteMigrations.All.Count);
         Assert.Equal(10, SqliteMigrations.All[9].Version);
         Assert.Equal("reference-mods-v10", SqliteMigrations.All[9].Name);
         Assert.Equal(11, SqliteMigrations.All[10].Version);
@@ -66,7 +68,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
 
         await using var connection = new SqliteConnection($"Data Source={_databasePath}");
         await connection.OpenAsync(cancellationToken);
-        Assert.Equal(14L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
+        Assert.Equal(15L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(
             connection,
             "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'callable_surface';",
@@ -146,11 +148,11 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
             connection,
             "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('scene_snapshots','scene_containers','scenes','game_objects','transforms','components','serialized_refs');",
             cancellationToken));
-        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-14-*.db", SearchOption.TopDirectoryOnly));
+        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-15-*.db", SearchOption.TopDirectoryOnly));
     }
 
     [Fact]
-    public async Task VersionSixDatabase_MigratesToFourteen_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
+    public async Task VersionSixDatabase_MigratesToFifteen_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var v6Migrations = SqliteMigrations.All.Take(6).ToArray();
@@ -172,7 +174,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
 
         await using var migrated = new SqliteConnection($"Data Source={_databasePath}");
         await migrated.OpenAsync(cancellationToken);
-        Assert.Equal(14L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
+        Assert.Equal(15L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1';", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1' AND body_recovery_status IS NULL;", cancellationToken));
         Assert.Equal(0L, await ScalarAsync(migrated, "SELECT is_public FROM symbols WHERE symbol_id = 'symbol-1';", cancellationToken));
@@ -194,7 +196,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
             await Assert.ThrowsAsync<SqliteException>(() => invalid.ExecuteNonQueryAsync(cancellationToken));
         }
 
-        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-14-*.db", SearchOption.TopDirectoryOnly));
+        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-15-*.db", SearchOption.TopDirectoryOnly));
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)

@@ -281,6 +281,11 @@ code and does not prove runtime behavior. Recovered pseudocode, edges, and
 field accesses are static evidence only and require runtime validation
 before being treated as a behavioral fact.
 
+Each method is decoded from its entry to the start of the next function in
+`GameAssembly.dll`, including code after an early return; a jump out of the
+method is recorded as a tail call. A method whose end cannot be determined is
+reported incomplete.
+
 Each run persists a provenance-stamped `NativeRecoveryRecord` keyed by build
 ID, index ID, `GameAssembly.dll` SHA-256, the selected symbol IDs, and the
 traversal budget. Running the same request again against unchanged inputs
