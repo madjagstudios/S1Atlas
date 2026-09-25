@@ -22,7 +22,7 @@ internal static class ComponentCommand
             {
                 codeSymbol = indexQueries.GetExactSymbolAsync(indexId, symbolId, cancellationToken).GetAwaiter().GetResult();
             }
-            var outputData = new ComponentOutput(data.Status, data.Snapshot, data.Component, data.Candidates, data.References, codeSymbol, data.Containers);
+            var outputData = new ComponentOutput(data.Status, data.Snapshot, data.Component, data.Candidates, data.References, codeSymbol, data.Containers, data.ScriptFields);
             return SceneCommandSupport.Write(new CommandOutput("component", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteComponent(outputData, writer));
         })); return command;
     }

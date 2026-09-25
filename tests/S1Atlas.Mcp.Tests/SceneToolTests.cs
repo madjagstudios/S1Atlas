@@ -53,6 +53,25 @@ public sealed class SceneToolTests
     }
 
     [Fact]
+    public async Task GetComponent_ReturnsDecodedFieldsWithFactProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetComponentAsync(
+            selector: atlas.ComponentSelector,
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal("50000", Assert.Single(envelope.Data!.ScriptFields!.Fields).Value);
+        Assert.Contains(envelope.Provenance, entry =>
+            entry.Classification == ProvenanceClassification.Fact &&
+            entry.Source == "serialized-script-fields");
+    }
+
+    [Fact]
     public async Task GetComponent_WithCode_ReturnsSymbolHandoff()
     {
         await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();

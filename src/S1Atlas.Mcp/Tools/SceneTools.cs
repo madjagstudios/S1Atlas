@@ -111,7 +111,7 @@ public sealed class SceneTools
         CancellationToken ct = default) =>
         GetDocumentAsync(selector, buildId, sceneSnapshotId, "Prefab", includeObjects, includeComponents, includeReferences, limit, ct, prefab: true);
 
-    [McpServerTool(Name = "get_component"), Description("Resolve one indexed Schedule I component, including its resolved code-symbol handoff when requested.")]
+    [McpServerTool(Name = "get_component"), Description("Resolve one indexed Schedule I component, including its decoded serialized script field values (when the scene index had restored script layouts) and its resolved code-symbol handoff when requested.")]
     public async Task<ToolEnvelope<ComponentQueryResult>> GetComponentAsync(
         [Description("Exact or fuzzy component selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId,
@@ -131,7 +131,7 @@ public sealed class SceneTools
                 {
                     var result = await _services.SceneQueryService.ComponentAsync(
                         new ComponentQueryRequest(snapshot.SceneSnapshotId, selector, includeReferences, includeCode, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query");
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query", DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
                 });
             }
             catch (ArgumentOutOfRangeException exception)
@@ -233,13 +233,14 @@ public sealed class SceneTools
 
     private sealed record SceneSnapshotResolution(SceneSnapshotRecord? Snapshot, bool AuthorityMismatch);
 
-    private static ToolEnvelope<T> FromResult<T>(InstalledBuildAuthority authority, SceneQueryStatus status, T result, IReadOnlyList<object> candidates, string source) where T : class
+    private static ToolEnvelope<T> FromResult<T>(InstalledBuildAuthority authority, SceneQueryStatus status, T result, IReadOnlyList<object> candidates, string source, ProvenanceEntry? fact = null) where T : class
     {
         var build = EnvelopeMapper.BuildFrom(authority);
         var provenance = Derived(authority, source);
         return status switch
         {
-            SceneQueryStatus.Resolved or SceneQueryStatus.PartialRecovery or SceneQueryStatus.UnresolvedSceneReference => ToolEnvelope<T>.Resolved(build, result, provenance),
+            SceneQueryStatus.Resolved or SceneQueryStatus.PartialRecovery or SceneQueryStatus.UnresolvedSceneReference =>
+                fact is null ? ToolEnvelope<T>.Resolved(build, result, provenance) : ToolEnvelope<T>.Resolved(build, result, fact, provenance),
             SceneQueryStatus.NoCompletedSceneIndex => ToolEnvelope<T>.NotFound(build, new ToolError("NoCompletedSceneIndex", "No completed scene index exists for the requested build."), provenance),
             SceneQueryStatus.SceneSnapshotNotFound => ToolEnvelope<T>.Invalid(new ToolError("SceneSnapshotNotFound", "The requested scene snapshot was not found."), build, provenance),
             SceneQueryStatus.SceneNotFound => ToolEnvelope<T>.NotFound(build, new ToolError("SceneNotFound", "No indexed scene matched the selector."), provenance),
@@ -293,6 +294,10 @@ public sealed class SceneTools
             EnvelopeMapper.BuildFrom(authority),
             Fact(authority, "installed-build-authority"),
             Derived(authority, "tool-argument-validation"));
+
+    // Decoded values are read from the file, not inferred, so they are FACT.
+    private static ProvenanceEntry? DecodedFieldsFact(InstalledBuildAuthority authority, SceneScriptFieldSetRecord? fields) =>
+        fields?.Status == SceneScriptFieldSetStatus.Decoded ? Fact(authority, "serialized-script-fields") : null;
 
     private static ProvenanceEntry Fact(InstalledBuildAuthority authority, string source) =>
         new(ProvenanceClassification.Fact, source, authority.ResolvedBuildId, authority.ExtractionId, authority.IndexId);

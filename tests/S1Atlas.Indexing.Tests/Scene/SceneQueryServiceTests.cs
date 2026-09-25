@@ -93,6 +93,38 @@ public sealed class SceneQueryServiceTests
     }
 
     [Fact]
+    public async Task Component_query_returns_the_components_field_set()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Components = [Component("component-a", SceneResolutionStatus.NotIndexed)];
+        repository.FieldSets.Add(new SceneScriptFieldSetRecord("component-a", "snapshot-a", SceneScriptFieldOwnerKind.Component,
+            SceneScriptFieldSetStatus.Decoded, null, false, [new SceneScriptField("Price", "float", SceneScriptFieldValueKind.Float, "50000")]));
+
+        var result = await new SceneQueryService(repository).ComponentAsync(
+            new ComponentQueryRequest("snapshot-a", "component-a"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneQueryStatus.Resolved, result.Status);
+        Assert.Equal("50000", Assert.Single(result.ScriptFields!.Fields).Value);
+    }
+
+    [Fact]
+    public async Task Component_query_without_a_field_set_returns_no_fields()
+    {
+        var repository = new QueryRepository();
+        repository.Snapshots["snapshot-a"] = Snapshot();
+        repository.Components = [Component("component-a", SceneResolutionStatus.NotIndexed)];
+
+        var result = await new SceneQueryService(repository).ComponentAsync(
+            new ComponentQueryRequest("snapshot-a", "component-a"),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.Component);
+        Assert.Null(result.ScriptFields);
+    }
+
+    [Fact]
     public async Task Prefabs_returns_a_valid_empty_proven_prefab_page()
     {
         var repository = new QueryRepository();
