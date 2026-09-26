@@ -123,10 +123,18 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
         public string? ResolveFieldName(ulong offset) => name;
     }
 
+    private sealed class FixedLengthBoundaries(ulong length) : IFunctionBoundaries
+    {
+        public ulong? EndOf(ulong start) => start + length;
+    }
+
     private sealed class FakeAdapterFactory(
-        IIl2CppMethodLookup lookup, IAddressResolver addressResolver, IFieldResolver? fieldResolver = null)
+        IIl2CppMethodLookup lookup, IAddressResolver addressResolver, IFieldResolver? fieldResolver = null,
+        IFunctionBoundaries? boundaries = null)
         : ILibCpp2IlAdapterFactory
     {
+        public IFunctionBoundaries CreateFunctionBoundaries() => boundaries ?? UnknownFunctionBoundaries.Instance;
+
         public IIl2CppMethodLookup CreateMethodLookup() => lookup;
 
         public IAddressResolver CreateAddressResolver() => addressResolver;
@@ -163,7 +171,7 @@ public class LibCpp2IlNativeBodyRecoveryProviderTests
             CreateNoOpImageCache(),
             new FakeNativeImageSource(gameAssemblyBytes),
             symbolIdentityResolver,
-            new FakeAdapterFactory(lookup, addressResolver),
+            new FakeAdapterFactory(lookup, addressResolver, boundaries: new FixedLengthBoundaries((ulong)method1Bytes.Length)),
             UnityVersion.Parse("2022.3.62f2"),
             Pins);
 

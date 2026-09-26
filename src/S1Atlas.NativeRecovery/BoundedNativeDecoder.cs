@@ -41,8 +41,9 @@ public interface IFieldResolver
 
 /// <summary>
 /// The bounded evidence extracted from decoding a single method body: the call-graph edges
-/// discovered and the this-relative field accesses observed, plus whether decoding reached a
-/// clean <c>ret</c> (true) or was cut short by a budget or byte cap (false).
+/// discovered and the this-relative field accesses observed, plus whether decoding covered the
+/// method's whole known extent (true) or stopped early, hit the edge budget or byte cap, or had
+/// no known end (false).
 /// </summary>
 public sealed record DecodedEvidence(
     IReadOnlyList<NativeEvidenceEdge> Edges,
@@ -58,10 +59,10 @@ public static class BoundedNativeDecoder
 {
     /// <summary>
     /// Hard cap on the number of bytes decoded from <c>code</c>, independent of <c>maxEdges</c>.
-    /// Bounds worst-case decode time/memory for a pathologically long method body that never
-    /// reaches a <c>ret</c> within a reasonable edge budget.
+    /// No Assembly-CSharp method on the 0.4.7f6 build exceeds it; a longer one is truncated and
+    /// reported incomplete.
     /// </summary>
-    private const int MaxDecodeBytes = 4096;
+    private const int MaxDecodeBytes = 65536;
 
     /// <param name="thisRegister">
     /// The register holding the incoming <c>this</c> pointer at method entry, per the x64 calling
@@ -72,6 +73,12 @@ public static class BoundedNativeDecoder
     /// non-this base (a local struct pointer, another held reference) or a RIP-relative operand
     /// (RIP is never a this-alias).
     /// </param>
+    /// <param name="endVirtualAddress">
+    /// Where the method's code ends: the start of the next function. With it, the whole method is
+    /// decoded, including code after an early <c>ret</c>, a <c>jmp</c> leaving the method is a
+    /// tail call, and <c>int3</c> padding ends the method. Without it the decoder stops at the
+    /// first <c>ret</c> and never reports the result complete.
+    /// </param>
     public static DecodedEvidence Decode(
         ReadOnlySpan<byte> code,
         ulong startVirtualAddress,
@@ -79,12 +86,16 @@ public static class BoundedNativeDecoder
         int maxEdges,
         IAddressResolver addresses,
         IFieldResolver fields,
-        Register thisRegister)
+        Register thisRegister,
+        ulong? endVirtualAddress = null)
     {
-        var boundedLength = Math.Min(code.Length, MaxDecodeBytes);
+        var extentKnown = endVirtualAddress is { } end && end > startVirtualAddress;
+        var available = extentKnown ? (int)Math.Min((ulong)code.Length, endVirtualAddress!.Value - startVirtualAddress) : code.Length;
+        var boundedLength = Math.Min(available, MaxDecodeBytes);
         var bounded = code[..boundedLength].ToArray();
         var decoder = Decoder.Create(64, bounded, startVirtualAddress, DecoderOptions.None);
         var endAddress = startVirtualAddress + (ulong)boundedLength;
+        var methodEnd = extentKnown ? endVirtualAddress!.Value : endAddress;
 
         var edges = new List<NativeEvidenceEdge>();
         var fieldAccesses = new List<string>();
@@ -107,13 +118,26 @@ public static class BoundedNativeDecoder
                 break;
             }
 
-            if (instruction.Mnemonic == Mnemonic.Ret)
+            if (instruction.Mnemonic == Mnemonic.Int3 && extentKnown)
             {
                 isComplete = true;
                 break;
             }
 
-            if (instruction.Mnemonic == Mnemonic.Call)
+            if (instruction.Mnemonic == Mnemonic.Ret)
+            {
+                if (!extentKnown)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            var isTailCall = extentKnown && instruction.Mnemonic == Mnemonic.Jmp &&
+                instruction.Op0Kind is OpKind.NearBranch64 or OpKind.NearBranch32 &&
+                (instruction.NearBranchTarget < startVirtualAddress || instruction.NearBranchTarget >= methodEnd);
+            if (instruction.Mnemonic == Mnemonic.Call || isTailCall)
             {
                 edges.Add(ClassifyCall(instruction, sourcePointer, addresses));
                 if (edges.Count == maxEdges)
@@ -132,6 +156,11 @@ public static class BoundedNativeDecoder
             UpdateThisAliases(instruction, thisAliases, instructionInfoFactory);
         }
 
+        if (extentKnown && decoder.IP >= methodEnd && edges.Count < maxEdges)
+        {
+            isComplete = true;
+        }
+
         return new DecodedEvidence(edges, fieldAccesses, isComplete);
     }
 
@@ -147,6 +176,7 @@ public static class BoundedNativeDecoder
         // target. The formatted pointer is lowercase 0x-hex via NativeNameNormalizer.Pointer, which
         // is always NativeNameNormalizer.IsSummarySafe (no '/', '\', "://", ".bin", "disassembly").
         var callSitePointer = NativeNameNormalizer.Pointer(instruction.IP);
+        var siteText = instruction.Mnemonic == Mnemonic.Jmp ? "tail call" : "direct call";
 
         if (instruction.Op0Kind is OpKind.NearBranch64 or OpKind.NearBranch32 or OpKind.NearBranch16)
         {
@@ -162,7 +192,7 @@ public static class BoundedNativeDecoder
                     TargetMethodPointer: targetPointer,
                     TargetText: resolution.ManagedName,
                     Kind: "DirectCall",
-                    Evidence: $"direct call at {callSitePointer}",
+                    Evidence: $"{siteText} at {callSitePointer}",
                     IsComplete: true),
                 AddressResolutionKind.Ambiguous => new NativeEvidenceEdge(
                     EdgeId: "",
@@ -170,7 +200,7 @@ public static class BoundedNativeDecoder
                     TargetMethodPointer: targetPointer,
                     TargetText: null,
                     Kind: "DirectCall",
-                    Evidence: $"direct call (ambiguous target) at {callSitePointer}",
+                    Evidence: $"{siteText} (ambiguous target) at {callSitePointer}",
                     IsComplete: false),
                 _ => new NativeEvidenceEdge(
                     EdgeId: "",

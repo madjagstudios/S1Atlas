@@ -56,6 +56,10 @@ The output SHA-256 is derived from a versioned, length-prefixed canonical stream
 
 Only a directly evidenced `DirectCall` edge with a target method pointer can remain a direct native edge. `IndirectDispatch`, `RuntimeDispatch`, `CrossThreadDispatch`, unrecognized kinds, and targetless edges are normalized as `UNKNOWN`, marked incomplete, and make the enclosing record incomplete. They do not establish a direct native callee, execution order, thread affinity, authority, or lifecycle ownership. Provider exceptions become sanitized `Failed` records with the configured tool provenance; cancellation requested by the caller still propagates.
 
+## Decode extent
+
+A method's native code runs from its entry to the start of the next known function: the next entry in LibCpp2IL's managed-method or concrete-generic tables. The decoder reads that whole range, including code after an early `ret`, and stops early only at `int3` padding. A `jmp` that leaves the range is a tail call and becomes an edge like a `call`. A method whose end is unknown, or whose range exceeds the 64 KB byte cap, is incomplete. Decoding linearly to the first `ret` is not a valid end: a method ending in a tail jump or a call that never returns has no `ret`, and the sweep would run into the next function and credit its calls to this one. Evidence recorded before schema 15 used that rule and is dropped by the migration.
+
 ## Licensing and distribution boundary
 
 The Cpp2IL identity above is an inventory reference to the existing reviewed MIT-licensed pin, not authorization to redistribute it or claim native recovery capability. This workflow does not download tools. Any future provider executable remains locally installed and hash-verified under a separately reviewed tool definition and license. Schedule I binaries and derived native artifacts remain outside source control and distribution.

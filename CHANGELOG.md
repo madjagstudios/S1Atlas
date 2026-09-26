@@ -28,6 +28,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   scene parser version is now `3.0.5+script-layouts.2`, so `index --scene`
   rebuilds existing snapshots to gain targets.
 
+### Fixed
+
+- **Native-body recovery no longer reads past a method's end** (AT-58) — the
+  decoder swept linearly to the first `ret`, so a method ending in a tail jump
+  or a no-return call ran into the next function and reported that function's
+  calls as its own, marked complete. On the 0.4.7f6 build that was 42% of the
+  edges it produced. Methods are now decoded to the start of the next function,
+  tail jumps are recorded as calls, and a method with an unknown end is
+  incomplete. Schema migration 15 drops previously stored native evidence;
+  run `recover-native-body` again to rebuild it.
+
 ## [1.4.0] — 2026-09-20 — Scene intelligence on release builds
 
 Scene intelligence now works on the game as it actually ships. Schedule I strips

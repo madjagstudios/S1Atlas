@@ -93,6 +93,47 @@ public interface ILibCpp2IlAdapterFactory
     IAddressResolver CreateAddressResolver();
 
     IFieldResolver CreateFieldResolver(string declaringTypeFullName);
+
+    IFunctionBoundaries CreateFunctionBoundaries() => UnknownFunctionBoundaries.Instance;
+}
+
+/// <summary>Where a native function's code ends.</summary>
+public interface IFunctionBoundaries
+{
+    /// <returns>The start of the next function after <paramref name="start"/>, or null when unknown.</returns>
+    ulong? EndOf(ulong start);
+}
+
+public sealed class UnknownFunctionBoundaries : IFunctionBoundaries
+{
+    public static readonly UnknownFunctionBoundaries Instance = new();
+
+    public ulong? EndOf(ulong start) => null;
+}
+
+/// <summary>
+/// Function starts from both LibCpp2IL tables: managed method bodies and concrete generic
+/// instantiations. A method ends where the next known function begins.
+/// </summary>
+public sealed class LibCpp2IlFunctionBoundaries : IFunctionBoundaries
+{
+    private readonly ulong[] _starts;
+
+    public LibCpp2IlFunctionBoundaries()
+    {
+        var starts = new HashSet<ulong>(LibCpp2IlMain.MethodsByPtr.Keys);
+        if (LibCpp2IlMain.Binary?.ConcreteGenericImplementationsByAddress is { } generics)
+            starts.UnionWith(generics.Keys);
+        starts.Remove(0);
+        _starts = [.. starts.Order()];
+    }
+
+    public ulong? EndOf(ulong start)
+    {
+        var index = Array.BinarySearch(_starts, start);
+        var next = index >= 0 ? index + 1 : ~index;
+        return next < _starts.Length ? _starts[next] : null;
+    }
 }
 
 /// <summary>
@@ -108,6 +149,8 @@ public sealed class LibCpp2IlAdapterFactory : ILibCpp2IlAdapterFactory
 
     public IFieldResolver CreateFieldResolver(string declaringTypeFullName) =>
         new LibCpp2IlFieldResolver(declaringTypeFullName);
+
+    public IFunctionBoundaries CreateFunctionBoundaries() => new LibCpp2IlFunctionBoundaries();
 }
 
 /// <summary>
@@ -328,6 +371,7 @@ public sealed class LibCpp2IlNativeBodyRecoveryProvider : INativeBodyRecoveryPro
     {
         var methodLookup = _adapterFactory.CreateMethodLookup();
         var addressResolver = _adapterFactory.CreateAddressResolver();
+        var boundaries = _adapterFactory.CreateFunctionBoundaries();
 
         var resolutions = new List<(string SymbolId, SymbolResolutionResult Result, ManagedSymbolDescriptor? Descriptor)>();
         foreach (var symbolId in request.SymbolIds)
@@ -398,7 +442,8 @@ public sealed class LibCpp2IlNativeBodyRecoveryProvider : INativeBodyRecoveryPro
                 remainingBudget,
                 addressResolver,
                 fieldResolver,
-                thisRegister);
+                thisRegister,
+                boundaries.EndOf(symbol.MethodPointer));
 
             edges.AddRange(decoded.Edges);
             fieldAccesses.AddRange(decoded.FieldAccesses);

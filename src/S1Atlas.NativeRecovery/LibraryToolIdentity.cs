@@ -13,7 +13,8 @@ public static class LibraryToolIdentity
     public static string ComputeToolSha256(IReadOnlyList<LibraryPin> pins)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        Append(hash, "s1atlas-native-recovery-libs-v1");
+        // v2: the decoder stops at each method's end, so results from v1 are not reused.
+        Append(hash, "s1atlas-native-recovery-libs-v2");
         foreach (var pin in pins.OrderBy(pin => pin.PackageId, StringComparer.Ordinal))
         {
             Append(hash, pin.PackageId);

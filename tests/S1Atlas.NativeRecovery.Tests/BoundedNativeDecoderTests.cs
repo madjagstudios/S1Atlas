@@ -26,6 +26,18 @@ public class BoundedNativeDecoderTests
     // `ret` (near return, no operands).
     private static byte[] Ret() => [0xC3];
 
+    // `jmp rel32` (E9 + 4-byte relative displacement) to an absolute target, starting at `at`.
+    private static byte[] JmpRel32(ulong at, ulong target)
+    {
+        var bytes = new byte[5];
+        bytes[0] = 0xE9;
+        BitConverter.GetBytes(unchecked((int)(target - (at + 5)))).CopyTo(bytes, 1);
+        return bytes;
+    }
+
+    // `int3`, the padding MSVC places between functions.
+    private static byte[] Int3() => [0xCC];
+
     // `mov rax, [rbx+disp32]`: REX.W 8B /r, ModRM=10 000 011 (mod=disp32, reg=rax, rm=rbx).
     private static byte[] MovRaxFromRbxDisp32(uint disp)
     {
@@ -250,16 +262,94 @@ public class BoundedNativeDecoderTests
     }
 
     [Fact]
-    public void Decode_Ret_TerminatesWithIsCompleteTrue()
+    public void Decode_KnownExtentEndingInRet_IsComplete()
     {
         var code = Ret();
         var resolver = new FakeAddressResolver(AddressResolutionKind.None);
 
         var result = BoundedNativeDecoder.Decode(
-            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None);
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None,
+            endVirtualAddress: StartAddress + (ulong)code.Length);
 
         Assert.Empty(result.Edges);
         Assert.True(result.IsComplete);
+    }
+
+    [Fact]
+    public void Decode_UnknownExtent_StopsAtFirstRetButIsNeverComplete()
+    {
+        var code = Concat(Ret(), CallRel32(StartAddress + 1, 0x2000));
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Some.Method");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None);
+
+        Assert.Empty(result.Edges);
+        Assert.False(result.IsComplete);
+    }
+
+    [Fact]
+    public void Decode_MethodEndingInTailJump_DoesNotReadTheNextFunction()
+    {
+        // Method: call A; jmp B (tail call). Next function, directly after it: call C; ret.
+        var call = CallRel32(StartAddress, 0x2000);
+        var jumpAt = StartAddress + (ulong)call.Length;
+        var jump = JmpRel32(jumpAt, 0x3000);
+        var methodEnd = jumpAt + (ulong)jump.Length;
+        var code = Concat(call, jump, CallRel32(methodEnd, 0x4000), Ret());
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Some.Method");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None,
+            endVirtualAddress: methodEnd);
+
+        Assert.Equal(["0x2000", "0x3000"], result.Edges.Select(edge => edge.TargetMethodPointer));
+        Assert.StartsWith("tail call", result.Edges[1].Evidence, StringComparison.Ordinal);
+        Assert.True(result.IsComplete);
+    }
+
+    [Fact]
+    public void Decode_KnownExtent_ReadsPastAnEarlyReturn()
+    {
+        var early = Ret();
+        var call = CallRel32(StartAddress + 1, 0x2000);
+        var code = Concat(early, call, Ret());
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Some.Method");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None,
+            endVirtualAddress: StartAddress + (ulong)code.Length);
+
+        Assert.Equal("0x2000", Assert.Single(result.Edges).TargetMethodPointer);
+        Assert.True(result.IsComplete);
+    }
+
+    [Fact]
+    public void Decode_KnownExtent_StopsAtInt3Padding()
+    {
+        var code = Concat(Ret(), Int3(), CallRel32(StartAddress + 2, 0x2000));
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Some.Method");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None,
+            endVirtualAddress: StartAddress + (ulong)code.Length);
+
+        Assert.Empty(result.Edges);
+        Assert.True(result.IsComplete);
+    }
+
+    [Fact]
+    public void Decode_JumpWithinTheMethod_IsNotAnEdge()
+    {
+        var jump = JmpRel32(StartAddress, StartAddress + 5);
+        var code = Concat(jump, Ret());
+        var resolver = new FakeAddressResolver(AddressResolutionKind.Single, "Some.Method");
+
+        var result = BoundedNativeDecoder.Decode(
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None,
+            endVirtualAddress: StartAddress + (ulong)code.Length);
+
+        Assert.Empty(result.Edges);
     }
 
     [Fact]
@@ -373,14 +463,15 @@ public class BoundedNativeDecoderTests
     [Fact]
     public void Decode_ExceedingByteCap_TruncatesAndMarksIncomplete()
     {
-        // No ret anywhere in this buffer: 5000 single-byte NOPs, well past the internal
-        // byte-cap constant, so the decoder must stop before reaching the end of the buffer.
-        var code = new byte[5000];
+        // A 70,000-byte method of NOPs is past the internal byte cap, so the decoder must stop
+        // before the method's end.
+        var code = new byte[70_000];
         Array.Fill(code, (byte)0x90); // NOP
         var resolver = new FakeAddressResolver(AddressResolutionKind.None);
 
         var result = BoundedNativeDecoder.Decode(
-            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None);
+            code, StartAddress, "0x1000", maxEdges: 10, resolver, new FakeFieldResolver(null), Register.None,
+            endVirtualAddress: StartAddress + (ulong)code.Length);
 
         Assert.Empty(result.Edges);
         Assert.False(result.IsComplete);
