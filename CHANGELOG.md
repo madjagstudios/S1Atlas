@@ -6,6 +6,27 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+No changes yet.
+
+## [1.5.0] — 2026-09-26 — Serialized script values
+
+Scene indexes now carry the values Schedule I's scripts are configured with, not
+just which scripts sit on which objects: prices, wages, order sizes, and the named
+objects and assets a field points at. The same release fixes native-body recovery,
+which had been attributing the next function's calls to methods that end in a tail
+jump or a no-return call.
+
+### Upgrading
+
+Existing databases keep working, but gain nothing new until rebuilt:
+
+1. `extract` — the default extraction profile is now
+   `cpp2il-reconstructed-assemblies-v2`.
+2. `extractions promote <extraction-id>` if another extraction is still preferred.
+3. `index`, then `index --scene`, to rebuild the code index and scene snapshots.
+4. `recover-native-body` for any method whose native evidence you relied on;
+   schema migration 15 drops the evidence stored by earlier releases.
+
 ### Added
 
 - **Serialized field values for game scripts** (AT-50) — scene indexes now decode
