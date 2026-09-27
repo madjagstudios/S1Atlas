@@ -8,7 +8,7 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 No changes yet.
 
-## [1.5.0] — 2026-09-26 — Serialized script values
+## [1.5.0] - 2026-09-26: Serialized script values
 
 Scene indexes now carry the values Schedule I's scripts are configured with, not
 just which scripts sit on which objects: prices, wages, order sizes, and the named
@@ -20,7 +20,7 @@ jump or a no-return call.
 
 Existing databases keep working, but gain nothing new until rebuilt:
 
-1. `extract` — the default extraction profile is now
+1. `extract`, whose default profile is now
    `cpp2il-reconstructed-assemblies-v2`.
 2. `extractions promote <extraction-id>` if another extraction is still preferred.
 3. `index`, then `index --scene`, to rebuild the code index and scene snapshots.
@@ -29,7 +29,7 @@ Existing databases keep working, but gain nothing new until rebuilt:
 
 ### Added
 
-- **Serialized field values for game scripts** (AT-50) — scene indexes now decode
+- **Serialized field values for game scripts** (AT-50): scene indexes now decode
   the serialized fields of Schedule I MonoBehaviours and ScriptableObjects
   (property prices, employee wages, special-customer order sizes) instead of
   stopping at `GraphOnly`. A new extraction profile,
@@ -42,7 +42,7 @@ Existing databases keep working, but gain nothing new until rebuilt:
   `SpecialCustomerData`. Every scene snapshot records its script-layout source.
   Existing builds need a v2 extraction, `extractions promote`, a code-index
   rebuild, and `index --scene` to gain values.
-- **Named targets for object-reference fields** (AT-53) — a decoded `PPtr` field
+- **Named targets for object-reference fields** (AT-53): a decoded `PPtr` field
   now names what it points to (the GameObject, component, ScriptableObject, script
   or other asset, with its name, type and indexed ID) alongside its raw
   `fileId:localFileId`. Null and unresolvable pointers are labelled as such. The
@@ -51,7 +51,7 @@ Existing databases keep working, but gain nothing new until rebuilt:
 
 ### Fixed
 
-- **Native-body recovery no longer reads past a method's end** (AT-58) — the
+- **Native-body recovery no longer reads past a method's end** (AT-58): the
   decoder swept linearly to the first `ret`, so a method ending in a tail jump
   or a no-return call ran into the next function and reported that function's
   calls as its own, marked complete. On the 0.4.7f6 build that was 42% of the
@@ -60,7 +60,7 @@ Existing databases keep working, but gain nothing new until rebuilt:
   incomplete. Schema migration 15 drops previously stored native evidence;
   run `recover-native-body` again to rebuild it.
 
-## [1.4.0] — 2026-09-20 — Scene intelligence on release builds
+## [1.4.0] - 2026-09-20: Scene intelligence on release builds
 
 Scene intelligence now works on the game as it actually ships. Schedule I strips
 the Unity type trees from its scene containers, which left every earlier scene
@@ -71,7 +71,7 @@ on the way are fixed in the same release.
 
 ### Added
 
-- **Scene intelligence on release builds** (AT-46, AT-47) — Schedule I ships its
+- **Scene intelligence on release builds** (AT-46, AT-47): Schedule I ships its
   scene containers without embedded Unity type trees, so the scene parser could
   not name a single object and `index --scene` published a completed, empty
   snapshot. The parser now decodes stripped containers through a pinned Unity
@@ -87,39 +87,39 @@ on the way are fixed in the same release.
 
 ### Fixed
 
-- **Scene index prerequisite gate** (AT-44) — the Schedule I Installed code
+- **Scene index prerequisite gate** (AT-44): the Schedule I Installed code
   snapshot never recorded its environment snapshot id, so `index --scene` always
   failed with `CrossBuildCodeIndex` even when the preferred extraction was
   replay-verified and the code index was current. The code snapshot now records
   the build-matching environment snapshot id, and a pre-existing null is healed
   in place on the next `index` run without overwriting a populated value.
-- **`gameobject <scene-id>/<name>` lookup** (AT-45) — the exact-name query joined
+- **`gameobject <scene-id>/<name>` lookup** (AT-45): the exact-name query joined
   `scene_snapshots` with an unqualified select list, so SQLite rejected it with
   `ambiguous column name: recovery_status`. The select list is now table-qualified.
-- **MCP `get_gameobject` with a `<scene-id>/<name>` selector** (AT-49) — the read-only
+- **MCP `get_gameobject` with a `<scene-id>/<name>` selector** (AT-49): the read-only
   repository the MCP server uses carried its own copy of that query, so the same
   lookup that AT-45 fixed on the CLI still failed on MCP with `UnexpectedToolFailure`.
   Both copies are now qualified.
 
-## [1.3.0] — 2026-09-10 — Native-body recovery
+## [1.3.0] - 2026-09-10: Native-body recovery
 
 The targeted native-body recovery that 1.2.0 could only *plan* is now
 implemented. For a game method exposed as nothing but a `throw null` stub, S1Atlas
 can map the managed symbol to its native `GameAssembly.dll` address and recover
-bounded, provenance-stamped evidence of what the method actually calls and reads —
+bounded, provenance-stamped evidence of what the method actually calls and reads,
 without executing the game.
 
 ### Added
 
-- **`recover-native-body`** — a CLI command that maps a stubbed IL2CPP managed
+- **`recover-native-body`**: a CLI command that maps a stubbed IL2CPP managed
   method to its native address, decodes bounded direct-call and field-access
   evidence, and persists a provenance-stamped record. Runs are deterministic and
   idempotent. Recovered pseudocode is static evidence and requires runtime
   validation before being treated as behavioral fact.
-- **Native evidence on `investigate_seam`** — the persisted record is surfaced
+- **Native evidence on `investigate_seam`**: the persisted record is surfaced
   read-only on both the CLI and the MCP server through the same bounded evidence
   model (`--native-symbol-id` / `--native-traversal-budget`).
-- **Pinned-library provenance** — the recovery provider is an in-process build on
+- **Pinned-library provenance**: the recovery provider is an in-process build on
   `Samboy063.LibCpp2IL` and `Iced` (both MIT), pinned with a committed lockfile and
   a CI lockfile-drift check; records are stamped with the library tool identity, the
   build/index/GameAssembly provenance, and never carry a game binary, raw
@@ -127,10 +127,10 @@ without executing the game.
 
 ### Notes
 
-- The provider is read-only with respect to the game — it reads `GameAssembly.dll`
+- The provider is read-only with respect to the game: it reads `GameAssembly.dll`
   and `global-metadata.dat` and never launches or mutates the game.
 
-## [1.2.0] — 2026-08-30 — Evidence-first agent parity
+## [1.2.0] - 2026-08-30: Evidence-first agent parity
 
 This release makes S1Atlas more decisive and safer for Schedule I mod
 investigation by sharing deterministic evidence packets across the CLI and
@@ -156,7 +156,7 @@ read-only MCP server.
   client, protocol-only stdout, stderr diagnostics, and stale-session process
   inspection.
 
-## [1.1.0] — 2026-08-28 — Agent usability
+## [1.1.0] - 2026-08-28: Agent usability
 
 This release adds the evidence surfaces that reduce repeated manual decompilation
 and make the boundary between static code evidence and live-game behavior clear.
@@ -177,7 +177,7 @@ and make the boundary between static code evidence and live-game behavior clear.
 
 - Public-repository hygiene files, issue/PR templates, and release documentation.
 
-## [1.0.0] — 2026-08-20 — V1
+## [1.0.0] - 2026-08-20: V1
 
 First complete version. All V1 "Definition of Done" criteria met.
 
@@ -185,15 +185,15 @@ First complete version. All V1 "Definition of Done" criteria met.
 - **Build fingerprinting** and immutable, version-aware scan tracking.
 - **Cpp2IL + ILSpy extraction pipeline** (verified, provenance-tracked) for the
   IL2CPP game assemblies.
-- **Code index** — types, methods, fields, and relationships, searchable by name,
+- **Code index**: types, methods, fields, and relationships, searchable by name,
   with decompiled source, callers, callees, and references.
 - **Upstream S1API / S1MAPI deep-indexing** so the modding API can be checked before
   patching the game directly.
-- **Scene intelligence** — scenes, prefabs, GameObjects, and components (CLI + MCP).
-- **Build diffing** — see exactly what a game update changed.
+- **Scene intelligence**: scenes, prefabs, GameObjects, and components (CLI + MCP).
+- **Build diffing**: see exactly what a game update changed.
 - **Read-only MCP server** for coding agents.
 - **Deterministic static HTML portal** for human browsing.
 - **Agent skill** (`skills/s1atlas/`) for evidence-first modding workflows.
-- Provenance labeling throughout — `FACT` (extracted) and `DERIVED` (computed).
+- Provenance labeling throughout: `FACT` (extracted) and `DERIVED` (computed).
 
 [Unreleased]: ../../compare/main...HEAD
