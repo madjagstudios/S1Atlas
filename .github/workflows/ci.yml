@@ -11,6 +11,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
@@ -27,3 +29,11 @@ jobs:
       - name: Repository hygiene
         shell: pwsh
         run: ./scripts/verify-repository-hygiene.ps1
+      - name: Public content
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'pull_request') {
+            ./scripts/verify-public-content.ps1 -BaseRef '${{ github.event.pull_request.base.sha }}' -BranchName '${{ github.head_ref }}'
+          } else {
+            ./scripts/verify-public-content.ps1 -BaseRef '${{ github.event.before }}'
+          }

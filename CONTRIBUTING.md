@@ -15,6 +15,10 @@ tool for Schedule I mod development. Contributions are welcome via pull request.
   developers or publishers (see the [disclaimer](README.md) and [LICENSE](LICENSE)).
 - **Local-first and read-only toward the game.** The Schedule I installation and Steam
   manifest are treated as read-only input.
+- **Keep the tree public-safe.** This repo is public: no AI attribution in
+  commits or content, no machine-specific paths, no agent-process residue,
+  no internal or private references, and no game content. CI enforces these
+  rules on every pull request.
 
 ## Development
 
