@@ -245,16 +245,16 @@ to an ownership recommendation.
 
 ### Ownership contract rules
 
-- OC-29: event names are not lifecycle proof. A friendly event name, callback
+- Event names are not lifecycle proof. A friendly event name, callback
   order, or visible result does not prove ownership of the state transition.
   Tie the candidate to the exact before/after state and the owning authority.
-- OC-32: missing or incomplete callers must not be reported as no callers.
+- Missing or incomplete callers must not be reported as no callers.
   Preserve unavailable, partial, ambiguous, or bounded caller coverage exactly
   as returned, and route it to named escalation rather than speculation.
-- OC-30: the API-before-patch result is mandatory. Record whether S1API or
+- The API-before-patch result is mandatory. Record whether S1API or
   S1MAPI already exposes the operation, whether the result is absent/stale/
   ambiguous, and why a direct patch is or is not still under consideration.
-- OC-2: authority/entity attribution is mandatory. Name which authority owns
+- Authority/entity attribution is mandatory. Name which authority owns
   the behavior and which entity instance changes. UI refreshes, generic hooks,
   and observer callbacks are not ownership by themselves.
 

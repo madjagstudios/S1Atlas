@@ -11,6 +11,4 @@ Roots: docs
 | docs/design/ | 11 |
 | docs/performance/ | 2 |
 | docs/smoke-tests/ | 4 |
-| docs/superpowers/plans/ | 3 |
-| docs/superpowers/specs/ | 1 |
 
