@@ -95,15 +95,6 @@ jobs:
       - name: Prepare test temp directory
         shell: pwsh
         run: New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/s1atlas-test-temp" | Out-Null
-      - name: Exclude test paths from Windows Defender
-        shell: pwsh
-        run: |
-          # AT-61, CI-only: real-time antivirus scanning of per-test SQLite
-          # atlases and freshly built DLLs is a suspected cause of CI-only
-          # test slowness. Exclude the workspace and runner temp directories
-          # from scanning for this job. Never applied to developer machines.
-          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
-          Add-MpPreference -ExclusionPath "${{ runner.temp }}"
       - name: Test
         shell: pwsh
         env:
