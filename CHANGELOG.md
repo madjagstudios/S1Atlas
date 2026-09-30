@@ -8,6 +8,12 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **CI gate for public-repo content** (AT-102): a new `Public content` step
+  checks PR commit messages and added diff lines for AI attribution,
+  machine-specific paths, non-AT ticket keys, agent-workflow phrases,
+  tracker URLs, and AI tool or vendor names, failing the job with the full
+  violation list. The pull request template carries a public-repo checklist
+  and the contributing guide states the rules.
 - **MCP tools advertise read-only annotations and server instructions**
   (AT-80): every tool now carries `readOnlyHint`, `destructiveHint`,
   `idempotentHint`, `openWorldHint`, and a short title in `tools/list`, and the
