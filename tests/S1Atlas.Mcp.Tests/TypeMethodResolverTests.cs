@@ -1,3 +1,4 @@
+using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using Xunit;
 
@@ -147,32 +148,32 @@ public sealed class TypeMethodResolverTests
             methodId,
             methodSource.RootElement.GetProperty("data").GetProperty("symbol").GetProperty("symbolId").GetString());
 
-        var mismatches = await McpTestHost.CallToolsThroughStdioAsync(
+        var mismatches = await McpTestHost.CallToolsRawThroughStdioAsync(
             atlas.DataRoot,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = methodId },
                 ["get_source"] = new Dictionary<string, object?> { ["selector"] = methodId }
             });
-        using var byId = JsonDocument.Parse(mismatches["get_type"]);
+        using var byId = JsonDocument.Parse(TextOf(mismatches["get_type"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byId));
         Assert.Equal("SymbolKindMismatch", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
         var byIdMessage = byId.RootElement.GetProperty("error").GetProperty("message").GetString()!;
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
-        using var byIdSource = JsonDocument.Parse(mismatches["get_source"]);
+        using var byIdSource = JsonDocument.Parse(TextOf(mismatches["get_source"], expectedIsError: false));
         Assert.Equal("resolved", StatusOf(byIdSource));
         Assert.Equal(
             methodId,
             byIdSource.RootElement.GetProperty("data").GetProperty("symbol").GetProperty("symbolId").GetString());
 
-        var byKey = await McpTestHost.CallToolsThroughStdioAsync(
+        var byKey = await McpTestHost.CallToolsRawThroughStdioAsync(
             atlas.DataRoot,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = MethodCanonicalKey }
             });
-        using var byKeyResult = JsonDocument.Parse(byKey["get_type"]);
+        using var byKeyResult = JsonDocument.Parse(TextOf(byKey["get_type"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byKeyResult));
         Assert.Equal("SymbolKindMismatch", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
@@ -191,26 +192,26 @@ public sealed class TypeMethodResolverTests
         using var dealersResult = JsonDocument.Parse(dealers["get_type"]);
         var typeId = dealersResult.RootElement.GetProperty("candidates")[0].GetProperty("symbolId").GetString()!;
 
-        var mismatches = await McpTestHost.CallToolsThroughStdioAsync(
+        var mismatches = await McpTestHost.CallToolsRawThroughStdioAsync(
             atlas.DataRoot,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = typeId }
             });
-        using var byId = JsonDocument.Parse(mismatches["get_method"]);
+        using var byId = JsonDocument.Parse(TextOf(mismatches["get_method"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byId));
         Assert.Equal("SymbolKindMismatch", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
         var byIdMessage = byId.RootElement.GetProperty("error").GetProperty("message").GetString()!;
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
 
-        var byKey = await McpTestHost.CallToolsThroughStdioAsync(
+        var byKey = await McpTestHost.CallToolsRawThroughStdioAsync(
             atlas.DataRoot,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = TypeCanonicalKey }
             });
-        using var byKeyResult = JsonDocument.Parse(byKey["get_method"]);
+        using var byKeyResult = JsonDocument.Parse(TextOf(byKey["get_method"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byKeyResult));
         Assert.Equal("SymbolKindMismatch", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
@@ -263,4 +264,10 @@ public sealed class TypeMethodResolverTests
 
     private static JsonElement DataOf(JsonDocument result) =>
         result.RootElement.GetProperty("data");
+
+    private static string TextOf(CallToolResult result, bool expectedIsError)
+    {
+        Assert.Equal(expectedIsError, result.IsError ?? false);
+        return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+    }
 }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
+using ModelContextProtocol.Server;
 using S1Atlas.Application.Configuration;
 using S1Atlas.Application.Envelope;
 using S1Atlas.Indexing.Query;
@@ -65,7 +66,13 @@ builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
     .WithToolsFromAssembly(typeof(McpToolCatalog).Assembly, toolJsonOptions)
-    .WithRequestFilters(filters => filters.AddCallToolFilter(McpBindingErrorFilter.Wrap));
+    .WithRequestFilters(filters =>
+    {
+        filters.AddCallToolFilter(McpBindingErrorFilter.Wrap);
+        filters.AddCallToolFilter(McpEnvelopeErrorFilter.Wrap);
+    });
+builder.Services.Configure<McpServerOptions>(options =>
+    options.ServerInstructions = McpServerInstructions.Text);
 
 await builder.Build().RunAsync();
 return 0;

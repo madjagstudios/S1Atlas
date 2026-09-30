@@ -33,7 +33,7 @@ public sealed class CodeSymbolTools
         _services = services;
     }
 
-    [McpServerTool(Name = "search_symbols"), Description("Search the integrity-verified Schedule I game index or an explicitly selected local reference collection for symbols.")]
+    [McpServerTool(Name = "search_symbols", Title = "Search symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search the integrity-verified Schedule I game index or an explicitly selected local reference collection for symbols.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchSymbolsAsync(
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -92,7 +92,7 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "get_type"), Description("Resolve one type from the preferred, integrity-verified Schedule I code index.")]
+    [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetTypeAsync(
         [Description("Exact or fuzzy type selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -100,7 +100,7 @@ public sealed class CodeSymbolTools
         CancellationToken ct = default) =>
         await GetSymbolAsync(selector, buildId, TypeKinds, limit, ct);
 
-    [McpServerTool(Name = "get_method"), Description("Resolve one method from the preferred, integrity-verified Schedule I code index.")]
+    [McpServerTool(Name = "get_method", Title = "Get method", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one method from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetMethodAsync(
         [Description("Exact or fuzzy method selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -108,7 +108,7 @@ public sealed class CodeSymbolTools
         CancellationToken ct = default) =>
         await GetSymbolAsync(selector, buildId, MethodKinds, limit, ct);
 
-    [McpServerTool(Name = "get_callable_surface"), Description("Resolve how one Schedule I game member is callable through its local Il2CppInterop projection.")]
+    [McpServerTool(Name = "get_callable_surface", Title = "Get callable surface", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve how one Schedule I game member is callable through its local Il2CppInterop projection.")]
     public async Task<ToolEnvelope<CallableSurfaceQueryResult>> GetCallableSurfaceAsync(
         [Description("Exact or fuzzy game-member selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -133,7 +133,7 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "get_source"), Description("Return integrity-checked source for one resolved game or local reference symbol.")]
+    [McpServerTool(Name = "get_source", Title = "Get source", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return integrity-checked source for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -207,7 +207,7 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "find_callers"), Description("Find incoming call-like relationships for one resolved game or local reference symbol.")]
+    [McpServerTool(Name = "find_callers", Title = "Find callers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCallersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -224,7 +224,7 @@ public sealed class CodeSymbolTools
             collection,
             RelationshipDirection.Callers);
 
-    [McpServerTool(Name = "find_callees"), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
+    [McpServerTool(Name = "find_callees", Title = "Find callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -234,7 +234,7 @@ public sealed class CodeSymbolTools
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null) =>
         await FindRelationshipsAsync(selector, buildId, limit, ct, scope, collection, RelationshipDirection.Callees);
 
-    [McpServerTool(Name = "find_references"), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
+    [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -251,7 +251,7 @@ public sealed class CodeSymbolTools
             collection,
             RelationshipDirection.References);
 
-    [McpServerTool(Name = "find_call_sites"), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
+    [McpServerTool(Name = "find_call_sites", Title = "Find call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
         [Description("Resolved game-member selector or canonical raw target text.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -304,7 +304,7 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "find_field_references"), Description("Find recovered-IL static field readers and writers for one resolved game or local reference field; results do not prove lifecycle ordering or runtime behavior.")]
+    [McpServerTool(Name = "find_field_references", Title = "Find field references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static field readers and writers for one resolved game or local reference field; results do not prove lifecycle ordering or runtime behavior.")]
     public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindFieldReferencesAsync(
         [Description("Exact or fuzzy field selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -371,7 +371,7 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "find_related_types"), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
+    [McpServerTool(Name = "find_related_types", Title = "Find related types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,

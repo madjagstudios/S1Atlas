@@ -29,7 +29,7 @@ public sealed class ApiIndexTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_api_indexes"), Description("List completed S1API and S1MAPI indexes available to the read-only Atlas host.")]
+    [McpServerTool(Name = "list_api_indexes", Title = "List API indexes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed S1API and S1MAPI indexes available to the read-only Atlas host.")]
     public async Task<ToolEnvelope<ApiIndexCatalogResult>> ListApiIndexesAsync(
         [Description("Optional Schedule I build ID used only to select installed API indexes.")] string? buildId = null,
         CancellationToken ct = default) =>
@@ -39,7 +39,7 @@ public sealed class ApiIndexTools
             return EnvelopeMapper.FromApiCatalog(result);
         });
 
-    [McpServerTool(Name = "search_api_symbols"), Description("Search a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "search_api_symbols", Title = "Search API symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search a completed S1API or S1MAPI index.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchApiSymbolsAsync(
         [Description("API codebase: s1api or s1mapi.")] string codebase,
         [Description("API channel: installed, release, or preview.")] string channel,
@@ -70,7 +70,7 @@ public sealed class ApiIndexTools
         });
     }
 
-    [McpServerTool(Name = "get_api_source"), Description("Return integrity-checked source for a resolved S1API or S1MAPI symbol.")]
+    [McpServerTool(Name = "get_api_source", Title = "Get API source", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return integrity-checked source for a resolved S1API or S1MAPI symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetApiSourceAsync(
         [Description("API codebase: s1api or s1mapi.")] string codebase,
         [Description("API channel: installed, release, or preview.")] string channel,
@@ -124,7 +124,7 @@ public sealed class ApiIndexTools
         });
     }
 
-    [McpServerTool(Name = "find_api_callers"), Description("Find incoming call-like relationships in a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "find_api_callers", Title = "Find API callers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming call-like relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiCallersAsync(
         string codebase,
         string channel,
@@ -133,7 +133,7 @@ public sealed class ApiIndexTools
         CancellationToken ct = default) =>
         QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callers, null, ct);
 
-    [McpServerTool(Name = "find_api_callees"), Description("Find outgoing call-like relationships in a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "find_api_callees", Title = "Find API callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiCalleesAsync(
         string codebase,
         string channel,
@@ -142,7 +142,7 @@ public sealed class ApiIndexTools
         CancellationToken ct = default) =>
         QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callees, null, ct);
 
-    [McpServerTool(Name = "find_api_references"), Description("Find incoming and outgoing relationships in a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "find_api_references", Title = "Find API references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiReferencesAsync(
         string codebase,
         string channel,
@@ -151,7 +151,7 @@ public sealed class ApiIndexTools
         CancellationToken ct = default) =>
         QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.References, null, ct);
 
-    [McpServerTool(Name = "find_api_related_types"), Description("Find inheritance, interface, and other type relationships in a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "find_api_related_types", Title = "Find API related types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find inheritance, interface, and other type relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiRelatedTypesAsync(
         string codebase,
         string channel,
@@ -161,7 +161,7 @@ public sealed class ApiIndexTools
         CancellationToken ct = default) =>
         QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.References, relationKinds, ct);
 
-    [McpServerTool(Name = "find_api_call_sites"), Description("Find recovered-IL static call sites in a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "find_api_call_sites", Title = "Find API call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call sites in a completed S1API or S1MAPI index.")]
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindApiCallSitesAsync(
         string codebase,
         string channel,
@@ -189,7 +189,7 @@ public sealed class ApiIndexTools
         });
     }
 
-    [McpServerTool(Name = "find_api_field_references"), Description("Find field readers and writers in a completed S1API or S1MAPI index.")]
+    [McpServerTool(Name = "find_api_field_references", Title = "Find API field references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find field readers and writers in a completed S1API or S1MAPI index.")]
     public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindApiFieldReferencesAsync(
         string codebase,
         string channel,
