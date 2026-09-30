@@ -50,10 +50,9 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task VersionEightDatabase_MigratesToFifteen_WithCallableSurfaceVisibilityReferenceTablesAndRelationshipQueryIndex()
+    public async Task VersionEightDatabase_MigratesToLatest_WithCallableSurfaceVisibilityReferenceTablesAndRelationshipQueryIndex()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        Assert.Equal(15, SqliteMigrations.All.Count);
         Assert.Equal(10, SqliteMigrations.All[9].Version);
         Assert.Equal("reference-mods-v10", SqliteMigrations.All[9].Name);
         Assert.Equal(11, SqliteMigrations.All[10].Version);
@@ -69,7 +68,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
 
         await using var connection = new SqliteConnection($"Data Source={_databasePath}");
         await connection.OpenAsync(cancellationToken);
-        Assert.Equal(15L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
+        Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(
             connection,
             "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'callable_surface';",
@@ -101,7 +100,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task VersionSevenDatabase_MigratesToThirteenExactlyOnce_AndTheSecondRunIsIdempotent()
+    public async Task VersionSevenDatabase_MigratesToLatestExactlyOnce_AndTheSecondRunIsIdempotent()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await new SqliteMigrationRunner(
@@ -149,11 +148,11 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
             connection,
             "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name IN ('scene_snapshots','scene_containers','scenes','game_objects','transforms','components','serialized_refs');",
             cancellationToken));
-        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-15-*.db", SearchOption.TopDirectoryOnly));
+        Assert.Single(Directory.GetFiles(_backupDirectory, $"atlas-before-schema-{SqliteMigrations.All[^1].Version}-*.db", SearchOption.TopDirectoryOnly));
     }
 
     [Fact]
-    public async Task VersionSixDatabase_MigratesToFifteen_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
+    public async Task VersionSixDatabase_MigratesToLatest_PreservesSymbolsAndAddsNullableBodyRecoveryStatus()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var v6Migrations = SqliteMigrations.All.Take(6).ToArray();
@@ -175,7 +174,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
 
         await using var migrated = new SqliteConnection($"Data Source={_databasePath}");
         await migrated.OpenAsync(cancellationToken);
-        Assert.Equal(15L, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
+        Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(migrated, "SELECT MAX(version) FROM schema_migrations;", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1';", cancellationToken));
         Assert.Equal(1L, await ScalarAsync(migrated, "SELECT COUNT(*) FROM symbols WHERE symbol_id = 'symbol-1' AND body_recovery_status IS NULL;", cancellationToken));
         Assert.Equal(0L, await ScalarAsync(migrated, "SELECT is_public FROM symbols WHERE symbol_id = 'symbol-1';", cancellationToken));
@@ -197,7 +196,7 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
             await Assert.ThrowsAsync<SqliteException>(() => invalid.ExecuteNonQueryAsync(cancellationToken));
         }
 
-        Assert.Single(Directory.GetFiles(_backupDirectory, "atlas-before-schema-15-*.db", SearchOption.TopDirectoryOnly));
+        Assert.Single(Directory.GetFiles(_backupDirectory, $"atlas-before-schema-{SqliteMigrations.All[^1].Version}-*.db", SearchOption.TopDirectoryOnly));
     }
 
     private static async Task ExecuteAsync(SqliteConnection connection, string sql, CancellationToken cancellationToken)

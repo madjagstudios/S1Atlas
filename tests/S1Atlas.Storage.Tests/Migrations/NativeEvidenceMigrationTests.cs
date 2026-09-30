@@ -29,7 +29,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
 
         await using var connection = await OpenAsync(cancellationToken);
 
-        Assert.Equal(15L, await ScalarAsync(
+        Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(
             connection,
             "SELECT MAX(version) FROM schema_migrations;",
             cancellationToken));
@@ -138,7 +138,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
             .MigrateAsync(cancellationToken);
 
         await using var migrated = await OpenAsync(cancellationToken);
-        Assert.Equal(15L, await ScalarAsync(
+        Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(
             migrated,
             "SELECT MAX(version) FROM schema_migrations;",
             cancellationToken));
