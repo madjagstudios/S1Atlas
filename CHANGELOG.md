@@ -8,6 +8,13 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Faster CI with fail-fast static checks and parallel test runs** (AT-61):
+  static checks (restore, lockfile, format, repository hygiene, public
+  content) now run in a `checks` job before and beside the tests, the eight
+  test projects run in parallel across matrix runners with per-project
+  timing summaries, NuGet packages are cached, and a final `build-test` job
+  keeps the required check name stable while superseded PR runs cancel
+  automatically.
 - **CI gate for public-repo content** (AT-102): a new `Public content` step
   checks PR commit messages and added diff lines for AI attribution,
   machine-specific paths, non-AT ticket keys, agent-workflow phrases,

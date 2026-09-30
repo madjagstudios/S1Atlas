@@ -23,7 +23,39 @@ jobs:
       - name: Build
         run: dotnet build S1Atlas.sln --configuration Release --no-restore
       - name: Test
-        run: dotnet test S1Atlas.sln --configuration Release --no-build --verbosity normal
+        shell: pwsh
+        run: |
+          $projects = @(
+            'tests/S1Atlas.Core.Tests',
+            'tests/S1Atlas.Docs.Tests',
+            'tests/S1Atlas.Extraction.Tests',
+            'tests/S1Atlas.Indexing.Tests',
+            'tests/S1Atlas.IntegrationTests',
+            'tests/S1Atlas.Mcp.Tests',
+            'tests/S1Atlas.NativeRecovery.Tests',
+            'tests/S1Atlas.Storage.Tests'
+          )
+          $failed = @()
+          foreach ($project in $projects) {
+            $name = Split-Path $project -Leaf
+            dotnet test $project --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=$name.trx" --results-directory TestResults
+            if ($LASTEXITCODE -ne 0) { $failed += $name }
+          }
+          if ($failed.Count -gt 0) {
+            Write-Output "Failing test projects: $($failed -join ', ')"
+            exit 1
+          }
+      - name: Timing summary
+        if: always()
+        shell: pwsh
+        run: ./scripts/summarize-test-timings.ps1 -ResultsDirectory TestResults
+      - name: Upload test results
+        if: always() && hashFiles('TestResults/*.trx') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          retention-days: 14
       - name: Format
         run: dotnet format S1Atlas.sln --verify-no-changes --no-restore
       - name: Repository hygiene
