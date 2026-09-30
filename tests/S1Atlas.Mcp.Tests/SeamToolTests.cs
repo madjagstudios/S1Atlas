@@ -23,13 +23,18 @@ using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
 
-public sealed class SeamToolTests
+public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
 {
+    private readonly SharedOc32ServerFixture _shared;
+
+    public SeamToolTests(SharedOc32ServerFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task InvestigateSeam_IsRegisteredWithApprovedSchemaAndNoMutationVerbs()
     {
-        await using var atlas = await SeamMcpTestAtlas.CreateBareAsync();
-
         var toolNames = McpToolCatalog.DiscoverToolNames();
 
         Assert.Contains("investigate_seam", toolNames);
@@ -39,7 +44,7 @@ public sealed class SeamToolTests
                 ["extract", "promote", "cleanup", "install", "scan", "index", "sync", "delete", "write", "set"],
                 verb => name.Contains(verb, StringComparison.OrdinalIgnoreCase)));
 
-        var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
+        var schemas = await McpTestHost.GetToolSchemasAsync(_shared.Client);
         AssertSchema(
             schemas["investigate_seam"],
             ["behavioralQuestion", "selector", "buildId", "scope", "collection", "relationshipLimit", "ownerLimit", "context", "details", "nativeSymbolIds", "nativeTraversalBudget"],
@@ -56,10 +61,10 @@ public sealed class SeamToolTests
     [Fact]
     public async Task InvestigateSeam_ReturnsResolvedNoSupportableSeamWithBoundedCoverageWarnings()
     {
-        await using var atlas = await SeamMcpTestAtlas.CreateOc32Async();
+        var atlas = _shared.Atlas;
 
-        var serialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var serialized = await McpTestHost.CallToolAsync(
+            _shared.Client,
             "investigate_seam",
             new Dictionary<string, object?>
             {
@@ -464,7 +469,7 @@ public sealed class SeamToolTests
     [Fact]
     public async Task InvestigateSeam_DetailsProjectionPreservesGateRecordsAndUnknownApiBeforePatch()
     {
-        await using var atlas = await SeamMcpTestAtlas.CreateOc32Async();
+        var atlas = _shared.Atlas;
         var baseArguments = new Dictionary<string, object?>
         {
             ["behavioralQuestion"] = "Which seam owns settlement clearing?",
@@ -483,9 +488,9 @@ public sealed class SeamToolTests
             ["details"] = true
         };
         using var summaryDocument = JsonDocument.Parse(
-            await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", summaryArguments));
+            await McpTestHost.CallToolAsync(_shared.Client, "investigate_seam", summaryArguments));
         using var detailsDocument = JsonDocument.Parse(
-            await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", detailsArguments));
+            await McpTestHost.CallToolAsync(_shared.Client, "investigate_seam", detailsArguments));
         var summaryRoot = summaryDocument.RootElement;
         var detailsRoot = detailsDocument.RootElement;
         var summaryData = summaryRoot.GetProperty("data");
@@ -559,10 +564,13 @@ public sealed class SeamToolTests
         {
             ["details"] = true
         };
+        await using var server = await McpTestServer.StartAsync(
+            atlas.DataRoot,
+            TestContext.Current.CancellationToken);
         using var summaryDocument = JsonDocument.Parse(
-            await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", summaryArguments));
+            await McpTestHost.CallToolAsync(server.Client, "investigate_seam", summaryArguments));
         using var detailsDocument = JsonDocument.Parse(
-            await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", detailsArguments));
+            await McpTestHost.CallToolAsync(server.Client, "investigate_seam", detailsArguments));
         var summaryRoot = summaryDocument.RootElement;
         var detailsRoot = detailsDocument.RootElement;
         var summaryData = summaryRoot.GetProperty("data");
@@ -634,7 +642,7 @@ public sealed class SeamToolTests
         int argumentValue,
         string expectedCode)
     {
-        await using var atlas = await SeamMcpTestAtlas.CreateOc32Async();
+        var atlas = _shared.Atlas;
         var arguments = new Dictionary<string, object?>
         {
             ["behavioralQuestion"] = "Which seam owns settlement clearing?",
@@ -642,8 +650,8 @@ public sealed class SeamToolTests
         };
         arguments[argumentName] = argumentValue;
 
-        var failure = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var failure = await McpTestHost.CallToolRawAsync(
+            _shared.Client,
             "investigate_seam",
             arguments);
         Assert.True(failure.IsError ?? false);
@@ -683,7 +691,7 @@ public sealed class SeamToolTests
     [Fact]
     public async Task InvestigateSeam_SerializationIsDeterministicAcrossRepeatedRuns()
     {
-        await using var atlas = await SeamMcpTestAtlas.CreateOc32Async();
+        var atlas = _shared.Atlas;
 
         var arguments = new Dictionary<string, object?>
         {
@@ -694,8 +702,8 @@ public sealed class SeamToolTests
             ["context"] = 0
         };
 
-        var first = await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", arguments);
-        var second = await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", arguments);
+        var first = await McpTestHost.CallToolAsync(_shared.Client, "investigate_seam", arguments);
+        var second = await McpTestHost.CallToolAsync(_shared.Client, "investigate_seam", arguments);
 
         Assert.Equal(first, second);
     }
@@ -705,7 +713,7 @@ public sealed class SeamToolTests
     [InlineData(true)]
     public async Task InvestigateSeam_McpAndCliJsonStayInCompletePacketParityForBothDetailModes(bool details)
     {
-        await using var atlas = await SeamMcpTestAtlas.CreateOc32Async();
+        var atlas = _shared.Atlas;
 
         var arguments = new Dictionary<string, object?>
         {
@@ -718,7 +726,7 @@ public sealed class SeamToolTests
         };
 
         var cli = RunCli(atlas.DataRoot, atlas.TargetSymbolId, details);
-        var mcp = await McpTestHost.CallToolThroughStdioAsync(atlas.DataRoot, "investigate_seam", arguments);
+        var mcp = await McpTestHost.CallToolAsync(_shared.Client, "investigate_seam", arguments);
 
         using var cliDocument = JsonDocument.Parse(cli.StandardOutput);
         using var mcpDocument = JsonDocument.Parse(mcp);
@@ -874,7 +882,7 @@ public sealed class SeamToolTests
             false);
 }
 
-internal sealed class SeamMcpTestAtlas : IAsyncDisposable
+public sealed class SeamMcpTestAtlas : IAsyncDisposable
 {
     private const string ToolInstanceId = "tool-instance-1";
     private const string ProfileDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

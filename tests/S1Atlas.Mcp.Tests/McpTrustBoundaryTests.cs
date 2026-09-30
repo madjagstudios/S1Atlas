@@ -13,13 +13,24 @@ using Xunit;
 namespace S1Atlas.Mcp.Tests;
 
 public sealed class McpTrustBoundaryTests
+    : IClassFixture<SharedHealthyServerFixture>,
+        IClassFixture<SharedScenesServerFixture>
 {
+    private readonly SharedHealthyServerFixture _healthy;
+    private readonly SharedScenesServerFixture _scenes;
+
+    public McpTrustBoundaryTests(
+        SharedHealthyServerFixture healthy,
+        SharedScenesServerFixture scenes)
+    {
+        _healthy = healthy;
+        _scenes = scenes;
+    }
+
     [Fact]
     public async Task StdioHost_UsesProtocolOnlyStdoutAndRegistersEveryReadOnlyTool()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
-
-        var tools = await McpTestHost.ListToolsThroughStdioAsync(atlas.DataRoot);
+        var tools = await McpTestHost.ListToolsAsync(_scenes.Client);
 
         Assert.Equal(
             [
@@ -77,9 +88,9 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task StdioHost_CallTool_ReturnsSerializedAuthorityEnvelope()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+        var atlas = _scenes.Atlas;
 
-        var serialized = await McpTestHost.CallSearchSymbolsThroughStdioAsync(atlas.DataRoot);
+        var serialized = await McpTestHost.CallSearchSymbolsAsync(_scenes.Client);
 
         using var result = JsonDocument.Parse(serialized);
         var root = result.RootElement;
@@ -127,9 +138,9 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task StdioHost_CodeSymbolSchemasMatchApprovedContractsAndAllowOmittedOptions()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+        var atlas = _scenes.Atlas;
 
-        var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
+        var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
         AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection"], ["query"]);
         AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
         AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit"], ["codebase", "channel", "query"]);
@@ -216,7 +227,7 @@ public sealed class McpTrustBoundaryTests
             }
         })
         {
-            var apiOutcome = await McpTestHost.CallToolRawThroughStdioAsync(atlas.DataRoot, toolName, arguments);
+            var apiOutcome = await McpTestHost.CallToolRawAsync(_scenes.Client, toolName, arguments);
             var apiSerialized = Assert.IsType<TextContentBlock>(Assert.Single(apiOutcome.Content)).Text;
             using var apiResult = JsonDocument.Parse(apiSerialized);
             Assert.True(apiResult.RootElement.TryGetProperty("status", out var apiStatus), apiSerialized);
@@ -238,8 +249,8 @@ public sealed class McpTrustBoundaryTests
             ["selector", "buildId", "relationKinds", "limit", "scope", "collection"],
             ["selector"]);
 
-        var serialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var serialized = await McpTestHost.CallToolAsync(
+            _scenes.Client,
             "get_type",
             new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector });
         using var result = JsonDocument.Parse(serialized);
@@ -247,8 +258,8 @@ public sealed class McpTrustBoundaryTests
             result.RootElement.GetProperty("status").GetString(),
             new[] { "resolved", "ambiguous" });
 
-        var sourceSerialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var sourceSerialized = await McpTestHost.CallToolAsync(
+            _scenes.Client,
             "get_source",
             new Dictionary<string, object?>
             {
@@ -262,8 +273,8 @@ public sealed class McpTrustBoundaryTests
         Assert.False(sourceData.TryGetProperty("neighborhood", out _));
         Assert.False(sourceData.TryGetProperty("neighborhoodNotice", out _));
 
-        var neighborhoodSerialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var neighborhoodSerialized = await McpTestHost.CallToolAsync(
+            _scenes.Client,
             "get_source",
             new Dictionary<string, object?>
             {
@@ -280,9 +291,9 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task StdioHost_AllToolSchemasPinRequiredSetsAndOmittedOptionsReturnEnvelopes()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+        var atlas = _scenes.Atlas;
 
-        var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
+        var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
         Assert.Equal(32, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
         AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
@@ -369,7 +380,7 @@ public sealed class McpTrustBoundaryTests
             ["search_symbols"] = new Dictionary<string, object?> { ["query"] = atlas.KnownSymbolFragment }
         };
 
-        var envelopes = await McpTestHost.CallToolsRawThroughStdioAsync(atlas.DataRoot, minimalCalls);
+        var envelopes = await McpTestHost.CallToolsRawAsync(_scenes.Client, minimalCalls);
         foreach (var (toolName, outcome) in envelopes)
         {
             var serialized = Assert.IsType<TextContentBlock>(Assert.Single(outcome.Content)).Text;
@@ -388,24 +399,24 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task StdioHost_BindingFailuresNameTheOffendingParameter()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+        var atlas = _scenes.Atlas;
 
-        var wrongType = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var wrongType = await McpTestHost.CallToolRawAsync(
+            _scenes.Client,
             "list_builds",
             new Dictionary<string, object?> { ["limit"] = "not-a-number" });
         Assert.True(wrongType.IsError);
         Assert.Contains("'limit'", Assert.IsType<TextContentBlock>(Assert.Single(wrongType.Content)).Text);
 
-        var wrongItemType = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var wrongItemType = await McpTestHost.CallToolRawAsync(
+            _scenes.Client,
             "find_related_types",
             new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector, ["relationKinds"] = new[] { 7 } });
         Assert.True(wrongItemType.IsError);
         Assert.Contains("'relationKinds'", Assert.IsType<TextContentBlock>(Assert.Single(wrongItemType.Content)).Text);
 
-        var missingRequired = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var missingRequired = await McpTestHost.CallToolRawAsync(
+            _scenes.Client,
             "get_type",
             new Dictionary<string, object?>());
         Assert.True(missingRequired.IsError);
@@ -415,10 +426,10 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task StdioHost_UnrelatedSymbolResultsOmitNullableNestedFields()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _healthy.Atlas;
 
-        var serialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var serialized = await McpTestHost.CallToolAsync(
+            _healthy.Client,
             "get_method",
             new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector });
 
@@ -440,8 +451,8 @@ public sealed class McpTrustBoundaryTests
             Assert.False(data.TryGetProperty(propertyName, out _), $"Unrelated symbol result emitted nullable field {propertyName}.");
         }
 
-        var searchSerialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var searchSerialized = await McpTestHost.CallToolAsync(
+            _healthy.Client,
             "search_symbols",
             new Dictionary<string, object?>
             {
@@ -468,8 +479,8 @@ public sealed class McpTrustBoundaryTests
             }
         });
 
-        var buildsSerialized = await McpTestHost.CallToolThroughStdioAsync(
-            atlas.DataRoot,
+        var buildsSerialized = await McpTestHost.CallToolAsync(
+            _healthy.Client,
             "list_builds",
             new Dictionary<string, object?> { ["limit"] = 50 });
         using var buildsDocument = JsonDocument.Parse(buildsSerialized);
@@ -486,7 +497,7 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task ScopeValidation_PreservesScheduleIDefaultsAndRejectsInvalidCollectionCombinations()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _healthy.Atlas;
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 
         var defaultResult = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, null, null, 50, CancellationToken.None);
@@ -538,9 +549,12 @@ public sealed class McpTrustBoundaryTests
             }
         };
 
+        await using var server = await McpTestServer.StartAsync(
+            atlas.DataRoot,
+            TestContext.Current.CancellationToken);
         foreach (var (tool, arguments) in cases)
         {
-            var outcome = await McpTestHost.CallToolRawThroughStdioAsync(atlas.DataRoot, tool, arguments);
+            var outcome = await McpTestHost.CallToolRawAsync(server.Client, tool, arguments);
             var serialized = Assert.IsType<TextContentBlock>(Assert.Single(outcome.Content)).Text;
             using var result = JsonDocument.Parse(serialized);
             var root = result.RootElement;
@@ -557,7 +571,7 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task CallableSurface_RemainsScheduleIOnly()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _healthy.Atlas;
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 
         var result = await tools.GetCallableSurfaceAsync(atlas.MethodSelector, null, CancellationToken.None);
@@ -592,7 +606,7 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task ExercisingEveryTool_MutatesNoAtlasFile()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+        var atlas = _scenes.Atlas;
         var before = FileTree.HashAll(atlas.DataRoot);
 
         await McpTestHost.ExerciseEveryToolAsync(atlas);
@@ -709,7 +723,7 @@ public sealed class McpTrustBoundaryTests
     [Fact]
     public async Task MissingAmbiguousAndUnavailableQueries_ReturnExplicitStatuses()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _healthy.Atlas;
 
         var (missing, ambiguous, unavailable) = await McpTestHost.QueryExplicitFailureStatesAsync(atlas);
 
@@ -737,21 +751,24 @@ internal static class McpTestHost
 {
     public static async Task<IReadOnlyList<string>> ListToolsThroughStdioAsync(string dataRoot)
     {
-        var transport = new StdioClientTransport(new StdioClientTransportOptions
-        {
-            Command = "dotnet",
-            Arguments = [typeof(McpToolCatalog).Assembly.Location, "mcp", "serve"],
-            EnvironmentVariables = new Dictionary<string, string?> { ["S1ATLAS_HOME"] = dataRoot },
-            Name = "s1atlas-mcp-test"
-        });
-        await using var client = await McpClient.CreateAsync(transport, cancellationToken: CancellationToken.None);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await ListToolsAsync(server.Client);
+    }
+
+    public static async Task<IReadOnlyList<string>> ListToolsAsync(McpClient client)
+    {
         var tools = await client.ListToolsAsync(cancellationToken: CancellationToken.None);
         return tools.Select(tool => tool.Name).ToArray();
     }
 
     public static async Task<IReadOnlyDictionary<string, string>> GetToolSchemasThroughStdioAsync(string dataRoot)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await GetToolSchemasAsync(server.Client);
+    }
+
+    public static async Task<IReadOnlyDictionary<string, string>> GetToolSchemasAsync(McpClient client)
+    {
         var tools = await client.ListToolsAsync(cancellationToken: CancellationToken.None);
         return tools.ToDictionary(
             tool => tool.Name,
@@ -761,16 +778,23 @@ internal static class McpTestHost
 
     public static async Task<IReadOnlyList<Tool>> ListToolDefinitionsThroughStdioAsync(string dataRoot)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await ListToolDefinitionsAsync(server.Client);
+    }
+
+    public static async Task<IReadOnlyList<Tool>> ListToolDefinitionsAsync(McpClient client)
+    {
         var tools = await client.ListToolsAsync(cancellationToken: CancellationToken.None);
         return tools.Select(tool => tool.ProtocolTool).ToArray();
     }
 
     public static async Task<string?> GetServerInstructionsThroughStdioAsync(string dataRoot)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
-        return client.ServerInstructions;
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return GetServerInstructions(server.Client);
     }
+
+    public static string? GetServerInstructions(McpClient client) => client.ServerInstructions;
 
     public static string ReadHostWiringSources() =>
         string.Concat(
@@ -780,7 +804,12 @@ internal static class McpTestHost
 
     public static async Task<string> CallSearchSymbolsThroughStdioAsync(string dataRoot)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await CallSearchSymbolsAsync(server.Client);
+    }
+
+    public static async Task<string> CallSearchSymbolsAsync(McpClient client)
+    {
         var result = await client.CallToolAsync(
             "search_symbols",
             new Dictionary<string, object?>
@@ -800,7 +829,15 @@ internal static class McpTestHost
         string toolName,
         IReadOnlyDictionary<string, object?> arguments)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await CallToolAsync(server.Client, toolName, arguments);
+    }
+
+    public static async Task<string> CallToolAsync(
+        McpClient client,
+        string toolName,
+        IReadOnlyDictionary<string, object?> arguments)
+    {
         var result = await client.CallToolAsync(
             toolName,
             arguments,
@@ -813,7 +850,14 @@ internal static class McpTestHost
         string dataRoot,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> calls)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await CallToolsAsync(server.Client, calls);
+    }
+
+    public static async Task<IReadOnlyDictionary<string, string>> CallToolsAsync(
+        McpClient client,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> calls)
+    {
         var results = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (toolName, arguments) in calls)
         {
@@ -833,18 +877,31 @@ internal static class McpTestHost
         string toolName,
         IReadOnlyDictionary<string, object?> arguments)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
-        return await client.CallToolAsync(
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await CallToolRawAsync(server.Client, toolName, arguments);
+    }
+
+    public static async Task<CallToolResult> CallToolRawAsync(
+        McpClient client,
+        string toolName,
+        IReadOnlyDictionary<string, object?> arguments) =>
+        await client.CallToolAsync(
             toolName,
             arguments,
             cancellationToken: CancellationToken.None);
-    }
 
     public static async Task<IReadOnlyDictionary<string, CallToolResult>> CallToolsRawThroughStdioAsync(
         string dataRoot,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> calls)
     {
-        await using var client = await CreateStdioClientAsync(dataRoot);
+        await using var server = await CreateTrackedServerAsync(dataRoot);
+        return await CallToolsRawAsync(server.Client, calls);
+    }
+
+    public static async Task<IReadOnlyDictionary<string, CallToolResult>> CallToolsRawAsync(
+        McpClient client,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> calls)
+    {
         var results = new Dictionary<string, CallToolResult>(StringComparer.Ordinal);
         foreach (var (toolName, arguments) in calls)
         {
@@ -1023,17 +1080,8 @@ internal static class McpTestHost
     private static ToolObservation Observe<T>(ToolEnvelope<T> envelope, IEnumerable<string> answerIndexIds) where T : class =>
         new(envelope.Status, envelope.Build, envelope.Candidates, envelope.Provenance, envelope.Error, answerIndexIds.ToArray());
 
-    private static async Task<McpClient> CreateStdioClientAsync(string dataRoot)
-    {
-        var transport = new StdioClientTransport(new StdioClientTransportOptions
-        {
-            Command = "dotnet",
-            Arguments = [typeof(McpToolCatalog).Assembly.Location, "mcp", "serve"],
-            EnvironmentVariables = new Dictionary<string, string?> { ["S1ATLAS_HOME"] = dataRoot },
-            Name = "s1atlas-mcp-test"
-        });
-        return await McpClient.CreateAsync(transport, cancellationToken: CancellationToken.None);
-    }
+    private static Task<McpTestServer> CreateTrackedServerAsync(string dataRoot) =>
+        McpTestServer.StartAsync(dataRoot);
 
     private static string GetRepoPath(params string[] segments)
     {

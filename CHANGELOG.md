@@ -35,6 +35,14 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- **Shared stdio test servers stop leaking and run faster** (AT-61, AT-101):
+  every test-spawned `mcp serve` process is now tracked from spawn to exit and
+  reaped on dispose and on failed connect, with a regression test proving no
+  server survives a passing, failing, or failed-connect run. Read-only stdio
+  tests share one seeded atlas and one server per test class instead of
+  spawning a fresh server per call, cutting the MCP test project from minutes
+  to well under its CI budget with no coverage change. The `checks` CI job
+  now also builds the full solution in Release.
 - **get_type/get_method resolve through the shared symbol resolver** (AT-79):
   both tools ran their own substring search and resolved only on a single
   total hit, so an exact name that prefixes a longer sibling came back
