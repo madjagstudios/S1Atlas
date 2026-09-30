@@ -4,14 +4,19 @@ using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
 
-public sealed class ToolCapabilityTests
+public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixture>
 {
+    private readonly SharedHealthyServerFixture _shared;
+
+    public ToolCapabilityTests(SharedHealthyServerFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task ToolsList_AdvertisesReadOnlyAnnotationsAndTitleOnEveryTool()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var tools = await McpTestHost.ListToolDefinitionsThroughStdioAsync(atlas.DataRoot);
+        var tools = await McpTestHost.ListToolDefinitionsAsync(_shared.Client);
 
         Assert.NotEmpty(tools);
         Assert.All(tools, tool =>
@@ -37,10 +42,8 @@ public sealed class ToolCapabilityTests
     [Fact]
     public async Task CallTool_ResolvedEnvelope_ReturnsIsErrorFalse()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var result = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var result = await McpTestHost.CallToolRawAsync(
+            _shared.Client,
             "search_symbols",
             new Dictionary<string, object?>
             {
@@ -57,10 +60,8 @@ public sealed class ToolCapabilityTests
     [Fact]
     public async Task CallTool_AmbiguousEnvelope_ReturnsIsErrorFalse()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var result = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var result = await McpTestHost.CallToolRawAsync(
+            _shared.Client,
             "get_method",
             new Dictionary<string, object?>
             {
@@ -78,10 +79,8 @@ public sealed class ToolCapabilityTests
     [Fact]
     public async Task CallTool_NotFoundEnvelope_ReturnsIsErrorTrueWithEnvelopeIntact()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var result = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var result = await McpTestHost.CallToolRawAsync(
+            _shared.Client,
             "get_type",
             new Dictionary<string, object?>
             {
@@ -97,10 +96,8 @@ public sealed class ToolCapabilityTests
     [Fact]
     public async Task CallTool_InvalidEnvelope_ReturnsIsErrorTrueWithEnvelopeIntact()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var result = await McpTestHost.CallToolRawThroughStdioAsync(
-            atlas.DataRoot,
+        var result = await McpTestHost.CallToolRawAsync(
+            _shared.Client,
             "get_type",
             new Dictionary<string, object?>
             {
@@ -142,11 +139,9 @@ public sealed class ToolCapabilityTests
     }
 
     [Fact]
-    public async Task Initialize_ExposesServerInstructionsWithSelectorSyntax()
+    public void Initialize_ExposesServerInstructionsWithSelectorSyntax()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var instructions = await McpTestHost.GetServerInstructionsThroughStdioAsync(atlas.DataRoot);
+        var instructions = McpTestHost.GetServerInstructions(_shared.Client);
 
         Assert.False(string.IsNullOrWhiteSpace(instructions));
         Assert.Contains("canonical key", instructions!, StringComparison.OrdinalIgnoreCase);

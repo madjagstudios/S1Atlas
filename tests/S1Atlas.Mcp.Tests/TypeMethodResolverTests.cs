@@ -1,21 +1,29 @@
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using System.Text.Json;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
 
-public sealed class TypeMethodResolverTests
+public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerFixture>
 {
     private const string TypeCanonicalKey = "ScheduleI:Installed:Type:Demo.Widget";
     private const string MethodCanonicalKey = "ScheduleI:Installed:Method:Demo.Widget::Run()";
 
+    private readonly SharedHealthyServerFixture _shared;
+
+    public TypeMethodResolverTests(SharedHealthyServerFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task GetType_ExactNameWithLongerSibling_ResolvesAndMatchesGetSource()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _shared.Atlas;
 
-        var envelopes = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var envelopes = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector },
@@ -32,8 +40,8 @@ public sealed class TypeMethodResolverTests
             sourceResult.RootElement.GetProperty("data").GetProperty("symbol").GetProperty("symbolId").GetString(),
             widgetId);
 
-        var byId = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var byId = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = widgetId },
@@ -52,10 +60,8 @@ public sealed class TypeMethodResolverTests
     [Fact]
     public async Task GetType_AmbiguousCandidateId_RoundTrips()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var ambiguous = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var ambiguous = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = "DealerService" }
@@ -64,8 +70,8 @@ public sealed class TypeMethodResolverTests
         Assert.Equal("ambiguous", StatusOf(ambiguousResult));
         var candidateId = ambiguousResult.RootElement.GetProperty("candidates")[0].GetProperty("symbolId").GetString()!;
 
-        var resolved = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var resolved = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = candidateId }
@@ -78,10 +84,8 @@ public sealed class TypeMethodResolverTests
     [Fact]
     public async Task GetMethod_AmbiguousCandidateId_RoundTrips()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var ambiguous = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var ambiguous = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = "Worker.Run" }
@@ -90,8 +94,8 @@ public sealed class TypeMethodResolverTests
         Assert.Equal("ambiguous", StatusOf(ambiguousResult));
         var candidateId = ambiguousResult.RootElement.GetProperty("candidates")[0].GetProperty("symbolId").GetString()!;
 
-        var resolved = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var resolved = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = candidateId }
@@ -104,10 +108,10 @@ public sealed class TypeMethodResolverTests
     [Fact]
     public async Task CanonicalKeys_ResolveToExactSymbolsAndMatchGetSource()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _shared.Atlas;
 
-        var envelopes = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var envelopes = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = TypeCanonicalKey },
@@ -121,20 +125,20 @@ public sealed class TypeMethodResolverTests
         Assert.Equal("Demo.Widget", DataOf(typeResult).GetProperty("qualifiedName").GetString());
         Assert.Equal(atlas.MethodSelector, DataOf(methodResult).GetProperty("signature").GetString());
         Assert.Equal(
-            await GetSourceSymbolIdAsync(atlas.DataRoot, TypeCanonicalKey),
+            await GetSourceSymbolIdAsync(_shared.Client, TypeCanonicalKey),
             DataOf(typeResult).GetProperty("symbolId").GetString());
         Assert.Equal(
-            await GetSourceSymbolIdAsync(atlas.DataRoot, MethodCanonicalKey),
+            await GetSourceSymbolIdAsync(_shared.Client, MethodCanonicalKey),
             DataOf(methodResult).GetProperty("symbolId").GetString());
     }
 
     [Fact]
     public async Task GetType_WrongKindIdAndKey_ReturnNotFoundNamingKinds()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var atlas = _shared.Atlas;
 
-        var method = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var method = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
@@ -148,8 +152,8 @@ public sealed class TypeMethodResolverTests
             methodId,
             methodSource.RootElement.GetProperty("data").GetProperty("symbol").GetProperty("symbolId").GetString());
 
-        var mismatches = await McpTestHost.CallToolsRawThroughStdioAsync(
-            atlas.DataRoot,
+        var mismatches = await McpTestHost.CallToolsRawAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = methodId },
@@ -167,8 +171,8 @@ public sealed class TypeMethodResolverTests
             methodId,
             byIdSource.RootElement.GetProperty("data").GetProperty("symbol").GetProperty("symbolId").GetString());
 
-        var byKey = await McpTestHost.CallToolsRawThroughStdioAsync(
-            atlas.DataRoot,
+        var byKey = await McpTestHost.CallToolsRawAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = MethodCanonicalKey }
@@ -181,10 +185,8 @@ public sealed class TypeMethodResolverTests
     [Fact]
     public async Task GetMethod_WrongKindIdAndKey_ReturnNotFoundNamingKinds()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var dealers = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var dealers = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = "DealerService" }
@@ -192,8 +194,8 @@ public sealed class TypeMethodResolverTests
         using var dealersResult = JsonDocument.Parse(dealers["get_type"]);
         var typeId = dealersResult.RootElement.GetProperty("candidates")[0].GetProperty("symbolId").GetString()!;
 
-        var mismatches = await McpTestHost.CallToolsRawThroughStdioAsync(
-            atlas.DataRoot,
+        var mismatches = await McpTestHost.CallToolsRawAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = typeId }
@@ -205,8 +207,8 @@ public sealed class TypeMethodResolverTests
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
 
-        var byKey = await McpTestHost.CallToolsRawThroughStdioAsync(
-            atlas.DataRoot,
+        var byKey = await McpTestHost.CallToolsRawAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_method"] = new Dictionary<string, object?> { ["selector"] = TypeCanonicalKey }
@@ -219,10 +221,8 @@ public sealed class TypeMethodResolverTests
     [Fact]
     public async Task GenuinelyAmbiguousSelectors_RemainAmbiguousWithCandidates()
     {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-
-        var envelopes = await McpTestHost.CallToolsThroughStdioAsync(
-            atlas.DataRoot,
+        var envelopes = await McpTestHost.CallToolsAsync(
+            _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_type"] = new Dictionary<string, object?> { ["selector"] = "DealerService" },
@@ -246,10 +246,10 @@ public sealed class TypeMethodResolverTests
                 .Order(StringComparer.Ordinal));
     }
 
-    private static async Task<string?> GetSourceSymbolIdAsync(string dataRoot, string selector)
+    private static async Task<string?> GetSourceSymbolIdAsync(McpClient client, string selector)
     {
-        var envelopes = await McpTestHost.CallToolsThroughStdioAsync(
-            dataRoot,
+        var envelopes = await McpTestHost.CallToolsAsync(
+            client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
                 ["get_source"] = new Dictionary<string, object?> { ["selector"] = selector }

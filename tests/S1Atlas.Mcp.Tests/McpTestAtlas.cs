@@ -18,7 +18,7 @@ using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
 
-internal sealed class McpTestAtlas : IAsyncDisposable
+public sealed class McpTestAtlas : IAsyncDisposable
 {
     private static readonly DateTimeOffset BaseTime =
         DateTimeOffset.Parse("2026-08-16T00:00:00Z");
