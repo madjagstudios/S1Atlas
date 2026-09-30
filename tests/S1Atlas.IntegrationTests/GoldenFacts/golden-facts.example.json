@@ -1,0 +1,35 @@
+{
+  // Schema documentation only. Every value below is an obviously fake
+  // placeholder: copy this file to golden-facts.local.json (same directory,
+  // gitignored, never commit it) and replace the placeholders with values
+  // read from your own live atlas. See docs/USAGE.md "Real-game golden facts".
+  "version": 1,
+  "sceneFacts": [
+    {
+      "name": "example-component-field",
+      "owner": "component",
+      "selector": "REPLACE-ME-WITH-A-COMPONENT-ID-OR-EXACT-TYPE",
+      "fieldPath": "REPLACE-ME-WITH-A-FIELD-PATH",
+      "expectedValue": "REPLACE-ME-WITH-THE-FIELD-VALUE",
+      "expectedTargetName": null
+    },
+    {
+      "name": "example-asset-reference-target",
+      "owner": "asset",
+      "selector": "REPLACE-ME-WITH-AN-ASSET-ID-OR-NAME",
+      "fieldPath": "REPLACE-ME-WITH-A-REFERENCE-FIELD-PATH",
+      "expectedValue": null,
+      "expectedTargetName": "REPLACE-ME-WITH-THE-TARGET-NAME"
+    }
+  ],
+  "calleeFacts": [
+    {
+      "name": "example-callee-set",
+      "selector": "REPLACE-ME-WITH-A-METHOD-NAME-OR-KEY",
+      "expectedCallees": [
+        "REPLACE-ME-WITH-A-CALLEE-NAME",
+        "REPLACE-ME-WITH-ANOTHER-CALLEE-NAME"
+      ]
+    }
+  ]
+}

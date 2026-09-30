@@ -68,3 +68,5 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+# Local-only golden facts (real game values; never commit)
+golden-facts.local.json
