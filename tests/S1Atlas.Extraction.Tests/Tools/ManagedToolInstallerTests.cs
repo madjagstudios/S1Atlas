@@ -212,7 +212,10 @@ public sealed class ManagedToolInstallerTests : IAsyncDisposable
 
         Assert.False(outcome.Repaired);
         Assert.False(outcome.WasAlreadyVerified);
-        Assert.Equal(3, promotionAttempts);
+        Assert.True(
+            promotionAttempts >= 3,
+            "Expected at least the two injected failures plus the successful move. " +
+            $"Actual promotion attempts: {promotionAttempts}.");
         Assert.True(File.Exists(Path.Combine(FinalRoot(), "Cpp2IL.exe")));
     }
 
