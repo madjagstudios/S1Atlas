@@ -1,11 +1,11 @@
 using System.Text.Json;
 using S1Atlas.Cli;
-using S1Atlas.Cli.Configuration;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Discovery;
 using S1Atlas.IntegrationTests;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.NativeRecovery;
@@ -70,10 +70,13 @@ public sealed class RecoverNativeBodyCliTests
     /// already exists in the local S1Atlas database (built by prior <c>s1atlas scan</c>/<c>index</c>
     /// runs). Persists a real native recovery record and proves determinism by running twice.
     ///
-    /// Skips (does not fail) when the game is not installed, no local S1Atlas database exists, no
-    /// completed index or indexed <c>Customer.EvaluateCounteroffer</c> symbol can be found, or the
-    /// command cannot resolve an installed-build authority in the local environment -- mirroring
-    /// every other LocalGameRequired gate so CI without the game and its index stays green.
+    /// Runs only when explicitly enabled (see CONTRIBUTING), and then only against a temp
+    /// copy of the live atlas: the live database is never opened for writing. Skips (does
+    /// not fail) when not explicitly enabled, when the game is not installed, when no local
+    /// S1Atlas database exists, when no completed index or indexed
+    /// <c>Customer.EvaluateCounteroffer</c> symbol can be found, or when the command cannot
+    /// resolve an installed-build authority in the local environment -- mirroring every
+    /// other LocalGameRequired gate so CI without the game and its index stays green.
     /// </summary>
     [Trait("Category", "LocalGameRequired")]
     [Fact]
@@ -85,17 +88,30 @@ public sealed class RecoverNativeBodyCliTests
 
         var cancellationToken = TestContext.Current.CancellationToken;
 
+        Assert.SkipUnless(
+            LiveAtlasCopy.IsExplicitlyEnabled,
+            $"LocalGameRequired tests run only with {LiveAtlasCopy.EnableVariable}=1. " +
+            "Skipping: NEEDS_CONTEXT.");
+
         var installation = await new WindowsScheduleOneLocator().LocateAsync(null, cancellationToken);
         Assert.SkipUnless(
             installation is not null,
             "No Schedule I installation was found via standard Steam detection. Skipping: NEEDS_CONTEXT.");
 
-        var atlasHomeDirectory = AtlasPaths.FromEnvironment().RootDirectory;
-        var databasePath = Path.Combine(atlasHomeDirectory, "atlas.db");
+        var liveDataRoot = LiveAtlasCopy.ResolveLiveDataRoot();
+        var liveDatabasePath = Path.Combine(liveDataRoot, "atlas.db");
         Assert.SkipUnless(
-            File.Exists(databasePath),
-            $"No S1Atlas database found at '{databasePath}' (override with S1ATLAS_HOME). " +
+            File.Exists(liveDatabasePath),
+            $"No S1Atlas database found at '{liveDatabasePath}' (override with S1ATLAS_HOME). " +
             "Skipping: NEEDS_CONTEXT.");
+
+        await using var copy = await LiveAtlasCopy.CreateAsync(liveDataRoot, cancellationToken);
+        Assert.SkipUnless(
+            copy is not null,
+            "The temp drive cannot hold a copy of the live atlas. Skipping: NEEDS_CONTEXT.");
+
+        var atlasHomeDirectory = copy!.DataRoot;
+        var databasePath = copy.DatabasePath;
 
         var repository = new SqliteAtlasRepository(
             databasePath,

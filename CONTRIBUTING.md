@@ -30,6 +30,17 @@ dotnet build S1Atlas.sln --configuration Release
 dotnet test S1Atlas.sln --configuration Release --no-build
 ```
 
+Tests marked `LocalGameRequired` need a real game install plus a local atlas, so
+plain `dotnet test` skips them without touching your live atlas. To run them
+explicitly (they copy the live atlas into temp first and never write the live
+files, but the copy can take a while for large atlases):
+
+```powershell
+$env:S1ATLAS_RUN_LOCAL_GAME_TESTS = '1'
+dotnet test S1Atlas.sln --configuration Release --no-build --filter "Category=LocalGameRequired"
+Remove-Item Env:\S1ATLAS_RUN_LOCAL_GAME_TESTS
+```
+
 ## Before you open a pull request
 
 CI runs — and merging requires — the full gate. Run it locally first; a green

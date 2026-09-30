@@ -4,6 +4,7 @@ using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.NativeRecovery;
 using S1Atlas.NativeRecovery.Tests.Spikes;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.NativeRecovery.Tests;
@@ -25,9 +26,12 @@ namespace S1Atlas.NativeRecovery.Tests;
 /// byte-identical edge tuples: the provider alone returned <c>Recovered</c>, but the same output
 /// was rejected as <c>Failed</c> ("duplicate native edge ID") once it passed through the workflow.
 ///
-/// Skips (does not fail) when the game is not installed or no real completed index/current build
-/// exists locally to satisfy the persistence/authority preconditions, mirroring every other
-/// LocalGameRequired spike so CI without the game and its index stays green.
+/// Runs only when explicitly enabled (see CONTRIBUTING), and then only against a temp
+/// copy of the live atlas: the live database is never opened for writing.
+/// Skips (does not fail) when not explicitly enabled, when the game is not installed, or
+/// when no real completed index/current build exists locally to satisfy the
+/// persistence/authority preconditions, mirroring every other LocalGameRequired spike so
+/// CI without the game and its index stays green.
 /// </summary>
 [Collection(LibCpp2IlGlobalStateCollection.Name)]
 [Trait("Category", "LocalGameRequired")]
@@ -48,16 +52,6 @@ public sealed class RealIndexBackedResolverEndToEndTests(ITestOutputHelper outpu
                 System.Security.Cryptography.SHA256.HashData(metadataBytes)).ToLowerInvariant();
             return Task.FromResult(new NativeImage(binaryBytes, gameAssemblySha256, metadataBytes, metadataSha256));
         }
-    }
-
-    private static string ResolveAtlasHomeDirectory()
-    {
-        var overridePath = Environment.GetEnvironmentVariable("S1ATLAS_HOME");
-        return !string.IsNullOrWhiteSpace(overridePath)
-            ? overridePath
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "S1Atlas");
     }
 
     private static string FindLibrariesConfigPath()
@@ -82,14 +76,20 @@ public sealed class RealIndexBackedResolverEndToEndTests(ITestOutputHelper outpu
     {
         LocalGameFixture.SkipUnlessAvailable();
 
-        var atlasHomeDirectory = ResolveAtlasHomeDirectory();
-        var databasePath = Path.Combine(atlasHomeDirectory, "atlas.db");
+        var liveDataRoot = LiveAtlasCopy.ResolveLiveDataRoot();
+        var liveDatabasePath = Path.Combine(liveDataRoot, "atlas.db");
         Assert.SkipUnless(
-            File.Exists(databasePath),
-            $"No S1Atlas database found at '{databasePath}' (override with S1ATLAS_HOME). " +
+            File.Exists(liveDatabasePath),
+            $"No S1Atlas database found at '{liveDataRoot}' (override with S1ATLAS_HOME). " +
             "Skipping the Task 3.1 real-resolver acceptance gate: NEEDS_CONTEXT.");
 
-        var repository = new SqliteAtlasRepository(databasePath);
+        await using var copy = await LiveAtlasCopy.CreateAsync(
+            liveDataRoot, TestContext.Current.CancellationToken);
+        Assert.SkipUnless(
+            copy is not null,
+            "The temp drive cannot hold a copy of the live atlas. Skipping: NEEDS_CONTEXT.");
+
+        var repository = new SqliteAtlasRepository(copy!.DatabasePath);
         var cancellationToken = CancellationToken.None;
         await repository.InitializeAsync(cancellationToken);
 
