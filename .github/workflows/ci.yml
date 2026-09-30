@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  build-test:
+  checks:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -16,46 +20,17 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
+      - name: Restore NuGet cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
       - name: Restore
         run: dotnet restore S1Atlas.sln
       - name: Verify S1Atlas.NativeRecovery lockfile
         run: dotnet restore src/S1Atlas.NativeRecovery/S1Atlas.NativeRecovery.csproj --locked-mode
-      - name: Build
-        run: dotnet build S1Atlas.sln --configuration Release --no-restore
-      - name: Test
-        shell: pwsh
-        run: |
-          $projects = @(
-            'tests/S1Atlas.Core.Tests',
-            'tests/S1Atlas.Docs.Tests',
-            'tests/S1Atlas.Extraction.Tests',
-            'tests/S1Atlas.Indexing.Tests',
-            'tests/S1Atlas.IntegrationTests',
-            'tests/S1Atlas.Mcp.Tests',
-            'tests/S1Atlas.NativeRecovery.Tests',
-            'tests/S1Atlas.Storage.Tests'
-          )
-          $failed = @()
-          foreach ($project in $projects) {
-            $name = Split-Path $project -Leaf
-            dotnet test $project --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=$name.trx" --results-directory TestResults
-            if ($LASTEXITCODE -ne 0) { $failed += $name }
-          }
-          if ($failed.Count -gt 0) {
-            Write-Output "Failing test projects: $($failed -join ', ')"
-            exit 1
-          }
-      - name: Timing summary
-        if: always()
-        shell: pwsh
-        run: ./scripts/summarize-test-timings.ps1 -ResultsDirectory TestResults
-      - name: Upload test results
-        if: always() && hashFiles('TestResults/*.trx') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: TestResults
-          retention-days: 14
       - name: Format
         run: dotnet format S1Atlas.sln --verify-no-changes --no-restore
       - name: Repository hygiene
@@ -69,3 +44,78 @@ jobs:
           } else {
             ./scripts/verify-public-content.ps1 -BaseRef '${{ github.event.before }}'
           }
+
+  tests:
+    name: test ${{ matrix.name }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: S1Atlas.Core.Tests
+            project: tests/S1Atlas.Core.Tests
+          - name: S1Atlas.Docs.Tests
+            project: tests/S1Atlas.Docs.Tests
+          - name: S1Atlas.Extraction.Tests
+            project: tests/S1Atlas.Extraction.Tests
+          - name: S1Atlas.Indexing.Tests
+            project: tests/S1Atlas.Indexing.Tests
+          - name: S1Atlas.IntegrationTests
+            project: tests/S1Atlas.IntegrationTests
+          - name: S1Atlas.Mcp.Tests
+            project: tests/S1Atlas.Mcp.Tests
+          - name: S1Atlas.NativeRecovery.Tests
+            project: tests/S1Atlas.NativeRecovery.Tests
+          - name: S1Atlas.Storage.Tests
+            project: tests/S1Atlas.Storage.Tests
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore NuGet cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+      - name: Test
+        shell: pwsh
+        run: dotnet test ${{ matrix.project }} --configuration Release --verbosity normal --logger "trx;LogFileName=${{ matrix.name }}.trx" --results-directory TestResults
+      - name: Timing summary
+        if: always()
+        shell: pwsh
+        run: ./scripts/summarize-test-timings.ps1 -ResultsDirectory TestResults
+      - name: Upload test results
+        if: always() && hashFiles('TestResults/*.trx') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.name }}
+          path: TestResults
+          retention-days: 14
+
+  build-test:
+    runs-on: ubuntu-latest
+    needs: [checks, tests]
+    if: always()
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: TestResults
+          merge-multiple: true
+      - name: Timing summary
+        if: always()
+        shell: pwsh
+        run: ./scripts/summarize-test-timings.ps1 -ResultsDirectory TestResults
+      - name: Verify pipeline
+        if: always()
+        shell: pwsh
+        run: |
+          $checks = '${{ needs.checks.result }}'
+          $tests = '${{ needs.tests.result }}'
+          Write-Output "checks=$checks tests=$tests"
+          if ($checks -ne 'success' -or $tests -ne 'success') { exit 1 }
