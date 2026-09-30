@@ -70,30 +70,49 @@ public static class EnvelopeMapper
         }
     }
 
-    public static ToolEnvelope<SymbolQueryResult> FromResolveOne(
+    public static ToolEnvelope<SymbolQueryResult> FromSymbolResolution(
         InstalledBuildAuthority authority,
-        SymbolSearchResult result)
+        SymbolResolutionResult resolution,
+        IReadOnlySet<SymbolKind> kinds)
     {
-        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(resolution);
+        ArgumentNullException.ThrowIfNull(kinds);
 
         var build = BuildFrom(authority);
-        return result.TotalCount switch
+        return resolution.Status switch
         {
-            0 => ToolEnvelope<SymbolQueryResult>.NotFound(
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<SymbolQueryResult>.Ambiguous(
+                build,
+                resolution.Candidates.Cast<object>().ToArray(),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NotFound when resolution is KindedSymbolResolutionResult kinded => ToolEnvelope<SymbolQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolKindMismatch", KindMismatchMessage(kinded.KindMismatch, kinds)),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<SymbolQueryResult>.NotFound(
                 build,
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
                 Derived(authority, "symbol-selection")),
-            1 => ToolEnvelope<SymbolQueryResult>.Resolved(
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SymbolQueryResult>.NotFound(
                 build,
-                result.Results[0],
-                Fact(authority, "index-symbol"),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
                 Derived(authority, "symbol-selection")),
-            _ => ToolEnvelope<SymbolQueryResult>.Ambiguous(
+            _ => ToolEnvelope<SymbolQueryResult>.Resolved(
                 build,
-                result.Results.Cast<object>().ToArray(),
+                resolution.Symbol!,
+                Fact(authority, "index-symbol"),
                 Derived(authority, "symbol-selection"))
         };
     }
+
+    private static string KindMismatchMessage(SymbolQueryResult mismatch, IReadOnlySet<SymbolKind> kinds)
+    {
+        var expected = string.Join(" or ", kinds.Order().Select(kind => WithArticle(kind.ToString())));
+        return $"Symbol '{mismatch.QualifiedName}' is {WithArticle(mismatch.Kind)}, not {expected}.";
+    }
+
+    private static string WithArticle(string kind) =>
+        (kind.Length > 0 && "AEIOUaeiou".Contains(kind[0]) ? "an " : "a ") + kind;
 
     public static BuildContext BuildFrom(InstalledBuildAuthority authority)
     {

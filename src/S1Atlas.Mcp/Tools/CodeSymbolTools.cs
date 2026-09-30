@@ -23,6 +23,9 @@ public sealed class CodeSymbolTools
         ],
         StringComparer.OrdinalIgnoreCase);
 
+    private static readonly IReadOnlySet<SymbolKind> TypeKinds = new HashSet<SymbolKind>([SymbolKind.Type]);
+    private static readonly IReadOnlySet<SymbolKind> MethodKinds = new HashSet<SymbolKind>([SymbolKind.Method]);
+
     private readonly McpReadOnlyServices _services;
 
     public CodeSymbolTools(McpReadOnlyServices services)
@@ -95,7 +98,7 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
-        await GetSymbolAsync(selector, buildId, SymbolKind.Type, limit, ct);
+        await GetSymbolAsync(selector, buildId, TypeKinds, limit, ct);
 
     [McpServerTool(Name = "get_method"), Description("Resolve one method from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetMethodAsync(
@@ -103,7 +106,7 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
-        await GetSymbolAsync(selector, buildId, SymbolKind.Method, limit, ct);
+        await GetSymbolAsync(selector, buildId, MethodKinds, limit, ct);
 
     [McpServerTool(Name = "get_callable_surface"), Description("Resolve how one Schedule I game member is callable through its local Il2CppInterop projection.")]
     public async Task<ToolEnvelope<CallableSurfaceQueryResult>> GetCallableSurfaceAsync(
@@ -443,7 +446,7 @@ public sealed class CodeSymbolTools
     private async Task<ToolEnvelope<SymbolQueryResult>> GetSymbolAsync(
         string selector,
         string? buildId,
-        SymbolKind kind,
+        IReadOnlySet<SymbolKind> kinds,
         int limit,
         CancellationToken ct)
     {
@@ -463,15 +466,19 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                var result = await _services.IndexQueryService.SearchInIndexAsync(
+                var resolution = await _services.IndexQueryService.ResolveInIndexAsync(
                     authority.IndexRun!,
                     CodebaseKind.ScheduleI,
                     CodeChannel.Installed,
                     selector,
-                    boundedLimit,
-                    kind,
-                    ct);
-                return EnvelopeMapper.FromResolveOne(authority, result);
+                    ct,
+                    kinds);
+                if (resolution.Status == SymbolResolutionStatus.Ambiguous && resolution.Candidates.Count > boundedLimit)
+                {
+                    resolution = resolution with { Candidates = resolution.Candidates.Take(boundedLimit).ToArray() };
+                }
+
+                return EnvelopeMapper.FromSymbolResolution(authority, resolution, kinds);
             });
     }
 

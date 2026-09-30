@@ -111,10 +111,17 @@ public enum SymbolResolutionStatus
     NoCompletedIndex
 }
 
-public sealed record SymbolResolutionResult(
+public record SymbolResolutionResult(
     SymbolResolutionStatus Status,
     SymbolQueryResult? Symbol,
     IReadOnlyList<SymbolQueryResult> Candidates);
+
+public sealed record KindedSymbolResolutionResult(
+    SymbolResolutionStatus Status,
+    SymbolQueryResult? Symbol,
+    IReadOnlyList<SymbolQueryResult> Candidates,
+    SymbolQueryResult KindMismatch)
+    : SymbolResolutionResult(Status, Symbol, Candidates);
 
 public sealed record SymbolSearchResult(
     int TotalCount,
