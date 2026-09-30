@@ -8,6 +8,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- **get_type/get_method resolve through the shared symbol resolver** (AT-79):
+  both tools ran their own substring search and resolved only on a single
+  total hit, so an exact name that prefixes a longer sibling came back
+  ambiguous, ambiguity candidate IDs could not be fed back in, and the same
+  selector could resolve in `get_source` but not in `get_type`. Both tools now
+  resolve through `SymbolResolver` with the kind enforced inside the query
+  (IDs, canonical keys, and exact names behave exactly like `get_source`),
+  and a wrong-kind ID or key returns `not_found` naming the expected and
+  actual kinds instead of a wrong-kind success. `get_method` stays Method
+  only; constructors are not accepted.
 - **Omitted optional MCP parameters bind as null** (AT-57): nullable tool
   parameters without a C# default were marked `required` in the generated JSON
   schema, so a `tools/call` that omitted them died in SDK argument binding with

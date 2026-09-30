@@ -119,6 +119,124 @@ public sealed class SymbolResolverTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Kinded_id_of_matching_kind_resolves()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            fixture.Canonical.SymbolId,
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Type });
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal(fixture.Canonical.SymbolId, result.Symbol?.SymbolId);
+        Assert.IsType<SymbolResolutionResult>(result);
+    }
+
+    [Fact]
+    public async Task Kinded_search_resolves_type_despite_fifty_other_kind_matches()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Crowd",
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Type });
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal(fixture.CrowdType.SymbolId, result.Symbol?.SymbolId);
+    }
+
+    [Fact]
+    public async Task Kinded_id_of_wrong_kind_returns_not_found_with_mismatch()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            fixture.Signature.SymbolId,
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Type });
+
+        Assert.Equal(SymbolResolutionStatus.NotFound, result.Status);
+        Assert.Null(result.Symbol);
+        Assert.Empty(result.Candidates);
+        var kinded = Assert.IsType<KindedSymbolResolutionResult>(result);
+        Assert.Equal(fixture.Signature.SymbolId, kinded.KindMismatch.SymbolId);
+        Assert.Equal("Method", kinded.KindMismatch.Kind);
+    }
+
+    [Fact]
+    public async Task Kinded_canonical_key_of_wrong_kind_returns_not_found_with_mismatch()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            fixture.Signature.CanonicalKey,
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Type });
+
+        Assert.Equal(SymbolResolutionStatus.NotFound, result.Status);
+        Assert.Null(result.Symbol);
+        var kinded = Assert.IsType<KindedSymbolResolutionResult>(result);
+        Assert.Equal(fixture.Signature.SymbolId, kinded.KindMismatch.SymbolId);
+    }
+
+    [Fact]
+    public async Task Kinded_absent_canonical_key_does_not_fall_through_to_fuzzy_matching()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "S1Api:Release:Type:ExactWidget",
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Type });
+
+        Assert.Equal(SymbolResolutionStatus.NotFound, result.Status);
+        Assert.Null(result.Symbol);
+        Assert.IsType<SymbolResolutionResult>(result);
+    }
+
+    [Fact]
+    public async Task Multi_kind_set_merges_searches_and_excludes_other_kinds()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Factory",
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Method, SymbolKind.Constructor });
+
+        Assert.Equal(SymbolResolutionStatus.Ambiguous, result.Status);
+        Assert.Equal(
+            new[] { fixture.FactoryMethod.SymbolId, fixture.FactoryCtor.SymbolId }.Order(StringComparer.Ordinal),
+            result.Candidates.Select(candidate => candidate.SymbolId).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task No_matching_symbol_returns_not_found()
     {
         var fixture = await SeedAsync(TestContext.Current.CancellationToken);
@@ -209,6 +327,33 @@ public sealed class SymbolResolverTests : IAsyncDisposable
             "Type",
             "Beta.DealerService",
             "Beta.DealerService");
+        var crowdMethods = Enumerable.Range(0, 50)
+            .Select(i => Symbol(
+                $"S1Api:Release:Method:Crowd.A{i:00}::Run()",
+                "Method",
+                $"Crowd.A{i:00}.Run",
+                $"System.Void Crowd.A{i:00}::Run()"))
+            .ToArray();
+        var crowdType = Symbol(
+            "S1Api:Release:Type:Crowd.Target",
+            "Type",
+            "Crowd.Target",
+            "Crowd.Target");
+        var factoryType = Symbol(
+            "S1Api:Release:Type:Demo.Factory",
+            "Type",
+            "Demo.Factory",
+            "Demo.Factory");
+        var factoryMethod = Symbol(
+            "S1Api:Release:Method:Demo.Factory::Build()",
+            "Method",
+            "Demo.Factory.Build",
+            "System.Void Demo.Factory::Build()");
+        var factoryCtor = Symbol(
+            "S1Api:Release:Constructor:Demo.Factory::.ctor()",
+            "Constructor",
+            "Demo.Factory.New",
+            "System.Void Demo.Factory::.ctor()");
 
         await _repository.CompleteIndexRunAsync(
             indexId,
@@ -222,7 +367,12 @@ public sealed class SymbolResolverTests : IAsyncDisposable
                     uniqueText,
                     lowerText,
                     dealerA,
-                    dealerB
+                    dealerB,
+                    ..crowdMethods,
+                    crowdType,
+                    factoryType,
+                    factoryMethod,
+                    factoryCtor
                 ],
                 [],
                 [],
@@ -241,7 +391,10 @@ public sealed class SymbolResolverTests : IAsyncDisposable
             exactName,
             uniqueText,
             dealerA,
-            dealerB);
+            dealerB,
+            crowdType,
+            factoryMethod,
+            factoryCtor);
     }
 
     private static string HashId(string value) =>
@@ -264,5 +417,8 @@ public sealed class SymbolResolverTests : IAsyncDisposable
         IndexSymbolRecord ExactName,
         IndexSymbolRecord UniqueText,
         IndexSymbolRecord DealerA,
-        IndexSymbolRecord DealerB);
+        IndexSymbolRecord DealerB,
+        IndexSymbolRecord CrowdType,
+        IndexSymbolRecord FactoryMethod,
+        IndexSymbolRecord FactoryCtor);
 }

@@ -184,11 +184,12 @@ public sealed class IndexQueryService
         CodebaseKind codebase,
         CodeChannel channel,
         string selector,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlySet<SymbolKind>? kinds = null)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
-        return (await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken)).Resolution;
+        return (await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken, kinds)).Resolution;
     }
 
     public async Task<IndexedSymbolPageResult> ListSymbolsInIndexAsync(
@@ -1116,7 +1117,8 @@ public sealed class IndexQueryService
         CodebaseKind codebase,
         CodeChannel channel,
         string selector,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlySet<SymbolKind>? kinds = null)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -1126,7 +1128,8 @@ public sealed class IndexQueryService
             selector,
             codebase,
             channel,
-            cancellationToken);
+            cancellationToken,
+            kinds);
         if (resolution.Status == SymbolResolutionStatus.Resolved && resolution.Symbol is not null)
             return new ChannelSelection(resolution, new SelectedSymbol(channel, run, resolution.Symbol));
         return new ChannelSelection(resolution, null);
