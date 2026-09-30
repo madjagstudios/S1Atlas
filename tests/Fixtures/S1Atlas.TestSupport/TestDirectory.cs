@@ -15,9 +15,13 @@ public static class TestDirectory
     private const int MaxAttempts = 10;
     private const int RetryDelayMilliseconds = 100;
 
-    public static async Task DeleteTreeAsync(
-        string path,
-        CancellationToken cancellationToken = default)
+    /// <summary>
+    /// The retry window is deliberately uncancellable: cleanup must finish (it is
+    /// bounded to about a second), and a cancelled delay would throw out of test
+    /// teardown. This also keeps test-method call sites free of
+    /// test-framework cancellation-token analyzer requirements.
+    /// </summary>
+    public static async Task DeleteTreeAsync(string path)
     {
         if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
         {
@@ -37,7 +41,7 @@ public static class TestDirectory
                 (exception is IOException or UnauthorizedAccessException) &&
                 attempt < MaxAttempts - 1)
             {
-                await Task.Delay(RetryDelayMilliseconds, cancellationToken);
+                await Task.Delay(RetryDelayMilliseconds, CancellationToken.None);
             }
         }
     }

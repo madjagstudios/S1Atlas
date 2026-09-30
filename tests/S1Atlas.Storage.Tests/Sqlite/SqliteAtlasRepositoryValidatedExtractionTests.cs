@@ -4,6 +4,7 @@ using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Tools;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Sqlite;
@@ -438,14 +439,9 @@ public sealed class SqliteAtlasRepositoryValidatedExtractionTests : IAsyncDispos
             repository.GetLatestValidationResultAsync(extractionId, policyDigest, ct));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private async Task<(string ExtractionId, ArtifactManifest Manifest, string ManifestDigest)>

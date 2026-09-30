@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using S1Atlas.Storage.Migrations;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Migrations;
@@ -157,14 +158,9 @@ public sealed class ManagedToolMigrationTests : IAsyncDisposable
             "atlas-before-schema-3-*.db"));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private static async Task<bool> TableExistsAsync(

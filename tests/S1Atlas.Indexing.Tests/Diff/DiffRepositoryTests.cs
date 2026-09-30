@@ -1,6 +1,7 @@
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Indexing.Tests.Diff;
@@ -20,8 +21,7 @@ public sealed class DiffRepositoryTests : IAsyncDisposable
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await Task.Delay(50);
-        if (Directory.Exists(_directory))
-            Directory.Delete(_directory, recursive: true);
+        TestDirectory.DeleteTree(_directory);
     }
 
     [Fact]

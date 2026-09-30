@@ -4,6 +4,7 @@ using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Tools;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Tools;
@@ -339,14 +340,9 @@ public sealed class ExtractionToolResolverTests : IAsyncDisposable
         Assert.NotEqual(first.Instance.ToolInstanceId, third.Instance.ToolInstanceId);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private ExtractionToolResolver CreateResolver(

@@ -11,6 +11,7 @@ using S1Atlas.Extraction.Tools;
 using S1Atlas.Extraction.Validation;
 using S1Atlas.ManagedAssemblyFixture;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests;
@@ -615,20 +616,7 @@ public sealed class ValidatedExtractionWorkflowTests
 
         public void Dispose()
         {
-            SqliteConnection.ClearAllPools();
-            if (Directory.Exists(AtlasRoot))
-            {
-                try
-                {
-                    Directory.Delete(AtlasRoot, recursive: true);
-                }
-                catch (IOException)
-                {
-                }
-                catch (UnauthorizedAccessException)
-                {
-                }
-            }
+            TestDirectory.DeleteTree(AtlasRoot);
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Tools;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Tools;
@@ -218,10 +219,7 @@ public sealed class ManagedToolInstallerTests : IAsyncDisposable
             client.Dispose();
         }
 
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
+        TestDirectory.DeleteTree(_temporaryDirectory);
 
         return ValueTask.CompletedTask;
     }

@@ -67,7 +67,7 @@ public sealed class LiveAtlasCopyGuardTests
         }
         finally
         {
-            await TestDirectory.DeleteTreeAsync(liveRoot, TestContext.Current.CancellationToken);
+            await TestDirectory.DeleteTreeAsync(liveRoot);
         }
     }
 
@@ -85,7 +85,7 @@ public sealed class LiveAtlasCopyGuardTests
         }
         finally
         {
-            await TestDirectory.DeleteTreeAsync(emptyRoot, TestContext.Current.CancellationToken);
+            await TestDirectory.DeleteTreeAsync(emptyRoot);
         }
     }
 }

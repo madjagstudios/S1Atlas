@@ -14,6 +14,7 @@ using S1Atlas.Indexing.Workflow;
 using S1Atlas.Storage.Sqlite;
 using System.Security.Cryptography;
 using System.Text;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -487,15 +488,9 @@ public sealed class McpTestAtlas : IAsyncDisposable
         return atlas;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private async Task InitializeAsync(CancellationToken cancellationToken)

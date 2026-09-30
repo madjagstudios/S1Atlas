@@ -1,3 +1,4 @@
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests;
@@ -35,9 +36,8 @@ public sealed class DocsGenerateCommandTests : IAsyncDisposable
         Assert.Contains("latest completed index", await File.ReadAllTextAsync(Path.Combine(output, "code", "s1api", "installed", "index.html"), TestContext.Current.CancellationToken), StringComparison.Ordinal);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 }

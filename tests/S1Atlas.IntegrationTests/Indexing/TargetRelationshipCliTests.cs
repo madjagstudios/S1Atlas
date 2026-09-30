@@ -11,6 +11,7 @@ using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Manifests;
 using S1Atlas.Extraction.Promotion;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Indexing;
@@ -167,11 +168,9 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
         return (exitCode, output.ToString(), error.ToString());
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private async Task<string> SeedValidatedExtractionAsync(string buildId)

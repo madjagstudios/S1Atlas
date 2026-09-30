@@ -10,6 +10,7 @@ using S1Atlas.Extraction.Manifests;
 using S1Atlas.Extraction.Promotion;
 using S1Atlas.Indexing.Authority;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 
 namespace S1Atlas.Indexing.Tests;
 
@@ -183,15 +184,9 @@ internal sealed class AuthorityHarness : IAsyncDisposable
         return new HealthyBuildSeed(buildId, seeded.Extraction.ExtractionId, indexId);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private async Task InitializeAsync(CancellationToken cancellationToken)

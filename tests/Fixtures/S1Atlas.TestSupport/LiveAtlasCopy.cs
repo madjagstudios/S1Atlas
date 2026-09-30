@@ -110,7 +110,7 @@ public sealed class LiveAtlasCopy : IAsyncDisposable
         }
         catch
         {
-            await TestDirectory.DeleteTreeAsync(copyRoot, cancellationToken);
+            await TestDirectory.DeleteTreeAsync(copyRoot);
             throw;
         }
 

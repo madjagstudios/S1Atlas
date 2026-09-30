@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using S1Atlas.Storage.Migrations;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Scene;
@@ -56,10 +57,8 @@ public sealed class SceneSchemaTests : IAsyncDisposable
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 }

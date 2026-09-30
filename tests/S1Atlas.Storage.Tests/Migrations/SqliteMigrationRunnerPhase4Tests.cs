@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Storage.Migrations;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Migrations;
@@ -104,14 +105,9 @@ public sealed class SqliteMigrationRunnerPhase4Tests : IAsyncDisposable
             SqliteMigrations.All.Take(4).Select(migration => migration.Checksum));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     /// <summary>

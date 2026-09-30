@@ -379,6 +379,41 @@ public sealed class ExtractionCliTests
     }
 
     [Fact]
+    public async Task Extract_CallerCancellation_ReleasesDatabaseFileBeforeReturning()
+    {
+        var extractor = new ScriptedProcessExtractor(ScriptedProcessOutcome.Canceled);
+        await using var fixture = new ExtractionCliFixture(extractor);
+        await fixture.SeedBuildAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        using var cancellation = new CancellationTokenSource();
+
+        var invocation = Task.Run(
+            () => fixture.InvokeWithCancellation(
+                cancellation.Token,
+                "extract",
+                "--cpp2il-path",
+                fixture.FakeCpp2IlPath,
+                "--json"),
+            TestContext.Current.CancellationToken);
+        await extractor.Started.Task.WaitAsync(
+            TimeSpan.FromSeconds(15),
+            TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+        var result = await invocation;
+
+        Assert.Equal(2, result.ExitCode);
+
+        // No pool-clearing between Invoke returning and this check: the CLI must
+        // have released the database file deterministically on the cancel path.
+        // FileShare.None fails while any handle (pooled or leaked) is still open.
+        using var exclusive = new FileStream(
+            fixture.DatabasePath,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.None);
+    }
+
+    [Fact]
     public async Task Extract_CallerCancellation_UsesInvokeTokenAndExitsTwo()
     {
         var extractor = new ScriptedProcessExtractor(ScriptedProcessOutcome.Canceled);

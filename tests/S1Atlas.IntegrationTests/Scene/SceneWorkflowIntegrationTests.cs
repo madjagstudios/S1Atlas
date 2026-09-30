@@ -16,6 +16,7 @@ using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Paths;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Scene;
@@ -490,13 +491,10 @@ public sealed class SceneWorkflowIntegrationTests : IAsyncDisposable
             System.Globalization.CultureInfo.InvariantCulture)!;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _fixture?.Dispose();
-        SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private sealed record Setup(

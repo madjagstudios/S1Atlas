@@ -19,6 +19,7 @@ using S1Atlas.Mcp.Mapping;
 using S1Atlas.Mcp.Tools;
 using S1Atlas.Storage.Sqlite;
 using ModelContextProtocol.Protocol;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -999,12 +1000,9 @@ public sealed class SeamMcpTestAtlas : IAsyncDisposable
         return atlas;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private static async Task<SeamMcpTestAtlas> CreateEmptyAsync(string suffix)

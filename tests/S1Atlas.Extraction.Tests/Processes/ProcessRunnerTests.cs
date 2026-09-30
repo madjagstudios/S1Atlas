@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using S1Atlas.Extraction.Processes;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Processes;
@@ -294,10 +295,7 @@ public sealed class ProcessRunnerTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
+        TestDirectory.DeleteTree(_temporaryDirectory);
     }
 
     private ProcessRequest Request(

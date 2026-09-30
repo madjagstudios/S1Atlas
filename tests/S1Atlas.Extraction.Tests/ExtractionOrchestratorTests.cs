@@ -7,6 +7,7 @@ using S1Atlas.Extraction.Cpp2Il;
 using S1Atlas.Extraction.Inputs;
 using S1Atlas.Extraction.Tests.Inputs;
 using S1Atlas.Extraction.Tools;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests;
@@ -556,10 +557,7 @@ public sealed class ExtractionOrchestratorTests
         public void Dispose()
         {
             _input.Dispose();
-            if (Directory.Exists(AtlasRoot))
-            {
-                Directory.Delete(AtlasRoot, recursive: true);
-            }
+            TestDirectory.DeleteTree(AtlasRoot);
         }
 
         private Task<ResolvedExtractionTool> ResolveTool()
