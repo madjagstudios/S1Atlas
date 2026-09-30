@@ -18,6 +18,7 @@ using S1Atlas.Indexing.Query;
 using S1Atlas.Mcp.Mapping;
 using S1Atlas.Mcp.Tools;
 using S1Atlas.Storage.Sqlite;
+using ModelContextProtocol.Protocol;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -641,10 +642,12 @@ public sealed class SeamToolTests
         };
         arguments[argumentName] = argumentValue;
 
-        var serialized = await McpTestHost.CallToolThroughStdioAsync(
+        var failure = await McpTestHost.CallToolRawThroughStdioAsync(
             atlas.DataRoot,
             "investigate_seam",
             arguments);
+        Assert.True(failure.IsError ?? false);
+        var serialized = Assert.IsType<TextContentBlock>(Assert.Single(failure.Content)).Text;
 
         using var document = JsonDocument.Parse(serialized);
         var root = document.RootElement;
@@ -658,7 +661,7 @@ public sealed class SeamToolTests
     {
         await using var atlas = await SeamMcpTestAtlas.CreateBareAsync();
 
-        var serialized = await McpTestHost.CallToolThroughStdioAsync(
+        var failure = await McpTestHost.CallToolRawThroughStdioAsync(
             atlas.DataRoot,
             "investigate_seam",
             new Dictionary<string, object?>
@@ -666,6 +669,8 @@ public sealed class SeamToolTests
                 ["behavioralQuestion"] = "Which seam owns settlement clearing?",
                 ["selector"] = "Game.Seams.Target.Run"
             });
+        Assert.True(failure.IsError ?? false);
+        var serialized = Assert.IsType<TextContentBlock>(Assert.Single(failure.Content)).Text;
 
         using var document = JsonDocument.Parse(serialized);
         var root = document.RootElement;

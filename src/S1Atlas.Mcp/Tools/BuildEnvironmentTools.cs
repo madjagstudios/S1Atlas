@@ -18,7 +18,7 @@ public sealed class BuildEnvironmentTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_builds"), Description("List indexed Schedule I Installed builds and their verified extraction and index availability.")]
+    [McpServerTool(Name = "list_builds", Title = "List builds", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed Schedule I Installed builds and their verified extraction and index availability.")]
     public Task<ToolEnvelope<BuildListResult>> ListBuildsAsync(
         [Description("Maximum builds to return (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
@@ -59,7 +59,7 @@ public sealed class BuildEnvironmentTools
             new ProvenanceEntry(ProvenanceClassification.Derived, "installed-build-availability", null, null, null));
     }
 
-    [McpServerTool(Name = "get_environment"), Description("Return verified environment facts for the current Schedule I Installed build.")]
+    [McpServerTool(Name = "get_environment", Title = "Get environment", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return verified environment facts for the current Schedule I Installed build.")]
     public Task<ToolEnvelope<EnvironmentFacts>> GetEnvironmentAsync(
         [Description("Optional build ID; only the current environment snapshot can be returned.")] string? buildId = null,
         CancellationToken ct = default) =>

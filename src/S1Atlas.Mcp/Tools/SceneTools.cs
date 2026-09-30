@@ -18,7 +18,7 @@ public sealed class SceneTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_scenes"), Description("List indexed Schedule I scenes and prefabs from a completed scene snapshot.")]
+    [McpServerTool(Name = "list_scenes", Title = "List scenes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed Schedule I scenes and prefabs from a completed scene snapshot.")]
     public async Task<ToolEnvelope<SceneListResult>> ListScenesAsync(
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
@@ -55,7 +55,7 @@ public sealed class SceneTools
         });
     }
 
-    [McpServerTool(Name = "get_scene"), Description("Resolve one indexed Schedule I scene document.")]
+    [McpServerTool(Name = "get_scene", Title = "Get scene", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I scene document.")]
     public Task<ToolEnvelope<SceneDocumentQueryResult>> GetSceneAsync(
         [Description("Exact or fuzzy scene selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -68,7 +68,7 @@ public sealed class SceneTools
         CancellationToken ct = default) =>
         GetDocumentAsync(selector, buildId, sceneSnapshotId, kind, includeChildren, includeComponents, includeReferences, limit, ct, prefab: false);
 
-    [McpServerTool(Name = "get_gameobject"), Description("Resolve one indexed Schedule I game object.")]
+    [McpServerTool(Name = "get_gameobject", Title = "Get game object", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I game object.")]
     public async Task<ToolEnvelope<GameObjectQueryResult>> GetGameObjectAsync(
         [Description("Exact or fuzzy game object selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -99,7 +99,7 @@ public sealed class SceneTools
         });
     }
 
-    [McpServerTool(Name = "get_prefab"), Description("Resolve one indexed Schedule I prefab document.")]
+    [McpServerTool(Name = "get_prefab", Title = "Get prefab", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I prefab document.")]
     public Task<ToolEnvelope<SceneDocumentQueryResult>> GetPrefabAsync(
         [Description("Exact or fuzzy prefab selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -111,7 +111,7 @@ public sealed class SceneTools
         CancellationToken ct = default) =>
         GetDocumentAsync(selector, buildId, sceneSnapshotId, "Prefab", includeObjects, includeComponents, includeReferences, limit, ct, prefab: true);
 
-    [McpServerTool(Name = "get_scriptable_object"), Description("Resolve one indexed Schedule I ScriptableObject asset (an asset-level MonoBehaviour with no GameObject, such as SpecialCustomerData) by asset ID, exact asset name, or exact Namespace.Class, including its decoded serialized script field values when the scene index had restored script layouts.")]
+    [McpServerTool(Name = "get_scriptable_object", Title = "Get ScriptableObject", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I ScriptableObject asset (an asset-level MonoBehaviour with no GameObject, such as SpecialCustomerData) by asset ID, exact asset name, or exact Namespace.Class, including its decoded serialized script field values when the scene index had restored script layouts.")]
     public async Task<ToolEnvelope<ScriptableAssetQueryResult>> GetScriptableObjectAsync(
         [Description("Asset ID, exact asset name (m_Name), or exact Namespace.Class.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
@@ -130,7 +130,7 @@ public sealed class SceneTools
         });
     }
 
-    [McpServerTool(Name = "get_component"), Description("Resolve one indexed Schedule I component, including its decoded serialized script field values (when the scene index had restored script layouts) and its resolved code-symbol handoff when requested.")]
+    [McpServerTool(Name = "get_component", Title = "Get component", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I component, including its decoded serialized script field values (when the scene index had restored script layouts) and its resolved code-symbol handoff when requested.")]
     public async Task<ToolEnvelope<ComponentQueryResult>> GetComponentAsync(
         [Description("Exact or fuzzy component selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,

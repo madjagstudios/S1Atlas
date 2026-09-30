@@ -18,7 +18,7 @@ public sealed class SeamTools
         _services = services;
     }
 
-    [McpServerTool(Name = "investigate_seam"), Description("Investigate whether a resolved symbol is a supportable ownership seam.")]
+    [McpServerTool(Name = "investigate_seam", Title = "Investigate seam", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Investigate whether a resolved symbol is a supportable ownership seam.")]
     public async Task<ToolEnvelope<SeamInvestigationResult>> InvestigateSeamAsync(
         [Description("The behavioral question that frames the seam investigation.")] string behavioralQuestion,
         [Description("Exact or fuzzy symbol selector for the seam under investigation.")] string selector,

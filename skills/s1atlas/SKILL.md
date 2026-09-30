@@ -9,7 +9,10 @@ S1Atlas is an evidence source, not a permission to guess. Use it before making
 claims about Schedule I internals, and keep every claim tied to the exact indexed
 scope that supports it. MCP is a faster read-only interface; the CLI is the
 always-available fallback. Both surfaces expose the S1API/S1MAPI query path when
-the corresponding read-only MCP tools are registered.
+the corresponding read-only MCP tools are registered. When the MCP server is
+registered, its initialize instructions carry the evidence-loop, selector-syntax,
+and provenance basics; follow them, and use this skill for the CLI fallback,
+the ownership gate, and the decision rules.
 
 The API parity MCP tools include `find_api_callers`, `find_api_callees`,
 `find_api_references`, `find_api_related_types`, `find_api_call_sites`, and

@@ -16,7 +16,7 @@ public sealed class ReferenceCollectionTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_reference_collections"), Description("List completed local reference-mod collections and their recorded Schedule I base indexes.")]
+    [McpServerTool(Name = "list_reference_collections", Title = "List reference collections", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed local reference-mod collections and their recorded Schedule I base indexes.")]
     public async Task<ToolEnvelope<ReferenceCollectionListResult>> ListReferenceCollectionsAsync(
         CancellationToken ct = default)
     {

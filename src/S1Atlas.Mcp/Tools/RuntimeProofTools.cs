@@ -8,7 +8,7 @@ namespace S1Atlas.Mcp.Tools;
 [McpServerToolType]
 public sealed class RuntimeProofTools
 {
-    [McpServerTool(Name = "plan_runtime_proof"), Description("Generate a bounded, read-only runtime diagnostic plan without launching a game or inventing telemetry.")]
+    [McpServerTool(Name = "plan_runtime_proof", Title = "Plan runtime proof", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Generate a bounded, read-only runtime diagnostic plan without launching a game or inventing telemetry.")]
     public Task<ToolEnvelope<RuntimeProofPlan>> PlanRuntimeProofAsync(
         [Description("The behavioral question the diagnostic plan must resolve.")] string behavioralQuestion,
         [Description("Execution boundary: singlePlayer, listenHost, dedicatedServer, or client.")] string executionBoundary,

@@ -6,6 +6,20 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Added
+
+- **MCP tools advertise read-only annotations and server instructions**
+  (AT-80): every tool now carries `readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`, and a short title in `tools/list`, and the
+  server exposes instructions through `initialize` covering the evidence loop,
+  selector syntax, FACT vs DERIVED provenance, optional scope IDs, and the
+  static-evidence boundary. `not_found`, `invalid`, and `unavailable`
+  envelopes now arrive with `isError=true` (the full envelope text is
+  unchanged); `resolved` and `ambiguous` stay `isError=false`. Structured
+  output was measured and left off: output schemas for just two tools grew
+  `tools/list` from 26,635 to 32,428 bytes (+21.8%), so enabling it for all
+  tools waits for the envelope trim.
+
 ### Fixed
 
 - **get_type/get_method resolve through the shared symbol resolver** (AT-79):
