@@ -274,6 +274,137 @@ public sealed class McpTrustBoundaryTests
     }
 
     [Fact]
+    public async Task StdioHost_AllToolSchemasPinRequiredSetsAndOmittedOptionsReturnEnvelopes()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+
+        var schemas = await McpTestHost.GetToolSchemasThroughStdioAsync(atlas.DataRoot);
+        Assert.Equal(32, schemas.Count);
+        AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
+        AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_related_types"], ["codebase", "channel", "selector", "relationKinds", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_field_references"], ["selector", "buildId", "readers", "writers", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_related_types"], ["selector", "buildId", "relationKinds", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
+        AssertSchema(schemas["get_component"], ["selector", "buildId", "sceneSnapshotId", "includeReferences", "includeCode", "limit"], ["selector"]);
+        AssertSchema(schemas["get_environment"], ["buildId"], []);
+        AssertSchema(schemas["get_gameobject"], ["selector", "buildId", "sceneSnapshotId", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
+        AssertSchema(schemas["get_method"], ["selector", "buildId", "limit"], ["selector"]);
+        AssertSchema(schemas["get_prefab"], ["selector", "buildId", "sceneSnapshotId", "includeObjects", "includeComponents", "includeReferences", "limit"], ["selector"]);
+        AssertSchema(schemas["get_scene"], ["selector", "buildId", "sceneSnapshotId", "kind", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
+        AssertSchema(schemas["get_scriptable_object"], ["selector", "buildId", "sceneSnapshotId"], ["selector"]);
+        AssertSchema(schemas["get_source"], ["selector", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector"]);
+        AssertSchema(schemas["get_type"], ["selector", "buildId", "limit"], ["selector"]);
+        AssertSchema(
+            schemas["investigate_seam"],
+            ["behavioralQuestion", "selector", "buildId", "scope", "collection", "relationshipLimit", "ownerLimit", "context", "details", "nativeSymbolIds", "nativeTraversalBudget"],
+            ["behavioralQuestion", "selector"]);
+        AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
+        AssertSchema(schemas["list_builds"], ["limit"], []);
+        AssertSchema(schemas["list_reference_collections"], [], []);
+        AssertSchema(schemas["list_scenes"], ["buildId", "sceneSnapshotId", "kind", "query", "limit"], []);
+        AssertSchema(
+            schemas["plan_runtime_proof"],
+            ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
+            ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
+        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit"], ["codebase", "channel", "query"]);
+        AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection"], ["query"]);
+
+        Dictionary<string, IReadOnlyDictionary<string, object?>> minimalCalls = new()
+        {
+            ["compare_symbol"] = new Dictionary<string, object?> { ["selector"] = atlas.CompareSelector },
+            ["find_api_call_sites"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["find_api_callees"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["find_api_callers"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["find_api_field_references"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["find_api_references"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["find_api_related_types"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["find_call_sites"] = new Dictionary<string, object?> { ["selector"] = atlas.EngineCallSiteSelector },
+            ["find_callees"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_callers"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_field_references"] = new Dictionary<string, object?> { ["selector"] = atlas.GameFieldSelector },
+            ["find_references"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_related_types"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["get_api_source"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+            ["get_callable_surface"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["get_component"] = new Dictionary<string, object?> { ["selector"] = atlas.ComponentSelector },
+            ["get_environment"] = new Dictionary<string, object?>(),
+            ["get_gameobject"] = new Dictionary<string, object?> { ["selector"] = atlas.GameObjectSelector },
+            ["get_method"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["get_prefab"] = new Dictionary<string, object?> { ["selector"] = atlas.PrefabSelector },
+            ["get_scene"] = new Dictionary<string, object?> { ["selector"] = atlas.SceneNameA },
+            ["get_scriptable_object"] = new Dictionary<string, object?> { ["selector"] = atlas.ScriptableAssetSelector },
+            ["get_source"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["get_type"] = new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector },
+            ["investigate_seam"] = new Dictionary<string, object?>
+            {
+                ["behavioralQuestion"] = "Which seam owns the Demo.Widget run path?",
+                ["selector"] = atlas.MethodSelector
+            },
+            ["list_api_indexes"] = new Dictionary<string, object?>(),
+            ["list_builds"] = new Dictionary<string, object?>(),
+            ["list_reference_collections"] = new Dictionary<string, object?>(),
+            ["list_scenes"] = new Dictionary<string, object?>(),
+            ["plan_runtime_proof"] = new Dictionary<string, object?>
+            {
+                ["behavioralQuestion"] = "Which authority owns the Demo.Widget run path?",
+                ["executionBoundary"] = "singlePlayer",
+                ["canonicalIdentity"] = "Demo.Widget.Run",
+                ["authority"] = "Demo.Widget"
+            },
+            ["search_api_symbols"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["query"] = "Missing.Api" },
+            ["search_symbols"] = new Dictionary<string, object?> { ["query"] = atlas.KnownSymbolFragment }
+        };
+
+        var envelopes = await McpTestHost.CallToolsThroughStdioAsync(atlas.DataRoot, minimalCalls);
+        foreach (var (toolName, serialized) in envelopes)
+        {
+            using var result = JsonDocument.Parse(serialized);
+            Assert.True(result.RootElement.TryGetProperty("status", out var status), $"{toolName} did not return a ToolEnvelope: {serialized}");
+            if (toolName == "compare_symbol")
+            {
+                Assert.Equal("invalid", status.GetString());
+            }
+        }
+    }
+
+    [Fact]
+    public async Task StdioHost_BindingFailuresNameTheOffendingParameter()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildWithScenesAsync();
+
+        var wrongType = await McpTestHost.CallToolRawThroughStdioAsync(
+            atlas.DataRoot,
+            "list_builds",
+            new Dictionary<string, object?> { ["limit"] = "not-a-number" });
+        Assert.True(wrongType.IsError);
+        Assert.Contains("'limit'", Assert.IsType<TextContentBlock>(Assert.Single(wrongType.Content)).Text);
+
+        var wrongItemType = await McpTestHost.CallToolRawThroughStdioAsync(
+            atlas.DataRoot,
+            "find_related_types",
+            new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector, ["relationKinds"] = new[] { 7 } });
+        Assert.True(wrongItemType.IsError);
+        Assert.Contains("'relationKinds'", Assert.IsType<TextContentBlock>(Assert.Single(wrongItemType.Content)).Text);
+
+        var missingRequired = await McpTestHost.CallToolRawThroughStdioAsync(
+            atlas.DataRoot,
+            "get_type",
+            new Dictionary<string, object?>());
+        Assert.True(missingRequired.IsError);
+        Assert.Contains("'selector'", Assert.IsType<TextContentBlock>(Assert.Single(missingRequired.Content)).Text);
+    }
+
+    [Fact]
     public async Task StdioHost_UnrelatedSymbolResultsOmitNullableNestedFields()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -650,6 +781,37 @@ internal static class McpTestHost
             cancellationToken: CancellationToken.None);
         Assert.False(result.IsError ?? false, JsonSerializer.Serialize(result.Content));
         return Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+    }
+
+    public static async Task<IReadOnlyDictionary<string, string>> CallToolsThroughStdioAsync(
+        string dataRoot,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, object?>> calls)
+    {
+        await using var client = await CreateStdioClientAsync(dataRoot);
+        var results = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (toolName, arguments) in calls)
+        {
+            var result = await client.CallToolAsync(
+                toolName,
+                arguments,
+                cancellationToken: CancellationToken.None);
+            Assert.False(result.IsError ?? false, $"{toolName}: {JsonSerializer.Serialize(result.Content)}");
+            results[toolName] = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        }
+
+        return results;
+    }
+
+    public static async Task<CallToolResult> CallToolRawThroughStdioAsync(
+        string dataRoot,
+        string toolName,
+        IReadOnlyDictionary<string, object?> arguments)
+    {
+        await using var client = await CreateStdioClientAsync(dataRoot);
+        return await client.CallToolAsync(
+            toolName,
+            arguments,
+            cancellationToken: CancellationToken.None);
     }
 
     public static async Task ExerciseEveryToolAsync(McpTestAtlas atlas)

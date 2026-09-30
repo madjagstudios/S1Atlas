@@ -6,7 +6,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
-No changes yet.
+### Fixed
+
+- **Omitted optional MCP parameters bind as null** (AT-57): nullable tool
+  parameters without a C# default were marked `required` in the generated JSON
+  schema, so a `tools/call` that omitted them died in SDK argument binding with
+  an opaque `An error occurred invoking '<tool>'.` before the tool body ran.
+  Seventeen parameters across the six scene tools and `compare_symbol` now
+  default to `null`, and a new all-tools stdio test pins every tool's required
+  set so an optional parameter cannot silently become required again. Binding
+  failures that still occur (wrong types, missing required arguments) now name
+  the offending parameter instead of returning the opaque generic error.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 

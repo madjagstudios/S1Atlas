@@ -64,7 +64,8 @@ toolJsonOptions.Converters.Insert(0, new ProvenanceClassificationJsonConverter()
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly(typeof(McpToolCatalog).Assembly, toolJsonOptions);
+    .WithToolsFromAssembly(typeof(McpToolCatalog).Assembly, toolJsonOptions)
+    .WithRequestFilters(filters => filters.AddCallToolFilter(McpBindingErrorFilter.Wrap));
 
 await builder.Build().RunAsync();
 return 0;

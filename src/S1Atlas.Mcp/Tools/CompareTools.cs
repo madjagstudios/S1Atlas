@@ -21,8 +21,8 @@ public sealed class CompareTools
     [McpServerTool(Name = "compare_symbol"), Description("Compare one installed Schedule I symbol across two explicit builds.")]
     public Task<ToolEnvelope<SymbolDiff>> CompareSymbolAsync(
         [Description("Exact or fuzzy symbol selector to compare.")] string selector,
-        [Description("Explicit build ID for the left-hand build.")] string? buildIdA,
-        [Description("Explicit build ID for the right-hand build.")] string? buildIdB,
+        [Description("Explicit build ID for the left-hand build.")] string? buildIdA = null,
+        [Description("Explicit build ID for the right-hand build.")] string? buildIdB = null,
         CancellationToken ct = default) =>
         EnvelopeMapper.WithAtlasAvailabilityAsync(() => CompareSymbolCoreAsync(selector, buildIdA, buildIdB, ct));
 
