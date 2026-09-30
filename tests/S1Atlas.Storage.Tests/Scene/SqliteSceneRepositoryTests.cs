@@ -3,6 +3,7 @@ using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Scene;
@@ -753,10 +754,8 @@ public sealed class SqliteSceneRepositoryTests : IAsyncDisposable
         return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 }

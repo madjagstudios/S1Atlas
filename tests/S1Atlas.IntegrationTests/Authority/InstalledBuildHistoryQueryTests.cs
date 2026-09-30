@@ -5,6 +5,7 @@ using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Authority;
@@ -106,10 +107,8 @@ public sealed class InstalledBuildHistoryQueryTests : IAsyncDisposable
     private static InstalledBuildAuthority Authority(string buildId, string extractionId, IndexRunRecord run) =>
         new(InstalledBuildAuthorityStatus.Resolved, buildId, buildId, extractionId, run.IndexId, run, null);
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 }

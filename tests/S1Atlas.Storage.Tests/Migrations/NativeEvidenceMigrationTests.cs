@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using S1Atlas.Storage.Migrations;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Migrations;
@@ -28,7 +29,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
 
         await using var connection = await OpenAsync(cancellationToken);
 
-        Assert.Equal(15L, await ScalarAsync(
+        Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(
             connection,
             "SELECT MAX(version) FROM schema_migrations;",
             cancellationToken));
@@ -137,7 +138,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
             .MigrateAsync(cancellationToken);
 
         await using var migrated = await OpenAsync(cancellationToken);
-        Assert.Equal(15L, await ScalarAsync(
+        Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(
             migrated,
             "SELECT MAX(version) FROM schema_migrations;",
             cancellationToken));
@@ -236,8 +237,7 @@ public sealed class NativeEvidenceMigrationTests : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        TestDirectory.DeleteTree(_root);
         return ValueTask.CompletedTask;
     }
 }

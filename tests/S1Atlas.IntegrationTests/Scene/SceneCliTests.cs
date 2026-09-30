@@ -7,6 +7,7 @@ using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Scene;
@@ -290,10 +291,8 @@ public sealed class SceneCliTests : IAsyncDisposable
         await using var connection = new SqliteConnection($"Data Source={Path.Combine(_dataDirectory, "atlas.db")}"); await connection.OpenAsync(TestContext.Current.CancellationToken); await using var command = connection.CreateCommand(); command.CommandText = sql; await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataDirectory)) Directory.Delete(_dataDirectory, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_dataDirectory);
     }
 }

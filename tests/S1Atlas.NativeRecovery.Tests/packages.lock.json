@@ -374,6 +374,12 @@
           "Microsoft.Data.Sqlite": "[8.0.29, )",
           "S1Atlas.Core": "[1.0.0, )"
         }
+      },
+      "s1atlas.testsupport": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Data.Sqlite": "[8.0.29, )"
+        }
       }
     }
   }

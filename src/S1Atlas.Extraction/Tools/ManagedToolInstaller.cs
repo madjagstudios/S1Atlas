@@ -309,7 +309,7 @@ internal sealed class ManagedToolInstaller : IToolInstaller
     {
         try
         {
-            _movePath(source, destination);
+            MoveWithTransientRetry(source, destination);
         }
         catch (Exception exception) when (IsExpectedInstallationFailure(exception))
         {
@@ -320,6 +320,34 @@ internal sealed class ManagedToolInstaller : IToolInstaller
         }
     }
 
+    private void MoveWithTransientRetry(string source, string destination)
+    {
+        // Retried: verification probes execute the staged binaries just before
+        // promotion, and the OS can hold a transient image/file lock briefly after
+        // the probe process exits (worse under parallel load). A missing source
+        // fails immediately; only lock-shaped failures are retried.
+        const int maxAttempts = 10;
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                _movePath(source, destination);
+                return;
+            }
+            catch (Exception exception) when (
+                IsTransientMoveFailure(exception) &&
+                attempt < maxAttempts - 1)
+            {
+                Thread.Sleep(100);
+            }
+        }
+    }
+
+    private static bool IsTransientMoveFailure(Exception exception) =>
+        (exception is IOException or UnauthorizedAccessException) &&
+        exception is not FileNotFoundException &&
+        exception is not DirectoryNotFoundException;
+
     private void RestoreQuarantinedInstallationBestEffort(
         string quarantinePath,
         string finalRoot)
@@ -328,7 +356,7 @@ internal sealed class ManagedToolInstaller : IToolInstaller
         {
             if (!PathExists(finalRoot) && PathExists(quarantinePath))
             {
-                _movePath(quarantinePath, finalRoot);
+                MoveWithTransientRetry(quarantinePath, finalRoot);
             }
         }
         catch (Exception exception) when (IsExpectedInstallationFailure(exception))

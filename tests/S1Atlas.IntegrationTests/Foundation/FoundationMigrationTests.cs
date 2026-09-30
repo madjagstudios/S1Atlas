@@ -5,6 +5,7 @@ using S1Atlas.Cli;
 using S1Atlas.Cli.Configuration;
 using S1Atlas.Core.Builds;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Foundation;
@@ -344,14 +345,9 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
         await AssertUnknownDatabaseUnchangedAsync(paths, cancellationToken);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private async Task CreateFakeSteamInstallationAsync(

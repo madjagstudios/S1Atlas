@@ -9,6 +9,7 @@ using S1Atlas.Core.Tools;
 using S1Atlas.Indexing.NativeRecovery;
 using S1Atlas.Storage.Migrations;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Sqlite;
@@ -1032,8 +1033,7 @@ public sealed class NativeEvidenceRepositoryTests : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+        TestDirectory.DeleteTree(_root);
         return ValueTask.CompletedTask;
     }
 }

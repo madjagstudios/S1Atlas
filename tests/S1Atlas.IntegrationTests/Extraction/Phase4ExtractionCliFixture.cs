@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using S1Atlas.Cli;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Extraction;
@@ -114,21 +115,7 @@ internal sealed class Phase4ExtractionCliFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
-        await Task.Yield();
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            try
-            {
-                Directory.Delete(_temporaryDirectory, recursive: true);
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-        }
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private static async Task CreateGameAsync(string root, CancellationToken cancellationToken)

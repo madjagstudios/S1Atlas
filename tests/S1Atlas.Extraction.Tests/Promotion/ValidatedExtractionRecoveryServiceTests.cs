@@ -8,6 +8,7 @@ using S1Atlas.Extraction.Manifests;
 using S1Atlas.Extraction.Promotion;
 using S1Atlas.Extraction.Validation;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Promotion;
@@ -343,20 +344,6 @@ public sealed class ValidatedExtractionRecoveryServiceTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
-        await Task.Yield();
-        try
-        {
-            if (Directory.Exists(_dataRoot))
-            {
-                Directory.Delete(_dataRoot, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        await TestDirectory.DeleteTreeAsync(_dataRoot);
     }
 }

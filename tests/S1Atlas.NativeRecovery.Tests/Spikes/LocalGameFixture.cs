@@ -1,4 +1,5 @@
 using LibCpp2IL.Metadata;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.NativeRecovery.Tests.Spikes;
@@ -30,6 +31,10 @@ internal static class LocalGameFixture
 
     public static void SkipUnlessAvailable()
     {
+        Assert.SkipUnless(
+            LiveAtlasCopy.IsExplicitlyEnabled,
+            $"LocalGameRequired tests run only with {LiveAtlasCopy.EnableVariable}=1. " +
+            "Skipping LocalGameRequired spike.");
         Assert.SkipUnless(
             IsAvailable,
             $"Schedule I install not found at '{RootPath}' (override with the {EnvironmentOverrideVariable} " +

@@ -6,6 +6,7 @@ using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Indexing.Upstream;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Indexing;
@@ -151,10 +152,8 @@ public sealed class IndexCliTests : IAsyncDisposable
         return snapshot;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_dataDirectory)) Directory.Delete(_dataDirectory, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_dataDirectory);
     }
 }

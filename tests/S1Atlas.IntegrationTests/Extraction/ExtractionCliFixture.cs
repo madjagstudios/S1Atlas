@@ -5,6 +5,7 @@ using S1Atlas.Cli;
 using S1Atlas.Core.Extraction;
 using S1Atlas.ManagedAssemblyFixture;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Extraction;
@@ -160,15 +161,10 @@ internal sealed class ExtractionCliFixture : IAsyncDisposable
         WriteToolDefinition(requiredOutputSubstring: "output-that-is-never-emitted");
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         Assert.Equal(0, RequestCount);
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private void WriteConfiguration()

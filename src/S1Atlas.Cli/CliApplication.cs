@@ -123,7 +123,7 @@ public sealed class CliApplication
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var sqliteRepository = new SqliteAtlasRepository(
+        using var sqliteRepository = new SqliteAtlasRepository(
             _paths.DatabasePath,
             _paths.BackupsDirectory);
         IAtlasRepository repository = sqliteRepository;

@@ -9,6 +9,7 @@ using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.Paths;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 
 namespace S1Atlas.Indexing.Tests.Workflow;
 
@@ -105,8 +106,7 @@ public sealed class IndexingWorkflowTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            await TestDirectory.DeleteTreeAsync(root);
         }
     }
 
@@ -163,8 +163,7 @@ public sealed class IndexingWorkflowTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            await TestDirectory.DeleteTreeAsync(root);
         }
     }
 
@@ -219,8 +218,7 @@ public sealed class IndexingWorkflowTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            await TestDirectory.DeleteTreeAsync(root);
         }
     }
 
@@ -282,8 +280,7 @@ public sealed class IndexingWorkflowTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            await TestDirectory.DeleteTreeAsync(root);
         }
     }
 
@@ -353,8 +350,7 @@ public sealed class IndexingWorkflowTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            await TestDirectory.DeleteTreeAsync(root);
         }
     }
 }

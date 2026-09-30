@@ -4,6 +4,7 @@ using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Attempts;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Attempts;
@@ -357,10 +358,7 @@ public sealed class ExtractionRecoveryServiceTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_dataRoot))
-        {
-            Directory.Delete(_dataRoot, recursive: true);
-        }
+        TestDirectory.DeleteTree(_dataRoot);
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

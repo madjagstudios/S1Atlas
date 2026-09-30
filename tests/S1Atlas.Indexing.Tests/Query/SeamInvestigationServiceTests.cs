@@ -7,6 +7,7 @@ using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Indexing.Tests.Query;
@@ -994,15 +995,9 @@ public sealed class SeamInvestigationServiceTests : IAsyncDisposable
         Assert.Equal("RelationshipLimit", withException.ParamName);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root))
-        {
-            Directory.Delete(_root, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private SeamInvestigationService CreateService(bool includeNative = false) =>

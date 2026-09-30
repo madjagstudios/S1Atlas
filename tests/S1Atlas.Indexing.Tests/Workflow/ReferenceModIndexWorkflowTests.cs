@@ -7,6 +7,7 @@ using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.ReferenceMods;
 using S1Atlas.Indexing.Workflow;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Indexing.Tests.Workflow;
@@ -202,11 +203,9 @@ public sealed class ReferenceModIndexWorkflowTests
             "namespace Qol; public class Mod { public void Run() {} }",
             [new ManagedTypeFacts(typeName, "Qol", "Mod", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [new ManagedReferenceFact(ManagedReferenceKind.Calls, "Game.Target::Run():System.Void")], [], "System.Void")])]);
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(Root)) Directory.Delete(Root, recursive: true);
-            return ValueTask.CompletedTask;
+            await TestDirectory.DeleteTreeAsync(Root);
         }
     }
 }

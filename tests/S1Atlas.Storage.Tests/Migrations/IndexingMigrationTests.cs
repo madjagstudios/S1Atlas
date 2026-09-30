@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using S1Atlas.Storage.Migrations;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Migrations;
@@ -16,7 +17,7 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Fresh_database_migrates_to_v15_and_preserves_relationship_query_schema()
+    public async Task Fresh_database_migrates_to_latest_and_preserves_relationship_query_schema()
     {
         await new SqliteMigrationRunner(_databasePath, Path.Combine(_root, "backups")).MigrateAsync(
             TestContext.Current.CancellationToken);
@@ -24,8 +25,7 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
         await using (var connection = new SqliteConnection($"Data Source={_databasePath}"))
         {
             await connection.OpenAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(15L, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
-            Assert.Equal(15, SqliteMigrations.All.Count);
+            Assert.Equal((long)SqliteMigrations.All[^1].Version, await ScalarAsync(connection, "SELECT MAX(version) FROM schema_migrations;"));
             foreach (var table in new[] { "code_snapshots", "index_runs", "symbols", "source_files", "source_locations", "symbol_fingerprints", "relationships", "upstream_repositories", "upstream_snapshots", "upstream_state" })
                 Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name=$name;", ("$name", table)));
             Assert.Equal(1L, await ScalarAsync(connection, "SELECT COUNT(*) FROM pragma_table_info('symbols') WHERE name='body_recovery_status';"));
@@ -78,10 +78,8 @@ public sealed class IndexingMigrationTests : IAsyncDisposable
         return Convert.ToInt64(await command.ExecuteScalarAsync());
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 }

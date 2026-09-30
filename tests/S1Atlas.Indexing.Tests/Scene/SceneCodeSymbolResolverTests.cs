@@ -6,6 +6,7 @@ using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Scene;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Indexing.Tests.Scene;
@@ -202,10 +203,8 @@ public sealed class SceneCodeSymbolResolverTests : IAsyncDisposable
         public Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken) => _inner.GetLatestCompletedIndexForBuildAsync(codebase, channel, buildId, cancellationToken);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 }

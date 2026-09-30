@@ -3,6 +3,7 @@ using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Sqlite;
@@ -246,14 +247,9 @@ public sealed class SqliteAtlasRepositoryInputSnapshotReplayTests : IAsyncDispos
         Assert.Equal(verifiedAt, reloaded.ReplayVerifiedAtUtc);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private static void AssertSnapshotEqual(InputSnapshot expected, InputSnapshot? actual)

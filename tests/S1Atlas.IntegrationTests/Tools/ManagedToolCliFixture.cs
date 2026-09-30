@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using S1Atlas.Cli;
 using S1Atlas.Cli.Configuration;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Tools;
@@ -134,14 +135,9 @@ internal sealed class ManagedToolCliFixture : IAsyncDisposable
             json);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private HttpClient CreateHttpClient() =>

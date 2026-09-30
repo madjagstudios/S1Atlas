@@ -6,6 +6,7 @@ using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Extraction;
@@ -120,21 +121,7 @@ public sealed class Phase5CleanupCliTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        SqliteConnection.ClearAllPools();
-        await Task.Yield();
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            try
-            {
-                Directory.Delete(_temporaryDirectory, recursive: true);
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-        }
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private static string AttemptId(int index) => index.ToString("x32");

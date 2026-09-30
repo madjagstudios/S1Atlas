@@ -13,7 +13,8 @@ public sealed partial class SqliteAtlasRepository :
     IExtractionRepository,
     IValidatedExtractionRepository,
     IIndexRepository,
-    INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest>
+    INativeRecoveryRepository<NativeRecoveryRecord, NativeRecoveryRequest>,
+    IDisposable
 {
     private readonly string _databasePath;
     private readonly SqliteMigrationRunner _migrationRunner;
@@ -42,6 +43,18 @@ public sealed partial class SqliteAtlasRepository :
 
     public Task InitializeAsync(CancellationToken cancellationToken) =>
         _migrationRunner.MigrateAsync(cancellationToken);
+
+    /// <summary>
+    /// Releases the database file deterministically. Pooled connections would
+    /// otherwise hold <c>atlas.db</c> open until garbage collection, which breaks
+    /// directory cleanup after a cancelled operation. Safe to call repeatedly;
+    /// the repository remains usable afterwards.
+    /// </summary>
+    public void Dispose()
+    {
+        SqliteConnection.ClearAllPools();
+        GC.SuppressFinalize(this);
+    }
 
     public async Task SaveSnapshotAsync(
         EnvironmentSnapshot snapshot,

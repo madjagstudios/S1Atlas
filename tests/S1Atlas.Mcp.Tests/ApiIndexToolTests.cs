@@ -8,6 +8,7 @@ using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Mcp.Tools;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -58,8 +59,7 @@ public sealed class ApiIndexToolTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            Directory.Delete(root, recursive: true);
+            await TestDirectory.DeleteTreeAsync(root);
         }
     }
 
@@ -539,12 +539,9 @@ public sealed class ApiIndexToolTests
             return new SeededIndex(indexId, snapshotId);
         }
 
-        public ValueTask DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            if (Directory.Exists(Root))
-                Directory.Delete(Root, recursive: true);
-            return ValueTask.CompletedTask;
+            await TestDirectory.DeleteTreeAsync(Root);
         }
     }
 

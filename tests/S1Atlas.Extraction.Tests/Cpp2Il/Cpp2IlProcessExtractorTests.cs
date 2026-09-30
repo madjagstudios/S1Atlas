@@ -4,6 +4,7 @@ using S1Atlas.Extraction.Cpp2Il;
 using S1Atlas.Extraction.Processes;
 using S1Atlas.Extraction.Tests.Inputs;
 using S1Atlas.Extraction.Tests.Processes;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Cpp2Il;
@@ -265,10 +266,7 @@ public sealed class Cpp2IlProcessExtractorTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
+        TestDirectory.DeleteTree(_temporaryDirectory);
     }
 
     private Cpp2IlProcessExtractor CreateResultExtractor(

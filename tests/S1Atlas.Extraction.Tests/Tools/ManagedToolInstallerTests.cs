@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using S1Atlas.Core.Tools;
 using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Tools;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Extraction.Tests.Tools;
@@ -158,15 +159,12 @@ public sealed class ManagedToolInstallerTests : IAsyncDisposable
             "preserve",
             TestContext.Current.CancellationToken);
         var handler = new RecordingHandler(_packageBytes);
-        var promotionFailed = false;
 
         void MovePath(string source, string destination)
         {
-            if (!promotionFailed &&
-                source.StartsWith(_stagingRoot, StringComparison.OrdinalIgnoreCase) &&
+            if (source.StartsWith(_stagingRoot, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(destination, FinalRoot(), StringComparison.OrdinalIgnoreCase))
             {
-                promotionFailed = true;
                 throw new IOException("Injected promotion failure.");
             }
 
@@ -180,11 +178,45 @@ public sealed class ManagedToolInstallerTests : IAsyncDisposable
                 TestContext.Current.CancellationToken));
 
         Assert.Equal("ToolInstallationFailed", exception.Code);
-        Assert.True(promotionFailed);
         Assert.True(File.Exists(existingPath));
         Assert.Equal("preserve", await File.ReadAllTextAsync(
             existingPath,
             TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task InstallAsync_WhenPromotionMoveFailsTransiently_RetriesAndSucceeds()
+    {
+        var promotionAttempts = 0;
+
+        void MovePath(string source, string destination)
+        {
+            if (source.StartsWith(_stagingRoot, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(destination, FinalRoot(), StringComparison.OrdinalIgnoreCase))
+            {
+                promotionAttempts++;
+                if (promotionAttempts <= 2)
+                {
+                    throw new IOException("Injected transient lock.");
+                }
+            }
+
+            MoveExistingPath(source, destination);
+        }
+
+        var handler = new RecordingHandler(_packageBytes);
+        var outcome = await CreateInstaller(handler, MovePath).InstallAsync(
+            _definition,
+            repair: false,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(outcome.Repaired);
+        Assert.False(outcome.WasAlreadyVerified);
+        Assert.True(
+            promotionAttempts >= 3,
+            "Expected at least the two injected failures plus the successful move. " +
+            $"Actual promotion attempts: {promotionAttempts}.");
+        Assert.True(File.Exists(Path.Combine(FinalRoot(), "Cpp2IL.exe")));
     }
 
     [Fact]
@@ -218,10 +250,7 @@ public sealed class ManagedToolInstallerTests : IAsyncDisposable
             client.Dispose();
         }
 
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
+        TestDirectory.DeleteTree(_temporaryDirectory);
 
         return ValueTask.CompletedTask;
     }

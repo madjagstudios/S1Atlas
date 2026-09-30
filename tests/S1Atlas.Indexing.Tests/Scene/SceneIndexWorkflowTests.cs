@@ -14,6 +14,7 @@ using S1Atlas.Extraction.Scene;
 using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Paths;
 using S1Atlas.Indexing.Scene;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Indexing.Tests.Scene;
@@ -734,10 +735,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         writer.Write(bytes);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private sealed class DelegateParser(

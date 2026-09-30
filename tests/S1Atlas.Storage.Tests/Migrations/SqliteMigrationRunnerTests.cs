@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using S1Atlas.Storage.Migrations;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.Storage.Tests.Migrations;
@@ -23,7 +24,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task MigrateAsync_NewDatabase_AppliesV1ThroughV15WithoutBackup()
+    public async Task MigrateAsync_NewDatabase_AppliesAllMigrationsWithoutBackup()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var runner = new SqliteMigrationRunner(
@@ -38,7 +39,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             SqliteOpenMode.ReadOnly,
             cancellationToken);
         Assert.Equal(
-            15L,
+            (long)SqliteMigrations.All.Count,
             await ScalarInt64Async(
                 connection,
                 "SELECT COUNT(*) FROM schema_migrations;",
@@ -123,7 +124,7 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
             cancellationToken))
         {
             Assert.Equal(
-                15L,
+                (long)SqliteMigrations.All.Count,
                 await ScalarInt64Async(
                     connection,
                     "SELECT COUNT(*) FROM schema_migrations;",
@@ -344,14 +345,9 @@ public sealed class SqliteMigrationRunnerTests : IAsyncDisposable
                 cancellationToken));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        if (Directory.Exists(_temporaryDirectory))
-        {
-            Directory.Delete(_temporaryDirectory, recursive: true);
-        }
-
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_temporaryDirectory);
     }
 
     private static async Task ExecuteAsync(

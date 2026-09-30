@@ -11,6 +11,7 @@ using S1Atlas.Extraction.Scene;
 using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Storage.Sqlite;
+using S1Atlas.TestSupport;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Scene;
@@ -70,11 +71,9 @@ public sealed class SceneOutputIsolationTests : IAsyncDisposable
         Assert.Equal(installWriteTime, File.GetLastWriteTimeUtc(installFile));
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
-        return ValueTask.CompletedTask;
+        await TestDirectory.DeleteTreeAsync(_root);
     }
 
     private EnvironmentSnapshot Environment(string installRoot) => new(2, new GameBuild(_buildId, new string('1', 64), new string('2', 64), DateTimeOffset.UtcNow, true), new InstallationObservation(null, null, null, installRoot, null, null), [], "test", DateTimeOffset.UtcNow);
