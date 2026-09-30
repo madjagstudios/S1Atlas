@@ -70,9 +70,9 @@ public sealed class RuntimeProofPlannerTests
     }
 
     [Theory]
-    [InlineData("OC-29 event ordering", "occurrence-time event authority versus receipt-time observer", RuntimeExecutionBoundary.SinglePlayer)]
-    [InlineData("OC-30 host authority", "listen-host authority versus client observer", RuntimeExecutionBoundary.ListenHost)]
-    [InlineData("OC-2 native navigation", "native workflow owner versus managed replacement", RuntimeExecutionBoundary.Client)]
+    [InlineData("event ordering", "occurrence-time event authority versus receipt-time observer", RuntimeExecutionBoundary.SinglePlayer)]
+    [InlineData("host authority", "listen-host authority versus client observer", RuntimeExecutionBoundary.ListenHost)]
+    [InlineData("native navigation", "native workflow owner versus managed replacement", RuntimeExecutionBoundary.Client)]
     public void Create_CoversTheOrganizedCrimeRuntimeShapes(
         string shape,
         string question,

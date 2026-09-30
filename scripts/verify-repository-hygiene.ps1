@@ -50,6 +50,12 @@ $prohibitedSegments = @(
     'scene-recovery'
 )
 
+$prohibitedPrefixes = @(
+    'docs/superpowers/',
+    'docs/worknotes/',
+    '.superpowers/'
+)
+
 if ($TrackedPathsFile) {
     $content = [System.IO.File]::ReadAllText($TrackedPathsFile)
 } else {
@@ -69,6 +75,14 @@ foreach ($path in $paths) {
     $basename = ($normalized -split '/')[-1]
     if ($prohibitedBasenames -contains $basename) {
         $violations.Add("$normalized (prohibited file '$basename')")
+        continue
+    }
+
+    $matchedPrefix = $prohibitedPrefixes |
+        Where-Object { $normalized.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) } |
+        Select-Object -First 1
+    if ($matchedPrefix) {
+        $violations.Add("$normalized (prohibited path prefix '$matchedPrefix')")
         continue
     }
 

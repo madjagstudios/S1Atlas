@@ -77,6 +77,35 @@ public sealed class RepositoryHygieneScriptTests
         Assert.Equal(1, exitCode);
     }
 
+    [Theory]
+    [InlineData("docs/superpowers/plans/2026-08-29-runtime-proof-protocol.md")]
+    [InlineData("docs/worknotes/AT-37.md")]
+    [InlineData(".superpowers/task-reports/task-1-report.md")]
+    public void Script_ProhibitedPrefix_FailsWithNonZeroExit(string path)
+    {
+        var exitCode = RunWithTrackedPaths(
+        [
+            "src/S1Atlas.Cli/Program.cs",
+            path
+        ]);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
+    public void Script_PrefixLookAlike_PassesWithZeroExit()
+    {
+        // Only the exact agent-process directory prefixes are prohibited; a
+        // similar name elsewhere in the tree is fine.
+        var exitCode = RunWithTrackedPaths(
+        [
+            "docs/design/superpowered-notes.md",
+            "tools/.superpowers-config.yaml"
+        ]);
+
+        Assert.Equal(0, exitCode);
+    }
+
     [Fact]
     public void Script_InspectsPathsNotDocumentationText()
     {
