@@ -82,8 +82,27 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
+      - name: Report disk layout
+        shell: pwsh
+        run: |
+          # AT-61: test temp I/O cost depends on which volume backs each
+          # directory. TEMP/TMP default to the C: user profile; RUNNER_TEMP
+          # and the workspace live on the runner's temp disk.
+          Write-Output "workspace=${{ github.workspace }}"
+          Write-Output "runner_temp=${{ runner.temp }}"
+          Write-Output "default_temp=$env:TEMP"
+          Get-Volume | Format-Table DriveLetter, FileSystemLabel, DriveType
+      - name: Prepare test temp directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/s1atlas-test-temp" | Out-Null
       - name: Test
         shell: pwsh
+        env:
+          # AT-61: tests build their SQLite atlases under Path.GetTempPath(),
+          # which reads TMP/TEMP. Point them at the runner temp disk instead
+          # of the default C: user profile temp directory.
+          TEMP: ${{ runner.temp }}/s1atlas-test-temp
+          TMP: ${{ runner.temp }}/s1atlas-test-temp
         run: dotnet test ${{ matrix.project }} --configuration Release --verbosity normal --logger "trx;LogFileName=${{ matrix.name }}.trx" --results-directory TestResults
       - name: Timing summary
         if: always()
