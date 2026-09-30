@@ -22,10 +22,8 @@ public sealed class GoldenFactsStructuralTests
             run is not null,
             "No completed Schedule I Installed index exists locally. Skipping: NEEDS_CONTEXT.");
 
-        var sample = (await context.Repository.GetCompletedSymbolPageAsync(
-                run!.IndexId, offset: 0, limit: 200, cancellationToken))
-            .Where(symbol => string.Equals(symbol.Kind, "Method", StringComparison.Ordinal))
-            .Take(50)
+        var sample = (await context.Repository.SearchCompletedSymbolsAsync(
+                run!.IndexId, "e", limit: 50, cancellationToken, kind: "Method"))
             .ToArray();
         Assert.True(
             sample.Length > 0,
