@@ -41,6 +41,8 @@ dotnet test S1Atlas.sln --configuration Release --no-build --filter "Category=Lo
 Remove-Item Env:\S1ATLAS_RUN_LOCAL_GAME_TESTS
 ```
 
+The `GoldenFacts` subset additionally reads expected values from a gitignored local file; see [docs/USAGE.md](docs/USAGE.md#real-game-golden-facts).
+
 ## Before you open a pull request
 
 CI runs — and merging requires — the full gate. Run it locally first; a green
