@@ -33,6 +33,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   `tools/list` from 26,635 to 32,428 bytes (+21.8%), so enabling it for all
   tools waits for the envelope trim.
 
+- **Local-only golden-facts suite for real-build checks** (AT-61): a new `LocalGameRequired` suite pins a few facts from your own live atlas (a serialized scene field value, an object-reference target name, a method callee set) plus value-free structural invariants, reading expected values from a gitignored `golden-facts.local.json` that the repository-hygiene gate refuses to track. Run it after each game update; see the usage guide.
+
 ### Fixed
 
 - **Shared stdio test servers stop leaking and run faster** (AT-61, AT-101):
@@ -72,6 +74,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   migration tests derive the latest schema version from the migration catalog
   instead of pinning v15, leaving only the catalog test and the foundation
   integration test version-pinned.
+
+- **Pruned tests that restated shared validation branches** (AT-61): removed nine MCP tool tests duplicating the same blank-selector and non-positive-limit branches; one test per branch still pins each behavior.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 
