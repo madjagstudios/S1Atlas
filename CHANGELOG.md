@@ -63,6 +63,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   failures that still occur (wrong types, missing required arguments) now name
   the offending parameter instead of returning the opaque generic error.
 
+- **Test suite runs safely on developer machines** (AT-62, AT-48, AT-43,
+  AT-61): `LocalGameRequired` tests now run only with
+  `S1ATLAS_RUN_LOCAL_GAME_TESTS=1`, and then only against a temp copy of the
+  live atlas, so a default `dotnet test` never opens the developer database;
+  cancelled extraction commands release `atlas.db` deterministically instead
+  of leaving it locked; tool installation retries transient file moves; and
+  migration tests derive the latest schema version from the migration catalog
+  instead of pinning v15, leaving only the catalog test and the foundation
+  integration test version-pinned.
+
 ## [1.5.0] - 2026-09-26: Serialized script values
 
 Scene indexes now carry the values Schedule I's scripts are configured with, not
