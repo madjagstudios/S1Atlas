@@ -546,7 +546,12 @@ s1atlas serve --port 5217 --open
 and prints the listening URL. The landing page shows the resolved build and
 per-index symbol counts; `/search` queries one codebase scope with paging
 (`q`, `kind`, `codebase`, `page`, plus `build` to scope game results to one
-build); `/symbol/<id>` shows one symbol's members, integrity-checked source,
+build). Search ranks exact simple-name matches first, then name prefixes,
+then substring matches ordered by relevance; queries of one or two characters
+match name prefixes only. Substring matching needs the search index built by
+schema migration v16: on an older atlas the page says so and falls back to the
+slower unranked search until any `s1atlas` write command upgrades the database.
+`/symbol/<id>` shows one symbol's members, integrity-checked source,
 callers, callees, and references. `/builds` lists every known build newest
 first with human-readable status labels; `/builds/<id>` shows one build's
 facts, per-codebase symbol counts with links into search filtered to that
