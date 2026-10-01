@@ -16,7 +16,7 @@ Override that location with the `S1ATLAS_HOME` environment variable:
 
 ```powershell
 $env:S1ATLAS_HOME = "C:\S1Atlas Data"
-dotnet run --project src/S1Atlas.Cli -- status
+s1atlas status
 ```
 
 When an existing recognized Foundation database requires migration, S1Atlas creates one recoverable SQLite backup under:

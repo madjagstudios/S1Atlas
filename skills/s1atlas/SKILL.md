@@ -30,12 +30,19 @@ prefer a junction or symlink so the source stays versioned. Verify that the
 installed `SKILL.md` has identical bytes to the repository copy and that its
 frontmatter description matches the task before relying on it.
 
-MCP is optional. Build the Release MCP project once, then register the compiled
-DLL with Claude Code or Codex using this command and argument list:
+MCP is optional. Install the tools once (see the README), then register the
+installed `s1atlas-mcp` command with no arguments. JSON hosts
+(Claude Code, VS Code, Claude Desktop) take this shape:
 
-```text
-command = "dotnet"
-args = ["<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll", "mcp", "serve"]
+```json
+{ "command": "s1atlas-mcp", "args": [] }
+```
+
+Codex TOML takes this shape:
+
+```toml
+command = "s1atlas-mcp"
+args = []
 ```
 
 The host registration stays in user-level configuration and does not invoke
@@ -44,7 +51,7 @@ independent stdio client; multiple client sessions are expected and do not
 require a shared singleton. Keep stdout protocol-only and use stderr for
 diagnostics. On Windows, inspect `ProcessId` and `ParentProcessId` before
 investigating a suspected stale session, and do not terminate an active client
-session.
+session. Full per-host snippets live in [docs/USAGE.md](../../docs/USAGE.md#read-only-mcp-server).
 
 ### Host parity and efficient use
 

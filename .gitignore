@@ -61,6 +61,10 @@ candidate-output/
 retained-output/
 s1atlas-docs/
 
+# Local tool-loop scratch (see CONTRIBUTING.md)
+packages/
+tools/
+
 # Logs
 logs/
 *.log

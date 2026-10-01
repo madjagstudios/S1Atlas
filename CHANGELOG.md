@@ -8,6 +8,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Installable `s1atlas` and `s1atlas-mcp` dotnet tools** (AT-77):
+  both commands now pack as .NET tools with one shared version taken from
+  `Directory.Build.props` (`--version` on either prints it, and the MCP
+  `initialize` server info carries the same version). Install from locally
+  packed packages to any tool-path, put the tools on `PATH`, and run `s1atlas`
+  directly; `s1atlas-mcp` serves stdio with no arguments (`mcp serve` stays as
+  an alias). Atlas configuration ships inside the CLI package. The usage
+  guide, README, agent skill, and reference now document the installed
+  commands, with per-host MCP registration snippets, and the checks CI job
+  smoke-tests pack, install, and run.
 - **Faster CI with fail-fast static checks and parallel test runs** (AT-61):
   static checks (restore, lockfile, format, repository hygiene, public
   content) now run in a `checks` job before and beside the tests, the eight

@@ -5,38 +5,51 @@ the agent skill. For an overview and quick start, see the [README](../README.md)
 Deep internals (data layout, the Cpp2IL pin, validation policy, build identity)
 live in [REFERENCE.md](REFERENCE.md).
 
-## Build and test
+## Install the tools
 
-From the repository root:
+`s1atlas` and `s1atlas-mcp` ship as .NET tools. From the repository root,
+pack them and install both packages to a directory on your `PATH`:
 
 ```powershell
-dotnet restore S1Atlas.sln
-dotnet build S1Atlas.sln --configuration Release
-dotnet test S1Atlas.sln --configuration Release --no-build
+dotnet pack S1Atlas.sln --configuration Release --output ./packages
+dotnet tool install S1Atlas.Cli --tool-path ./tools --add-source ./packages
+dotnet tool install S1Atlas.Mcp --tool-path ./tools --add-source ./packages
 ```
+
+Then verify the install:
+
+```powershell
+s1atlas --version
+s1atlas-mcp --version
+s1atlas tools status
+```
+
+`tools status` is always offline, so it confirms the install without touching
+the network or the game. Building from source and running the test suite are
+covered in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Run the CLI
 
 Using an explicit game path is the most reliable first run:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- scan --game-path "C:\Program Files (x86)\Steam\steamapps\common\Schedule I"
+s1atlas scan --game-path "C:\Program Files (x86)\Steam\steamapps\common\Schedule I"
 ```
 
 Then explore the stored environment:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- status
-dotnet run --project src/S1Atlas.Cli -- env
-dotnet run --project src/S1Atlas.Cli -- builds
+s1atlas status
+s1atlas env
+s1atlas builds
 ```
 
 Inspect or explicitly install the managed Cpp2IL pin:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- tools status cpp2il
-dotnet run --project src/S1Atlas.Cli -- tools install cpp2il
-dotnet run --project src/S1Atlas.Cli -- tools install cpp2il --repair
+s1atlas tools status cpp2il
+s1atlas tools install cpp2il
+s1atlas tools install cpp2il --repair
 ```
 
 Install the pinned Unity class database that `index --scene` needs on release
@@ -44,8 +57,8 @@ builds whose containers strip their type trees (see
 [Scene intelligence](#scene-intelligence) below):
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- tools status unity-classdata
-dotnet run --project src/S1Atlas.Cli -- tools install unity-classdata
+s1atlas tools status unity-classdata
+s1atlas tools install unity-classdata
 ```
 
 `tools status` is always offline. Of the implemented commands, only
@@ -55,21 +68,21 @@ implicitly during a scan, index, or status query.
 Run an extraction against the current indexed build and verified managed pin:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- extract
-dotnet run --project src/S1Atlas.Cli -- extract --json
+s1atlas extract
+s1atlas extract --json
 ```
 
 Use an explicit build, game root, custom tool, or input snapshot request when
 needed:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- extract --build <64-character-build-id>
-dotnet run --project src/S1Atlas.Cli -- extract --game-path "C:\Games\Schedule I"
-dotnet run --project src/S1Atlas.Cli -- extract --cpp2il-path "C:\Tools\Cpp2IL.exe"
-dotnet run --project src/S1Atlas.Cli -- extract --profile cpp2il-reconstructed-assemblies-v1 --retry
-dotnet run --project src/S1Atlas.Cli -- extract --snapshot-inputs
-dotnet run --project src/S1Atlas.Cli -- extract --input-snapshot <64-character-snapshot-id> --retry
-dotnet run --project src/S1Atlas.Cli -- extract --keep-failed-artifacts
+s1atlas extract --build <64-character-build-id>
+s1atlas extract --game-path "C:\Games\Schedule I"
+s1atlas extract --cpp2il-path "C:\Tools\Cpp2IL.exe"
+s1atlas extract --profile cpp2il-reconstructed-assemblies-v1 --retry
+s1atlas extract --snapshot-inputs
+s1atlas extract --input-snapshot <64-character-snapshot-id> --retry
+s1atlas extract --keep-failed-artifacts
 ```
 
 `--input-snapshot` runs Cpp2IL from a stored input snapshot instead of live game
@@ -92,15 +105,15 @@ check unless `--retry` requests a new process. See
 Inspect validated extraction history and manage the preferred output:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- extractions list
-dotnet run --project src/S1Atlas.Cli -- extractions list --build <64-character-build-id>
-dotnet run --project src/S1Atlas.Cli -- extractions list --include-failed
-dotnet run --project src/S1Atlas.Cli -- extractions show <extraction-id-or-attempt-id>
-dotnet run --project src/S1Atlas.Cli -- extractions promote <extraction-id>
-dotnet run --project src/S1Atlas.Cli -- extractions cleanup
-dotnet run --project src/S1Atlas.Cli -- extractions cleanup --older-than 30d
-dotnet run --project src/S1Atlas.Cli -- extractions cleanup --older-than 30d --apply
-dotnet run --project src/S1Atlas.Cli -- extractions cleanup --json
+s1atlas extractions list
+s1atlas extractions list --build <64-character-build-id>
+s1atlas extractions list --include-failed
+s1atlas extractions show <extraction-id-or-attempt-id>
+s1atlas extractions promote <extraction-id>
+s1atlas extractions cleanup
+s1atlas extractions cleanup --older-than 30d
+s1atlas extractions cleanup --older-than 30d --apply
+s1atlas extractions cleanup --json
 ```
 
 `extractions` commands never issue a network request. `list` and `show` report
@@ -120,20 +133,20 @@ with ILSpy, records normalized symbols and relationships with Roslyn, and answer
 queries entirely offline:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- index
-dotnet run --project src/S1Atlas.Cli -- index --interop-path "C:\path\to\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll"
-dotnet run --project src/S1Atlas.Cli -- index --codebase s1api --channel installed
-dotnet run --project src/S1Atlas.Cli -- search "<name-fragment>" --limit 25
-dotnet run --project src/S1Atlas.Cli -- type "<Namespace.TypeName>"
-dotnet run --project src/S1Atlas.Cli -- method "<TypeName.MethodName>"
-dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --context 6
-dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --file --output symbol.cs
-dotnet run --project src/S1Atlas.Cli -- refs "<TypeName.MethodName>" --json
-dotnet run --project src/S1Atlas.Cli -- callers "<TypeName.MethodName>"
-dotnet run --project src/S1Atlas.Cli -- callees "<TypeName.MethodName>"
-dotnet run --project src/S1Atlas.Cli -- callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
-dotnet run --project src/S1Atlas.Cli -- fieldrefs "Demo.State.Value" --readers
-dotnet run --project src/S1Atlas.Cli -- callable "<TypeName.MethodName>"
+s1atlas index
+s1atlas index --interop-path "C:\path\to\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll"
+s1atlas index --codebase s1api --channel installed
+s1atlas search "<name-fragment>" --limit 25
+s1atlas type "<Namespace.TypeName>"
+s1atlas method "<TypeName.MethodName>"
+s1atlas source "<TypeName.MethodName>" --context 6
+s1atlas source "<TypeName.MethodName>" --file --output symbol.cs
+s1atlas refs "<TypeName.MethodName>" --json
+s1atlas callers "<TypeName.MethodName>"
+s1atlas callees "<TypeName.MethodName>"
+s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+s1atlas fieldrefs "Demo.State.Value" --readers
+s1atlas callable "<TypeName.MethodName>"
 ```
 
 Source queries are focused by default. For a resolved method or constructor,
@@ -151,9 +164,9 @@ member selection. This is a type span, not the complete source file, and it
 cannot be combined with `--file` or `--output`:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --context 6 --related-limit 20 --json
-dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --full-type --json
-dotnet run --project src/S1Atlas.Cli -- source "<TypeName.MethodName>" --file --output symbol.cs
+s1atlas source "<TypeName.MethodName>" --context 6 --related-limit 20 --json
+s1atlas source "<TypeName.MethodName>" --full-type --json
+s1atlas source "<TypeName.MethodName>" --file --output symbol.cs
 ```
 
 When the selected member's source span or canonical signature contains a
@@ -204,8 +217,8 @@ Use `investigate_seam` when the question is which exact code seam owns a
 behavior, not whether that behavior has already been proved at runtime:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
-dotnet run --project src/S1Atlas.Cli -- investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
+s1atlas investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
+s1atlas investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
 ```
 
 The CLI surface requires `<selector>` and `--question`, and also accepts
@@ -263,7 +276,7 @@ CLI-only step that maps such a method to its native `GameAssembly.dll` address
 and decodes bounded, static evidence around it:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- recover-native-body --symbol-id <symbol-id> --traversal-budget 100
+s1atlas recover-native-body --symbol-id <symbol-id> --traversal-budget 100
 ```
 
 It accepts one or more repeated `--symbol-id` values (at least one is
@@ -317,9 +330,9 @@ index; `upstream status` is always offline and `upstream sync` is the only
 networked upstream command:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- upstream status --codebase s1api
-dotnet run --project src/S1Atlas.Cli -- upstream sync s1api --commit <40-character-sha>
-dotnet run --project src/S1Atlas.Cli -- index --codebase s1api --channel release --commit <40-character-sha>
+s1atlas upstream status --codebase s1api
+s1atlas upstream sync s1api --commit <40-character-sha>
+s1atlas index --codebase s1api --channel release --commit <40-character-sha>
 ```
 
 Build and query the static scene intelligence index after the same build has a
@@ -327,23 +340,23 @@ preferred integrity-verified extraction, a replay-verified input snapshot, and a
 completed Schedule I Installed code index:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- index --scene
-dotnet run --project src/S1Atlas.Cli -- index --scene --build <64-character-build-id> --json
-dotnet run --project src/S1Atlas.Cli -- scenes --kind scene --limit 50
-dotnet run --project src/S1Atlas.Cli -- scenes --kind prefab --limit 50 --json
-dotnet run --project src/S1Atlas.Cli -- scene <scene-id-or-exact-name> --children --components --refs
-dotnet run --project src/S1Atlas.Cli -- gameobject <game-object-id-or-scene-id/name> --children --components --refs
-dotnet run --project src/S1Atlas.Cli -- prefab <prefab-id-or-exact-name> --objects --components
-dotnet run --project src/S1Atlas.Cli -- component <component-id-or-exact-type> --refs --code --json
-dotnet run --project src/S1Atlas.Cli -- scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
+s1atlas index --scene
+s1atlas index --scene --build <64-character-build-id> --json
+s1atlas scenes --kind scene --limit 50
+s1atlas scenes --kind prefab --limit 50 --json
+s1atlas scene <scene-id-or-exact-name> --children --components --refs
+s1atlas gameobject <game-object-id-or-scene-id/name> --children --components --refs
+s1atlas prefab <prefab-id-or-exact-name> --objects --components
+s1atlas component <component-id-or-exact-type> --refs --code --json
+s1atlas scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
 ```
 
 Compare two indexed builds to see what changed:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- diff <build-id-before> <build-id-after>
-dotnet run --project src/S1Atlas.Cli -- diff <build-id-before> <build-id-after> --kind Method --json
-dotnet run --project src/S1Atlas.Cli -- diff <build-id-before> <build-id-after> --limit 100
+s1atlas diff <build-id-before> <build-id-after>
+s1atlas diff <build-id-before> <build-id-after> --kind Method --json
+s1atlas diff <build-id-before> <build-id-after> --limit 100
 ```
 
 `diff` compares existing indexed data and classifies each symbol as Added,
@@ -431,10 +444,10 @@ extraction without restored attributes reports
 To get field values for such a build:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- extract --input-snapshot <replay-verified-input-id> --retry
-dotnet run --project src/S1Atlas.Cli -- extractions promote <new-extraction-id>
-dotnet run --project src/S1Atlas.Cli -- index
-dotnet run --project src/S1Atlas.Cli -- index --scene
+s1atlas extract --input-snapshot <replay-verified-input-id> --retry
+s1atlas extractions promote <new-extraction-id>
+s1atlas index
+s1atlas index --scene
 ```
 
 The new extraction does not replace an existing preferred one automatically
@@ -488,12 +501,12 @@ precisely so it can certify it.
 For machine-readable output, add `--json` to the query commands:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- status --json
-dotnet run --project src/S1Atlas.Cli -- env --json
-dotnet run --project src/S1Atlas.Cli -- builds --json
-dotnet run --project src/S1Atlas.Cli -- tools status cpp2il --json
-dotnet run --project src/S1Atlas.Cli -- tools install cpp2il --json
-dotnet run --project src/S1Atlas.Cli -- extract --json
+s1atlas status --json
+s1atlas env --json
+s1atlas builds --json
+s1atlas tools status cpp2il --json
+s1atlas tools install cpp2il --json
+s1atlas extract --json
 ```
 
 Each JSON invocation writes exactly one top-level envelope to stdout with `schemaVersion`, `command`, `success`, `exitCode`, `data`, and `error`. Schema version 1 defines that top-level contract. Later command-specific error objects may add fields, so consumers should ignore error properties they do not recognize.
@@ -508,8 +521,8 @@ Without `--game-path`, S1Atlas checks the standard Steam locations under `Progra
 ## Generate the static portal
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- docs generate
-dotnet run --project src/S1Atlas.Cli -- docs generate --build <build-id> --output .\portal
+s1atlas docs generate
+s1atlas docs generate --build <build-id> --output .\portal
 ```
 
 `--build` pins only the Schedule I Installed pages through the preferred,
@@ -530,9 +543,9 @@ does not discover or download mods, and does not certify compatibility, safety,
 or redistribution rights. Validate and index a collection from the CLI:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- reference collections validate <manifest>
-dotnet run --project src/S1Atlas.Cli -- reference index <manifest>
-dotnet run --project src/S1Atlas.Cli -- reference collections list --json
+s1atlas reference collections validate <manifest>
+s1atlas reference index <manifest>
+s1atlas reference collections list --json
 ```
 
 Reference indexing is an explicit offline CLI operation. Query commands accept
@@ -540,13 +553,13 @@ Reference indexing is an explicit offline CLI operation. Query commands accept
 `source`, `refs`, `callers`, `callees`, `callsites`, and `fieldrefs`:
 
 ```powershell
-dotnet run --project src/S1Atlas.Cli -- search "ModEntry" --scope reference --collection qol
-dotnet run --project src/S1Atlas.Cli -- source "ModEntry.Run" --scope all --collection qol
-dotnet run --project src/S1Atlas.Cli -- callers "Game.Target.Run" --scope all --collection qol
-dotnet run --project src/S1Atlas.Cli -- callees "ModEntry.Run" --scope reference --collection qol
-dotnet run --project src/S1Atlas.Cli -- callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
-dotnet run --project src/S1Atlas.Cli -- fieldrefs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
-dotnet run --project src/S1Atlas.Cli -- refs "ModEntry.Run" --scope reference --collection qol
+s1atlas search "ModEntry" --scope reference --collection qol
+s1atlas source "ModEntry.Run" --scope all --collection qol
+s1atlas callers "Game.Target.Run" --scope all --collection qol
+s1atlas callees "ModEntry.Run" --scope reference --collection qol
+s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
+s1atlas fieldrefs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
+s1atlas refs "ModEntry.Run" --scope reference --collection qol
 ```
 
 The default scope is `game`, preserving the Schedule I behavior. `reference`
@@ -570,27 +583,58 @@ compatibility, safety, or licensing.
 
 ## Read-only MCP server
 
-Build the MCP server once, then launch the compiled Release DLL as a separate
-executable over stdio:
+Install the tools once (see [Install the tools](#install-the-tools)), then
+launch the installed server over stdio with no arguments:
 
 ```powershell
-dotnet build src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release
-dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve
+s1atlas-mcp
 ```
 
-The direct DLL launch does not invoke restore or build work during MCP startup.
-After pulling source changes, rebuild the Release project before restarting a
-registered host. Codex and Claude host registrations should keep the server
-command in user-level configuration with `command = "dotnet"` and arguments for
-the absolute local Release DLL path, `mcp`, and `serve`:
+`s1atlas-mcp` with no arguments serves MCP over stdio; `mcp serve` is an
+accepted alias for the same mode, and `--version` prints the installed
+version. Any other argument exits `2` with usage text. The installed launch
+does not invoke restore or build work during MCP startup. After pulling source
+changes, reinstall the tools before restarting a registered host.
 
-```text
-command = "dotnet"
-args = [
-  "<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll",
-  "mcp",
-  "serve"
-]
+Register the installed `s1atlas-mcp` command (on your `PATH`, no arguments)
+in user-level host configuration. The four common shapes are:
+
+Claude Code (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "s1atlas": { "command": "s1atlas-mcp", "args": [] }
+  }
+}
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.s1atlas]
+command = "s1atlas-mcp"
+args = []
+```
+
+VS Code (`mcp.json`):
+
+```json
+{
+  "servers": {
+    "s1atlas": { "command": "s1atlas-mcp", "args": [] }
+  }
+}
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "s1atlas": { "command": "s1atlas-mcp", "args": [] }
+  }
+}
 ```
 
 There is one MCP server process per independent stdio client. Multiple Codex or
@@ -604,7 +648,7 @@ investigating a suspected stale session:
 
 ```powershell
 Get-CimInstance Win32_Process |
-  Where-Object { $_.CommandLine -match 'S1Atlas\.Mcp\.dll.*mcp serve' } |
+  Where-Object { $_.CommandLine -match 's1atlas-mcp' } |
   Select-Object ProcessId, ParentProcessId, CommandLine
 ```
 
@@ -708,18 +752,15 @@ The methodology skill is versioned at [`skills/s1atlas/SKILL.md`](../skills/s1at
 Install it using the skill mechanism supported by your agent host, keeping the
 repository copy as the source of truth. Verify the installed skill has identical
 bytes to the repository copy before relying on it. When MCP is registered, launch
-the read-only server over stdio with the built Release DLL; otherwise the skill's CLI
+the installed `s1atlas-mcp` server over stdio with no arguments; otherwise the skill's CLI
 commands remain the fallback. The skill adds no capability and requires agents
 to cite FACT/DERIVED evidence and build/extraction/index or API commit/index
 identifiers in their own output.
 
 For host registration, point each host's local configuration at the same
-read-only server entry point using that operator's checkout root, for example:
-
-```text
-command = "dotnet"
-args = ["<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll", "mcp", "serve"]
-```
+read-only server entry point, the installed `s1atlas-mcp` command on the
+operator's `PATH` with no arguments; see the per-host snippets in
+[Read-only MCP server](#read-only-mcp-server).
 
 Host configuration and reference manifests stay outside the repository. Keep
 local paths, manifests, generated indexes, credentials, and host-private
@@ -791,4 +832,4 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `scriptable-object <id\|exact-name\|Namespace.Class> [--json]` | Inspect one ScriptableObject asset (an asset-level MonoBehaviour such as `SpecialCustomerData`) and its decoded serialized fields |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
 | `docs generate [--build <id>] [--output <dir>]` | Generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
-| `S1Atlas.Mcp mcp serve` | Launch the read-only Schedule I Installed MCP server over stdio |
+| `s1atlas-mcp` | Launch the read-only Schedule I Installed MCP server over stdio (no arguments; `mcp serve` is an alias, `--version` prints the version) |
