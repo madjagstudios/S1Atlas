@@ -133,7 +133,7 @@ public sealed class DiffTests
         var turbo = changes.Single(change =>
             change.GetProperty("qualifiedName").GetString() == SyntheticAtlas.TurboQualifiedName);
         Assert.Equal("Removed", turbo.GetProperty("classification").GetString());
-        Assert.Null(turbo.GetProperty("symbolId").GetString());
+        Assert.False(turbo.TryGetProperty("symbolId", out _));
         var run = changes.Single(change =>
             change.GetProperty("qualifiedName").GetString() == "Demo.Widget.Run");
         Assert.Equal(SyntheticAtlas.RunMethodId, run.GetProperty("symbolId").GetString());

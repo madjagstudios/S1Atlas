@@ -48,6 +48,40 @@ public sealed record ServeEnvironmentResult(
     string? GlobalMetadataPath,
     IReadOnlyList<ServeEnvironmentDependency> Dependencies);
 
+public sealed record ServeDiffCounts(
+    int Added,
+    int Removed,
+    int MethodBodyChanged,
+    int RelationshipsChanged,
+    int Unchanged);
+
+// SymbolId is set only when the change links to a symbol page that
+// resolves: the canonical key must exist in the to-index and in the
+// current index, because symbol IDs are snapshot-scoped hashes.
+public sealed record ServeDiffChange(
+    string CanonicalKey,
+    string QualifiedName,
+    string Kind,
+    DiffClassification Classification,
+    string? SignatureBefore,
+    string? SignatureAfter,
+    string? SymbolId);
+
+public sealed record ServeDiffResult(
+    string FromBuildId,
+    string ToBuildId,
+    string FromIndexId,
+    string ToIndexId,
+    string Codebase,
+    string Channel,
+    int TotalSymbolsA,
+    int TotalSymbolsB,
+    ServeDiffCounts Counts,
+    int TotalChanged,
+    int Page,
+    int PageSize,
+    IReadOnlyList<ServeDiffChange> Changes);
+
 public sealed record ServeBuildResult(
     string BuildId,
     DateTimeOffset FirstSeenAtUtc,

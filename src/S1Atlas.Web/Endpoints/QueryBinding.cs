@@ -25,9 +25,17 @@ internal sealed record SearchArgs(
     int Page,
     string? Build);
 
+internal sealed record DiffArgs(
+    string From,
+    string To,
+    CodebaseKind Codebase,
+    SymbolKind? Kind,
+    int Page);
+
 internal static class QueryBinding
 {
     internal const int SearchPageSize = 20;
+    internal const int DiffPageSize = 50;
     internal const int DefaultRelationshipLimit = 50;
     internal const int MaxLimit = 500;
 
@@ -45,6 +53,24 @@ internal static class QueryBinding
 
     internal static string? BindBuild(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    internal static DiffArgs BindDiff(Microsoft.AspNetCore.Http.IQueryCollection query)
+    {
+        var from = query["from"].ToString().Trim();
+        var to = query["to"].ToString().Trim();
+        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
+        {
+            throw new ServeInvalidQueryException(
+                "Diff requires both ?from= and ?to= build IDs.");
+        }
+
+        return new DiffArgs(
+            from,
+            to,
+            BindCodebase(query["codebase"].ToString()),
+            BindKind(query["kind"].ToString()),
+            BindPage(query["page"].ToString(), maxPage: null));
+    }
 
     internal static CodebaseKind BindCodebase(string? value) =>
         (string.IsNullOrEmpty(value) ? "schedule-i" : value).ToLowerInvariant() switch

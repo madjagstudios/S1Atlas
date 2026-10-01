@@ -62,6 +62,7 @@ public sealed class ServeHost : IAsyncDisposable
         SymbolEndpoints.Map(app);
         BuildsEndpoints.Map(app);
         EnvironmentEndpoints.Map(app);
+        DiffEndpoints.Map(app);
         app.MapFallback(host.UnknownEndpointAsync);
         return host;
     }
