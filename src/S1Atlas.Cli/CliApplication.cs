@@ -419,6 +419,7 @@ public sealed class CliApplication
         root.Subcommands.Add(SearchCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(TypeCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(MethodCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(OpenCommand.Create(indexQueryService, authorityResolver, repository, _browserLauncher, output, error, cancellationToken));
         root.Subcommands.Add(InvestigateSeamCommand.Create(seamInvestigationService, referenceQueryService, authorityResolver, repository, sqliteRepository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(SourceCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(RefsCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
