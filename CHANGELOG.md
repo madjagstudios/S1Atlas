@@ -8,6 +8,22 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **`s1atlas serve` parity views: builds, environment, diffs, navigation**
+  (AT-88): the local web app gains `/builds` and `/builds/<id>` (status
+  labels, per-codebase counts linking into build-scoped search, adjacent
+  diffs, current-build environment link), `/environment` (current snapshot
+  with the install root redacted), and `/diff` (any two builds, with
+  classification counts, signature before/after, true totals, unbounded
+  paging, and a build picker), each with a mirrored `/api/*` endpoint that
+  returns the same tool envelopes as the matching MCP tools. Search accepts
+  `?build=` to scope game results to one build. Every page carries header
+  navigation, symbol pages carry breadcrumbs, coverage sentences read
+  grammatically, and every response carries `Content-Security-Policy`,
+  `X-Content-Type-Options`, and `Referrer-Policy` headers. The install-path
+  display helper moved to `S1Atlas.Core` for reuse by both the portal and
+  serve. Web tests cover the new views, MCP parity, a link-reachability
+  crawl from `/`, header assertions on HTML/JSON/404/421 responses, and a
+  path-leak sweep over every view and endpoint.
 - **Loopback-only read-only `s1atlas serve` web app** (AT-88): a new `serve`
   command starts a local web app (default port 5217, `--port 0` for an
   ephemeral port, `--open` to launch the browser) with landing, search, and
