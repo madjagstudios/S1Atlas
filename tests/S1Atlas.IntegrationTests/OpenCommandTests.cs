@@ -21,6 +21,7 @@ public sealed class OpenCommandTests : IAsyncDisposable
         await using (host)
         {
             await host.StartAsync(cancellationToken);
+            await WaitForServeAsync(host.BaseAddress.Port, cancellationToken);
             try
             {
                 var launcher = new RecordingLauncher();
@@ -79,6 +80,7 @@ public sealed class OpenCommandTests : IAsyncDisposable
         await using (host)
         {
             await host.StartAsync(cancellationToken);
+            await WaitForServeAsync(host.BaseAddress.Port, cancellationToken);
             try
             {
                 var launcher = new RecordingLauncher();
@@ -172,6 +174,15 @@ public sealed class OpenCommandTests : IAsyncDisposable
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
+
+    private static async Task WaitForServeAsync(int port, CancellationToken cancellationToken)
+    {
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        using var response = await client.GetAsync(
+            $"http://127.0.0.1:{port}/api/status",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 
     private sealed class RecordingLauncher : IBrowserLauncher
