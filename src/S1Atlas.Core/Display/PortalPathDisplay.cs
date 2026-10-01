@@ -1,4 +1,4 @@
-namespace S1Atlas.Docs.Rendering;
+namespace S1Atlas.Core.Display;
 
 // Renders installation file paths for the shareable static portal. Paths
 // inside the installation root render relative to it with forward slashes;
