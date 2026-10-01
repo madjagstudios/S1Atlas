@@ -518,7 +518,11 @@ independent of `--json` (which controls the stdout result).
 
 Without `--game-path`, S1Atlas checks the standard Steam locations under `Program Files (x86)` and `Program Files`.
 
-## Generate the static portal
+## Generate the static portal (deprecated)
+
+> Deprecated: `docs generate` and the static portal will be removed in the
+> next minor release. Use [Serve the local web app](#serve-the-local-web-app)
+> (`s1atlas serve`) instead.
 
 ```powershell
 s1atlas docs generate
@@ -865,6 +869,6 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, its decoded serialized fields, serialized references, and an exact code-symbol handoff |
 | `scriptable-object <id\|exact-name\|Namespace.Class> [--json]` | Inspect one ScriptableObject asset (an asset-level MonoBehaviour such as `SpecialCustomerData`) and its decoded serialized fields |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
-| `docs generate [--build <id>] [--output <dir>]` | Generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
+| `docs generate [--build <id>] [--output <dir>]` | **Deprecated** (removal in the next minor release; use `serve`): generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
 | `serve [--port <n>] [--open]` | Start the loopback-only, read-only local web app (default port 5217; 0 picks an ephemeral port) |
 | `s1atlas-mcp` | Launch the read-only Schedule I Installed MCP server over stdio (no arguments; `mcp serve` is an alias, `--version` prints the version) |
