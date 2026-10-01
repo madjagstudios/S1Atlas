@@ -448,11 +448,14 @@ public sealed partial class SqliteAtlasRepository
         }
         else
         {
+            // CROSS JOIN pins the FTS table as the driving loop: left to
+            // itself the planner scans every symbol of the snapshot and
+            // probes the FTS index per row, which takes seconds.
             command.CommandText = """
                 SELECT COUNT(*)
                 FROM symbols_fts
-                INNER JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
-                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                CROSS JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
+                CROSS JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
@@ -513,8 +516,8 @@ public sealed partial class SqliteAtlasRepository
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
                        symbol.body_recovery_status, symbol.is_public
                 FROM symbols_fts
-                INNER JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
-                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                CROSS JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
+                CROSS JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)

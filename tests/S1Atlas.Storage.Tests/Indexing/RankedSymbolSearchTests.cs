@@ -234,6 +234,41 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
         Assert.DoesNotContain(details, detail => detail.Contains("SCAN symbols", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task FtsSearch_DrivesFromFtsIndexInsteadOfScanningSymbols()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRankedIndexAsync(cancellationToken);
+
+        await using var connection = new SqliteConnection($"Data Source={_databasePath};Pooling=False");
+        await connection.OpenAsync(cancellationToken);
+
+        // Mirrors the FTS branch of SearchRankedSymbolsAsync: the join order
+        // is pinned with CROSS JOIN so the FTS table drives and symbols are
+        // probed by rowid. Without the pin the planner scans every symbol of
+        // the snapshot and probes FTS per row.
+        await using var plan = connection.CreateCommand();
+        plan.CommandText = """
+            EXPLAIN QUERY PLAN
+            SELECT symbol.symbol_id
+            FROM symbols_fts
+            CROSS JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
+            CROSS JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND symbols_fts MATCH $match
+            LIMIT 20;
+            """;
+        plan.Parameters.AddWithValue("$indexId", "index-ranked");
+        plan.Parameters.AddWithValue("$match", "\"Widget\"");
+        var details = new List<string>();
+        await using var reader = await plan.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            details.Add(reader.GetString(3));
+        Assert.Contains("symbols_fts", details[0], StringComparison.Ordinal);
+        Assert.DoesNotContain(details, detail => detail.Contains("SCAN symbols ", StringComparison.Ordinal));
+    }
+
     private async Task SeedRankedIndexAsync(CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);
