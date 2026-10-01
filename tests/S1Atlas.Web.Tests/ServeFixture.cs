@@ -33,6 +33,12 @@ public sealed class ServeFixture : IAsyncDisposable
         return await CreateOnRootAsync(atlas.DataRoot, atlas, null, ct);
     }
 
+    public static async Task<ServeFixture> CreateTwoBuildAsync(CancellationToken ct = default)
+    {
+        var atlas = await SyntheticAtlas.SeedTwoBuildFixtureAsync(ct);
+        return await CreateOnRootAsync(atlas.DataRoot, atlas, null, ct);
+    }
+
     public static async Task<ServeFixture> CreateOnEmptyRootAsync(CancellationToken ct = default)
     {
         var root = Path.Combine(
