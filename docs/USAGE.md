@@ -545,11 +545,20 @@ s1atlas serve --port 5217 --open
 `serve` starts a loopback-only, read-only web app over the current Atlas data
 and prints the listening URL. The landing page shows the resolved build and
 per-index symbol counts; `/search` queries one codebase scope with paging
-(`q`, `kind`, `codebase`, `page`); `/symbol/<id>` shows one symbol's members,
-integrity-checked source, callers, callees, and references. The mirrored
-`/api/*` endpoints (`/api/status`, `/api/search`, `/api/symbol/<id>`,
-`/api/symbol/<id>/callers|callees|references`) return the same tool envelopes
-and JSON shapes as the matching MCP tools. The server binds only to loopback,
+(`q`, `kind`, `codebase`, `page`, plus `build` to scope game results to one
+build); `/symbol/<id>` shows one symbol's members, integrity-checked source,
+callers, callees, and references. `/builds` lists every known build newest
+first with human-readable status labels; `/builds/<id>` shows one build's
+facts, per-codebase symbol counts with links into search filtered to that
+build, adjacent diffs, and the environment when it is the current build.
+`/environment` shows the current environment snapshot with the install root
+redacted. `/diff?from=<id>&to=<id>` compares any two builds with
+classification counts, per-symbol signatures before and after, true totals
+and paging (`codebase`, `kind`, `page`); `/diff` without parameters shows a
+build picker. The mirrored `/api/*` endpoints (`/api/status`, `/api/search`,
+`/api/symbol/<id>`, `/api/symbol/<id>/callers|callees|references`,
+`/api/builds`, `/api/builds/<id>`, `/api/environment`, `/api/diff`) return
+the same tool envelopes and JSON shapes as the matching MCP tools. The server binds only to loopback,
 answers only loopback `Host` values on its own bound port, accepts only `GET`
 and `HEAD`, sends no CORS headers, and never writes the Atlas. `--port 0`
 picks an ephemeral port; `--open` opens the default browser once the server

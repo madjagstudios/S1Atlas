@@ -40,9 +40,10 @@ internal static class SearchEndpoints
 
         SymbolSearchResult result;
         string channel;
+        bool linkable;
         try
         {
-            (result, channel) = await RunSearchAsync(queries, args, ct);
+            (result, channel, linkable) = await RunSearchAsync(queries, args, ct);
         }
         catch (ServeInvalidQueryException exception)
         {
@@ -68,7 +69,9 @@ internal static class SearchEndpoints
             channel,
             args.Page,
             QueryBinding.SearchPageSize,
-            result with { Results = page, ReturnedCount = page.Length });
+            result with { Results = page, ReturnedCount = page.Length },
+            args.Build,
+            linkable);
         return ServeHttp.Html(SearchView.Render(model));
     }
 
@@ -105,7 +108,7 @@ internal static class SearchEndpoints
         }
     }
 
-    private static async Task<(SymbolSearchResult Result, string Channel)> RunSearchAsync(
+    private static async Task<(SymbolSearchResult Result, string Channel, bool Linkable)> RunSearchAsync(
         ServeQueries queries,
         SearchArgs args,
         CancellationToken ct)
@@ -113,20 +116,27 @@ internal static class SearchEndpoints
         var limit = (args.Page + 1) * QueryBinding.SearchPageSize;
         if (args.Codebase == CodebaseKind.ScheduleI)
         {
-            var authority = await queries.ResolveAuthorityAsync(ct);
+            var authority = await queries.ResolveAuthorityAsync(ct, args.Build);
             if (authority.Status != InstalledBuildAuthorityStatus.Resolved || authority.IndexRun is null)
             {
                 throw new ServeScopeMissingException(Html.AuthorityMessage(authority));
             }
 
+            var linkable = args.Build is null || await IsCurrentBuildAsync(queries, args.Build, ct);
             return (
                 await queries.SearchGameAsync(authority.IndexRun, args.Query, args.Kind, limit, ct),
-                Html.ChannelLabel(CodeChannel.Installed));
+                Html.ChannelLabel(CodeChannel.Installed),
+                linkable);
         }
 
         if (args.Kind is not null)
         {
             throw new ServeInvalidQueryException("Kind filtering is only supported with codebase=schedule-i.");
+        }
+
+        if (args.Build is not null)
+        {
+            throw new ServeInvalidQueryException("Build filtering is only supported with codebase=schedule-i.");
         }
 
         var catalog = await queries.ListApiCatalogAsync(ct);
@@ -138,7 +148,18 @@ internal static class SearchEndpoints
                 $"No completed {Html.CodebaseLabel(args.Codebase)} index exists yet.");
         return (
             await queries.SearchApiAsync(selection, args.Query, limit, ct),
-            Html.ChannelLabel(selection.Channel));
+            Html.ChannelLabel(selection.Channel),
+            true);
+    }
+
+    private static async Task<bool> IsCurrentBuildAsync(
+        ServeQueries queries,
+        string buildId,
+        CancellationToken ct)
+    {
+        var current = await queries.ResolveAuthorityAsync(ct);
+        return current.Status == InstalledBuildAuthorityStatus.Resolved
+            && current.ResolvedBuildId == buildId;
     }
 
     private static async Task<ToolEnvelope<SymbolSearchResult>> RunApiSearchAsync(
@@ -149,7 +170,7 @@ internal static class SearchEndpoints
         var limit = (args.Page + 1) * QueryBinding.SearchPageSize;
         if (args.Codebase == CodebaseKind.ScheduleI)
         {
-            var authority = await queries.ResolveAuthorityAsync(ct);
+            var authority = await queries.ResolveAuthorityAsync(ct, args.Build);
             if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
             {
                 return AuthorityEnvelope.From<SymbolSearchResult>(authority);
@@ -170,6 +191,12 @@ internal static class SearchEndpoints
         {
             return ToolEnvelope<SymbolSearchResult>.Invalid(
                 new ToolError("InvalidQuery", "Kind filtering is only supported with codebase=schedule-i."));
+        }
+
+        if (args.Build is not null)
+        {
+            return ToolEnvelope<SymbolSearchResult>.Invalid(
+                new ToolError("InvalidQuery", "Build filtering is only supported with codebase=schedule-i."));
         }
 
         var catalog = await queries.ListApiCatalogAsync(ct);
@@ -211,5 +238,5 @@ internal static class SearchEndpoints
             "<h1>Search</h1>" + SearchFormOnly(args) + $"<p>{Html.Escape(message)}</p>");
 
     private static string SearchFormOnly(SearchArgs args) =>
-        SearchView.RenderForm(new SearchModel(args.Query, args.Kind?.ToString(), args.Codebase, string.Empty, args.Page, QueryBinding.SearchPageSize, new SymbolSearchResult(0, 0, [], null)));
+        SearchView.RenderForm(new SearchModel(args.Query, args.Kind?.ToString(), args.Codebase, string.Empty, args.Page, QueryBinding.SearchPageSize, new SymbolSearchResult(0, 0, [], null), args.Build, true));
 }

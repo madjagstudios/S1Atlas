@@ -15,7 +15,7 @@ public sealed class SearchTests
         var body = await fixture.GetStringAsync("/search?q=Widget", cancellationToken);
 
         Assert.Contains("FACT: 5 matches in Schedule I (Installed).", body);
-        Assert.Contains("DERIVED: showing 1&ndash;5 of the true total 5.", body);
+        Assert.Contains("DERIVED: showing 1&ndash;5 of 5 matches.", body);
         Assert.Contains("Demo.Widget.Run", body);
         Assert.Contains("/symbol/method-serve-run", body);
     }
@@ -44,11 +44,11 @@ public sealed class SearchTests
         var second = await fixture.GetStringAsync("/search?q=PagedType&page=1", cancellationToken);
 
         Assert.Contains("FACT: 30 matches in Schedule I (Installed).", first);
-        Assert.Contains("DERIVED: showing 1&ndash;20 of the true total 30.", first);
+        Assert.Contains("DERIVED: showing 1&ndash;20 of 30 matches.", first);
         Assert.Contains("Paged.PagedType01", first);
         Assert.DoesNotContain("Paged.PagedType30", first);
         Assert.Contains("page=1", first);
-        Assert.Contains("DERIVED: showing 21&ndash;30 of the true total 30.", second);
+        Assert.Contains("DERIVED: showing 21&ndash;30 of 30 matches.", second);
         Assert.Contains("Paged.PagedType30", second);
         Assert.DoesNotContain("Paged.PagedType01", second);
         Assert.Contains("page=0", second);
@@ -63,7 +63,7 @@ public sealed class SearchTests
         var body = await fixture.GetStringAsync("/search?q=PagedType&page=5", cancellationToken);
 
         Assert.Contains("FACT: 30 matches in Schedule I (Installed).", body);
-        Assert.Contains("DERIVED: showing 0 of the true total 30.", body);
+        Assert.Contains("DERIVED: showing 0 of 30 matches.", body);
         Assert.DoesNotContain("Paged.PagedType", body);
     }
 
@@ -76,7 +76,7 @@ public sealed class SearchTests
         var body = await fixture.GetStringAsync("/search?q=ZzzNoSuchSymbol", cancellationToken);
 
         Assert.Contains("FACT: 0 matches in Schedule I (Installed).", body);
-        Assert.Contains("DERIVED: showing 0 of the true total 0.", body);
+        Assert.Contains("DERIVED: showing 0 of 0 matches.", body);
     }
 
     [Fact]

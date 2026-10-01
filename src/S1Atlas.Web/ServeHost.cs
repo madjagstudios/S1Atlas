@@ -20,8 +20,12 @@ namespace S1Atlas.Web;
 public sealed class ServeHost : IAsyncDisposable
 {
     private readonly WebApplication _app;
-    private readonly List<int> _boundPorts;
-    private readonly List<string> _boundAddresses = [];
+
+    // Published as immutable snapshots: a request can arrive while
+    // StartAsync is recording the bound addresses, so the guard reads a
+    // local copy instead of a list that is cleared and refilled in place.
+    private volatile int[] _boundPorts;
+    private volatile string[] _boundAddresses = [];
 
     private ServeHost(WebApplication app, int configuredPort)
     {
@@ -54,12 +58,16 @@ public sealed class ServeHost : IAsyncDisposable
 
         var app = builder.Build();
         var host = new ServeHost(app, options.Port);
+        app.Use(SecurityHeaders);
         app.Use(CatchAllAsGenericError);
         app.Use((context, next) => host.GuardHostAsync(context, next));
         app.Use(GuardMethod);
         StatusEndpoints.Map(app);
         SearchEndpoints.Map(app);
         SymbolEndpoints.Map(app);
+        BuildsEndpoints.Map(app);
+        EnvironmentEndpoints.Map(app);
+        DiffEndpoints.Map(app);
         app.MapFallback(host.UnknownEndpointAsync);
         return host;
     }
@@ -69,16 +77,19 @@ public sealed class ServeHost : IAsyncDisposable
         await _app.StartAsync(cancellationToken);
         var addresses = _app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()?.Addresses;
-        _boundPorts.Clear();
-        _boundAddresses.Clear();
+        var boundAddresses = new List<string>();
+        var boundPorts = new List<int>();
         foreach (var address in addresses ?? [])
         {
-            _boundAddresses.Add(address);
+            boundAddresses.Add(address);
             if (Uri.TryCreate(address, UriKind.Absolute, out var uri))
             {
-                _boundPorts.Add(uri.Port);
+                boundPorts.Add(uri.Port);
             }
         }
+
+        _boundAddresses = [.. boundAddresses];
+        _boundPorts = [.. boundPorts];
     }
 
     public async Task StopAsync(CancellationToken cancellationToken) =>
@@ -92,12 +103,27 @@ public sealed class ServeHost : IAsyncDisposable
     {
         get
         {
-            var address = _boundAddresses.FirstOrDefault(
+            var boundAddresses = _boundAddresses;
+            var address = boundAddresses.FirstOrDefault(
                 candidate => candidate.StartsWith("http://127.0.0.1:", StringComparison.Ordinal))
-                ?? _boundAddresses.FirstOrDefault()
+                ?? boundAddresses.FirstOrDefault()
                 ?? throw new InvalidOperationException("The server has not been started.");
             return new Uri(address.EndsWith('/') ? address : address + "/");
         }
+    }
+
+    private static async Task SecurityHeaders(HttpContext context, Func<Task> next)
+    {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.ContentSecurityPolicy =
+                "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; " +
+                "base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            return Task.CompletedTask;
+        });
+        await next();
     }
 
     private static async Task CatchAllAsGenericError(HttpContext context, Func<Task> next)
@@ -151,7 +177,8 @@ public sealed class ServeHost : IAsyncDisposable
             return;
         }
 
-        if (port is null || !_boundPorts.Contains(port.Value))
+        var boundPorts = _boundPorts;
+        if (port is null || !boundPorts.Contains(port.Value))
         {
             await RejectAsync(context, 421, "This server only answers its own bound port.");
             return;

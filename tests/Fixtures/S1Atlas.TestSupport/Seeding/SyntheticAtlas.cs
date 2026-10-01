@@ -1,3 +1,4 @@
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
@@ -37,6 +38,16 @@ public sealed class SyntheticAtlas : IAsyncDisposable
     public const string TypeSelector = "Demo.Widget";
     public const string RunSelector = "System.Void Demo.Widget::Run()";
     public const string LookupSelector = "System.Void ServeApi.Catalog::Lookup()";
+    public const string TurboQualifiedName = "Demo.Widget.Turbo";
+
+    public const string BuildIdAValue = "build-serve-a";
+    public const string BuildIdBValue = "build-serve-b";
+    public const string GameIndexAValue = "index-serve-a";
+    public const string GameIndexBValue = "index-serve-b";
+
+    public const string LeakRootToken = "servefake-zqxv-9182";
+    public const string LeakOutsideToken = "servefake-elsewhere-5511";
+    public const string LeakInstallationRoot = "C:\\servefake-zqxv-9182\\game";
 
     public const string GameSourceText =
         "namespace Demo;\n" +
@@ -83,6 +94,7 @@ public sealed class SyntheticAtlas : IAsyncDisposable
         "}\n";
 
     private const string RecipeId = "4444444444444444444444444444444444444444444444444444444444444444";
+    private const string RecipeIdB = "5555555555555555555555555555555555555555555555555555555555555555";
     private const string ToolInstanceId = "tool-instance-serve";
     private const string ProfileDigest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
     private const string PolicyDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
@@ -113,32 +125,132 @@ public sealed class SyntheticAtlas : IAsyncDisposable
             Path.Combine(root, "backups"));
         await repository.InitializeAsync(cancellationToken);
         await ExtractionSeed.SeedToolInstanceAsync(root, ToolInstanceId, cancellationToken);
-        await repository.SaveSnapshotAsync(
-            ExtractionSeed.CreateSnapshot(BuildIdValue, BaseTime),
-            cancellationToken);
-        var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
+        var seed = await SeedBuildAsync(repository, root, BuildIdValue, RecipeId, BaseTime, cancellationToken);
+
+        await SeedGameIndexAsync(
             repository,
             root,
-            BuildIdValue,
-            RecipeId,
-            ToolInstanceId,
-            ProfileDigest,
-            PolicyDigest,
-            BaseTime,
+            seed.Snapshot,
+            GameIndexIdValue,
+            GameSnapshotId,
+            GameIndexVariant.Current,
+            seed.ExtractionId,
+            20,
+            21,
             cancellationToken);
-        await repository.SetPreferredExtractionAsync(
-            new PreferredExtraction(
-                BuildIdValue,
-                seeded.Extraction.ExtractionId,
-                seeded.Report.ValidatedAtUtc,
-                ExtractionPreferenceReason.ManualPromotion),
-            cancellationToken);
-
-        await SeedGameIndexAsync(repository, root, seeded.Extraction.ExtractionId, cancellationToken);
         await SeedApiIndexAsync(repository, root, cancellationToken);
 
         return new SyntheticAtlas(root);
     }
+
+    public static async Task<SyntheticAtlas> SeedTwoBuildFixtureAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-serve-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var repository = new SqliteAtlasRepository(
+            Path.Combine(root, "atlas.db"),
+            Path.Combine(root, "backups"));
+        await repository.InitializeAsync(cancellationToken);
+        await ExtractionSeed.SeedToolInstanceAsync(root, ToolInstanceId, cancellationToken);
+
+        var seedA = await SeedBuildAsync(repository, root, BuildIdAValue, RecipeId, BaseTime, cancellationToken);
+        await SeedGameIndexAsync(
+            repository,
+            root,
+            seedA.Snapshot,
+            GameIndexAValue,
+            "snapshot-serve-a",
+            GameIndexVariant.Historical,
+            seedA.ExtractionId,
+            20,
+            21,
+            cancellationToken);
+
+        var baseB = BaseTime.AddHours(1);
+        var seedB = await SeedBuildAsync(repository, root, BuildIdBValue, RecipeIdB, baseB, cancellationToken);
+        await SeedGameIndexAsync(
+            repository,
+            root,
+            seedB.Snapshot,
+            GameIndexBValue,
+            "snapshot-serve-b",
+            GameIndexVariant.Current,
+            seedB.ExtractionId,
+            80,
+            81,
+            cancellationToken);
+
+        await SeedApiIndexAsync(repository, root, cancellationToken);
+
+        return new SyntheticAtlas(root);
+    }
+
+    private sealed record SeededServeBuild(EnvironmentSnapshot Snapshot, string ExtractionId);
+
+    private static async Task<SeededServeBuild> SeedBuildAsync(
+        SqliteAtlasRepository repository,
+        string dataRoot,
+        string buildId,
+        string recipeId,
+        DateTimeOffset baseTime,
+        CancellationToken cancellationToken)
+    {
+        var snapshot = CreateServeSnapshot(buildId, baseTime);
+        await repository.SaveSnapshotAsync(snapshot, cancellationToken);
+        var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
+            repository,
+            dataRoot,
+            buildId,
+            recipeId,
+            ToolInstanceId,
+            ProfileDigest,
+            PolicyDigest,
+            baseTime,
+            cancellationToken);
+        await repository.SetPreferredExtractionAsync(
+            new PreferredExtraction(
+                buildId,
+                seeded.Extraction.ExtractionId,
+                seeded.Report.ValidatedAtUtc,
+                ExtractionPreferenceReason.ManualPromotion),
+            cancellationToken);
+        return new SeededServeBuild(snapshot, seeded.Extraction.ExtractionId);
+    }
+
+    private static EnvironmentSnapshot CreateServeSnapshot(string buildId, DateTimeOffset baseTime) =>
+        ExtractionSeed.CreateSnapshot(buildId, baseTime, LeakInstallationRoot, ServeDependencies());
+
+    private static IReadOnlyList<DependencyVersion> ServeDependencies() =>
+    [
+        new DependencyVersion(
+            DependencyKind.MelonLoader,
+            "1.0.0",
+            "\\\\servefake-host\\share\\mods\\FakeMod.dll",
+            true,
+            new string('e', 64)),
+        new DependencyVersion(
+            DependencyKind.Sideload,
+            "0.2",
+            $"D:\\{LeakOutsideToken}\\tools\\HelperMod.dll",
+            true,
+            new string('f', 64)),
+        new DependencyVersion(
+            DependencyKind.Sideload,
+            "0.3",
+            "mods\\LocalMod.dll",
+            true,
+            null),
+        new DependencyVersion(
+            DependencyKind.S1Api,
+            "9.9",
+            null,
+            false,
+            null),
+    ];
 
     public async ValueTask DisposeAsync()
     {
@@ -156,53 +268,91 @@ public sealed class SyntheticAtlas : IAsyncDisposable
         return builder.ToString();
     }
 
+    // The current variant is the full Widget graph (thirty paged types and the
+    // hostile type included); the historical variant drops the paged and
+    // hostile types plus CheckPhysics and adds Turbo, so A-to-B diffs cover
+    // every classification. Symbol IDs take a per-index prefix because they
+    // are globally unique; canonical keys stay identical across variants.
+    private sealed record GameIndexVariant(
+        string IdPrefix,
+        bool IncludeCheckPhysics,
+        bool IncludeHostile,
+        bool IncludePaged,
+        bool IncludeTurbo,
+        string RunBodyFingerprint)
+    {
+        public static GameIndexVariant Current { get; } =
+            new("", true, true, true, false, "fp-run-body-current");
+
+        public static GameIndexVariant Historical { get; } =
+            new("a-", false, false, false, true, "fp-run-body-historical");
+    }
+
     private static async Task SeedGameIndexAsync(
         SqliteAtlasRepository repository,
         string dataRoot,
+        EnvironmentSnapshot snapshot,
+        string gameIndexId,
+        string snapshotId,
+        GameIndexVariant variant,
         string extractionId,
+        int createdMinutes,
+        int completedMinutes,
         CancellationToken cancellationToken)
     {
-        var createdAtUtc = BaseTime.AddMinutes(20).ToString("O");
+        var createdAtUtc = BaseTime.AddMinutes(createdMinutes).ToString("O");
         await repository.CreateCodeSnapshotAsync(
             new CodeSnapshotRecord(
-                GameSnapshotId,
+                snapshotId,
                 CodebaseKind.ScheduleI,
                 CodeChannel.Installed,
                 extractionId,
                 createdAtUtc,
-                EnvironmentSnapshotId.Create(
-                    ExtractionSeed.CreateSnapshot(BuildIdValue, BaseTime))),
+                EnvironmentSnapshotId.Create(snapshot)),
             cancellationToken);
         await repository.StartIndexRunAsync(
             new IndexRunRecord(
-                GameIndexIdValue,
-                GameSnapshotId,
+                gameIndexId,
+                snapshotId,
                 IndexRunStatus.Running,
                 createdAtUtc),
             cancellationToken);
 
         var indexRoot = Path.Combine(
-            dataRoot, "builds", BuildIdValue, "indexes", GameIndexIdValue);
-        var widgetFile = await WriteSourceFileAsync(
-            indexRoot, GameSnapshotId, "Assembly-CSharp.cs", GameSourceText, cancellationToken);
-        var pagedFile = await WriteSourceFileAsync(
-            indexRoot, GameSnapshotId, "Paged.cs", PagedSourceText(), cancellationToken);
-        var hostileFile = await WriteSourceFileAsync(
-            indexRoot, GameSnapshotId, "Hostile.cs", HostileSourceText, cancellationToken);
+            dataRoot, "builds", snapshot.Build.BuildId, "indexes", gameIndexId);
+        var files = new List<IndexSourceFileRecord>
+        {
+            await WriteSourceFileAsync(
+                indexRoot, snapshotId, "Assembly-CSharp.cs", GameSourceText, cancellationToken)
+        };
+        IndexSourceFileRecord? hostileFile = null;
+        if (variant.IncludePaged)
+        {
+            files.Add(await WriteSourceFileAsync(
+                indexRoot, snapshotId, "Paged.cs", PagedSourceText(), cancellationToken));
+        }
 
+        if (variant.IncludeHostile)
+        {
+            hostileFile = await WriteSourceFileAsync(
+                indexRoot, snapshotId, "Hostile.cs", HostileSourceText, cancellationToken);
+            files.Add(hostileFile);
+        }
+
+        string Sid(string id) => variant.IdPrefix + id;
         var symbols = new List<IndexSymbolRecord>
         {
             new(
-                WidgetTypeId,
-                GameSnapshotId,
+                Sid(WidgetTypeId),
+                snapshotId,
                 "ScheduleI:Installed:Type:Demo.Widget",
                 "Type",
                 TypeSelector,
                 TypeSelector,
                 false),
             new(
-                RunMethodId,
-                GameSnapshotId,
+                Sid(RunMethodId),
+                snapshotId,
                 "ScheduleI:Installed:Method:Demo.Widget::Run()",
                 "Method",
                 "Demo.Widget.Run",
@@ -210,25 +360,16 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 false,
                 BodyRecoveryStatus.Recovered),
             new(
-                CheckPhysicsMethodId,
-                GameSnapshotId,
-                "ScheduleI:Installed:Method:Demo.Widget::CheckPhysics()",
-                "Method",
-                "Demo.Widget.CheckPhysics",
-                "System.Void Demo.Widget::CheckPhysics()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                StateFieldId,
-                GameSnapshotId,
+                Sid(StateFieldId),
+                snapshotId,
                 "ScheduleI:Installed:Field:Demo.Widget::System.Int32 _state",
                 "Field",
                 "Demo.Widget._state",
                 "System.Int32 Demo.Widget::_state",
                 false),
             new(
-                CallerMethodId,
-                GameSnapshotId,
+                Sid(CallerMethodId),
+                snapshotId,
                 "ScheduleI:Installed:Method:Demo.Caller::Invoke()",
                 "Method",
                 "Demo.Caller.Invoke",
@@ -236,8 +377,8 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 false,
                 BodyRecoveryStatus.Recovered),
             new(
-                ExecuteMethodId,
-                GameSnapshotId,
+                Sid(ExecuteMethodId),
+                snapshotId,
                 "ScheduleI:Installed:Method:Demo.Service::Execute()",
                 "Method",
                 "Demo.Service.Execute",
@@ -245,129 +386,170 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 false,
                 BodyRecoveryStatus.Recovered),
             new(
-                BaseTypeId,
-                GameSnapshotId,
+                Sid(BaseTypeId),
+                snapshotId,
                 "ScheduleI:Installed:Type:Demo.WidgetBase",
                 "Type",
                 "Demo.WidgetBase",
                 "Demo.WidgetBase",
                 false),
             new(
-                PayloadTypeId,
-                GameSnapshotId,
+                Sid(PayloadTypeId),
+                snapshotId,
                 "ScheduleI:Installed:Type:Demo.Payload",
                 "Type",
                 "Demo.Payload",
                 "Demo.Payload",
                 false),
             new(
-                ResultTypeId,
-                GameSnapshotId,
+                Sid(ResultTypeId),
+                snapshotId,
                 "ScheduleI:Installed:Type:Demo.Result",
                 "Type",
                 "Demo.Result",
                 "Demo.Result",
                 false),
-            new(
-                HostileTypeId,
-                GameSnapshotId,
+        };
+        if (variant.IncludeCheckPhysics)
+        {
+            symbols.Add(new IndexSymbolRecord(
+                Sid(CheckPhysicsMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Widget::CheckPhysics()",
+                "Method",
+                "Demo.Widget.CheckPhysics",
+                "System.Void Demo.Widget::CheckPhysics()",
+                false,
+                BodyRecoveryStatus.Recovered));
+        }
+
+        if (variant.IncludeHostile)
+        {
+            symbols.Add(new IndexSymbolRecord(
+                Sid(HostileTypeId),
+                snapshotId,
                 "ScheduleI:Installed:Type:Evil.Hostile",
                 "Type",
                 HostileQualifiedName,
                 "Evil.Hostile",
-                false),
-        };
-        for (var number = 1; number <= PagedTypeCount; number++)
-        {
-            var name = string.Format(
-                CultureInfo.InvariantCulture, "Paged.PagedType{0:00}", number);
-            symbols.Add(new IndexSymbolRecord(
-                string.Format(CultureInfo.InvariantCulture, "type-serve-paged-{0:00}", number),
-                GameSnapshotId,
-                "ScheduleI:Installed:Type:" + name,
-                "Type",
-                name,
-                name,
                 false));
         }
 
+        if (variant.IncludeTurbo)
+        {
+            symbols.Add(new IndexSymbolRecord(
+                Sid("method-serve-turbo"),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Widget::Turbo()",
+                "Method",
+                TurboQualifiedName,
+                "System.Void Demo.Widget::Turbo()",
+                false,
+                BodyRecoveryStatus.Recovered));
+        }
+
+        if (variant.IncludePaged)
+        {
+            for (var number = 1; number <= PagedTypeCount; number++)
+            {
+                var name = string.Format(
+                    CultureInfo.InvariantCulture, "Paged.PagedType{0:00}", number);
+                symbols.Add(new IndexSymbolRecord(
+                    Sid(string.Format(CultureInfo.InvariantCulture, "type-serve-paged-{0:00}", number)),
+                    snapshotId,
+                    "ScheduleI:Installed:Type:" + name,
+                    "Type",
+                    name,
+                    name,
+                    false));
+            }
+        }
+
+        var widgetFileId = files[0].SourceFileId;
+        var locations = new List<IndexSourceLocationRecord>
+        {
+            new(Sid(WidgetTypeId), widgetFileId, 5, 1, 10, 2),
+            new(Sid(RunMethodId), widgetFileId, 8, 5, 8, 26),
+            new(Sid(StateFieldId), widgetFileId, 7, 5, 7, 22),
+        };
+        if (variant.IncludeCheckPhysics)
+        {
+            locations.Add(new IndexSourceLocationRecord(
+                Sid(CheckPhysicsMethodId), widgetFileId, 9, 5, 9, 71));
+        }
+
+        if (variant.IncludeHostile && hostileFile is not null)
+        {
+            locations.Add(new IndexSourceLocationRecord(
+                Sid(HostileTypeId), hostileFile.SourceFileId, 2, 1, 5, 2));
+        }
+
         await repository.CompleteIndexRunAsync(
-            GameIndexIdValue,
+            gameIndexId,
             new IndexWriteSet(
                 symbols,
-                [widgetFile, pagedFile, hostileFile],
-                [
-                    new IndexSourceLocationRecord(
-                        WidgetTypeId, widgetFile.SourceFileId, 5, 1, 10, 2),
-                    new IndexSourceLocationRecord(
-                        RunMethodId, widgetFile.SourceFileId, 8, 5, 8, 26),
-                    new IndexSourceLocationRecord(
-                        CheckPhysicsMethodId, widgetFile.SourceFileId, 9, 5, 9, 71),
-                    new IndexSourceLocationRecord(
-                        StateFieldId, widgetFile.SourceFileId, 7, 5, 7, 22),
-                    new IndexSourceLocationRecord(
-                        HostileTypeId, hostileFile.SourceFileId, 2, 1, 5, 2),
-                ],
-                [],
+                files,
+                locations,
+                [new IndexFingerprintRecord(Sid(RunMethodId), "method-body", variant.RunBodyFingerprint)],
                 [
                     new IndexRelationshipRecord(
-                        "rel-serve-incoming",
-                        GameSnapshotId,
-                        CallerMethodId,
-                        RunMethodId,
+                        Sid("rel-serve-incoming"),
+                        snapshotId,
+                        Sid(CallerMethodId),
+                        Sid(RunMethodId),
                         null,
                         "Calls",
                         "fixture:incoming-call"),
                     new IndexRelationshipRecord(
-                        "rel-serve-outgoing",
-                        GameSnapshotId,
-                        RunMethodId,
-                        ExecuteMethodId,
+                        Sid("rel-serve-outgoing"),
+                        snapshotId,
+                        Sid(RunMethodId),
+                        Sid(ExecuteMethodId),
                         null,
                         "Calls",
                         "fixture:outgoing-call"),
                     new IndexRelationshipRecord(
-                        "rel-serve-inherits",
-                        GameSnapshotId,
-                        WidgetTypeId,
-                        BaseTypeId,
+                        Sid("rel-serve-inherits"),
+                        snapshotId,
+                        Sid(WidgetTypeId),
+                        Sid(BaseTypeId),
                         null,
                         "Inherits",
                         "fixture:inherits"),
                     new IndexRelationshipRecord(
-                        "rel-serve-parameter",
-                        GameSnapshotId,
-                        RunMethodId,
-                        PayloadTypeId,
+                        Sid("rel-serve-parameter"),
+                        snapshotId,
+                        Sid(RunMethodId),
+                        Sid(PayloadTypeId),
                         null,
                         "ParameterType",
                         "fixture:parameter-type"),
                     new IndexRelationshipRecord(
-                        "rel-serve-return",
-                        GameSnapshotId,
-                        RunMethodId,
-                        ResultTypeId,
+                        Sid("rel-serve-return"),
+                        snapshotId,
+                        Sid(RunMethodId),
+                        Sid(ResultTypeId),
                         null,
                         "ReturnType",
                         "fixture:return-type"),
                     new IndexRelationshipRecord(
-                        "rel-serve-reads",
-                        GameSnapshotId,
-                        RunMethodId,
-                        StateFieldId,
+                        Sid("rel-serve-reads"),
+                        snapshotId,
+                        Sid(RunMethodId),
+                        Sid(StateFieldId),
                         null,
                         "ReadsField",
                         "fixture:reads-field"),
                     new IndexRelationshipRecord(
-                        "rel-serve-writes",
-                        GameSnapshotId,
-                        ExecuteMethodId,
-                        StateFieldId,
+                        Sid("rel-serve-writes"),
+                        snapshotId,
+                        Sid(ExecuteMethodId),
+                        Sid(StateFieldId),
                         null,
                         "WritesField",
                         "fixture:writes-field"),
                 ]),
-            BaseTime.AddMinutes(21).ToString("O"),
+            BaseTime.AddMinutes(completedMinutes).ToString("O"),
             cancellationToken);
     }
 
@@ -461,7 +643,7 @@ public sealed class SyntheticAtlas : IAsyncDisposable
     {
         Directory.CreateDirectory(indexRoot);
         var sourceFile = new IndexSourceFileRecord(
-            "source-serve-" + relativePath.Replace(".", "-", StringComparison.Ordinal).ToLowerInvariant(),
+            "source-" + snapshotId + "-" + relativePath.Replace(".", "-", StringComparison.Ordinal).ToLowerInvariant(),
             snapshotId,
             relativePath,
             ExtractionSeed.Sha256(sourceText),

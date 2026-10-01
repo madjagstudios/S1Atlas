@@ -11,7 +11,9 @@ internal sealed record SearchModel(
     string Channel,
     int Page,
     int PageSize,
-    SymbolSearchResult Result);
+    SymbolSearchResult Result,
+    string? Build,
+    bool ResultsLinkable);
 
 internal static class SearchView
 {
@@ -21,29 +23,37 @@ internal static class SearchView
         body.Append(Html.PageTitle("Search"));
         body.Append(RenderForm(model));
         var total = model.Result.TotalCount;
-        body.Append($"<p class=\"fact\">FACT: {total} matches in {Html.Escape(Html.CodebaseLabel(model.Codebase))} ({Html.Escape(model.Channel)}).</p>");
+        var scope = model.Build is null ? string.Empty : $" for build {model.Build}";
+        body.Append($"<p class=\"fact\">FACT: {total} matches in {Html.Escape(Html.CodebaseLabel(model.Codebase))} ({Html.Escape(model.Channel)}){Html.Escape(scope)}.</p>");
         if (total == 0)
         {
-            body.Append("<p class=\"derived\">DERIVED: showing 0 of the true total 0.</p>");
+            body.Append("<p class=\"derived\">DERIVED: showing 0 of 0 matches.</p>");
             return Html.Layout("Search", body.ToString());
         }
 
         if (model.Result.Results.Count == 0)
         {
-            body.Append($"<p class=\"derived\">DERIVED: showing 0 of the true total {total}.</p>");
+            body.Append($"<p class=\"derived\">DERIVED: showing 0 of {total} matches.</p>");
             return Html.Layout("Search", body.ToString());
         }
 
         var from = model.Page * model.PageSize + 1;
         var to = Math.Min(from + model.Result.Results.Count - 1, total);
-        body.Append($"<p class=\"derived\">DERIVED: showing {from}&ndash;{to} of the true total {total}.</p>");
+        body.Append($"<p class=\"derived\">DERIVED: showing {from}&ndash;{to} of {total} matches.</p>");
+        if (!model.ResultsLinkable)
+        {
+            body.Append("<p>Symbol pages cover the current build only.</p>");
+        }
+
         body.Append("<ul>");
         foreach (var result in model.Result.Results)
         {
             body.Append("<li>");
             body.Append(Html.CodebaseBadge(result.Codebase));
             body.Append($"<span class=\"badge\">{Html.Escape(Html.KindLabel(result.Kind))}</span> ");
-            body.Append($"<a href=\"/symbol/{Html.UrlSegment(result.SymbolId)}\">{Html.Escape(result.QualifiedName)}</a>");
+            body.Append(model.ResultsLinkable
+                ? $"<a href=\"/symbol/{Html.UrlSegment(result.SymbolId)}\">{Html.Escape(result.QualifiedName)}</a>"
+                : Html.Escape(result.QualifiedName));
             if (!string.IsNullOrWhiteSpace(result.Signature))
             {
                 body.Append($"<br><code>{Html.Escape(result.Signature)}</code>");
@@ -75,6 +85,11 @@ internal static class SearchView
         body.Append(Option("s1api", "S1API", CodebaseValue(model.Codebase)));
         body.Append(Option("s1mapi", "S1MAPI", CodebaseValue(model.Codebase)));
         body.Append("</select> ");
+        if (model.Build is not null)
+        {
+            body.Append($"<input type=\"hidden\" name=\"build\" value=\"{Html.Escape(model.Build)}\"> ");
+        }
+
         body.Append("<button type=\"submit\">Search</button></form>");
         return body.ToString();
     }
@@ -119,6 +134,16 @@ internal static class SearchView
     private static string PageUrl(SearchModel model, int page)
     {
         var query = $"/search?q={Uri.EscapeDataString(model.Query)}&codebase={CodebaseValue(model.Codebase)}&page={page}";
-        return string.IsNullOrEmpty(model.Kind) ? query : query + $"&kind={Uri.EscapeDataString(model.Kind)}";
+        if (!string.IsNullOrEmpty(model.Kind))
+        {
+            query += $"&kind={Uri.EscapeDataString(model.Kind)}";
+        }
+
+        if (model.Build is not null)
+        {
+            query += $"&build={Uri.EscapeDataString(model.Build)}";
+        }
+
+        return query;
     }
 }

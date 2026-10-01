@@ -1,4 +1,5 @@
 using System.Net;
+using S1Atlas.Application.Authority;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Web.Rendering;
@@ -8,6 +9,14 @@ internal static class Html
     internal static string Escape(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
     internal static string UrlSegment(string value) => Uri.EscapeDataString(value);
+
+    internal static string BuildStatusLabel(InstalledBuildHistoryStatus status) => status switch
+    {
+        InstalledBuildHistoryStatus.IndexedVerified => "Indexed and verified",
+        InstalledBuildHistoryStatus.NotIndexed => "Not indexed",
+        InstalledBuildHistoryStatus.IntegrityFailed => "Integrity check failed",
+        _ => status.ToString()
+    };
 
     internal static string CodebaseLabel(CodebaseKind codebase) => codebase switch
     {
@@ -41,7 +50,8 @@ internal static class Html
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
         $"<title>{Escape(title)} - S1Atlas serve</title><style>{Css}</style></head>" +
-        "<body><header><nav><a href=\"/\">Home</a> <a href=\"/search\">Search</a></nav></header>" +
+        "<body><header><nav><a href=\"/\">Home</a> <a href=\"/search\">Search</a> " +
+        "<a href=\"/builds\">Builds</a> <a href=\"/environment\">Environment</a> <a href=\"/diff\">Diff</a></nav></header>" +
         $"<main>{body}</main><footer><p>Local read-only S1Atlas view.</p></footer></body></html>";
 
     internal static string Badge(string text) =>

@@ -18,11 +18,24 @@ public sealed class ServeScopeMissingException : Exception
     }
 }
 
-internal sealed record SearchArgs(string Query, SymbolKind? Kind, CodebaseKind Codebase, int Page);
+internal sealed record SearchArgs(
+    string Query,
+    SymbolKind? Kind,
+    CodebaseKind Codebase,
+    int Page,
+    string? Build);
+
+internal sealed record DiffArgs(
+    string? From,
+    string? To,
+    CodebaseKind Codebase,
+    SymbolKind? Kind,
+    int Page);
 
 internal static class QueryBinding
 {
     internal const int SearchPageSize = 20;
+    internal const int DiffPageSize = 50;
     internal const int DefaultRelationshipLimit = 50;
     internal const int MaxLimit = 500;
 
@@ -35,7 +48,23 @@ internal static class QueryBinding
             query["q"].ToString() ?? string.Empty,
             BindKind(query["kind"].ToString()),
             BindCodebase(query["codebase"].ToString()),
-            BindPage(query["page"].ToString()));
+            BindPage(query["page"].ToString(), MaxPage),
+            BindBuild(query["build"].ToString()));
+
+    internal static string? BindBuild(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    internal static DiffArgs BindDiff(Microsoft.AspNetCore.Http.IQueryCollection query)
+    {
+        var from = query["from"].ToString().Trim();
+        var to = query["to"].ToString().Trim();
+        return new DiffArgs(
+            string.IsNullOrEmpty(from) ? null : from,
+            string.IsNullOrEmpty(to) ? null : to,
+            BindCodebase(query["codebase"].ToString()),
+            BindKind(query["kind"].ToString()),
+            BindPage(query["page"].ToString(), maxPage: null));
+    }
 
     internal static CodebaseKind BindCodebase(string? value) =>
         (string.IsNullOrEmpty(value) ? "schedule-i" : value).ToLowerInvariant() switch
@@ -63,19 +92,21 @@ internal static class QueryBinding
             $"Unknown kind '{value}'. Use type, constructor, method, field, property, or event.");
     }
 
-    internal static int BindPage(string? value)
+    internal static int BindPage(string? value, int? maxPage)
     {
         if (string.IsNullOrEmpty(value))
         {
             return 0;
         }
 
-        if (int.TryParse(value, out var page) && page >= 0 && page <= MaxPage)
+        if (int.TryParse(value, out var page) && page >= 0 && (maxPage is null || page <= maxPage))
         {
             return page;
         }
 
-        throw new ServeInvalidQueryException($"Invalid page '{value}'. Use 0 to {MaxPage}.");
+        throw new ServeInvalidQueryException(maxPage is null
+            ? $"Invalid page '{value}'. Use 0 or a positive integer."
+            : $"Invalid page '{value}'. Use 0 to {maxPage}.");
     }
 
     internal static int BindLimit(string? value, int fallback)

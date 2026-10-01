@@ -1,7 +1,7 @@
-using S1Atlas.Docs.Rendering;
+using S1Atlas.Core.Display;
 using Xunit;
 
-namespace S1Atlas.Docs.Tests.Rendering;
+namespace S1Atlas.Core.Tests.Display;
 
 public sealed class PortalPathDisplayTests
 {

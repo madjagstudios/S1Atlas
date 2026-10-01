@@ -52,8 +52,14 @@ public static class ExtractionSeed
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public static EnvironmentSnapshot CreateSnapshot(string buildId, DateTimeOffset baseTime) =>
-        new(
+    public static EnvironmentSnapshot CreateSnapshot(
+        string buildId,
+        DateTimeOffset baseTime,
+        string? installationRoot = null,
+        IReadOnlyList<DependencyVersion>? dependencies = null)
+    {
+        var root = installationRoot ?? $"C:\\game\\{buildId}";
+        return new(
             IdentityVersion: 2,
             Build: new GameBuild(
                 buildId,
@@ -65,12 +71,13 @@ public static class ExtractionSeed
                 "2022.3",
                 "3164500",
                 buildId,
-                $"C:\\game\\{buildId}",
-                $"C:\\game\\{buildId}\\GameAssembly.dll",
-                $"C:\\game\\{buildId}\\global-metadata.dat"),
-            Dependencies: [],
+                root,
+                $"{root}\\GameAssembly.dll",
+                $"{root}\\global-metadata.dat"),
+            Dependencies: dependencies ?? [],
             AtlasVersion: "0.2.0-test",
             CapturedAtUtc: baseTime);
+    }
 
     public static string Sha256(string text) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
