@@ -17,13 +17,6 @@ Roots: tests
 | tests/S1Atlas.Core.Tests/Indexing/ | 5 |
 | tests/S1Atlas.Core.Tests/Scenes/ | 2 |
 | tests/S1Atlas.Core.Tests/Tools/ | 2 |
-| tests/S1Atlas.Docs.Tests/ | 2 |
-| tests/S1Atlas.Docs.Tests/Content/ | 1 |
-| tests/S1Atlas.Docs.Tests/Determinism/ | 1 |
-| tests/S1Atlas.Docs.Tests/Generation/ | 1 |
-| tests/S1Atlas.Docs.Tests/Identity/ | 1 |
-| tests/S1Atlas.Docs.Tests/Rendering/ | 1 |
-| tests/S1Atlas.Docs.Tests/Source/ | 1 |
 | tests/S1Atlas.Extraction.Tests/ | 4 |
 | tests/S1Atlas.Extraction.Tests/Attempts/ | 3 |
 | tests/S1Atlas.Extraction.Tests/Cleanup/ | 4 |
@@ -63,7 +56,7 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Indexing/ | 4 |
 | tests/S1Atlas.IntegrationTests/NativeRecovery/ | 1 |
 | tests/S1Atlas.IntegrationTests/Performance/ | 1 |
-| tests/S1Atlas.IntegrationTests/Repository/ | 1 |
+| tests/S1Atlas.IntegrationTests/Repository/ | 4 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
 | tests/S1Atlas.Mcp.Tests/ | 13 |

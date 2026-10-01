@@ -13,7 +13,7 @@ analysis workflow behind it?
 
 ## Proposed capability
 
-What should the tool do? Which surface — CLI, MCP, or the HTML portal?
+What should the tool do? Which surface — CLI, MCP, or the local web app?
 
 ## Provenance expectations
 

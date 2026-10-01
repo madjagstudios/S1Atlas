@@ -20,7 +20,6 @@
     <ProjectReference Include="..\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
     <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
     <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
-    <ProjectReference Include="..\S1Atlas.Docs\S1Atlas.Docs.csproj" />
     <ProjectReference Include="..\S1Atlas.NativeRecovery\S1Atlas.NativeRecovery.csproj" />
     <ProjectReference Include="..\S1Atlas.Web\S1Atlas.Web.csproj" />
     <PackageReference Include="System.CommandLine" Version="2.0.10" />

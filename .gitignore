@@ -59,6 +59,7 @@ reconstructed/
 decompiled/
 candidate-output/
 retained-output/
+# Legacy output from the removed `docs generate` command; contains game content.
 s1atlas-docs/
 
 # Local tool-loop scratch (see CONTRIBUTING.md). Root-anchored with an
