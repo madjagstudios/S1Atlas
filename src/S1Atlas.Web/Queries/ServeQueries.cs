@@ -1,5 +1,6 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Composition;
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Query;
@@ -36,8 +37,35 @@ public sealed class ServeQueries
         _api = new ApiIndexQueryService(services.Repository, services.IndexQueryService);
     }
 
-    public Task<InstalledBuildAuthority> ResolveAuthorityAsync(CancellationToken ct) =>
-        WithStoreAsync(token => _services.AuthorityResolver.ResolveAsync(null, token), ct);
+    public Task<InstalledBuildAuthority> ResolveAuthorityAsync(
+        CancellationToken ct,
+        string? buildId = null) =>
+        WithStoreAsync(token => _services.AuthorityResolver.ResolveAsync(buildId, token), ct);
+
+    public Task<InstalledBuildHistoryResult> GetHistoryAsync(CancellationToken ct) =>
+        WithStoreAsync(token => _services.InstalledBuildHistoryQueryService.GetHistoryAsync(token), ct);
+
+    public Task<EnvironmentSnapshot?> GetCurrentSnapshotAsync(CancellationToken ct) =>
+        WithStoreAsync(token => _services.Repository.GetCurrentSnapshotAsync(token), ct);
+
+    public Task<BuildDiffResult> DiffAsync(
+        string indexIdA,
+        string indexIdB,
+        string? kindFilter,
+        CancellationToken ct) =>
+        WithStoreAsync(
+            token => _services.BuildDiffService.DiffAsync(
+                indexIdA, indexIdB, "ScheduleI", "Installed", kindFilter, token),
+            ct);
+
+    public Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsAsync(
+        IndexRunRecord run,
+        string canonicalKey,
+        CancellationToken ct) =>
+        WithStoreAsync(
+            token => _services.IndexQueryService.GetCanonicalSymbolsInIndexAsync(
+                run, CodebaseKind.ScheduleI, CodeChannel.Installed, canonicalKey, token),
+            ct);
 
     public Task<ApiIndexCatalogResult> ListApiCatalogAsync(CancellationToken ct) =>
         WithStoreAsync(token => _api.ListAsync(null, token), ct);

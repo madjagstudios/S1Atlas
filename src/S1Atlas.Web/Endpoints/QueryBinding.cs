@@ -18,7 +18,12 @@ public sealed class ServeScopeMissingException : Exception
     }
 }
 
-internal sealed record SearchArgs(string Query, SymbolKind? Kind, CodebaseKind Codebase, int Page);
+internal sealed record SearchArgs(
+    string Query,
+    SymbolKind? Kind,
+    CodebaseKind Codebase,
+    int Page,
+    string? Build);
 
 internal static class QueryBinding
 {
@@ -35,7 +40,11 @@ internal static class QueryBinding
             query["q"].ToString() ?? string.Empty,
             BindKind(query["kind"].ToString()),
             BindCodebase(query["codebase"].ToString()),
-            BindPage(query["page"].ToString()));
+            BindPage(query["page"].ToString(), MaxPage),
+            BindBuild(query["build"].ToString()));
+
+    internal static string? BindBuild(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     internal static CodebaseKind BindCodebase(string? value) =>
         (string.IsNullOrEmpty(value) ? "schedule-i" : value).ToLowerInvariant() switch
@@ -63,19 +72,21 @@ internal static class QueryBinding
             $"Unknown kind '{value}'. Use type, constructor, method, field, property, or event.");
     }
 
-    internal static int BindPage(string? value)
+    internal static int BindPage(string? value, int? maxPage)
     {
         if (string.IsNullOrEmpty(value))
         {
             return 0;
         }
 
-        if (int.TryParse(value, out var page) && page >= 0 && page <= MaxPage)
+        if (int.TryParse(value, out var page) && page >= 0 && (maxPage is null || page <= maxPage))
         {
             return page;
         }
 
-        throw new ServeInvalidQueryException($"Invalid page '{value}'. Use 0 to {MaxPage}.");
+        throw new ServeInvalidQueryException(maxPage is null
+            ? $"Invalid page '{value}'. Use 0 or a positive integer."
+            : $"Invalid page '{value}'. Use 0 to {maxPage}.");
     }
 
     internal static int BindLimit(string? value, int fallback)

@@ -16,7 +16,7 @@ public sealed class SearchBuildTests
         var body = await fixture.GetStringAsync(
             $"/search?q=Turbo&build={SyntheticAtlas.BuildIdAValue}", cancellationToken);
 
-        Assert.Contains("FACT: 1 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 1 matches in Schedule I (Installed) for build build-serve-a.", body);
         Assert.Contains(SyntheticAtlas.TurboQualifiedName, body);
     }
 
@@ -29,7 +29,7 @@ public sealed class SearchBuildTests
         var body = await fixture.GetStringAsync(
             $"/search?q=CheckPhysics&build={SyntheticAtlas.BuildIdAValue}", cancellationToken);
 
-        Assert.Contains("FACT: 0 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 0 matches in Schedule I (Installed) for build build-serve-a.", body);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class SearchBuildTests
         var body = await fixture.GetStringAsync(
             $"/search?q=Widget&build={SyntheticAtlas.BuildIdBValue}", cancellationToken);
 
-        Assert.Contains("FACT: 5 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 5 matches in Schedule I (Installed) for build build-serve-b.", body);
         Assert.Contains($"/symbol/{SyntheticAtlas.RunMethodId}", body);
     }
 
@@ -68,7 +68,7 @@ public sealed class SearchBuildTests
         using var api = await fixture.GetAsync("/api/search?q=Widget&build=no-such-build", cancellationToken);
         var apiBody = await api.Content.ReadAsStringAsync(cancellationToken);
 
-        Assert.Contains("not indexed", page);
+        Assert.Contains("The requested build was not found.", page);
         Assert.Equal(HttpStatusCode.BadRequest, api.StatusCode);
         using var json = JsonDocument.Parse(apiBody);
         Assert.Equal("invalid", json.RootElement.GetProperty("status").GetString());
