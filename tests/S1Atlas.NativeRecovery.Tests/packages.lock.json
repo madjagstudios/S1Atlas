@@ -332,10 +332,10 @@
       "s1atlas.application": {
         "type": "Project",
         "dependencies": {
-          "S1Atlas.Core": "[1.5.0, )",
-          "S1Atlas.Extraction": "[1.5.0, )",
-          "S1Atlas.Indexing": "[1.5.0, )",
-          "S1Atlas.Storage": "[1.5.0, )"
+          "S1Atlas.Core": "[1.0.0, )",
+          "S1Atlas.Extraction": "[1.0.0, )",
+          "S1Atlas.Indexing": "[1.0.0, )",
+          "S1Atlas.Storage": "[1.0.0, )"
         }
       },
       "s1atlas.core": {
@@ -346,7 +346,7 @@
         "dependencies": {
           "AssetsTools.NET": "[3.0.5, )",
           "AssetsTools.NET.MonoCecil": "[3.0.4, )",
-          "S1Atlas.Core": "[1.5.0, )"
+          "S1Atlas.Core": "[1.0.0, )"
         }
       },
       "s1atlas.indexing": {
@@ -354,17 +354,17 @@
         "dependencies": {
           "ICSharpCode.Decompiler": "[10.1.1.8388, )",
           "Microsoft.CodeAnalysis.CSharp": "[5.6.0, )",
-          "S1Atlas.Core": "[1.5.0, )",
-          "S1Atlas.Extraction": "[1.5.0, )"
+          "S1Atlas.Core": "[1.0.0, )",
+          "S1Atlas.Extraction": "[1.0.0, )"
         }
       },
       "s1atlas.nativerecovery": {
         "type": "Project",
         "dependencies": {
           "Iced": "[1.21.0, )",
-          "S1Atlas.Application": "[1.5.0, )",
-          "S1Atlas.Core": "[1.5.0, )",
-          "S1Atlas.Indexing": "[1.5.0, )",
+          "S1Atlas.Application": "[1.0.0, )",
+          "S1Atlas.Core": "[1.0.0, )",
+          "S1Atlas.Indexing": "[1.0.0, )",
           "Samboy063.LibCpp2IL": "[2022.1.0-pre-release.21, )"
         }
       },
@@ -372,16 +372,13 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite": "[8.0.29, )",
-          "S1Atlas.Core": "[1.5.0, )"
+          "S1Atlas.Core": "[1.0.0, )"
         }
       },
       "s1atlas.testsupport": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Data.Sqlite": "[8.0.29, )",
-          "S1Atlas.Core": "[1.5.0, )",
-          "S1Atlas.Extraction": "[1.5.0, )",
-          "S1Atlas.Storage": "[1.5.0, )"
+          "Microsoft.Data.Sqlite": "[8.0.29, )"
         }
       }
     }
