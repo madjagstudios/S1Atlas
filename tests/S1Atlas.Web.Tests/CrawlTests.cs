@@ -4,13 +4,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed partial class CrawlTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public CrawlTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task CrawlFromLandingReachesEveryViewWithoutErrors()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<string>();

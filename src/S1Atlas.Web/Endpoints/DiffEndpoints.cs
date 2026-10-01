@@ -207,6 +207,20 @@ internal static class DiffEndpoints
         }
 
         var diff = await queries.DiffAsync(indexIdA, indexIdB, kind?.ToString(), ct);
+        var lastPage = diff.Changes.Count == 0
+            ? 0
+            : (diff.Changes.Count - 1) / QueryBinding.DiffPageSize;
+        if (page > lastPage)
+        {
+            var message = $"Page {page} is beyond the last page ({lastPage}) for this diff.";
+            return new DiffOutcome(
+                null,
+                null,
+                message,
+                StatusCodes.Status400BadRequest,
+                ToolEnvelope<ServeDiffResult>.Invalid(new ToolError("InvalidPage", message)));
+        }
+
         var current = await queries.ResolveAuthorityAsync(ct);
         var currentRun = current.Status == InstalledBuildAuthorityStatus.Resolved
             ? current.IndexRun

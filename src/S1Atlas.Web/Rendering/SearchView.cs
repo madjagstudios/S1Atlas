@@ -25,6 +25,10 @@ internal static class SearchView
         var total = model.Result.TotalCount;
         var scope = model.Build is null ? string.Empty : $" for build {model.Build}";
         body.Append($"<p class=\"fact\">FACT: {total} matches in {Html.Escape(Html.CodebaseLabel(model.Codebase))} ({Html.Escape(model.Channel)}){Html.Escape(scope)}.</p>");
+        if (model.Result.SearchNotice is not null)
+        {
+            body.Append($"<p class=\"fact\">FACT: {Html.Escape(model.Result.SearchNotice)}</p>");
+        }
         if (total == 0)
         {
             body.Append("<p class=\"derived\">DERIVED: showing 0 of 0 matches.</p>");

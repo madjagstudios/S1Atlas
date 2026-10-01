@@ -5,13 +5,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class EnvironmentTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public EnvironmentTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task EnvironmentRedactsPathsButShowsFacts()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/environment", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -47,7 +55,7 @@ public sealed class EnvironmentTests
     public async Task ApiEnvironmentRedactsPaths()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/environment", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);

@@ -5,13 +5,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class BuildsTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public BuildsTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task BuildsListShowsNewestFirstWithLabels()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/builds", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -30,7 +38,7 @@ public sealed class BuildsTests
     public async Task BuildDetailShowsFactsSurfacesDiffsAndEnvironment()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/builds/{SyntheticAtlas.BuildIdBValue}", cancellationToken);
@@ -50,7 +58,7 @@ public sealed class BuildsTests
     public async Task HistoricalBuildDetailOmitsEnvironmentLink()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/builds/{SyntheticAtlas.BuildIdAValue}", cancellationToken);
@@ -68,7 +76,7 @@ public sealed class BuildsTests
     public async Task UnknownBuildIs404()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/builds/no-such-build", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -92,7 +100,7 @@ public sealed class BuildsTests
     public async Task ApiBuildsListsNewestFirst()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/builds", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -114,7 +122,7 @@ public sealed class BuildsTests
     public async Task ApiBuildDetailReportsSurfacesAndDiffs()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/builds/{SyntheticAtlas.BuildIdBValue}", cancellationToken);
@@ -141,7 +149,7 @@ public sealed class BuildsTests
     public async Task ApiBuildDetailUnknownIdIsNotFound()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/builds/no-such-build", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);

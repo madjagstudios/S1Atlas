@@ -240,6 +240,11 @@ internal sealed class SqliteMigrationRunner
         bool createLedger,
         CancellationToken cancellationToken)
     {
+        if (migration.RequiresFts5Trigram)
+        {
+            await RequireFts5TrigramAsync(connection, migration, cancellationToken);
+        }
+
         if (!migration.RequiresTransaction)
         {
             if (createLedger)
@@ -530,6 +535,35 @@ internal sealed class SqliteMigrationRunner
         new(
             $"Atlas database migration {migration.Version} '{migration.Name}' failed.",
             exception);
+
+    // Proves the SQLite build can run FTS5 with the trigram tokenizer before
+    // the migration touches the atlas. The probe is a TEMP table, so it never
+    // lands in the database file.
+    private static async Task RequireFts5TrigramAsync(
+        SqliteConnection connection,
+        SqliteMigration migration,
+        CancellationToken cancellationToken)
+    {
+        await using var probe = connection.CreateCommand();
+        probe.CommandText = "CREATE VIRTUAL TABLE temp.__fts5_trigram_probe USING fts5(x, tokenize='trigram');";
+        try
+        {
+            await probe.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            throw CreateMigrationFailure(
+                migration,
+                new InvalidOperationException(
+                    "This SQLite build lacks FTS5 with the trigram tokenizer, which this migration requires. " +
+                    "Upgrade Microsoft.Data.Sqlite to a build with FTS5 enabled.",
+                    exception));
+        }
+
+        await using var drop = connection.CreateCommand();
+        drop.CommandText = "DROP TABLE temp.__fts5_trigram_probe;";
+        await drop.ExecuteNonQueryAsync(cancellationToken);
+    }
 
     private sealed record AppliedMigration(
         int Version,

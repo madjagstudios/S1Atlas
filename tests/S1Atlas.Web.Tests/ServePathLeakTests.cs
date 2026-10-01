@@ -7,13 +7,21 @@ namespace S1Atlas.Web.Tests;
 // Mirrors the AT-82 portal leak test: serve renders redacted display paths,
 // so no view or API response may carry the fixture installation root, any
 // drive-letter path, or any UNC prefix.
+[Collection("TwoBuildServe")]
 public sealed partial class ServePathLeakTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public ServePathLeakTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task ServingNeverEmitsAbsoluteLocalPaths()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
         var dataRoot = fixture.Atlas.DataRoot;
 
         string[] paths =

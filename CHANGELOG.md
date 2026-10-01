@@ -8,6 +8,18 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Indexed, ranked search for `s1atlas serve` plus serve performance targets**
+  (AT-88): schema migration v16 adds a trigram FTS5 index over symbol names
+  and signatures (kept in sync by triggers, with a prefix index for 1-2
+  character queries), and serve search now ranks exact simple-name matches
+  first, then name prefixes, then substring matches by relevance. On an atlas
+  that has not been migrated yet, serve falls back to the previous unranked
+  search with a visible note instead of migrating. Serve also rejects `/diff`
+  pages beyond the last page and caches the last 8 diff results in memory.
+  CLI and MCP search behaviour is unchanged. An opt-in local-game test
+  measures serve cold start, search latency, and diff page times against the
+  acceptance targets (start under 3 s, search p95 under 200 ms).
+
 - **`s1atlas serve` parity views: builds, environment, diffs, navigation**
   (AT-88): the local web app gains `/builds` and `/builds/<id>` (status
   labels, per-codebase counts linking into build-scoped search, adjacent

@@ -4,7 +4,8 @@ using S1Atlas.TestSupport.Seeding;
 namespace S1Atlas.Web.Tests;
 
 // Seeds a synthetic atlas and serves it on an ephemeral loopback port. Each
-// test gets its own atlas and server, so tests never share database state.
+// created fixture gets its own atlas and server, so tests never share
+// database state unless they opt into SharedTwoBuildServeFixture.
 public sealed class ServeFixture : IAsyncDisposable
 {
     private readonly SyntheticAtlas? _atlas;
