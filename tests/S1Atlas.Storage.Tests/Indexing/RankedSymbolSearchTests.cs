@@ -96,9 +96,9 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
         var results = await _repository.SearchRankedSymbolsAsync(
             "index-ranked", "R", 50, cancellationToken);
 
-        Assert.Equal(2, total);
+        Assert.Equal(3, total);
         Assert.Equal(
-            new[] { "method-run", "type-run" },
+            new[] { "field-rust", "method-run", "type-run" },
             results.Select(symbol => symbol.SymbolId).ToArray());
     }
 
