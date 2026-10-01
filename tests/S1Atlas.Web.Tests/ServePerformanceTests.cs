@@ -208,7 +208,7 @@ public sealed class ServePerformanceTests
             ("exact", simple),
             ("prefix", qualifiedName[..Math.Max(6, qualifiedName.Length / 2)]),
             ("substring", qualifiedName.Substring(middle, 6)),
-            ("two-char", qualifiedName[..2]),
+            ("two-char", simple[..2]),
         ];
     }
 

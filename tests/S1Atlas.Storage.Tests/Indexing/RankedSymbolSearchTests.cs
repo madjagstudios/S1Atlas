@@ -54,7 +54,7 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task RankedSearch_TwoCharacterQueryUsesNamePrefix()
+    public async Task RankedSearch_TwoCharacterQueryUsesSimpleNamePrefix()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await SeedRankedIndexAsync(cancellationToken);
@@ -66,20 +66,40 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
 
         Assert.Equal(2, total);
         Assert.Equal(
-            new[] { "field-rust", "type-actor" },
+            new[] { "method-activate", "type-actor" },
             results.Select(symbol => symbol.SymbolId).OrderBy(id => id, StringComparer.Ordinal).ToArray());
     }
 
     [Fact]
-    public async Task RankedSearch_OneCharacterQueryUsesNamePrefix()
+    public async Task RankedSearch_TwoCharacterQueryMatchesSimpleNameAcrossNamespaces()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await SeedRankedIndexAsync(cancellationToken);
 
+        var total = await _repository.CountRankedSymbolMatchesAsync(
+            "index-ranked", "Ui", cancellationToken);
+        var results = await _repository.SearchRankedSymbolsAsync(
+            "index-ranked", "Ui", 50, cancellationToken);
+
+        Assert.Equal(1, total);
+        Assert.Equal("type-ui-manager", Assert.Single(results).SymbolId);
+    }
+
+    [Fact]
+    public async Task RankedSearch_OneCharacterQueryUsesSimpleNamePrefix()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRankedIndexAsync(cancellationToken);
+
+        var total = await _repository.CountRankedSymbolMatchesAsync(
+            "index-ranked", "R", cancellationToken);
         var results = await _repository.SearchRankedSymbolsAsync(
             "index-ranked", "R", 50, cancellationToken);
 
-        Assert.Equal("type-run", Assert.Single(results).SymbolId);
+        Assert.Equal(2, total);
+        Assert.Equal(
+            new[] { "method-run", "type-run" },
+            results.Select(symbol => symbol.SymbolId).ToArray());
     }
 
     [Fact]
@@ -173,7 +193,7 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task ShortQuery_UsesQualifiedNameIndexInsteadOfFullScan()
+    public async Task ShortQuery_UsesSimpleNameIndexInsteadOfFullScan()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await _repository.InitializeAsync(cancellationToken);
@@ -191,7 +211,9 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
         var symbols = new List<IndexSymbolRecord>(20000);
         for (var number = 0; number < 20000; number++)
         {
-            var name = $"P{number % 50:00}.Widget{number}.Run";
+            var first = (char)('A' + (number % 26));
+            var second = (char)('A' + ((number / 26) % 26));
+            var name = $"P{number % 50:00}.Widget{number}.{first}{second}Widget{number}";
             symbols.Add(new IndexSymbolRecord(
                 $"symbol-{number}", snapshot.SnapshotId, $"key-{number}",
                 "Method", name, $"System.Void {name}()", false));
@@ -212,7 +234,8 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
         }
 
         // Mirrors the short-query branch of SearchRankedSymbolsAsync: a
-        // two-character prefix must seek the NOCASE name index, never scan.
+        // two-character simple-name prefix must seek the NOCASE index,
+        // never scan.
         await using var plan = connection.CreateCommand();
         plan.CommandText = """
             EXPLAIN QUERY PLAN
@@ -221,16 +244,16 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
-              AND symbol.qualified_name LIKE $prefix ESCAPE '\'
+              AND symbol.simple_name LIKE $prefix ESCAPE '\'
             LIMIT 20;
             """;
         plan.Parameters.AddWithValue("$indexId", "index-plan");
-        plan.Parameters.AddWithValue("$prefix", "P07%");
+        plan.Parameters.AddWithValue("$prefix", "QJ%");
         var details = new List<string>();
         await using var reader = await plan.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
             details.Add(reader.GetString(3));
-        Assert.Contains(details, detail => detail.Contains("USING INDEX ix_symbols_qualified_name", StringComparison.Ordinal));
+        Assert.Contains(details, detail => detail.Contains("USING INDEX ix_symbols_simple_name", StringComparison.Ordinal));
         Assert.DoesNotContain(details, detail => detail.Contains("SCAN symbols", StringComparison.Ordinal));
     }
 
@@ -298,7 +321,8 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
                     symbol("field-rust", "Ac.Rust", "Field", "System.Int32 Ac::Rust"),
                     symbol("type-actor", "Actor", "Type", "Actor"),
                     symbol("method-activate", "Demo.Widget.Activate", "Method", "System.Void Demo.Widget::Activate()"),
-                    symbol("method-widget-helper", "Demo.Widget.Helper", "Method", "System.Void Demo.Widget::Helper()")
+                    symbol("method-widget-helper", "Demo.Widget.Helper", "Method", "System.Void Demo.Widget::Helper()"),
+                    symbol("type-ui-manager", "Game.UI.UIManager", "Type", "Game.UI.UIManager")
                 ],
                 [], [], [], []),
             "2026-08-20T00:01:00Z",

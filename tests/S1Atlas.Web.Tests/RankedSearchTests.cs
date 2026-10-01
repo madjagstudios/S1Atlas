@@ -40,28 +40,43 @@ public sealed class RankedSearchTests
     }
 
     [Fact]
-    public async Task RankedSearch_TwoCharacterQueryMatchesNamePrefixOnly()
+    public async Task RankedSearch_TwoCharacterQueryMatchesSimpleNamePrefixOnly()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
 
-        var body = await fixture.GetStringAsync("/search?q=De", cancellationToken);
+        var body = await fixture.GetStringAsync("/search?q=Wi", cancellationToken);
 
-        Assert.Contains("FACT: 9 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 2 matches in Schedule I (Installed).", body);
         Assert.Contains("Demo.Widget", body);
+        Assert.Contains("Demo.WidgetBase", body);
         Assert.DoesNotContain("Paged.PagedType01", body);
         Assert.DoesNotContain("Evil.", body);
     }
 
     [Fact]
-    public async Task RankedSearch_OneCharacterQueryMatchesNamePrefixOnly()
+    public async Task RankedSearch_TwoCharacterQueryFindsTypeOutsideNamespacePrefix()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
 
-        var body = await fixture.GetStringAsync("/search?q=D", cancellationToken);
+        var body = await fixture.GetStringAsync("/search?q=Pa", cancellationToken);
 
-        Assert.Contains("FACT: 9 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 31 matches in Schedule I (Installed).", body);
+        Assert.Contains("Demo.Payload", body);
+    }
+
+    [Fact]
+    public async Task RankedSearch_OneCharacterQueryMatchesSimpleNamePrefixOnly()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync("/search?q=R", cancellationToken);
+
+        Assert.Contains("FACT: 2 matches in Schedule I (Installed).", body);
+        Assert.Contains("Demo.Result", body);
+        Assert.Contains("Demo.Widget.Run", body);
     }
 
     [Fact]

@@ -56,15 +56,18 @@ public sealed class SymbolSearchFtsMigrationTests : IAsyncDisposable
 
         Assert.Equal(1L, await ScalarAsync(
             connection,
+            "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'ix_symbols_simple_name';",
+            cancellationToken));
+        Assert.Equal(0L, await ScalarAsync(
+            connection,
             "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'index' AND name = 'ix_symbols_qualified_name';",
             cancellationToken));
         await using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT sql FROM sqlite_schema WHERE name = 'ix_symbols_qualified_name';";
-            Assert.Contains(
-                "COLLATE NOCASE",
-                Convert.ToString(await command.ExecuteScalarAsync(cancellationToken)),
-                StringComparison.Ordinal);
+            command.CommandText = "SELECT sql FROM sqlite_schema WHERE name = 'ix_symbols_simple_name';";
+            var indexSql = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken));
+            Assert.Contains("simple_name", indexSql, StringComparison.Ordinal);
+            Assert.Contains("COLLATE NOCASE", indexSql, StringComparison.Ordinal);
         }
         var symbolColumns = await ReadColumnNamesAsync(connection, "symbols", cancellationToken);
         Assert.Contains("simple_name", symbolColumns);
