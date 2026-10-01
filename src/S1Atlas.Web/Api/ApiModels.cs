@@ -1,4 +1,5 @@
 using S1Atlas.Application.Authority;
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Web.Api;
@@ -29,6 +30,23 @@ public sealed record ServeBuildListResult(
 public sealed record ServeAdjacentDiff(
     string FromBuildId,
     string ToBuildId);
+
+public sealed record ServeEnvironmentDependency(
+    DependencyKind Kind,
+    string? Version,
+    string? Path,
+    bool IsInstalled,
+    string? BinarySha256);
+
+public sealed record ServeEnvironmentResult(
+    string BuildId,
+    string? ExecutableVersion,
+    string? SteamAppId,
+    string? SteamBuildId,
+    string? InstallationRoot,
+    string? GameAssemblyPath,
+    string? GlobalMetadataPath,
+    IReadOnlyList<ServeEnvironmentDependency> Dependencies);
 
 public sealed record ServeBuildResult(
     string BuildId,

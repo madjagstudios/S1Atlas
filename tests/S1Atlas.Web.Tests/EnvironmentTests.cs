@@ -18,14 +18,14 @@ public sealed class EnvironmentTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Contains("recorded (not shown)", body);
-        Assert.Contains("…/game/GameAssembly.dll", body);
-        Assert.Contains("…/mods/FakeMod.dll", body);
-        Assert.Contains("…/tools/HelperMod.dll", body);
+        Assert.Contains("GameAssembly.dll", body);
+        Assert.Contains("FakeMod.dll (outside the installation root)", body);
+        Assert.Contains("HelperMod.dll (outside the installation root)", body);
         Assert.Contains("mods/LocalMod.dll", body);
         Assert.Contains("assembly-build-serve-b", body);
         Assert.Contains("2022.3", body);
         Assert.Contains("3164500", body);
-        Assert.Contains("S1API", body);
+        Assert.Contains("S1Api", body);
         Assert.Contains("missing", body);
         Assert.DoesNotContain(SyntheticAtlas.LeakRootToken, body);
         Assert.DoesNotContain(SyntheticAtlas.LeakOutsideToken, body);
@@ -58,8 +58,8 @@ public sealed class EnvironmentTests
         var data = json.RootElement.GetProperty("data");
         Assert.Equal(SyntheticAtlas.BuildIdBValue, data.GetProperty("buildId").GetString());
         Assert.Equal("recorded (not shown)", data.GetProperty("installationRoot").GetString());
-        Assert.Equal("…/game/GameAssembly.dll", data.GetProperty("gameAssemblyPath").GetString());
-        Assert.Equal("…/game/global-metadata.dat", data.GetProperty("globalMetadataPath").GetString());
+        Assert.Equal("GameAssembly.dll", data.GetProperty("gameAssemblyPath").GetString());
+        Assert.Equal("global-metadata.dat", data.GetProperty("globalMetadataPath").GetString());
         var dependencies = data.GetProperty("dependencies").EnumerateArray().ToArray();
         Assert.Equal(4, dependencies.Length);
         Assert.DoesNotContain(SyntheticAtlas.LeakRootToken, body);

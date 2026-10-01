@@ -54,6 +54,43 @@ public sealed class McpParityTests
     }
 
     [Fact]
+    public async Task EnvironmentMatchesMcpFacts()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var tools = new BuildEnvironmentTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
+
+        using var served = JsonDocument.Parse(
+            await fixture.GetStringAsync("/api/environment", cancellationToken));
+        var envelope = await tools.GetEnvironmentAsync(ct: cancellationToken);
+        using var expected = JsonDocument.Parse(
+            JsonSerializer.Serialize(envelope, ToolJsonOptions.Create()));
+
+        Assert.Equal(
+            expected.RootElement.GetProperty("status").GetString(),
+            served.RootElement.GetProperty("status").GetString());
+        foreach (var property in new[] { "buildId", "executableVersion", "steamAppId", "steamBuildId" })
+        {
+            Assert.Equal(
+                expected.RootElement.GetProperty("data").GetProperty(property).GetString(),
+                served.RootElement.GetProperty("data").GetProperty(property).GetString());
+        }
+
+        var servedDeps = served.RootElement.GetProperty("data").GetProperty("dependencies").EnumerateArray().ToArray();
+        var expectedDeps = expected.RootElement.GetProperty("data").GetProperty("dependencies").EnumerateArray().ToArray();
+        Assert.Equal(expectedDeps.Length, servedDeps.Length);
+        for (var index = 0; index < expectedDeps.Length; index++)
+        {
+            Assert.Equal(
+                expectedDeps[index].GetProperty("kind").GetString(),
+                servedDeps[index].GetProperty("kind").GetString());
+            Assert.Equal(
+                expectedDeps[index].GetProperty("isInstalled").GetBoolean(),
+                servedDeps[index].GetProperty("isInstalled").GetBoolean());
+        }
+    }
+
+    [Fact]
     public async Task GameSymbolMatchesMcpData()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
