@@ -105,6 +105,89 @@ public sealed class OpenCommandTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Open_IgnoresProxyEnvironmentVariables()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var atlas = await SyntheticAtlas.SeedServeFixtureAsync(cancellationToken);
+        var host = ServeHost.Create(new ServeOptions(atlas.DataRoot, 0));
+        await using (host)
+        {
+            await host.StartAsync(cancellationToken);
+            await WaitForServeAsync(host.BaseAddress.Port, cancellationToken);
+            var names = new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY" };
+            var originals = names.ToDictionary(
+                name => name,
+                name => Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Process));
+            try
+            {
+                // A dead proxy plus no bypass: if the probe honored the
+                // proxy, it would fail and the URL would never open.
+                Environment.SetEnvironmentVariable("HTTP_PROXY", "http://127.0.0.1:9/", EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("HTTPS_PROXY", "http://127.0.0.1:9/", EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("ALL_PROXY", "http://127.0.0.1:9/", EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("NO_PROXY", null, EnvironmentVariableTarget.Process);
+
+                var launcher = new RecordingLauncher();
+                var application = CreateApplication(atlas.DataRoot, launcher);
+                var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
+
+                var (exitCode, standardOutput) = (1, "");
+                for (var attempt = 0; attempt < 3 && launcher.Launched.Count == 0; attempt++)
+                    (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
+
+                var expected = $"http://127.0.0.1:{host.BaseAddress.Port}/symbol/{SyntheticAtlas.WidgetTypeId}";
+                Assert.Equal(0, exitCode);
+                Assert.Equal(expected, standardOutput.Trim());
+                Assert.Equal(expected, Assert.Single(launcher.Launched).ToString());
+            }
+            finally
+            {
+                foreach (var (name, value) in originals)
+                    Environment.SetEnvironmentVariable(name, value, EnvironmentVariableTarget.Process);
+                await host.StopAsync(CancellationToken.None);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Open_IgnoresProcessProxy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var atlas = await SyntheticAtlas.SeedServeFixtureAsync(cancellationToken);
+        var host = ServeHost.Create(new ServeOptions(atlas.DataRoot, 0));
+        await using (host)
+        {
+            await host.StartAsync(cancellationToken);
+            await WaitForServeAsync(host.BaseAddress.Port, cancellationToken);
+            var original = HttpClient.DefaultProxy;
+            try
+            {
+                // A dead process-wide proxy: if the probe honored it, the
+                // request would fail and the URL would never open.
+                HttpClient.DefaultProxy = new WebProxy("http://127.0.0.1:9/") { BypassProxyOnLocal = false };
+
+                var launcher = new RecordingLauncher();
+                var application = CreateApplication(atlas.DataRoot, launcher);
+                var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
+
+                var (exitCode, standardOutput) = (1, "");
+                for (var attempt = 0; attempt < 3 && launcher.Launched.Count == 0; attempt++)
+                    (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
+
+                var expected = $"http://127.0.0.1:{host.BaseAddress.Port}/symbol/{SyntheticAtlas.WidgetTypeId}";
+                Assert.Equal(0, exitCode);
+                Assert.Equal(expected, standardOutput.Trim());
+                Assert.Equal(expected, Assert.Single(launcher.Launched).ToString());
+            }
+            finally
+            {
+                HttpClient.DefaultProxy = original;
+                await host.StopAsync(CancellationToken.None);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Open_AmbiguousSelectorMatchesQueryCommands()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
