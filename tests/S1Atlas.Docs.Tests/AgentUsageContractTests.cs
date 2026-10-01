@@ -37,9 +37,12 @@ public sealed class AgentUsageContractTests
         Assert.Contains("both surfaces expose the S1API/S1MAPI query path", normalizedSkill, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("find_api_callers", skill, StringComparison.Ordinal);
         Assert.Contains("plan_runtime_proof", skill, StringComparison.Ordinal);
-        Assert.Contains("command = \"dotnet\"", skill, StringComparison.Ordinal);
-        Assert.Contains("bin/Release/net8.0/S1Atlas.Mcp.dll", skill, StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet run --project src/S1Atlas.Mcp -- mcp serve", skill, StringComparison.Ordinal);
+        Assert.Contains("command = \"s1atlas-mcp\"", skill, StringComparison.Ordinal);
+        Assert.Contains("{ \"command\": \"s1atlas-mcp\", \"args\": [] }", skill, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run", skill, StringComparison.Ordinal);
+        Assert.DoesNotContain("command = \"dotnet\"", skill, StringComparison.Ordinal);
+        Assert.DoesNotContain("bin/Release", skill, StringComparison.Ordinal);
+        Assert.DoesNotContain("S1Atlas.Mcp.dll", skill, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -71,38 +74,48 @@ public sealed class AgentUsageContractTests
         var normalizedUsage = NormalizeWhitespace(usage);
 
         Assert.Contains("[`skills/s1atlas/SKILL.md`](../skills/s1atlas/SKILL.md)", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet build src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", usage, StringComparison.Ordinal);
-        Assert.Contains("command = \"dotnet\"", usage, StringComparison.Ordinal);
-        Assert.Contains("args = [ \"<local-S1Atlas-root>/src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll\", \"mcp\", \"serve\" ]", normalizedUsage, StringComparison.Ordinal);
+        Assert.Contains("dotnet tool install S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages", usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet tool install S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages", usage, StringComparison.Ordinal);
+        Assert.Contains("launch the installed server over stdio with no arguments", normalizedUsage, StringComparison.Ordinal);
+        Assert.Contains("command = \"s1atlas-mcp\"", usage, StringComparison.Ordinal);
+        Assert.Contains("\"command\": \"s1atlas-mcp\"", usage, StringComparison.Ordinal);
+        Assert.Contains("~/.claude.json", usage, StringComparison.Ordinal);
+        Assert.Contains("~/.codex/config.toml", usage, StringComparison.Ordinal);
+        Assert.Contains("mcp.json", usage, StringComparison.Ordinal);
+        Assert.Contains("claude_desktop_config.json", usage, StringComparison.Ordinal);
         Assert.Contains("Each host registration should enable the read-only server and use bounded startup/tool timeouts, with those settings kept in user-level config.", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("skill's CLI", usage, StringComparison.Ordinal);
         Assert.Contains("commands remain the fallback", usage, StringComparison.Ordinal);
         Assert.Contains("read-only server entry point", usage, StringComparison.Ordinal);
         Assert.Contains("Host configuration and reference manifests stay outside the repository", usage, StringComparison.Ordinal);
         Assert.Contains("S1Atlas does not download mods.", normalizedUsage, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run", usage, StringComparison.Ordinal);
+        Assert.DoesNotContain("command = \"dotnet\"", usage, StringComparison.Ordinal);
+        Assert.DoesNotContain("bin/Release", usage, StringComparison.Ordinal);
+        Assert.DoesNotContain("S1Atlas.Mcp.dll", usage, StringComparison.Ordinal);
         Assert.DoesNotContain("### Host parity and efficient use", usage, StringComparison.Ordinal);
         Assert.DoesNotContain("For prior-art work, list completed collections once", usage, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void UsageDocumentsDirectDllLaunchAndMcpLifecycleOwnership()
+    public void UsageDocumentsInstalledLaunchAndMcpLifecycleOwnership()
     {
         var root = FindRepositoryRoot();
         var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
         var normalizedUsage = NormalizeWhitespace(usage);
         var readme = File.ReadAllText(Path.Combine(root, "README.md")).ReplaceLineEndings("\n");
 
-        Assert.Contains("dotnet build src/S1Atlas.Mcp/S1Atlas.Mcp.csproj --configuration Release", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", usage, StringComparison.Ordinal);
+        Assert.Contains("`s1atlas-mcp` with no arguments serves MCP over stdio", normalizedUsage, StringComparison.Ordinal);
+        Assert.Contains("`mcp serve` is an accepted alias", normalizedUsage, StringComparison.Ordinal);
+        Assert.Contains("`--version` prints the installed version", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("one MCP server process per independent stdio client", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("standard error", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("ParentProcessId", usage, StringComparison.Ordinal);
         Assert.Contains("does not require or create a shared singleton", normalizedUsage, StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet run --project src/S1Atlas.Mcp -- mcp serve", usage, StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet run --project <local-S1Atlas-root>/src/S1Atlas.Mcp/S1Atlas.Mcp.csproj -- mcp serve", usage, StringComparison.Ordinal);
-        Assert.Contains("src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve", readme, StringComparison.Ordinal);
-        Assert.DoesNotContain("dotnet run --project src/S1Atlas.Mcp -- mcp serve", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run", usage, StringComparison.Ordinal);
+        Assert.Contains("run the installed `s1atlas-mcp` with no arguments", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("dotnet run", readme, StringComparison.Ordinal);
+        Assert.DoesNotContain("bin/Release", readme, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -127,7 +140,7 @@ public sealed class AgentUsageContractTests
         var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
         var normalizedUsage = NormalizeWhitespace(usage);
 
-        Assert.Contains("dotnet run --project src/S1Atlas.Cli -- investigate_seam", usage, StringComparison.Ordinal);
+        Assert.Contains("s1atlas investigate_seam", usage, StringComparison.Ordinal);
         Assert.Contains("`investigate_seam`", usage, StringComparison.Ordinal);
         Assert.Contains("`investigate_seam <selector> --question <text>", usage, StringComparison.Ordinal);
         Assert.Contains("[--native-symbol-id <id>] [--native-traversal-budget <0-500>]", usage, StringComparison.Ordinal);

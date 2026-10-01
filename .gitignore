@@ -61,6 +61,11 @@ candidate-output/
 retained-output/
 s1atlas-docs/
 
+# Local tool-loop scratch (see CONTRIBUTING.md). Root-anchored with an
+# unambiguous name: an unanchored tools/ rule would also swallow source
+# folders such as config/Tools/ and the per-project Tools/ directories.
+/.tool-dev/
+
 # Logs
 logs/
 *.log

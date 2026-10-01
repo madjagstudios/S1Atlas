@@ -1,8 +1,9 @@
 # Repo-relative path globs exempt from the AI tool/vendor name rule ONLY.
-# These documents legitimately name supported MCP hosts. Every other rule
-# (machine paths, ticket keys, workflow phrases, tracker URLs) still applies
-# to these paths.
+# These documents legitimately name supported MCP hosts, and the docs contract
+# test pins those documented host names. Every other rule (machine paths,
+# ticket keys, workflow phrases, tracker URLs) still applies to these paths.
 docs/USAGE.md
 skills/s1atlas/SKILL.md
 docs/design/2026-08-29-agent-usage-parity-design.md
 docs/performance/2026-08-30-mcp-launch-baseline.md
+tests/S1Atlas.Docs.Tests/AgentUsageContractTests.cs

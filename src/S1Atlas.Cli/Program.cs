@@ -1,8 +1,9 @@
 using S1Atlas.Cli;
 using S1Atlas.Cli.Configuration;
+using S1Atlas.Core.Deployment;
 
 var paths = AtlasPaths.FromEnvironment();
-var application = new CliApplication(paths.RootDirectory, "0.1.0");
+var application = new CliApplication(paths.RootDirectory, AtlasVersion.For(typeof(CliApplication).Assembly));
 using var cancellation = new CancellationTokenSource();
 ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
 {

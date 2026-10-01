@@ -33,6 +33,36 @@ jobs:
         run: dotnet restore src/S1Atlas.NativeRecovery/S1Atlas.NativeRecovery.csproj --locked-mode
       - name: Build
         run: dotnet build S1Atlas.sln --configuration Release --no-restore
+      - name: Installable tools smoke
+        shell: pwsh
+        run: |
+          $packDir = "$env:RUNNER_TEMP/at77-packages"
+          $toolDir = "$env:RUNNER_TEMP/at77-tools"
+          $env:S1ATLAS_HOME = "$env:RUNNER_TEMP/at77-home"
+          dotnet pack S1Atlas.sln --configuration Release --no-restore --output $packDir
+          $nupkgCount = @(Get-ChildItem $packDir -Filter *.nupkg).Count
+          Write-Output "nupkgs=$nupkgCount"
+          if ($nupkgCount -ne 2) { throw "expected exactly 2 tool packages, got $nupkgCount" }
+          dotnet tool install S1Atlas.Cli --tool-path $toolDir --add-source $packDir
+          dotnet tool install S1Atlas.Mcp --tool-path $toolDir --add-source $packDir
+          $expected = (Select-String '^## \[(\d+\.\d+\.\d+)\]' CHANGELOG.md | Select-Object -First 1).Matches[0].Groups[1].Value
+          $cliVersion = (& "$toolDir/s1atlas.exe" --version).Trim()
+          Write-Output "s1atlas --version actual='$cliVersion' expected='$expected'"
+          if ($cliVersion -ne $expected) { throw "s1atlas --version mismatch: actual='$cliVersion' expected='$expected'" }
+          $mcpVersion = (& "$toolDir/s1atlas-mcp.exe" --version).Trim()
+          Write-Output "s1atlas-mcp --version actual='$mcpVersion' expected='$expected'"
+          if ($mcpVersion -ne $expected) { throw "s1atlas-mcp --version mismatch: actual='$mcpVersion' expected='$expected'" }
+          & "$toolDir/s1atlas.exe" tools status | Out-Null
+          $statusExit = $LASTEXITCODE
+          Write-Output "s1atlas tools status exit=$statusExit"
+          if ($statusExit -ne 0) { throw "installed s1atlas tools status failed with exit $statusExit" }
+          & "$toolDir/s1atlas-mcp.exe" bogus-arg 2>$null | Out-Null
+          $usageExit = $LASTEXITCODE
+          Write-Output "s1atlas-mcp bogus-arg exit=$usageExit"
+          if ($usageExit -ne 2) { throw "installed s1atlas-mcp usage exit code mismatch: actual=$usageExit expected=2" }
+          # All assertions passed: exit explicitly so the deliberate nonzero
+          # probe exit above cannot fail the step.
+          exit 0
       - name: Format
         run: dotnet format S1Atlas.sln --verify-no-changes --no-restore
       - name: Repository hygiene

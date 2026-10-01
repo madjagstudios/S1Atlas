@@ -23,7 +23,7 @@ Every answer is labeled by provenance, `FACT` for extracted and `DERIVED` for co
 
 ### Example: "what changes the player's cash?"
 
-> Examples abbreviate `dotnet run --project src/S1Atlas.Cli --` as `s1atlas`.
+> Examples assume the installed `s1atlas` tool (see Quick start).
 
 ```powershell
 # find it
@@ -46,26 +46,32 @@ ScheduleOne.Money.MoneyManager::ChangeCashBalance(System.Single, System.Boolean,
 ## Quick start
 
 ```powershell
-# build
-dotnet build S1Atlas.sln --configuration Release
+# pack and install both tools from this checkout
+dotnet pack S1Atlas.sln --configuration Release --output ./.tool-dev/packages
+dotnet tool install S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+dotnet tool install S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+
+# put ./.tool-dev/tools on PATH, then verify the install
+s1atlas --version
+s1atlas-mcp --version
 
 # scan your installation
-dotnet run --project src/S1Atlas.Cli -- scan --game-path "C:\Program Files (x86)\Steam\steamapps\common\Schedule I"
+s1atlas scan --game-path "C:\Program Files (x86)\Steam\steamapps\common\Schedule I"
 
 # extract + index the current build, then query it
-dotnet run --project src/S1Atlas.Cli -- extract
-dotnet run --project src/S1Atlas.Cli -- index
-dotnet run --project src/S1Atlas.Cli -- search "Player" --limit 20
-dotnet run --project src/S1Atlas.Cli -- callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
-dotnet run --project src/S1Atlas.Cli -- fieldrefs "MoneyManager.cashBalance" --writers
+s1atlas extract
+s1atlas index
+s1atlas search "Player" --limit 20
+s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+s1atlas fieldrefs "MoneyManager.cashBalance" --writers
 
 # validate and index a local reference-mod collection selected by a manifest
-dotnet run --project src/S1Atlas.Cli -- reference collections validate "C:\path\to\reference-manifest.json"
-dotnet run --project src/S1Atlas.Cli -- reference index "C:\path\to\reference-manifest.json"
-dotnet run --project src/S1Atlas.Cli -- search "ModEntry" --scope reference --collection qol
+s1atlas reference collections validate "C:\path\to\reference-manifest.json"
+s1atlas reference index "C:\path\to\reference-manifest.json"
+s1atlas search "ModEntry" --scope reference --collection qol
 
 # generate a browsable, offline HTML portal (opens as ./s1atlas-docs/index.html)
-dotnet run --project src/S1Atlas.Cli -- docs generate
+s1atlas docs generate
 ```
 
 The full command walkthrough, every option, the MCP server, and the agent skill are in **[docs/USAGE.md](docs/USAGE.md)**.
@@ -73,7 +79,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 ## Interfaces
 
 - **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `docs generate`.
-- **Read-only MCP server**: the Schedule I Installed query surface (symbols, source, relationships, call sites, field references, callable surface, scenes), `investigate_seam` with read-only native evidence, `plan_runtime_proof`, S1API/S1MAPI queries, and completed local reference-collection queries, for coding agents (`dotnet src/S1Atlas.Mcp/bin/Release/net8.0/S1Atlas.Mcp.dll mcp serve` after a Release build).
+- **Read-only MCP server**: the Schedule I Installed query surface (symbols, source, relationships, call sites, field references, callable surface, scenes), `investigate_seam` with read-only native evidence, `plan_runtime_proof`, S1API/S1MAPI queries, and completed local reference-collection queries, for coding agents (run the installed `s1atlas-mcp` with no arguments).
 - **Static portal**: `docs generate` builds a deterministic, fully offline, provenance-labeled HTML site.
 - **Agent skill**: an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
 
