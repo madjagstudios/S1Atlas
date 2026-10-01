@@ -936,7 +936,7 @@ internal static class SqliteMigrations
 
     // The serve search index. simple_name is backfilled once here and set by
     // the symbol writer for new rows; the FTS table stays in sync through the
-    // triggers, and the qualified-name index serves 1-2 character prefix
+    // triggers, and the simple-name index serves 1-2 character prefix
     // queries (below the trigram minimum) without a full scan.
     private const string SymbolSearchFtsV16Sql = """
         ALTER TABLE symbols ADD COLUMN simple_name TEXT NULL;
@@ -951,7 +951,7 @@ internal static class SqliteMigrations
             )
             SELECT rest FROM tail WHERE instr(rest, '.') = 0 LIMIT 1);
 
-        CREATE INDEX ix_symbols_qualified_name ON symbols(qualified_name COLLATE NOCASE);
+        CREATE INDEX ix_symbols_simple_name ON symbols(simple_name COLLATE NOCASE);
 
         CREATE VIRTUAL TABLE symbols_fts USING fts5(
             qualified_name,

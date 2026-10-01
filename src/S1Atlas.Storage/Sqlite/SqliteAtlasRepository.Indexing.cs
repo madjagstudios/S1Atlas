@@ -434,7 +434,7 @@ public sealed partial class SqliteAtlasRepository
         {
             // No explicit COLLATE: LIKE is case-insensitive by default and
             // pairing ESCAPE with COLLATE NOCASE keeps SQLite from using
-            // the ix_symbols_qualified_name index here.
+            // the ix_symbols_simple_name index here.
             command.CommandText = """
                 SELECT COUNT(*)
                 FROM symbols AS symbol
@@ -442,7 +442,7 @@ public sealed partial class SqliteAtlasRepository
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
-                  AND symbol.qualified_name LIKE $prefix ESCAPE '\';
+                  AND symbol.simple_name LIKE $prefix ESCAPE '\';
                 """;
             command.Parameters.AddWithValue("$prefix", EscapeLikePattern(query) + "%");
         }
@@ -497,11 +497,10 @@ public sealed partial class SqliteAtlasRepository
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
-                  AND symbol.qualified_name LIKE $prefix ESCAPE '\'
+                  AND symbol.simple_name LIKE $prefix ESCAPE '\'
                 ORDER BY
                     CASE
-                        WHEN symbol.qualified_name = $query COLLATE NOCASE
-                          OR symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 0
+                        WHEN symbol.simple_name = $query COLLATE NOCASE THEN 0
                         ELSE 1
                     END,
                     symbol.qualified_name COLLATE BINARY,
