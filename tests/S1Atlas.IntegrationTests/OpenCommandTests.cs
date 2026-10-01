@@ -28,12 +28,7 @@ public sealed class OpenCommandTests : IAsyncDisposable
                 var application = CreateApplication(atlas.DataRoot, launcher);
                 var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
 
-                // The 300ms probe can time out against a live server when the
-                // machine is saturated by parallel test runs; retry, then
-                // assert the last attempt. A broken probe fails every attempt.
-                var (exitCode, standardOutput) = (1, "");
-                for (var attempt = 0; attempt < 3 && launcher.Launched.Count == 0; attempt++)
-                    (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
+                var (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
 
                 var expected = $"http://127.0.0.1:{host.BaseAddress.Port}/symbol/{SyntheticAtlas.WidgetTypeId}";
                 Assert.Equal(0, exitCode);
@@ -87,11 +82,7 @@ public sealed class OpenCommandTests : IAsyncDisposable
                 var application = CreateApplication(atlas.DataRoot, launcher);
                 var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
 
-                // A probe timeout lands in the exit-0 not-running branch;
-                // retry so only a persistent mismatch fails the test.
-                var (exitCode, _, standardError) = (0, "", "");
-                for (var attempt = 0; attempt < 3 && exitCode == 0; attempt++)
-                    (exitCode, _, standardError) = InvokeOpen(application, arguments, cancellationToken);
+                var (exitCode, _, standardError) = InvokeOpen(application, arguments, cancellationToken);
 
                 Assert.Equal(1, exitCode);
                 Assert.Contains("different build or index", standardError, StringComparison.Ordinal);
@@ -131,9 +122,7 @@ public sealed class OpenCommandTests : IAsyncDisposable
                 var application = CreateApplication(atlas.DataRoot, launcher);
                 var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
 
-                var (exitCode, standardOutput) = (1, "");
-                for (var attempt = 0; attempt < 3 && launcher.Launched.Count == 0; attempt++)
-                    (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
+                var (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
 
                 var expected = $"http://127.0.0.1:{host.BaseAddress.Port}/symbol/{SyntheticAtlas.WidgetTypeId}";
                 Assert.Equal(0, exitCode);
@@ -170,9 +159,7 @@ public sealed class OpenCommandTests : IAsyncDisposable
                 var application = CreateApplication(atlas.DataRoot, launcher);
                 var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
 
-                var (exitCode, standardOutput) = (1, "");
-                for (var attempt = 0; attempt < 3 && launcher.Launched.Count == 0; attempt++)
-                    (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
+                var (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
 
                 var expected = $"http://127.0.0.1:{host.BaseAddress.Port}/symbol/{SyntheticAtlas.WidgetTypeId}";
                 Assert.Equal(0, exitCode);
