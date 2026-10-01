@@ -3,6 +3,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Protocol;
+using S1Atlas.Core.Deployment;
 using S1Atlas.Application.Configuration;
 using S1Atlas.Application.Envelope;
 using S1Atlas.Indexing.Query;
@@ -12,9 +14,15 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
-if (args is not ["mcp", "serve", ..])
+if (args is ["--version"])
 {
-    await Console.Error.WriteLineAsync("Usage: S1Atlas.Mcp mcp serve");
+    await Console.Out.WriteLineAsync(AtlasVersion.For(typeof(McpToolCatalog).Assembly));
+    return 0;
+}
+
+if (args is not ([] or ["mcp", "serve", ..]))
+{
+    await Console.Error.WriteLineAsync("Usage: s1atlas-mcp [--version] (no arguments serves over stdio; 'mcp serve' accepted)");
     return 2;
 }
 
@@ -72,7 +80,12 @@ builder.Services
         filters.AddCallToolFilter(McpEnvelopeErrorFilter.Wrap);
     });
 builder.Services.Configure<McpServerOptions>(options =>
-    options.ServerInstructions = McpServerInstructions.Text);
+{
+    options.ServerInstructions = McpServerInstructions.Text;
+    var version = AtlasVersion.For(typeof(McpToolCatalog).Assembly);
+    options.ServerInfo ??= new Implementation { Name = "s1atlas", Version = version };
+    options.ServerInfo.Version = version;
+});
 
 await builder.Build().RunAsync();
 return 0;
