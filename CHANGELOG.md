@@ -8,6 +8,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Loopback-only read-only `s1atlas serve` web app** (AT-88): a new `serve`
+  command starts a local web app (default port 5217, `--port 0` for an
+  ephemeral port, `--open` to launch the browser) with landing, search, and
+  symbol pages plus mirrored `/api/*` endpoints that return the same tool
+  envelopes and JSON shapes as the matching MCP tools. The host binds
+  loopback only, answers only loopback hosts on its own port, accepts only
+  `GET`/`HEAD`, sends no CORS headers, and never writes the Atlas. A new web
+  test project covers the host guards, views, MCP parity, and read-only
+  behavior against a synthetic seeded atlas, and CI runs it in the test
+  matrix with a serve smoke on the installed tool.
 - **Installable `s1atlas` and `s1atlas-mcp` dotnet tools** (AT-77):
   both commands now pack as .NET tools with one shared version taken from
   `Directory.Build.props` (`--version` on either prints it, and the MCP

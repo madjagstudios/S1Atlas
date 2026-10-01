@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Protocol;
 using S1Atlas.Core.Deployment;
@@ -10,8 +9,6 @@ using S1Atlas.Application.Envelope;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Mcp;
 using S1Atlas.Mcp.Serialization;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 if (args is ["--version"])
@@ -44,32 +41,19 @@ builder.Services.AddSingleton(services.ReferenceModQueryService);
 builder.Services.AddSingleton(services.SeamInvestigationService);
 builder.Services.AddSingleton(services.BuildDiffService);
 builder.Services.AddSingleton(services.SceneQueryService);
-var toolJsonOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions)
+var toolJsonOptions = ToolJsonOptions.Create();
+var toolJsonResolver = (DefaultJsonTypeInfoResolver)toolJsonOptions.TypeInfoResolver!;
+toolJsonResolver.Modifiers.Add(typeInfo =>
 {
-    DefaultIgnoreCondition = JsonIgnoreCondition.Never
-};
-toolJsonOptions.TypeInfoResolver = new DefaultJsonTypeInfoResolver
-{
-    Modifiers =
+    if (typeInfo.Type == typeof(SeamEvidenceClaim))
     {
-        typeInfo =>
-        {
-            foreach (var property in typeInfo.Properties)
-                property.ShouldSerialize = (_, value) => value is not null;
-
-            if (typeInfo.Type == typeof(SeamEvidenceClaim))
-            {
-                var evidenceClassification = typeInfo.Properties.FirstOrDefault(
-                    property => property.Name == "evidenceClassification");
-                if (evidenceClassification is not null)
-                    typeInfo.Properties.Remove(evidenceClassification);
-            }
-        }
+        var evidenceClassification = typeInfo.Properties.FirstOrDefault(
+            property => property.Name == "evidenceClassification");
+        if (evidenceClassification is not null)
+            typeInfo.Properties.Remove(evidenceClassification);
     }
-};
+});
 toolJsonOptions.Converters.Insert(0, new SeamToolEnvelopeJsonConverter());
-toolJsonOptions.Converters.Insert(0, new ToolStatusJsonConverter());
-toolJsonOptions.Converters.Insert(0, new ProvenanceClassificationJsonConverter());
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()

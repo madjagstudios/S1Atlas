@@ -1,0 +1,168 @@
+using S1Atlas.Application.Authority;
+using S1Atlas.Application.Composition;
+using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Storage;
+using S1Atlas.Indexing.Query;
+
+namespace S1Atlas.Web.Queries;
+
+public enum ServeRelationshipDirection
+{
+    Callers,
+    Callees,
+    References
+}
+
+public sealed record ServeIndex(
+    CodebaseKind Codebase,
+    CodeChannel Channel,
+    string IndexId,
+    IndexRunRecord Run,
+    ApiIndexSelection? ApiSelection);
+
+// Read-only query facade over the shared atlas composition. A missing data
+// store surfaces as AtlasStoreMissingException so endpoints can answer with a
+// clear message instead of a 500.
+public sealed class ServeQueries
+{
+    internal const int MemberSearchLimit = 500;
+
+    private readonly AtlasReadOnlyServices _services;
+    private readonly ApiIndexQueryService _api;
+
+    public ServeQueries(AtlasReadOnlyServices services)
+    {
+        _services = services;
+        _api = new ApiIndexQueryService(services.Repository, services.IndexQueryService);
+    }
+
+    public Task<InstalledBuildAuthority> ResolveAuthorityAsync(CancellationToken ct) =>
+        WithStoreAsync(token => _services.AuthorityResolver.ResolveAsync(null, token), ct);
+
+    public Task<ApiIndexCatalogResult> ListApiCatalogAsync(CancellationToken ct) =>
+        WithStoreAsync(token => _api.ListAsync(null, token), ct);
+
+    public Task<IndexRunRecord?> GetCompletedIndexAsync(string indexId, CancellationToken ct) =>
+        WithStoreAsync(token => _services.Repository.GetCompletedIndexAsync(indexId, token), ct);
+
+    public Task<int> CountSymbolsAsync(string indexId, CancellationToken ct) =>
+        WithStoreAsync(token => _services.Repository.CountCompletedSymbolsAsync(indexId, token), ct);
+
+    public Task<SymbolSearchResult> SearchGameAsync(
+        IndexRunRecord run,
+        string query,
+        SymbolKind? kind,
+        int limit,
+        CancellationToken ct) =>
+        WithStoreAsync(
+            token => _services.IndexQueryService.SearchInIndexAsync(
+                run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, kind, token),
+            ct);
+
+    public Task<SymbolSearchResult> SearchApiAsync(
+        ApiIndexSelection selection,
+        string query,
+        int limit,
+        CancellationToken ct) =>
+        WithStoreAsync(token => _api.SearchSelectedAsync(selection, query, limit, token), ct);
+
+    public Task<SymbolQueryResult?> GetSymbolAsync(string indexId, string symbolId, CancellationToken ct) =>
+        WithStoreAsync(
+            token => _services.IndexQueryService.GetExactSymbolAsync(indexId, symbolId, token),
+            ct);
+
+    public async Task<MemberListResult> GetMembersAsync(
+        ServeIndex index,
+        SymbolQueryResult type,
+        CancellationToken ct)
+    {
+        var result = index.ApiSelection is { } selection
+            ? await SearchApiAsync(selection, type.QualifiedName + ".", MemberSearchLimit, ct)
+            : await SearchGameAsync(index.Run, type.QualifiedName + ".", null, MemberSearchLimit, ct);
+        var members = result.Results.Where(candidate => IsMemberOf(candidate, type)).ToArray();
+        return new MemberListResult(members, result.TotalCount, result.ReturnedCount < result.TotalCount);
+    }
+
+    public Task<SourceSnippetResolutionResult> GetSourceAsync(
+        ServeIndex index,
+        string symbolId,
+        bool fullType,
+        CancellationToken ct) =>
+        index.ApiSelection is { } selection
+            ? WithStoreAsync(
+                token => _api.SourceSelectedAsync(selection, symbolId, 5, 10, token),
+                ct)
+            : WithStoreAsync(
+                token => _services.IndexQueryService.SourceInIndexAsync(
+                    index.Run, index.Codebase, index.Channel, symbolId, 5, token, fullType, 10),
+                ct);
+
+    public Task<RelationshipQuerySetResult> GetRelationshipsAsync(
+        ServeIndex index,
+        string symbolId,
+        ServeRelationshipDirection direction,
+        int limit,
+        CancellationToken ct)
+    {
+        if (index.ApiSelection is { } selection)
+        {
+            var apiDirection = direction switch
+            {
+                ServeRelationshipDirection.Callers => ApiRelationshipDirection.Callers,
+                ServeRelationshipDirection.Callees => ApiRelationshipDirection.Callees,
+                _ => ApiRelationshipDirection.References
+            };
+            return WithStoreAsync(
+                token => _api.RelationshipsSelectedAsync(selection, symbolId, limit, apiDirection, null, token),
+                ct);
+        }
+
+        return WithStoreAsync(
+            token => direction switch
+            {
+                ServeRelationshipDirection.Callers => _services.IndexQueryService.CallersInIndexAsync(
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token),
+                ServeRelationshipDirection.Callees => _services.IndexQueryService.CalleesInIndexAsync(
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token),
+                _ => _services.IndexQueryService.RefsInIndexAsync(
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token)
+            },
+            ct);
+    }
+
+    internal static bool IsMemberOf(SymbolQueryResult candidate, SymbolQueryResult type)
+    {
+        if (candidate.SymbolId.Equals(type.SymbolId, StringComparison.Ordinal)
+            || candidate.Kind.Equals("Type", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var prefix = type.QualifiedName + ".";
+        return candidate.QualifiedName.StartsWith(prefix, StringComparison.Ordinal)
+            && !candidate.QualifiedName.AsSpan(prefix.Length).Contains('.');
+    }
+
+    private static async Task<T> WithStoreAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await operation(ct);
+        }
+        catch (FileNotFoundException)
+        {
+            throw new AtlasStoreMissingException();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            throw new AtlasStoreMissingException();
+        }
+    }
+}
+
+public sealed record MemberListResult(
+    IReadOnlyList<SymbolQueryResult> Members,
+    int TotalCount,
+    bool Truncated);

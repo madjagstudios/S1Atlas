@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\S1Atlas.Core\S1Atlas.Core.csproj" />
+    <ProjectReference Include="..\S1Atlas.Application\S1Atlas.Application.csproj" />
+    <ProjectReference Include="..\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
+    <ProjectReference Include="..\S1Atlas.Storage\S1Atlas.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

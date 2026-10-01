@@ -535,6 +535,26 @@ scan-or-migration-first error for a missing or wrong-schema database without
 creating or migrating it. The default output is `./s1atlas-docs/`; open its
 `index.html` in any browser.
 
+## Serve the local web app
+
+```powershell
+s1atlas serve
+s1atlas serve --port 5217 --open
+```
+
+`serve` starts a loopback-only, read-only web app over the current Atlas data
+and prints the listening URL. The landing page shows the resolved build and
+per-index symbol counts; `/search` queries one codebase scope with paging
+(`q`, `kind`, `codebase`, `page`); `/symbol/<id>` shows one symbol's members,
+integrity-checked source, callers, callees, and references. The mirrored
+`/api/*` endpoints (`/api/status`, `/api/search`, `/api/symbol/<id>`,
+`/api/symbol/<id>/callers|callees|references`) return the same tool envelopes
+and JSON shapes as the matching MCP tools. The server binds only to loopback,
+answers only loopback `Host` values on its own bound port, accepts only `GET`
+and `HEAD`, sends no CORS headers, and never writes the Atlas. `--port 0`
+picks an ephemeral port; `--open` opens the default browser once the server
+is listening. Stop the server with Ctrl+C.
+
 ## Reference collections
 
 Reference mods are user-supplied local inputs. A manifest is the explicit
@@ -832,4 +852,5 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `scriptable-object <id\|exact-name\|Namespace.Class> [--json]` | Inspect one ScriptableObject asset (an asset-level MonoBehaviour such as `SpecialCustomerData`) and its decoded serialized fields |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
 | `docs generate [--build <id>] [--output <dir>]` | Generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
+| `serve [--port <n>] [--open]` | Start the loopback-only, read-only local web app (default port 5217; 0 picks an ephemeral port) |
 | `s1atlas-mcp` | Launch the read-only Schedule I Installed MCP server over stdio (no arguments; `mcp serve` is an alias, `--version` prints the version) |

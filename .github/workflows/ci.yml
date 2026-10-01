@@ -60,6 +60,30 @@ jobs:
           $usageExit = $LASTEXITCODE
           Write-Output "s1atlas-mcp bogus-arg exit=$usageExit"
           if ($usageExit -ne 2) { throw "installed s1atlas-mcp usage exit code mismatch: actual=$usageExit expected=2" }
+          $serveOut = "$env:RUNNER_TEMP/at88-serve.log"
+          $serveErr = "$env:RUNNER_TEMP/at88-serve.err"
+          $serve = Start-Process "$toolDir/s1atlas.exe" -ArgumentList 'serve','--port','0' -NoNewWindow -PassThru -RedirectStandardOutput $serveOut -RedirectStandardError $serveErr
+          try {
+            $url = $null
+            for ($i = 0; $i -lt 120 -and $url -eq $null; $i++) {
+              Start-Sleep -Milliseconds 250
+              $line = Select-String 'S1Atlas serve listening on (\S+)' $serveOut -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($line) { $url = $line.Matches[0].Groups[1].Value }
+            }
+            if ($url -eq $null) { throw "installed s1atlas serve never printed its listening address" }
+            Write-Output "serve url=$url"
+            $base = $url.TrimEnd('/')
+            $status = Invoke-RestMethod ($base + '/api/status') -TimeoutSec 15
+            Write-Output ("serve /api/status status=" + $status.status + " authority=" + $status.data.authorityStatus)
+            if ($status.status -ne 'resolved') { throw "expected a resolved status envelope, got '$($status.status)'" }
+            if ($status.data.authorityStatus -ne 'NoCurrentBuild') { throw "expected NoCurrentBuild on an empty home, got '$($status.data.authorityStatus)'" }
+            $landing = Invoke-WebRequest ($base + '/') -TimeoutSec 15
+            Write-Output ("serve landing status=" + [int]$landing.StatusCode)
+            if ([int]$landing.StatusCode -ne 200) { throw "serve landing failed with status $($landing.StatusCode)" }
+          } finally {
+            if (-not $serve.HasExited) { Stop-Process -Id $serve.Id -Force }
+            if (-not $serve.WaitForExit(15000)) { throw "installed s1atlas serve did not stop" }
+          }
           # All assertions passed: exit explicitly so the deliberate nonzero
           # probe exit above cannot fail the step.
           exit 0
@@ -100,6 +124,8 @@ jobs:
             project: tests/S1Atlas.NativeRecovery.Tests
           - name: S1Atlas.Storage.Tests
             project: tests/S1Atlas.Storage.Tests
+          - name: S1Atlas.Web.Tests
+            project: tests/S1Atlas.Web.Tests
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5

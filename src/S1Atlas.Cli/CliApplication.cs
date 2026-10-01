@@ -29,6 +29,7 @@ using S1Atlas.Indexing.ReferenceMods;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Indexing.Diff;
 using S1Atlas.NativeRecovery;
+using S1Atlas.Web;
 
 namespace S1Atlas.Cli;
 
@@ -430,6 +431,7 @@ public sealed class CliApplication
         root.Subcommands.Add(ComponentCommand.Create(sceneQueryService, indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScriptableObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(DocsCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
+        root.Subcommands.Add(ServeCommand.Create(_paths.RootDirectory, new SystemBrowserLauncher(), output, error, cancellationToken));
         root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(DiffCommand.Create(
             diffService, sqliteRepository, sqliteRepository, sqliteRepository, repository,
