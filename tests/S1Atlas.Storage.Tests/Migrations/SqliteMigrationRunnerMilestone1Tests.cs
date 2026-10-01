@@ -19,9 +19,9 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
     }
 
     [Fact]
-    public void MigrationsThroughFifteen_HaveCommittedNamesAndChecksums_AndEarlierMigrationsRemainPinned()
+    public void MigrationsThroughSixteen_HaveCommittedNamesAndChecksums_AndEarlierMigrationsRemainPinned()
     {
-        Assert.Equal(15, SqliteMigrations.All.Count);
+        Assert.Equal(16, SqliteMigrations.All.Count);
         Assert.Equal("d03021f97dfe3cd5e52305ae945258aa7fdbc8ccb086808a8255df7df0d10bb0", SqliteMigrations.All[6].Checksum);
         Assert.Equal(8, SqliteMigrations.All[7].Version);
         Assert.Equal("scene-intelligence-v8", SqliteMigrations.All[7].Name);
@@ -39,6 +39,8 @@ public sealed class SqliteMigrationRunnerMilestone1Tests : IAsyncDisposable
         Assert.Equal("scene-script-fields-v14", SqliteMigrations.All[13].Name);
         Assert.Equal(15, SqliteMigrations.All[14].Version);
         Assert.Equal("native-evidence-method-extent-v15", SqliteMigrations.All[14].Name);
+        Assert.Equal(16, SqliteMigrations.All[15].Version);
+        Assert.Equal("symbol-search-fts-v16", SqliteMigrations.All[15].Name);
         Assert.Equal(
             [
                 "90ee69e49a9763c6443b4db0b5b2752ff78292fb7a7f7e7b5d86fd22137fd92e",

@@ -934,6 +934,53 @@ internal static class SqliteMigrations
         DELETE FROM native_recovery_runs;
         """;
 
+    // The serve search index. simple_name is backfilled once here and set by
+    // the symbol writer for new rows; the FTS table stays in sync through the
+    // triggers, and the qualified-name index serves 1-2 character prefix
+    // queries (below the trigram minimum) without a full scan.
+    private const string SymbolSearchFtsV16Sql = """
+        ALTER TABLE symbols ADD COLUMN simple_name TEXT NULL;
+
+        UPDATE symbols SET simple_name = (
+            WITH RECURSIVE tail(rest) AS (
+                SELECT qualified_name
+                UNION ALL
+                SELECT substr(rest, instr(rest, '.') + 1)
+                FROM tail
+                WHERE instr(rest, '.') > 0
+            )
+            SELECT rest FROM tail WHERE instr(rest, '.') = 0 LIMIT 1);
+
+        CREATE INDEX ix_symbols_qualified_name ON symbols(qualified_name);
+
+        CREATE VIRTUAL TABLE symbols_fts USING fts5(
+            qualified_name,
+            simple_name,
+            signature,
+            content='symbols',
+            content_rowid='rowid',
+            tokenize='trigram');
+
+        CREATE TRIGGER symbols_fts_ai AFTER INSERT ON symbols BEGIN
+            INSERT INTO symbols_fts(rowid, qualified_name, simple_name, signature)
+            VALUES (new.rowid, new.qualified_name, new.simple_name, new.signature);
+        END;
+
+        CREATE TRIGGER symbols_fts_ad AFTER DELETE ON symbols BEGIN
+            INSERT INTO symbols_fts(symbols_fts, rowid, qualified_name, simple_name, signature)
+            VALUES ('delete', old.rowid, old.qualified_name, old.simple_name, old.signature);
+        END;
+
+        CREATE TRIGGER symbols_fts_au AFTER UPDATE ON symbols BEGIN
+            INSERT INTO symbols_fts(symbols_fts, rowid, qualified_name, simple_name, signature)
+            VALUES ('delete', old.rowid, old.qualified_name, old.simple_name, old.signature);
+            INSERT INTO symbols_fts(rowid, qualified_name, simple_name, signature)
+            VALUES (new.rowid, new.qualified_name, new.simple_name, new.signature);
+        END;
+
+        INSERT INTO symbols_fts(symbols_fts) VALUES ('rebuild');
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -950,6 +997,7 @@ internal static class SqliteMigrations
         new(12, "native-evidence-v12", NativeEvidenceV12Sql),
         new(13, "scene-type-tree-source-v13", SceneTypeTreeSourceV13Sql),
         new(14, "scene-script-fields-v14", SceneScriptFieldsV14Sql),
-        new(15, "native-evidence-method-extent-v15", NativeEvidenceMethodExtentV15Sql)
+        new(15, "native-evidence-method-extent-v15", NativeEvidenceMethodExtentV15Sql),
+        new(16, "symbol-search-fts-v16", SymbolSearchFtsV16Sql, RequiresFts5Trigram: true)
     ];
 }
