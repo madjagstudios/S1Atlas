@@ -88,69 +88,6 @@ internal static class ServeEnvelopes
             : ToolEnvelope<SymbolQueryResult>.Resolved(build, symbol, provenance);
     }
 
-    internal static ToolEnvelope<SourceSnippetQueryResult> FromSource(
-        InstalledBuildAuthority authority,
-        SourceSnippetResolutionResult result)
-    {
-        ArgumentNullException.ThrowIfNull(result);
-
-        return result.Resolution.Status switch
-        {
-            SymbolResolutionStatus.Ambiguous => ToolEnvelope<SourceSnippetQueryResult>.Ambiguous(
-                BuildFrom(authority),
-                result.Resolution.Candidates.Cast<object>().ToArray(),
-                Derived(authority, "symbol-selection")),
-            SymbolResolutionStatus.NotFound => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
-                BuildFrom(authority),
-                new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
-                Derived(authority, "symbol-selection")),
-            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
-                BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
-                Derived(authority, "symbol-selection")),
-            _ when result.Snippet is null => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
-                BuildFrom(authority),
-                new ToolError("SourceUnavailable", "The selected symbol has no indexed source location."),
-                Derived(authority, "source-selection")),
-            _ => ToolEnvelope<SourceSnippetQueryResult>.Resolved(
-                BuildFrom(authority),
-                result.Snippet,
-                Fact(authority, "source-snippet"),
-                Derived(authority, "source-selection"))
-        };
-    }
-
-    internal static ToolEnvelope<SourceSnippetQueryResult> FromApiSource(
-        ApiIndexCatalogResult catalog,
-        ApiIndexSelection selection,
-        SourceSnippetResolutionResult result)
-    {
-        ArgumentNullException.ThrowIfNull(result);
-
-        var build = ApiBuildFrom(catalog, selection);
-        var provenance = ApiProvenance(catalog, selection);
-        return result.Resolution.Status switch
-        {
-            SymbolResolutionStatus.Ambiguous => ToolEnvelope<SourceSnippetQueryResult>.Ambiguous(
-                build,
-                result.Resolution.Candidates.Cast<object>().ToArray(),
-                provenance),
-            SymbolResolutionStatus.NotFound => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
-                build,
-                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
-                provenance),
-            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
-                build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
-                provenance),
-            _ when result.Snippet is null => ToolEnvelope<SourceSnippetQueryResult>.Unavailable(
-                new ToolError("SourceUnavailable", "The selected API symbol has no integrity-checked source location."),
-                build,
-                provenance),
-            _ => ToolEnvelope<SourceSnippetQueryResult>.Resolved(build, result.Snippet, provenance)
-        };
-    }
-
     internal static ToolEnvelope<RelationshipQuerySetResult> FromRelationships(
         InstalledBuildAuthority authority,
         RelationshipQuerySetResult result)

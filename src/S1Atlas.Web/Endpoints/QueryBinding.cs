@@ -26,6 +26,10 @@ internal static class QueryBinding
     internal const int DefaultRelationshipLimit = 50;
     internal const int MaxLimit = 500;
 
+    // (MaxPage + 1) * SearchPageSize == MaxLimit, so a page can neither
+    // overflow the fetch limit nor bypass MCP's 500-row cap.
+    internal const int MaxPage = 24;
+
     internal static SearchArgs BindSearch(Microsoft.AspNetCore.Http.IQueryCollection query) =>
         new(
             query["q"].ToString() ?? string.Empty,
@@ -66,12 +70,12 @@ internal static class QueryBinding
             return 0;
         }
 
-        if (int.TryParse(value, out var page) && page >= 0)
+        if (int.TryParse(value, out var page) && page >= 0 && page <= MaxPage)
         {
             return page;
         }
 
-        throw new ServeInvalidQueryException($"Invalid page '{value}'. Use 0 or a positive integer.");
+        throw new ServeInvalidQueryException($"Invalid page '{value}'. Use 0 to {MaxPage}.");
     }
 
     internal static int BindLimit(string? value, int fallback)

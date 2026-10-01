@@ -42,9 +42,9 @@ public sealed class ServeHost : IAsyncDisposable
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
         builder.Services.AddRouting();
         builder.Services.AddSingleton(queries);
-        builder.Services.AddSingleton(ToolJsonOptions.Create());
         builder.WebHost.UseKestrel(kestrel =>
         {
+            kestrel.AddServerHeader = false;
             kestrel.Listen(IPAddress.Loopback, options.Port);
             if (Socket.OSSupportsIPv6)
             {

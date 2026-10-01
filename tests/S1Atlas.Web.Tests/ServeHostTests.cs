@@ -135,6 +135,7 @@ public sealed class ServeHostTests
 
         Assert.False(response.Headers.Contains("access-control-allow-origin"), "CORS header present.");
         Assert.False(response.Headers.Contains("access-control-allow-methods"), "CORS header present.");
+        Assert.Empty(response.Headers.Server);
     }
 
     [Fact]

@@ -28,6 +28,12 @@ internal static class SearchView
             return Html.Layout("Search", body.ToString());
         }
 
+        if (model.Result.Results.Count == 0)
+        {
+            body.Append($"<p class=\"derived\">DERIVED: showing 0 of the true total {total}.</p>");
+            return Html.Layout("Search", body.ToString());
+        }
+
         var from = model.Page * model.PageSize + 1;
         var to = Math.Min(from + model.Result.Results.Count - 1, total);
         body.Append($"<p class=\"derived\">DERIVED: showing {from}&ndash;{to} of the true total {total}.</p>");

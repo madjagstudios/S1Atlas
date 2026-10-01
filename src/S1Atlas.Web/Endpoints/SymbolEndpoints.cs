@@ -140,8 +140,15 @@ internal static class SymbolEndpoints
         {
             if (selection is { Availability: ApiIndexAvailability.Current, IndexId: { } indexId })
             {
-                var run = await queries.GetCompletedIndexAsync(indexId, ct)
-                    ?? throw new InvalidOperationException($"A current API index '{indexId}' has no completed run.");
+                // The run can vanish between the catalog read and this lookup
+                // when the atlas changes mid-request; skip it like the search
+                // path's missing-index handling instead of failing the page.
+                var run = await queries.GetCompletedIndexAsync(indexId, ct);
+                if (run is null)
+                {
+                    continue;
+                }
+
                 apiIndexes.Add(new ServeIndex(selection.Codebase, selection.Channel, indexId, run, selection));
             }
         }

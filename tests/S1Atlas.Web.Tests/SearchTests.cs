@@ -55,6 +55,19 @@ public sealed class SearchTests
     }
 
     [Fact]
+    public async Task GameSearchPastTheEndShowsEmptySlice()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync("/search?q=PagedType&page=5", cancellationToken);
+
+        Assert.Contains("FACT: 30 matches in Schedule I (Installed).", body);
+        Assert.Contains("DERIVED: showing 0 of the true total 30.", body);
+        Assert.DoesNotContain("Paged.PagedType", body);
+    }
+
+    [Fact]
     public async Task GameSearchWithoutMatchesShowsZero()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -83,6 +96,8 @@ public sealed class SearchTests
     [InlineData("/search?q=Widget&kind=nope", "Unknown kind")]
     [InlineData("/search?q=Widget&page=-1", "Invalid page")]
     [InlineData("/search?q=Widget&page=abc", "Invalid page")]
+    [InlineData("/search?q=Widget&page=25", "Invalid page")]
+    [InlineData("/search?q=Widget&page=999999999", "Invalid page")]
     [InlineData("/search?q=Catalog&codebase=s1api&kind=method", "Kind filtering")]
     public async Task SearchRejectsBadQuery(string path, string message)
     {
@@ -164,6 +179,20 @@ public sealed class SearchTests
         await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
 
         using var response = await fixture.GetAsync("/api/search", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("invalid", json.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task ApiSearchRejectsHugePage()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync("/api/search?q=Widget&page=999999999", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
