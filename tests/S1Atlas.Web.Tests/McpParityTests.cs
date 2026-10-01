@@ -9,8 +9,16 @@ namespace S1Atlas.Web.Tests;
 
 // The /api/* responses must carry the same envelope status, data, and build
 // provenance as the matching MCP tools over the same atlas.
+[Collection("TwoBuildServe")]
 public sealed class McpParityTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public McpParityTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task GameSearchMatchesMcpStatusTotalsAndResultSets()
     {
@@ -67,7 +75,7 @@ public sealed class McpParityTests
     public async Task BuildListMatchesMcpByteForByte()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
         var tools = new BuildEnvironmentTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
 
         var served = await fixture.GetStringAsync("/api/builds", cancellationToken);
@@ -81,7 +89,7 @@ public sealed class McpParityTests
     public async Task EnvironmentMatchesMcpFacts()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
         var tools = new BuildEnvironmentTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
 
         using var served = JsonDocument.Parse(

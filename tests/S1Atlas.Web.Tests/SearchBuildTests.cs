@@ -5,13 +5,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class SearchBuildTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public SearchBuildTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task BuildScopedSearchFindsHistoricalOnlySymbol()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/search?q=Turbo&build={SyntheticAtlas.BuildIdAValue}", cancellationToken);
@@ -24,7 +32,7 @@ public sealed class SearchBuildTests
     public async Task BuildScopedSearchExcludesCurrentOnlySymbol()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/search?q=CheckPhysics&build={SyntheticAtlas.BuildIdAValue}", cancellationToken);
@@ -36,7 +44,7 @@ public sealed class SearchBuildTests
     public async Task HistoricalResultsRenderWithoutLinks()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/search?q=Turbo&build={SyntheticAtlas.BuildIdAValue}", cancellationToken);
@@ -49,7 +57,7 @@ public sealed class SearchBuildTests
     public async Task CurrentBuildSearchKeepsLinks()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/search?q=Widget&build={SyntheticAtlas.BuildIdBValue}", cancellationToken);
@@ -62,7 +70,7 @@ public sealed class SearchBuildTests
     public async Task UnknownBuildScopeExplains()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var page = await fixture.GetStringAsync("/search?q=Widget&build=no-such-build", cancellationToken);
         using var api = await fixture.GetAsync("/api/search?q=Widget&build=no-such-build", cancellationToken);
@@ -81,7 +89,7 @@ public sealed class SearchBuildTests
     public async Task ApiScopeRejectsBuild()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var page = await fixture.GetAsync(
             $"/search?q=Catalog&codebase=s1api&build={SyntheticAtlas.BuildIdBValue}", cancellationToken);
@@ -98,7 +106,7 @@ public sealed class SearchBuildTests
     public async Task ApiBuildScopedSearchFindsHistoricalRow()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/search?q=Turbo&build={SyntheticAtlas.BuildIdAValue}", cancellationToken);

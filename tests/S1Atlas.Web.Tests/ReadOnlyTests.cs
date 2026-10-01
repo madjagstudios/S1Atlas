@@ -6,13 +6,21 @@ namespace S1Atlas.Web.Tests;
 
 // Serving must never change the atlas: every file under the data root keeps
 // identical bytes no matter which pages or API endpoints are read.
+[Collection("TwoBuildServe")]
 public sealed class ReadOnlyTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public ReadOnlyTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task ServingLeavesEveryAtlasFileUntouched()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
         var before = Snapshot(fixture.Atlas.DataRoot);
 
         string[] paths =

@@ -7,16 +7,24 @@ namespace S1Atlas.Web.Tests;
 // The two-build atlas: build A (older) and build B (current), each with a
 // completed game index, plus the shared API index. Environment snapshots
 // carry distinctive fake absolute paths for the leak tests.
+[Collection("TwoBuildServe")]
 public sealed class TwoBuildFixtureTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public TwoBuildFixtureTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task SeedsTwoBuildsWithBCurrent()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var atlas = await SyntheticAtlas.SeedTwoBuildFixtureAsync(cancellationToken);
+        var dataRoot = _shared.Serve.Atlas.DataRoot;
         var repository = new SqliteAtlasRepository(
-            Path.Combine(atlas.DataRoot, "atlas.db"),
-            Path.Combine(atlas.DataRoot, "backups"));
+            Path.Combine(dataRoot, "atlas.db"),
+            Path.Combine(dataRoot, "backups"));
 
         var builds = await repository.ListBuildsAsync(cancellationToken);
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
@@ -32,10 +40,10 @@ public sealed class TwoBuildFixtureTests
     public async Task SeedsDistinctiveSnapshotPaths()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var atlas = await SyntheticAtlas.SeedTwoBuildFixtureAsync(cancellationToken);
+        var dataRoot = _shared.Serve.Atlas.DataRoot;
         var repository = new SqliteAtlasRepository(
-            Path.Combine(atlas.DataRoot, "atlas.db"),
-            Path.Combine(atlas.DataRoot, "backups"));
+            Path.Combine(dataRoot, "atlas.db"),
+            Path.Combine(dataRoot, "backups"));
 
         var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
 
@@ -50,10 +58,10 @@ public sealed class TwoBuildFixtureTests
     public async Task CompletesBothGameIndexes()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var atlas = await SyntheticAtlas.SeedTwoBuildFixtureAsync(cancellationToken);
+        var dataRoot = _shared.Serve.Atlas.DataRoot;
         var repository = new SqliteAtlasRepository(
-            Path.Combine(atlas.DataRoot, "atlas.db"),
-            Path.Combine(atlas.DataRoot, "backups"));
+            Path.Combine(dataRoot, "atlas.db"),
+            Path.Combine(dataRoot, "backups"));
 
         var indexA = await repository.GetCompletedIndexAsync(SyntheticAtlas.GameIndexAValue, cancellationToken);
         var indexB = await repository.GetCompletedIndexAsync(SyntheticAtlas.GameIndexBValue, cancellationToken);

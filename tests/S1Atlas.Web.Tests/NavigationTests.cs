@@ -4,13 +4,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class NavigationTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public NavigationTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task HeaderNavLinksEveryView()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync("/builds", cancellationToken);
 
@@ -26,7 +34,7 @@ public sealed class NavigationTests
     public async Task SymbolMemberBreadcrumbLinksNamespaceAndType()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken);
@@ -45,7 +53,7 @@ public sealed class NavigationTests
     public async Task SymbolBreadcrumbFallsBackToTypeSearch()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/symbol/{SyntheticAtlas.AssistMethodId}", cancellationToken);
@@ -60,7 +68,7 @@ public sealed class NavigationTests
     public async Task SymbolTypePageShowsTypeAsText()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/symbol/{SyntheticAtlas.WidgetTypeId}", cancellationToken);
@@ -74,7 +82,7 @@ public sealed class NavigationTests
     public async Task SearchCoverageUsesNouns()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync("/search?q=Widget", cancellationToken);
 
@@ -85,7 +93,7 @@ public sealed class NavigationTests
     public async Task SymbolCoverageUsesNouns()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken);
@@ -98,7 +106,7 @@ public sealed class NavigationTests
     public async Task DiffPickerRendersBuildForm()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/diff", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -115,7 +123,7 @@ public sealed class NavigationTests
     public async Task DiffChangesShowSignatures()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}",
@@ -130,7 +138,7 @@ public sealed class NavigationTests
     public async Task DiffWithNoChangesOmitsEmptyList()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&kind=field",

@@ -4,8 +4,16 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class SecurityHeadersTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public SecurityHeadersTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     internal const string ExpectedCsp =
         "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; " +
         "base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
@@ -14,7 +22,7 @@ public sealed class SecurityHeadersTests
     public async Task HtmlPageCarriesSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/builds", cancellationToken);
 
@@ -25,7 +33,7 @@ public sealed class SecurityHeadersTests
     public async Task JsonEndpointCarriesSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/builds", cancellationToken);
 
@@ -36,7 +44,7 @@ public sealed class SecurityHeadersTests
     public async Task NotFoundCarriesSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/no-such-page", cancellationToken);
 
@@ -48,7 +56,7 @@ public sealed class SecurityHeadersTests
     public async Task MisdirectedHostCarriesSecurityHeaders()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
         using var request = new HttpRequestMessage(HttpMethod.Get, "/");
         request.Headers.Host = $"example.com:{fixture.BaseAddress.Port}";
 
@@ -62,7 +70,7 @@ public sealed class SecurityHeadersTests
     public async Task BoundAddressesSurviveConcurrentReads()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var reads = Enumerable.Range(0, 50).Select(_ => Task.Run(
             () =>
