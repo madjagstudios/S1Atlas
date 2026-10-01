@@ -11,7 +11,7 @@ namespace S1Atlas.Cli.Commands;
 
 internal static class OpenCommand
 {
-    private static readonly TimeSpan StatusProbeTimeout = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan StatusProbeTimeout = TimeSpan.FromSeconds(1);
 
     public static Command Create(
         IndexQueryService service,
@@ -127,7 +127,14 @@ internal static class OpenCommand
 
     private static ServeStatusProbe ProbeStatus(int port, CancellationToken cancellationToken)
     {
-        using var client = new HttpClient { Timeout = StatusProbeTimeout };
+        // Loopback only, always direct: a configured proxy must never see
+        // the request, and the probe must not follow redirects elsewhere.
+        using var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            AllowAutoRedirect = false
+        };
+        using var client = new HttpClient(handler) { Timeout = StatusProbeTimeout };
         string body;
         try
         {
