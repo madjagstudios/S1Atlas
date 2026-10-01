@@ -42,6 +42,7 @@ public sealed class CliApplication
     private readonly TimeProvider _timeProvider;
     private readonly Func<IIl2CppExtractor> _processExtractorFactory;
     private readonly Func<int, bool> _isProcessAlive;
+    private readonly IBrowserLauncher _browserLauncher;
 
     /// <summary>
     /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/> for
@@ -74,7 +75,8 @@ public sealed class CliApplication
         Func<HttpClient> toolHttpClientFactory,
         TimeProvider? timeProvider = null,
         Func<IIl2CppExtractor>? processExtractorFactory = null,
-        Func<int, bool>? isProcessAlive = null)
+        Func<int, bool>? isProcessAlive = null,
+        IBrowserLauncher? browserLauncher = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(atlasVersion);
@@ -90,6 +92,7 @@ public sealed class CliApplication
         _processExtractorFactory = processExtractorFactory ??
             (() => new Cpp2IlProcessExtractor());
         _isProcessAlive = isProcessAlive ?? IsProcessAlive;
+        _browserLauncher = browserLauncher ?? new SystemBrowserLauncher();
     }
 
     public int Invoke(
@@ -431,7 +434,7 @@ public sealed class CliApplication
         root.Subcommands.Add(ComponentCommand.Create(sceneQueryService, indexQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScriptableObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(DocsCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
-        root.Subcommands.Add(ServeCommand.Create(_paths.RootDirectory, new SystemBrowserLauncher(), output, error, cancellationToken));
+        root.Subcommands.Add(ServeCommand.Create(_paths.RootDirectory, _browserLauncher, output, error, cancellationToken));
         root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(DiffCommand.Create(
             diffService, sqliteRepository, sqliteRepository, sqliteRepository, repository,
