@@ -12,7 +12,7 @@ public sealed class ReadOnlyTests
     public async Task ServingLeavesEveryAtlasFileUntouched()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
         var before = Snapshot(fixture.Atlas.DataRoot);
 
         string[] paths =
@@ -21,15 +21,26 @@ public sealed class ReadOnlyTests
             "/search?q=Widget",
             "/search?q=PagedType&page=1",
             "/search?q=Catalog&codebase=s1api",
+            $"/search?q=Widget&build={SyntheticAtlas.BuildIdBValue}",
             $"/symbol/{SyntheticAtlas.WidgetTypeId}",
             $"/symbol/{SyntheticAtlas.RunMethodId}",
             $"/symbol/{SyntheticAtlas.LookupMethodId}",
+            "/builds",
+            $"/builds/{SyntheticAtlas.BuildIdAValue}",
+            $"/builds/{SyntheticAtlas.BuildIdBValue}",
+            "/environment",
+            "/diff",
+            $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}",
             "/api/status",
             "/api/search?q=Widget",
             $"/api/symbol/{SyntheticAtlas.RunMethodId}",
             $"/api/symbol/{SyntheticAtlas.RunMethodId}/callers",
             $"/api/symbol/{SyntheticAtlas.RunMethodId}/callees",
             $"/api/symbol/{SyntheticAtlas.RunMethodId}/references",
+            "/api/builds",
+            $"/api/builds/{SyntheticAtlas.BuildIdAValue}",
+            "/api/environment",
+            $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}",
         ];
         foreach (var path in paths)
         {
