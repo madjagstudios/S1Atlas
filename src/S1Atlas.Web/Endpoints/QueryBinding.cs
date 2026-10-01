@@ -26,8 +26,8 @@ internal sealed record SearchArgs(
     string? Build);
 
 internal sealed record DiffArgs(
-    string From,
-    string To,
+    string? From,
+    string? To,
     CodebaseKind Codebase,
     SymbolKind? Kind,
     int Page);
@@ -58,15 +58,9 @@ internal static class QueryBinding
     {
         var from = query["from"].ToString().Trim();
         var to = query["to"].ToString().Trim();
-        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to))
-        {
-            throw new ServeInvalidQueryException(
-                "Diff requires both ?from= and ?to= build IDs.");
-        }
-
         return new DiffArgs(
-            from,
-            to,
+            string.IsNullOrEmpty(from) ? null : from,
+            string.IsNullOrEmpty(to) ? null : to,
             BindCodebase(query["codebase"].ToString()),
             BindKind(query["kind"].ToString()),
             BindPage(query["page"].ToString(), maxPage: null));

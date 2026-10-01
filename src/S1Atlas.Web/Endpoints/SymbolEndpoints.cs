@@ -60,8 +60,28 @@ internal static class SymbolEndpoints
         var callers = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callers, QueryBinding.DefaultRelationshipLimit, ct);
         var callees = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callees, QueryBinding.DefaultRelationshipLimit, ct);
         var references = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.References, QueryBinding.DefaultRelationshipLimit, ct);
+        var typeSymbolId = await ResolveDeclaringTypeAsync(queries, index, symbol, ct);
         return ServeHttp.Html(SymbolView.Render(new SymbolModel(
-            index, symbol, members, source.Snippet, callers, callees, references)));
+            index, symbol, typeSymbolId, members, source.Snippet, callers, callees, references)));
+    }
+
+    private static async Task<string?> ResolveDeclaringTypeAsync(
+        ServeQueries queries,
+        ServeIndex index,
+        SymbolQueryResult symbol,
+        CancellationToken ct)
+    {
+        if (symbol.Kind.Equals("Type", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var (_, declaringType, _) = SymbolView.SplitBreadcrumb(symbol.QualifiedName, symbol.Kind);
+        var key = $"{symbol.Codebase}:{symbol.Channel}:Type:{CanonicalSignatureRenderer.RenderType(declaringType)}";
+        var matches = await queries.GetCanonicalSymbolsAsync(
+            index.Run, key, ct, index.Codebase, index.Channel);
+        return matches.FirstOrDefault(match =>
+            !match.SymbolId.Equals(symbol.SymbolId, StringComparison.Ordinal))?.SymbolId;
     }
 
     private static async Task<IResult> ApiSymbolAsync(

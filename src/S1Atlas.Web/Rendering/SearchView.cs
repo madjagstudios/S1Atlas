@@ -27,19 +27,19 @@ internal static class SearchView
         body.Append($"<p class=\"fact\">FACT: {total} matches in {Html.Escape(Html.CodebaseLabel(model.Codebase))} ({Html.Escape(model.Channel)}){Html.Escape(scope)}.</p>");
         if (total == 0)
         {
-            body.Append("<p class=\"derived\">DERIVED: showing 0 of the true total 0.</p>");
+            body.Append("<p class=\"derived\">DERIVED: showing 0 of 0 matches.</p>");
             return Html.Layout("Search", body.ToString());
         }
 
         if (model.Result.Results.Count == 0)
         {
-            body.Append($"<p class=\"derived\">DERIVED: showing 0 of the true total {total}.</p>");
+            body.Append($"<p class=\"derived\">DERIVED: showing 0 of {total} matches.</p>");
             return Html.Layout("Search", body.ToString());
         }
 
         var from = model.Page * model.PageSize + 1;
         var to = Math.Min(from + model.Result.Results.Count - 1, total);
-        body.Append($"<p class=\"derived\">DERIVED: showing {from}&ndash;{to} of the true total {total}.</p>");
+        body.Append($"<p class=\"derived\">DERIVED: showing {from}&ndash;{to} of {total} matches.</p>");
         if (!model.ResultsLinkable)
         {
             body.Append("<p>Symbol pages cover the current build only.</p>");

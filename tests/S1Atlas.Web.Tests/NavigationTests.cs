@@ -37,7 +37,7 @@ public sealed class NavigationTests
         Assert.Contains(">Demo</a>", breadcrumb);
         Assert.Contains($"href=\"/symbol/{SyntheticAtlas.WidgetTypeId}\">Demo.Widget</a>", breadcrumb);
         Assert.Contains(" › ", breadcrumb);
-        Assert.Contains(">Run<", breadcrumb);
+        Assert.Contains("› Run", breadcrumb);
         Assert.DoesNotContain($"href=\"/symbol/{SyntheticAtlas.RunMethodId}\"", breadcrumb);
     }
 
@@ -67,7 +67,7 @@ public sealed class NavigationTests
         var breadcrumb = BreadcrumbOf(body);
 
         Assert.DoesNotContain("href=\"/symbol/", breadcrumb);
-        Assert.Contains(">Demo.Widget<", breadcrumb);
+        Assert.Contains("› Demo.Widget", breadcrumb);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class NavigationTests
             $"/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken);
 
         Assert.Contains("DERIVED: showing 1 of 1 callers.", body);
-        Assert.Contains("DERIVED: showing 3 of 3 references.", body);
+        Assert.Contains("DERIVED: showing 5 of 5 references.", body);
     }
 
     [Fact]
@@ -122,7 +122,8 @@ public sealed class NavigationTests
             cancellationToken);
 
         Assert.Contains("System.Void Demo.Widget::CheckPhysics()", body);
-        Assert.Contains("System.Void Demo.Widget::Run()", body);
+        Assert.Contains("System.Void Demo.Widget::Turbo()", body);
+        Assert.Contains("— → —", body);
     }
 
     [Fact]

@@ -71,10 +71,12 @@ public sealed class ServeQueries
     public Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsAsync(
         IndexRunRecord run,
         string canonicalKey,
-        CancellationToken ct) =>
+        CancellationToken ct,
+        CodebaseKind codebase = CodebaseKind.ScheduleI,
+        CodeChannel channel = CodeChannel.Installed) =>
         WithStoreAsync(
             token => _services.IndexQueryService.GetCanonicalSymbolsInIndexAsync(
-                run, CodebaseKind.ScheduleI, CodeChannel.Installed, canonicalKey, token),
+                run, codebase, channel, canonicalKey, token),
             ct);
 
     public Task<ApiIndexCatalogResult> ListApiCatalogAsync(CancellationToken ct) =>

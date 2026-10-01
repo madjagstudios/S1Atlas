@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using S1Atlas.Core.Builds;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Web.Api;
 
@@ -31,20 +32,72 @@ internal static class DiffView
         body.Append("</ul>");
         body.Append(CultureInfo.InvariantCulture,
             $"<p>Changed symbols (showing {result.Changes.Count} of {result.TotalChanged}).</p>");
-        body.Append("<ul>");
-        foreach (var change in result.Changes)
+        if (result.Changes.Count > 0)
         {
-            var name = change.SymbolId is null
-                ? Html.Escape(change.QualifiedName)
-                : $"<a href=\"/symbol/{Uri.EscapeDataString(change.SymbolId)}\">{Html.Escape(change.QualifiedName)}</a>";
-            body.Append(CultureInfo.InvariantCulture,
-                $"<li>[{ClassificationLabel(change.Classification)}] {Html.Escape(change.Kind)} {name}</li>");
+            body.Append("<ul>");
+            foreach (var change in result.Changes)
+            {
+                var name = change.SymbolId is null
+                    ? Html.Escape(change.QualifiedName)
+                    : $"<a href=\"/symbol/{Uri.EscapeDataString(change.SymbolId)}\">{Html.Escape(change.QualifiedName)}</a>";
+                body.Append(CultureInfo.InvariantCulture,
+                    $"<li>[{ClassificationLabel(change.Classification)}] {Html.Escape(change.Kind)} {name}" +
+                    $"<br><code>{Html.Escape(change.SignatureBefore ?? "—")} → {Html.Escape(change.SignatureAfter ?? "—")}</code></li>");
+            }
+
+            body.Append("</ul>");
         }
 
-        body.Append("</ul>");
         body.Append(RenderPager(model));
         return Html.Layout("Diff", body.ToString());
     }
+
+    internal static string RenderPicker(
+        IReadOnlyList<GameBuild> builds,
+        string? from,
+        string? to,
+        SymbolKind? kind)
+    {
+        var body = new StringBuilder();
+        body.Append(Html.PageTitle("Diff"));
+        if (builds.Count < 2)
+        {
+            body.Append("<p>Diffing needs two indexed builds.</p>");
+            return Html.Layout("Diff", body.ToString());
+        }
+
+        body.Append("<form method=\"get\" action=\"/diff\">");
+        body.Append($"<label>From <select name=\"from\">{BuildOptions(builds, from)}</select></label> ");
+        body.Append($"<label>To <select name=\"to\">{BuildOptions(builds, to)}</select></label> ");
+        body.Append("<label>Kind <select name=\"kind\">");
+        body.Append(KindOption(null, "Any kind", kind));
+        foreach (var value in Enum.GetValues<SymbolKind>())
+        {
+            body.Append(KindOption(value, value.ToString(), kind));
+        }
+
+        body.Append("</select></label> ");
+        body.Append("<button type=\"submit\">Compare</button></form>");
+        return Html.Layout("Diff", body.ToString());
+    }
+
+    private static string BuildOptions(IReadOnlyList<GameBuild> builds, string? selected)
+    {
+        var options = new StringBuilder();
+        foreach (var build in builds)
+        {
+            options.Append(CultureInfo.InvariantCulture,
+                $"<option value=\"{Html.Escape(build.BuildId)}\"" +
+                $"{(build.BuildId.Equals(selected, StringComparison.Ordinal) ? " selected" : string.Empty)}>" +
+                $"{Html.Escape(build.BuildId)}</option>");
+        }
+
+        return options.ToString();
+    }
+
+    private static string KindOption(SymbolKind? value, string label, SymbolKind? selected) =>
+        $"<option value=\"{(value?.ToString().ToLowerInvariant() ?? string.Empty)}\"" +
+        $"{(value == selected ? " selected" : string.Empty)}>{Html.Escape(label)}</option>";
 
     private static void Fact(StringBuilder body, string name, string value) =>
         body.Append($"<li>FACT: {Html.Escape(name)} {Html.Escape(value)}.</li>");

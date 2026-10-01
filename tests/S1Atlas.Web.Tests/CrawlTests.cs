@@ -34,7 +34,7 @@ public sealed partial class CrawlTests
 
             foreach (Match match in HrefPattern().Matches(body))
             {
-                var href = match.Groups["href"].Value;
+                var href = WebUtility.HtmlDecode(match.Groups["href"].Value);
                 if (!href.StartsWith("/", StringComparison.Ordinal)
                     || href.StartsWith("//", StringComparison.Ordinal))
                 {

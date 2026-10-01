@@ -41,6 +41,21 @@ internal static class DiffEndpoints
                 StatusCodes.Status400BadRequest);
         }
 
+        if (args.From is null || args.To is null)
+        {
+            try
+            {
+                var builds = await queries.ListBuildsAsync(ct);
+                return ServeHttp.Html(DiffView.RenderPicker(builds, args.From, args.To, args.Kind));
+            }
+            catch (AtlasStoreMissingException)
+            {
+                return ServeHttp.Html(Html.Layout(
+                    "Diff",
+                    "<h1>Diff</h1><p>No Atlas data store was found.</p>"));
+            }
+        }
+
         if (args.From.Equals(args.To, StringComparison.Ordinal))
         {
             return ServeHttp.Html(
@@ -50,7 +65,7 @@ internal static class DiffEndpoints
 
         try
         {
-            var outcome = await ResolveAsync(queries, args, ct);
+            var outcome = await ResolveAsync(queries, args.From, args.To, args.Kind, args.Page, ct);
             if (outcome.Error is not null)
             {
                 return ServeHttp.Html(
@@ -90,6 +105,12 @@ internal static class DiffEndpoints
                 new ToolError("UnsupportedCodebase", "Diffing is only supported for the schedule-i codebase.")));
         }
 
+        if (args.From is null || args.To is null)
+        {
+            return ServeHttp.Envelope(ToolEnvelope<ServeDiffResult>.Invalid(
+                new ToolError("InvalidQuery", "Diff requires both ?from= and ?to= build IDs.")));
+        }
+
         if (args.From.Equals(args.To, StringComparison.Ordinal))
         {
             return ServeHttp.Envelope(ToolEnvelope<ServeDiffResult>.Invalid(
@@ -98,7 +119,7 @@ internal static class DiffEndpoints
 
         try
         {
-            var outcome = await ResolveAsync(queries, args, ct);
+            var outcome = await ResolveAsync(queries, args.From, args.To, args.Kind, args.Page, ct);
             if (outcome.Envelope is not null)
             {
                 return ServeHttp.Envelope(outcome.Envelope);
@@ -130,11 +151,14 @@ internal static class DiffEndpoints
 
     private static async Task<DiffOutcome> ResolveAsync(
         ServeQueries queries,
-        DiffArgs args,
+        string from,
+        string to,
+        SymbolKind? kind,
+        int page,
         CancellationToken ct)
     {
         var history = await queries.GetHistoryAsync(ct);
-        foreach (var buildId in new[] { args.From, args.To })
+        foreach (var buildId in new[] { from, to })
         {
             if (!history.Entries.Any(entry =>
                     entry.Build.BuildId.Equals(buildId, StringComparison.Ordinal)))
@@ -152,8 +176,8 @@ internal static class DiffEndpoints
             }
         }
 
-        var fromAuthority = await queries.ResolveAuthorityAsync(ct, args.From);
-        var toAuthority = await queries.ResolveAuthorityAsync(ct, args.To);
+        var fromAuthority = await queries.ResolveAuthorityAsync(ct, from);
+        var toAuthority = await queries.ResolveAuthorityAsync(ct, to);
         foreach (var authority in new[] { fromAuthority, toAuthority })
         {
             if (authority.Status != InstalledBuildAuthorityStatus.Resolved)
@@ -182,14 +206,14 @@ internal static class DiffEndpoints
                 ToolEnvelope<ServeDiffResult>.Invalid(new ToolError("SameIndex", message)));
         }
 
-        var diff = await queries.DiffAsync(indexIdA, indexIdB, args.Kind?.ToString(), ct);
+        var diff = await queries.DiffAsync(indexIdA, indexIdB, kind?.ToString(), ct);
         var current = await queries.ResolveAuthorityAsync(ct);
         var currentRun = current.Status == InstalledBuildAuthorityStatus.Resolved
             ? current.IndexRun
             : null;
         var toRun = toAuthority.IndexRun!;
         var pageChanges = diff.Changes
-            .Skip(args.Page * QueryBinding.DiffPageSize)
+            .Skip(page * QueryBinding.DiffPageSize)
             .Take(QueryBinding.DiffPageSize)
             .ToArray();
         var changes = new List<ServeDiffChange>(pageChanges.Length);
@@ -206,8 +230,8 @@ internal static class DiffEndpoints
         }
 
         var result = new ServeDiffResult(
-            args.From,
-            args.To,
+            from,
+            to,
             indexIdA,
             indexIdB,
             diff.Codebase,
@@ -221,7 +245,7 @@ internal static class DiffEndpoints
                 diff.CountsByClassification.GetValueOrDefault(DiffClassification.RelationshipsChanged),
                 diff.CountsByClassification.GetValueOrDefault(DiffClassification.Unchanged)),
             diff.Changes.Count,
-            args.Page,
+            page,
             QueryBinding.DiffPageSize,
             changes);
         return new DiffOutcome(result, toAuthority, null, StatusCodes.Status200OK, null);
