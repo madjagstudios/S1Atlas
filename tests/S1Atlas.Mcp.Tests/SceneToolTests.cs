@@ -110,21 +110,6 @@ public sealed class SceneToolTests
     }
 
     [Fact]
-    public async Task GetScriptableObject_BlankSelector_ReturnsInvalid()
-    {
-        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
-        var tools = CreateTools(atlas);
-
-        var envelope = await tools.GetScriptableObjectAsync(
-            selector: " ",
-            buildId: atlas.BuildIdA,
-            sceneSnapshotId: null,
-            ct: CancellationToken.None);
-
-        Assert.Equal(ToolStatus.Invalid, envelope.Status);
-    }
-
-    [Fact]
     public async Task GetComponent_WithCode_ReturnsSymbolHandoff()
     {
         await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();

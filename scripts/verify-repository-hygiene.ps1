@@ -36,7 +36,8 @@ $prohibitedBasenames = @(
     'complete.marker',
     'extraction.lock',
     'stdout.log',
-    'stderr.log'
+    'stderr.log',
+    'golden-facts.local.json'
 )
 
 $prohibitedSegments = @(

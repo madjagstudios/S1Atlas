@@ -733,6 +733,26 @@ available; otherwise use the skill's CLI commands as the fallback. Never treat
 a missing server as an empty index, and remember that S1Atlas does not download
 mods.
 
+## Real-game golden facts
+
+Synthetic fixtures cannot catch every real-build bug: decoder edge cases, field-layout misalignment, and data-shape drift only show up on the real build. The golden-facts suite pins a few facts from your own live atlas and re-checks them on demand. It runs only with `S1ATLAS_RUN_LOCAL_GAME_TESTS=1`, only against a temp copy of the live atlas, and its expected values live in a gitignored local file that must never be committed.
+
+1. Copy `tests/S1Atlas.IntegrationTests/GoldenFacts/golden-facts.example.json` to `golden-facts.local.json` in the same directory.
+2. Replace the placeholders with values read from your own atlas via the CLI query commands (see the command reference below). Supported fact kinds:
+   - the serialized field value of a component or ScriptableObject, by selector plus field path;
+   - the resolved target name of an object-reference field;
+   - the exact callee-name set of a method, by selector.
+   Keep facts few and stable: values that change with every build make bad goldens.
+3. Run the suite:
+
+```powershell
+$env:S1ATLAS_RUN_LOCAL_GAME_TESTS = '1'
+dotnet test S1Atlas.sln --configuration Release --no-build --filter "FullyQualifiedName~GoldenFacts"
+Remove-Item Env:\S1ATLAS_RUN_LOCAL_GAME_TESTS
+```
+
+Without the local file the file-backed tests skip; the value-free structural invariants (resolver round-trips, recovery-edge hygiene) run regardless. After each game update, re-run the suite: changed values mean the local file needs refreshing, while failures against an unchanged file mean a product bug. Never commit the local file — the repository-hygiene gate blocks its name.
+
 ## Command reference
 
 | Command | Purpose |

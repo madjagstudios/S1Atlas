@@ -46,6 +46,7 @@ public sealed class RepositoryHygieneScriptTests
     [InlineData("extraction.lock")]
     [InlineData("stdout.log")]
     [InlineData("stderr.log")]
+    [InlineData("golden-facts.local.json")]
     public void Script_ProhibitedBasename_FailsWithNonZeroExit(string basename)
     {
         var exitCode = RunWithTrackedPaths(
