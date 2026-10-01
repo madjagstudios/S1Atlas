@@ -573,6 +573,20 @@ and `HEAD`, sends no CORS headers, and never writes the Atlas. `--port 0`
 picks an ephemeral port; `--open` opens the default browser once the server
 is listening. Stop the server with Ctrl+C.
 
+```powershell
+s1atlas open "Demo.Widget"
+s1atlas open "Demo.Widget" --port 5217
+```
+
+`open` resolves a symbol selector exactly like `type`/`method` (ambiguity and
+not-found behave the same), then probes `http://127.0.0.1:<port>/api/status`
+(default port 5217) with a short timeout. When serve is listening there over
+the same build and index, `open` launches `/symbol/<id>` in the default
+browser and prints the URL. When nothing listens, it prints the URL and tells
+you to start it with `s1atlas serve`. When the server answers for a different
+build or index, it prints a warning and does not open. `open` only ever
+contacts loopback; every other query command stays fully offline.
+
 ## Reference collections
 
 Reference mods are user-supplied local inputs. A manifest is the explicit
@@ -871,4 +885,5 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
 | `docs generate [--build <id>] [--output <dir>]` | **Deprecated** (removal in the next minor release; use `serve`): generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
 | `serve [--port <n>] [--open]` | Start the loopback-only, read-only local web app (default port 5217; 0 picks an ephemeral port) |
+| `open <selector> [--port <n>]` | Resolve one symbol and open its serve page in the browser (default port 5217; prints the URL with a hint when serve is not running) |
 | `s1atlas-mcp` | Launch the read-only Schedule I Installed MCP server over stdio (no arguments; `mcp serve` is an alias, `--version` prints the version) |

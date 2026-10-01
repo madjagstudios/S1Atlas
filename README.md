@@ -78,7 +78,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 
 ## Interfaces
 
-- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `serve` (`docs generate` is deprecated).
+- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, `serve`, and `open` (`docs generate` is deprecated).
 - **Read-only MCP server**: the Schedule I Installed query surface (symbols, source, relationships, call sites, field references, callable surface, scenes), `investigate_seam` with read-only native evidence, `plan_runtime_proof`, S1API/S1MAPI queries, and completed local reference-collection queries, for coding agents (run the installed `s1atlas-mcp` with no arguments).
 - **Local web app**: `s1atlas serve` starts a loopback-only, read-only web app with ranked search, symbol pages, builds, environment, and diffs.
 - **Agent skill**: an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
