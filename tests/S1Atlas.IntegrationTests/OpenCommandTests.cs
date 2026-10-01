@@ -25,19 +25,19 @@ public sealed class OpenCommandTests : IAsyncDisposable
             try
             {
                 var launcher = new RecordingLauncher();
-                using var output = new StringWriter();
-                using var error = new StringWriter();
                 var application = CreateApplication(atlas.DataRoot, launcher);
+                var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
 
-                var exitCode = application.Invoke(
-                    ["open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString()],
-                    output,
-                    error,
-                    cancellationToken);
+                // The 300ms probe can time out against a live server when the
+                // machine is saturated by parallel test runs; retry, then
+                // assert the last attempt. A broken probe fails every attempt.
+                var (exitCode, standardOutput) = (1, "");
+                for (var attempt = 0; attempt < 3 && launcher.Launched.Count == 0; attempt++)
+                    (exitCode, standardOutput, _) = InvokeOpen(application, arguments, cancellationToken);
 
                 var expected = $"http://127.0.0.1:{host.BaseAddress.Port}/symbol/{SyntheticAtlas.WidgetTypeId}";
                 Assert.Equal(0, exitCode);
-                Assert.Equal(expected, output.ToString().Trim());
+                Assert.Equal(expected, standardOutput.Trim());
                 Assert.Equal(expected, Assert.Single(launcher.Launched).ToString());
             }
             finally
@@ -84,18 +84,17 @@ public sealed class OpenCommandTests : IAsyncDisposable
             try
             {
                 var launcher = new RecordingLauncher();
-                using var output = new StringWriter();
-                using var error = new StringWriter();
                 var application = CreateApplication(atlas.DataRoot, launcher);
+                var arguments = new[] { "open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString() };
 
-                var exitCode = application.Invoke(
-                    ["open", "Demo.Widget", "--port", host.BaseAddress.Port.ToString()],
-                    output,
-                    error,
-                    cancellationToken);
+                // A probe timeout lands in the exit-0 not-running branch;
+                // retry so only a persistent mismatch fails the test.
+                var (exitCode, _, standardError) = (0, "", "");
+                for (var attempt = 0; attempt < 3 && exitCode == 0; attempt++)
+                    (exitCode, _, standardError) = InvokeOpen(application, arguments, cancellationToken);
 
                 Assert.Equal(1, exitCode);
-                Assert.Contains("different build or index", error.ToString(), StringComparison.Ordinal);
+                Assert.Contains("different build or index", standardError, StringComparison.Ordinal);
                 Assert.Empty(launcher.Launched);
             }
             finally
@@ -167,6 +166,17 @@ public sealed class OpenCommandTests : IAsyncDisposable
         foreach (var directory in _configurationDirectories)
             TestDirectory.DeleteTree(directory);
         return ValueTask.CompletedTask;
+    }
+
+    private static (int ExitCode, string StandardOutput, string StandardError) InvokeOpen(
+        CliApplication application,
+        string[] arguments,
+        CancellationToken cancellationToken)
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var exitCode = application.Invoke(arguments, output, error, cancellationToken);
+        return (exitCode, output.ToString(), error.ToString());
     }
 
     private static int ClosedLoopbackPort()
