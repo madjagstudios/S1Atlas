@@ -12,12 +12,12 @@ public sealed class SharedTwoBuildServeFixture : IAsyncLifetime
     public ServeFixture Serve => _serve ?? throw new InvalidOperationException(
         "The shared serve fixture is not initialized.");
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _serve = await ServeFixture.CreateTwoBuildAsync(TestContext.Current.CancellationToken);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_serve is not null)
         {
