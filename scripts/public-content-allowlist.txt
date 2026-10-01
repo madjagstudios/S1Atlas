@@ -6,4 +6,4 @@ docs/USAGE.md
 skills/s1atlas/SKILL.md
 docs/design/2026-08-29-agent-usage-parity-design.md
 docs/performance/2026-08-30-mcp-launch-baseline.md
-tests/S1Atlas.Docs.Tests/AgentUsageContractTests.cs
+tests/S1Atlas.IntegrationTests/Repository/AgentUsageContractTests.cs

@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace S1Atlas.Docs.Tests;
+namespace S1Atlas.IntegrationTests.Repository;
 
 public sealed class AgentUsageContractTests
 {
