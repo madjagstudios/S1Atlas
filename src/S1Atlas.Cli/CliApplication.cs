@@ -123,6 +123,12 @@ public sealed class CliApplication
         TextWriter error,
         CancellationToken cancellationToken)
     {
+        if (args is ["--version"])
+        {
+            output.WriteLine(_atlasVersion);
+            return 0;
+        }
+
         using var sqliteRepository = new SqliteAtlasRepository(
             _paths.DatabasePath,
             _paths.BackupsDirectory);
