@@ -43,6 +43,7 @@ $prohibitedBasenames = @(
 $prohibitedSegments = @(
     'candidate-output',
     'retained-output',
+    's1atlas-docs',
     'reconstructed',
     'decompiled',
     '.staging',

@@ -61,6 +61,7 @@ public sealed class RepositoryHygieneScriptTests
     [Theory]
     [InlineData("candidate-output")]
     [InlineData("retained-output")]
+    [InlineData("s1atlas-docs")]
     [InlineData("reconstructed")]
     [InlineData("decompiled")]
     [InlineData(".staging")]
