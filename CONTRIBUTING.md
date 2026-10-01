@@ -49,10 +49,10 @@ To exercise the packaged tools exactly as users install them, pack and install
 to a scratch tool-path (never the global store) from the repository root:
 
 ```powershell
-dotnet pack S1Atlas.sln --configuration Release --output ./packages
-dotnet tool install S1Atlas.Cli --tool-path ./tools --add-source ./packages
-dotnet tool install S1Atlas.Mcp --tool-path ./tools --add-source ./packages
-./tools/s1atlas.exe --version
+dotnet pack S1Atlas.sln --configuration Release --output ./.tool-dev/packages
+dotnet tool install S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+dotnet tool install S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+./.tool-dev/tools/s1atlas.exe --version
 ```
 
 After further source changes, re-pack and update by package ID — `update` takes
@@ -60,13 +60,12 @@ the package ID (`S1Atlas.Cli`, `S1Atlas.Mcp`), not the command name, and
 reinstalls even when the version is unchanged:
 
 ```powershell
-dotnet pack S1Atlas.sln --configuration Release --output ./packages
-dotnet tool update S1Atlas.Cli --tool-path ./tools --add-source ./packages
-dotnet tool update S1Atlas.Mcp --tool-path ./tools --add-source ./packages
+dotnet pack S1Atlas.sln --configuration Release --output ./.tool-dev/packages
+dotnet tool update S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+dotnet tool update S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
 ```
 
-`./packages/` and `./tools/` are scratch directories; keep them out of the
-repository.
+`./.tool-dev/` is a scratch directory; keep it out of the repository.
 
 ## Before you open a pull request
 

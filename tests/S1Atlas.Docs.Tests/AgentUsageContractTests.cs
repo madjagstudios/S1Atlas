@@ -74,8 +74,8 @@ public sealed class AgentUsageContractTests
         var normalizedUsage = NormalizeWhitespace(usage);
 
         Assert.Contains("[`skills/s1atlas/SKILL.md`](../skills/s1atlas/SKILL.md)", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet tool install S1Atlas.Cli --tool-path ./tools --add-source ./packages", usage, StringComparison.Ordinal);
-        Assert.Contains("dotnet tool install S1Atlas.Mcp --tool-path ./tools --add-source ./packages", usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet tool install S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages", usage, StringComparison.Ordinal);
+        Assert.Contains("dotnet tool install S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages", usage, StringComparison.Ordinal);
         Assert.Contains("launch the installed server over stdio with no arguments", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("command = \"s1atlas-mcp\"", usage, StringComparison.Ordinal);
         Assert.Contains("\"command\": \"s1atlas-mcp\"", usage, StringComparison.Ordinal);

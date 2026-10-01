@@ -47,11 +47,11 @@ ScheduleOne.Money.MoneyManager::ChangeCashBalance(System.Single, System.Boolean,
 
 ```powershell
 # pack and install both tools from this checkout
-dotnet pack S1Atlas.sln --configuration Release --output ./packages
-dotnet tool install S1Atlas.Cli --tool-path ./tools --add-source ./packages
-dotnet tool install S1Atlas.Mcp --tool-path ./tools --add-source ./packages
+dotnet pack S1Atlas.sln --configuration Release --output ./.tool-dev/packages
+dotnet tool install S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+dotnet tool install S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
 
-# put ./tools on PATH, then verify the install
+# put ./.tool-dev/tools on PATH, then verify the install
 s1atlas --version
 s1atlas-mcp --version
 

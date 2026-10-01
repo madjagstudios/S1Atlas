@@ -11,9 +11,9 @@ live in [REFERENCE.md](REFERENCE.md).
 pack them and install both packages to a directory on your `PATH`:
 
 ```powershell
-dotnet pack S1Atlas.sln --configuration Release --output ./packages
-dotnet tool install S1Atlas.Cli --tool-path ./tools --add-source ./packages
-dotnet tool install S1Atlas.Mcp --tool-path ./tools --add-source ./packages
+dotnet pack S1Atlas.sln --configuration Release --output ./.tool-dev/packages
+dotnet tool install S1Atlas.Cli --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
+dotnet tool install S1Atlas.Mcp --tool-path ./.tool-dev/tools --add-source ./.tool-dev/packages
 ```
 
 Then verify the install:
