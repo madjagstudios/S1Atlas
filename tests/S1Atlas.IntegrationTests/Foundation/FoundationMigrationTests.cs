@@ -178,7 +178,7 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
             paths.DatabasePath,
             cancellationToken);
         Assert.Equal(
-            15,
+            16,
             await ReadScalarInt64Async(
                 finalConnection,
                 "SELECT COUNT(*) FROM schema_migrations;",
@@ -440,7 +440,7 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
             ? Directory
                 .EnumerateFiles(
                     backupDirectory,
-                    "atlas-before-schema-15-*.db",
+                    "atlas-before-schema-16-*.db",
                     SearchOption.TopDirectoryOnly)
                 .Order(StringComparer.Ordinal)
                 .ToArray()
