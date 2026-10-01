@@ -28,9 +28,7 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
       - name: Restore
-        run: dotnet restore S1Atlas.sln
-      - name: Verify S1Atlas.NativeRecovery lockfile
-        run: dotnet restore src/S1Atlas.NativeRecovery/S1Atlas.NativeRecovery.csproj --locked-mode
+        run: dotnet restore S1Atlas.sln --locked-mode
       - name: Build
         run: dotnet build S1Atlas.sln --configuration Release --no-restore
       - name: Installable tools smoke
@@ -159,7 +157,7 @@ jobs:
           # of the default C: user profile temp directory.
           TEMP: ${{ runner.temp }}/s1atlas-test-temp
           TMP: ${{ runner.temp }}/s1atlas-test-temp
-        run: dotnet test ${{ matrix.project }} --configuration Release --verbosity normal --logger "trx;LogFileName=${{ matrix.name }}.trx" --results-directory TestResults
+        run: dotnet test ${{ matrix.project }} --configuration Release -p:RestoreLockedMode=true --verbosity normal --logger "trx;LogFileName=${{ matrix.name }}.trx" --results-directory TestResults
       - name: Timing summary
         if: always()
         shell: pwsh

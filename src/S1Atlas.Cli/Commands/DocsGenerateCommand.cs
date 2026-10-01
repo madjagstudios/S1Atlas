@@ -12,7 +12,7 @@ internal static class DocsGenerateCommand
     {
         var buildOption = new Option<string?>("--build") { Description = "Pin only the Schedule I Installed surface to this build ID." };
         var outputOption = new Option<string?>("--output") { Description = "Output directory; defaults to ./s1atlas-docs/." };
-        var command = new Command("generate", "Write a deterministic offline HTML portal.");
+        var command = new Command("generate", "Write a deterministic offline HTML portal. Deprecated: use 's1atlas serve' instead; removal in the next minor release.");
         command.Options.Add(buildOption);
         command.Options.Add(outputOption);
         command.SetAction(parseResult => Execute(
@@ -33,6 +33,7 @@ internal static class DocsGenerateCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
+        error.WriteLine("warning: 's1atlas docs generate' is deprecated and will be removed in the next minor release; use 's1atlas serve' instead.");
         var atlasRoot = Path.GetFullPath(dataRoot);
         var outputDirectory = Path.GetFullPath(requestedOutput ?? Path.Combine(Environment.CurrentDirectory, "s1atlas-docs"));
         if (IsEqualOrContained(outputDirectory, atlasRoot))

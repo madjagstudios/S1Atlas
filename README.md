@@ -17,7 +17,7 @@ Point S1Atlas at your installed copy of Schedule I and it:
 - **Indexes explicitly selected local reference-mod collections** so prior-art symbols and relationships can be queried beside the verified game index.
 - **Recovers native bodies for stubbed methods** so a game method that decompiles to nothing but a `throw null` stub can be mapped to its native `GameAssembly.dll` address, with bounded, provenance-stamped evidence of what it calls and reads, recovered statically without running the game.
 - **Investigates behavior-ownership seams and plans runtime proofs** so you can find which type actually owns a behavior, with explicit coverage and negative results, and get a bounded, read-only plan to confirm it at runtime when static evidence cannot.
-- **Serves the same knowledge three ways**: a CLI, a read-only [MCP](https://modelcontextprotocol.io) server for coding agents, and a generated static HTML portal.
+- **Serves the same knowledge three ways**: a CLI, a read-only [MCP](https://modelcontextprotocol.io) server for coding agents, and a local read-only web app (`s1atlas serve`).
 
 Every answer is labeled by provenance, `FACT` for extracted and `DERIVED` for computed, and traced to the exact build. S1Atlas reports only what it can prove and stays explicit about what it cannot.
 
@@ -70,17 +70,17 @@ s1atlas reference collections validate "C:\path\to\reference-manifest.json"
 s1atlas reference index "C:\path\to\reference-manifest.json"
 s1atlas search "ModEntry" --scope reference --collection qol
 
-# generate a browsable, offline HTML portal (opens as ./s1atlas-docs/index.html)
-s1atlas docs generate
+# browse the local read-only web app (ranked search, symbols, builds, diffs)
+s1atlas serve
 ```
 
 The full command walkthrough, every option, the MCP server, and the agent skill are in **[docs/USAGE.md](docs/USAGE.md)**.
 
 ## Interfaces
 
-- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, and `docs generate`.
+- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, `serve`, and `open` (`docs generate` is deprecated).
 - **Read-only MCP server**: the Schedule I Installed query surface (symbols, source, relationships, call sites, field references, callable surface, scenes), `investigate_seam` with read-only native evidence, `plan_runtime_proof`, S1API/S1MAPI queries, and completed local reference-collection queries, for coding agents (run the installed `s1atlas-mcp` with no arguments).
-- **Static portal**: `docs generate` builds a deterministic, fully offline, provenance-labeled HTML site.
+- **Local web app**: `s1atlas serve` starts a loopback-only, read-only web app with ranked search, symbol pages, builds, environment, and diffs.
 - **Agent skill**: an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
 
 ## How it works
