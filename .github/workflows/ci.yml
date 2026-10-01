@@ -33,6 +33,23 @@ jobs:
         run: dotnet restore src/S1Atlas.NativeRecovery/S1Atlas.NativeRecovery.csproj --locked-mode
       - name: Build
         run: dotnet build S1Atlas.sln --configuration Release --no-restore
+      - name: Installable tools smoke
+        shell: pwsh
+        run: |
+          $packDir = "$env:RUNNER_TEMP/at77-packages"
+          $toolDir = "$env:RUNNER_TEMP/at77-tools"
+          $env:S1ATLAS_HOME = "$env:RUNNER_TEMP/at77-home"
+          dotnet pack S1Atlas.sln --configuration Release --no-restore --output $packDir
+          if ((Get-ChildItem $packDir -Filter *.nupkg).Count -ne 2) { throw 'expected exactly 2 tool packages' }
+          dotnet tool install S1Atlas.Cli --tool-path $toolDir --add-source $packDir
+          dotnet tool install S1Atlas.Mcp --tool-path $toolDir --add-source $packDir
+          $expected = (Select-String '^## \[(\d+\.\d+\.\d+)\]' CHANGELOG.md | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ((& "$toolDir/s1atlas.exe" --version).Trim() -ne $expected) { throw 's1atlas --version mismatch' }
+          if ((& "$toolDir/s1atlas-mcp.exe" --version).Trim() -ne $expected) { throw 's1atlas-mcp --version mismatch' }
+          & "$toolDir/s1atlas.exe" tools status | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'installed s1atlas tools status failed' }
+          & "$toolDir/s1atlas-mcp.exe" bogus-arg 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 2) { throw 'installed s1atlas-mcp usage exit code mismatch' }
       - name: Format
         run: dotnet format S1Atlas.sln --verify-no-changes --no-restore
       - name: Repository hygiene

@@ -9,9 +9,13 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/madjagstudios/S1Atlas</RepositoryUrl>
     <Description>Read-only MCP stdio server for Schedule I developer intelligence.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
     <ProjectReference Include="..\S1Atlas.Application\S1Atlas.Application.csproj" />
