@@ -127,7 +127,8 @@ public sealed record SymbolSearchResult(
     int TotalCount,
     int ReturnedCount,
     IReadOnlyList<SymbolQueryResult> Results,
-    SymbolResolutionStatus? ResolutionStatus = null);
+    SymbolResolutionStatus? ResolutionStatus = null,
+    string? SearchNotice = null);
 
 public sealed record RelationshipEndpointQueryResult(
     string? SymbolId,

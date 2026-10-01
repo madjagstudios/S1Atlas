@@ -105,6 +105,37 @@ public sealed class ApiIndexQueryService
             cancellationToken);
     }
 
+    public async Task<SymbolSearchResult> SearchRankedSelectedAsync(
+        ApiIndexSelection selection,
+        string selector,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        ValidateApiScope(selection.Codebase, selection.Channel);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateLimit(limit, nameof(limit));
+
+        var run = await GetSelectedRunAsync(selection, cancellationToken);
+        if (run is null)
+        {
+            return new SymbolSearchResult(
+                0,
+                0,
+                [],
+                SymbolResolutionStatus.NoCompletedIndex);
+        }
+
+        return await _indexQueryService.SearchRankedInIndexAsync(
+            run,
+            selection.Codebase,
+            selection.Channel,
+            selector,
+            limit,
+            kind: null,
+            cancellationToken);
+    }
+
     public async Task<SourceSnippetResolutionResult> SourceAsync(
         CodebaseKind codebase,
         CodeChannel channel,

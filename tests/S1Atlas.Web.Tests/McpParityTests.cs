@@ -12,17 +12,41 @@ namespace S1Atlas.Web.Tests;
 public sealed class McpParityTests
 {
     [Fact]
-    public async Task GameSearchMatchesMcpByteForByte()
+    public async Task GameSearchMatchesMcpStatusTotalsAndResultSets()
     {
+        // Serve ranks results (exact name, prefix, substring, bm25) while the
+        // MCP tool keeps relevance order, so parity is status, totals, and
+        // the result set — not byte order.
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
 
-        var served = await fixture.GetStringAsync("/api/search?q=Widget", cancellationToken);
+        using var served = JsonDocument.Parse(
+            await fixture.GetStringAsync("/api/search?q=Widget", cancellationToken));
         var envelope = await tools.SearchSymbolsAsync("Widget", limit: 20, ct: cancellationToken);
-        var expected = JsonSerializer.Serialize(envelope, ToolJsonOptions.Create());
+        using var expected = JsonDocument.Parse(
+            JsonSerializer.Serialize(envelope, ToolJsonOptions.Create()));
 
-        Assert.Equal(expected, served);
+        Assert.Equal(
+            expected.RootElement.GetProperty("status").GetString(),
+            served.RootElement.GetProperty("status").GetString());
+        var servedData = served.RootElement.GetProperty("data");
+        var expectedData = expected.RootElement.GetProperty("data");
+        Assert.Equal(
+            expectedData.GetProperty("totalCount").GetInt32(),
+            servedData.GetProperty("totalCount").GetInt32());
+        Assert.Equal(
+            expectedData.GetProperty("returnedCount").GetInt32(),
+            servedData.GetProperty("returnedCount").GetInt32());
+        Assert.Equal(
+            expectedData.GetProperty("results").EnumerateArray()
+                .Select(result => result.GetProperty("symbolId").GetString())
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray(),
+            servedData.GetProperty("results").EnumerateArray()
+                .Select(result => result.GetProperty("symbolId").GetString())
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray());
     }
 
     [Fact]

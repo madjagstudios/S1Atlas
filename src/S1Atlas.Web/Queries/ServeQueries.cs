@@ -95,7 +95,7 @@ public sealed class ServeQueries
         int limit,
         CancellationToken ct) =>
         WithStoreAsync(
-            token => _services.IndexQueryService.SearchInIndexAsync(
+            token => _services.IndexQueryService.SearchRankedInIndexAsync(
                 run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, kind, token),
             ct);
 
@@ -104,7 +104,7 @@ public sealed class ServeQueries
         string query,
         int limit,
         CancellationToken ct) =>
-        WithStoreAsync(token => _api.SearchSelectedAsync(selection, query, limit, token), ct);
+        WithStoreAsync(token => _api.SearchRankedSelectedAsync(selection, query, limit, token), ct);
 
     public Task<SymbolQueryResult?> GetSymbolAsync(string indexId, string symbolId, CancellationToken ct) =>
         WithStoreAsync(

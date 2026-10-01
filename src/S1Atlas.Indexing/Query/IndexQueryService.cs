@@ -179,6 +179,58 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken) =>
         SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken);
 
+    internal const string SearchIndexFallbackNotice =
+        "search index not built; run any s1atlas write command, e.g. `s1atlas index`, to upgrade";
+
+    // Serve-only ranked search. Uses the FTS trigram index when the atlas has
+    // been migrated; otherwise falls back to the LIKE scan with a visible
+    // notice. CLI and MCP keep SearchInIndexAsync unchanged.
+    public async Task<SymbolSearchResult> SearchRankedInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string query,
+        int limit,
+        SymbolKind? kind,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
+
+        var kindName = kind?.ToString();
+        if (!await _repository.SupportsSymbolSearchIndexAsync(cancellationToken))
+        {
+            var fallbackTotal = await _repository.CountCompletedSymbolMatchesAsync(
+                run.IndexId, query, cancellationToken, kindName);
+            if (fallbackTotal == 0)
+                return new SymbolSearchResult(0, 0, [], null, SearchIndexFallbackNotice);
+
+            var fallbackSymbols = await _repository.SearchCompletedSymbolsAsync(
+                run.IndexId, query, limit, cancellationToken, kindName);
+            return new SymbolSearchResult(
+                fallbackTotal,
+                fallbackSymbols.Count,
+                fallbackSymbols
+                    .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
+                    .ToArray(),
+                null,
+                SearchIndexFallbackNotice);
+        }
+
+        var totalCount = await _repository.CountRankedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName);
+        if (totalCount == 0)
+            return new SymbolSearchResult(0, 0, [], null);
+
+        var symbols = await _repository.SearchRankedSymbolsAsync(
+            run.IndexId, query, limit, cancellationToken, kindName);
+        var results = symbols
+            .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
+            .ToArray();
+        return new SymbolSearchResult(totalCount, results.Length, results, null);
+    }
+
     public async Task<SymbolResolutionResult> ResolveInIndexAsync(
         IndexRunRecord run,
         CodebaseKind codebase,
