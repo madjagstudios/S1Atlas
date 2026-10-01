@@ -1,4 +1,5 @@
 using System.Net;
+using S1Atlas.Application.Authority;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Web.Rendering;
@@ -8,6 +9,14 @@ internal static class Html
     internal static string Escape(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
     internal static string UrlSegment(string value) => Uri.EscapeDataString(value);
+
+    internal static string BuildStatusLabel(InstalledBuildHistoryStatus status) => status switch
+    {
+        InstalledBuildHistoryStatus.IndexedVerified => "Indexed and verified",
+        InstalledBuildHistoryStatus.NotIndexed => "Not indexed",
+        InstalledBuildHistoryStatus.IntegrityFailed => "Integrity check failed",
+        _ => status.ToString()
+    };
 
     internal static string CodebaseLabel(CodebaseKind codebase) => codebase switch
     {

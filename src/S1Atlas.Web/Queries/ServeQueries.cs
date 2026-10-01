@@ -1,8 +1,10 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Composition;
+using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
+using S1Atlas.Indexing.Authority;
 using S1Atlas.Indexing.Query;
 
 namespace S1Atlas.Web.Queries;
@@ -47,6 +49,14 @@ public sealed class ServeQueries
 
     public Task<EnvironmentSnapshot?> GetCurrentSnapshotAsync(CancellationToken ct) =>
         WithStoreAsync(token => _services.Repository.GetCurrentSnapshotAsync(token), ct);
+
+    public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken ct) =>
+        WithStoreAsync(token => _services.Repository.ListBuildsAsync(token), ct);
+
+    public Task<PreferredVerifiedExtraction?> ResolvePreferredExtractionAsync(
+        string buildId,
+        CancellationToken ct) =>
+        WithStoreAsync(token => _services.AuthorityResolver.ResolvePreferredExtractionAsync(buildId, token), ct);
 
     public Task<BuildDiffResult> DiffAsync(
         string indexIdA,

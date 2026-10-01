@@ -14,3 +14,32 @@ public sealed record ServeStatusResult(
     InstalledBuildAuthorityStatus AuthorityStatus,
     string? Message,
     IReadOnlyList<ServeIndexStatus> Indexes);
+
+public sealed record ServeBuildListItem(
+    string BuildId,
+    DateTimeOffset FirstSeenAtUtc,
+    bool IsValid,
+    bool IsCurrent,
+    bool HasPreferredVerifiedExtraction,
+    bool HasCompletedIndex);
+
+public sealed record ServeBuildListResult(
+    IReadOnlyList<ServeBuildListItem> Builds);
+
+public sealed record ServeAdjacentDiff(
+    string FromBuildId,
+    string ToBuildId);
+
+public sealed record ServeBuildResult(
+    string BuildId,
+    DateTimeOffset FirstSeenAtUtc,
+    bool IsValid,
+    bool IsCurrent,
+    string Status,
+    bool IsNavigable,
+    string? Message,
+    string? ExtractionId,
+    string? IndexId,
+    IReadOnlyList<ServeIndexStatus> Surfaces,
+    IReadOnlyList<ServeAdjacentDiff> AdjacentDiffs,
+    bool EnvironmentAvailable);

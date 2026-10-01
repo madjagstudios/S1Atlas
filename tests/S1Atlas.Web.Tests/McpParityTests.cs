@@ -40,6 +40,20 @@ public sealed class McpParityTests
     }
 
     [Fact]
+    public async Task BuildListMatchesMcpByteForByte()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var tools = new BuildEnvironmentTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
+
+        var served = await fixture.GetStringAsync("/api/builds", cancellationToken);
+        var envelope = await tools.ListBuildsAsync(limit: 500, ct: cancellationToken);
+        var expected = JsonSerializer.Serialize(envelope, ToolJsonOptions.Create());
+
+        Assert.Equal(expected, served);
+    }
+
+    [Fact]
     public async Task GameSymbolMatchesMcpData()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
