@@ -109,12 +109,13 @@ public sealed class SymbolTests
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
 
-        using var response = await fixture.GetAsync("/symbol/%3Cb%3Ehi%3C%2Fb%3E", cancellationToken);
+        using var response = await fixture.GetAsync("/symbol/%3Cimg%20src%3Dx%3E", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.DoesNotContain("<b>hi</b>", body);
-        Assert.Contains("&lt;b&gt;hi&lt;/b&gt;", body);
+        Assert.Contains("Unknown symbol", body);
+        Assert.DoesNotContain("<img src=x>", body);
+        Assert.Contains("&lt;img src=x&gt;", body);
     }
 
     [Fact]
@@ -179,7 +180,7 @@ public sealed class SymbolTests
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         using var json = JsonDocument.Parse(body);
-        Assert.Equal("notFound", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
             "SymbolNotFound",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
@@ -231,7 +232,7 @@ public sealed class SymbolTests
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         using var json = JsonDocument.Parse(body);
-        Assert.Equal("notFound", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
     }
 
     [Theory]

@@ -106,7 +106,7 @@ public sealed class ServeHostTests
         using var response = await fixture.Client.SendAsync(request, cancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
-        Assert.Equal("GET, HEAD", string.Join(", ", response.Headers.GetValues("Allow")));
+        Assert.Equal("GET, HEAD", string.Join(", ", response.Content.Headers.Allow));
     }
 
     [Fact]

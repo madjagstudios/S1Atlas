@@ -49,26 +49,22 @@ internal static class StatusEndpoints
         }
         catch (AtlasStoreMissingException)
         {
-            return Results.Json(
-                ServeEnvelopes.StoreMissing<ServeStatusResult>(),
-                ServeApiJson.Options);
+            return ServeHttp.Envelope(ServeEnvelopes.StoreMissing<ServeStatusResult>());
         }
 
         if (authority.Status != InstalledBuildAuthorityStatus.Resolved || authority.IndexRun is null)
         {
             var data = new ServeStatusResult(
                 authority.ResolvedBuildId, authority.Status, authority.Message ?? Html.AuthorityMessage(authority), []);
-            return Results.Json(
-                ToolEnvelope<ServeStatusResult>.Resolved(ServeEnvelopes.BuildFrom(authority), data),
-                ServeApiJson.Options);
+            return ServeHttp.Envelope(
+                ToolEnvelope<ServeStatusResult>.Resolved(ServeEnvelopes.BuildFrom(authority), data));
         }
 
         var model = await BuildLandingModelAsync(queries, authority, ct);
         var resolved = new ServeStatusResult(
             authority.ResolvedBuildId, authority.Status, null, [model.Game!, .. model.Apis]);
-        return Results.Json(
-            ToolEnvelope<ServeStatusResult>.Resolved(ServeEnvelopes.BuildFrom(authority), resolved),
-            ServeApiJson.Options);
+        return ServeHttp.Envelope(
+            ToolEnvelope<ServeStatusResult>.Resolved(ServeEnvelopes.BuildFrom(authority), resolved));
     }
 
     private static async Task<LandingModel> BuildLandingModelAsync(

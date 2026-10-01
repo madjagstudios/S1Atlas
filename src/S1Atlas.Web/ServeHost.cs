@@ -118,6 +118,7 @@ public sealed class ServeHost : IAsyncDisposable
             }
 
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "text/plain; charset=utf-8";
             await context.Response.WriteAsync("The server hit an unexpected error.", context.RequestAborted);
         }
     }
@@ -170,6 +171,7 @@ public sealed class ServeHost : IAsyncDisposable
         {
             context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
             context.Response.Headers.Allow = "GET, HEAD";
+            context.Response.ContentType = "text/plain; charset=utf-8";
             await context.Response.WriteAsync("Only GET and HEAD are supported.", context.RequestAborted);
             return;
         }
@@ -191,6 +193,7 @@ public sealed class ServeHost : IAsyncDisposable
         }
 
         context.Response.StatusCode = StatusCodes.Status404NotFound;
+        context.Response.ContentType = "text/html; charset=utf-8";
         await context.Response.WriteAsync(
             Rendering.Html.Layout("Not found", "<h1>Not found</h1><p>Nothing lives at this address.</p>"),
             context.RequestAborted);
@@ -199,6 +202,7 @@ public sealed class ServeHost : IAsyncDisposable
     private static async Task RejectAsync(HttpContext context, int statusCode, string message)
     {
         context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "text/plain; charset=utf-8";
         await context.Response.WriteAsync(message, context.RequestAborted);
     }
 }

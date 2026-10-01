@@ -44,6 +44,10 @@ internal static class SearchEndpoints
         {
             (result, channel) = await RunSearchAsync(queries, args, ct);
         }
+        catch (ServeInvalidQueryException exception)
+        {
+            return ServeHttp.Html(BadQueryPage(exception.Message), StatusCodes.Status400BadRequest);
+        }
         catch (AtlasStoreMissingException)
         {
             return ServeHttp.Html(SearchUnavailablePage(args, "No Atlas data store was found."));

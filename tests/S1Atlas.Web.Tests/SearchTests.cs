@@ -151,7 +151,7 @@ public sealed class SearchTests
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         using var json = JsonDocument.Parse(body);
-        Assert.Equal("notFound", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
             "SymbolNotFound",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
@@ -218,7 +218,7 @@ public sealed class SearchTests
         Assert.Contains("No completed S1MAPI index exists yet.", page);
         Assert.Equal(HttpStatusCode.NotFound, api.StatusCode);
         using var json = JsonDocument.Parse(apiBody);
-        Assert.Equal("notFound", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
             "NoCompletedIndex",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
