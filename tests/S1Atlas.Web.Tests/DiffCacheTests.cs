@@ -6,14 +6,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class DiffCacheTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public DiffCacheTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task DiffAsync_ReturnsSameResultWithoutRecomputing()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
-        var queries = new ServeQueries(ReadOnlyAtlasComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
+        var queries = new ServeQueries(ReadOnlyAtlasComposition.BuildReadOnlyServices(_shared.Serve.Atlas.DataRoot));
 
         var first = await queries.DiffAsync(
             SyntheticAtlas.GameIndexAValue, SyntheticAtlas.GameIndexBValue, null, cancellationToken);
@@ -28,8 +35,7 @@ public sealed class DiffCacheTests
     public async Task DiffAsync_CachesPerKindFilter()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
-        var queries = new ServeQueries(ReadOnlyAtlasComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
+        var queries = new ServeQueries(ReadOnlyAtlasComposition.BuildReadOnlyServices(_shared.Serve.Atlas.DataRoot));
 
         var unfiltered = await queries.DiffAsync(
             SyntheticAtlas.GameIndexAValue, SyntheticAtlas.GameIndexBValue, null, cancellationToken);

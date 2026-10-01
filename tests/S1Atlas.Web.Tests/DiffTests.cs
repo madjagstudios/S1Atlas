@@ -5,13 +5,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class DiffTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public DiffTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task DiffPageShowsCountsAndLinksCurrentSymbols()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}",
@@ -31,7 +39,7 @@ public sealed class DiffTests
     public async Task DiffPageReversedDirectionUnlinksHistoricalOnlySymbols()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/diff?from={SyntheticAtlas.BuildIdBValue}&to={SyntheticAtlas.BuildIdAValue}",
@@ -46,7 +54,7 @@ public sealed class DiffTests
     public async Task DiffPageKindFilterNarrowsChanges()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&kind=method",
@@ -61,7 +69,7 @@ public sealed class DiffTests
     public async Task DiffPageSameBuildIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdAValue}",
@@ -74,7 +82,7 @@ public sealed class DiffTests
     public async Task DiffPageUnknownBuildIsNotFound()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/diff?from=no-such-build&to={SyntheticAtlas.BuildIdBValue}",
@@ -87,7 +95,7 @@ public sealed class DiffTests
     public async Task DiffPageApiCodebaseIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&codebase=s1api",
@@ -100,7 +108,7 @@ public sealed class DiffTests
     public async Task DiffPageInvalidKindIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&kind=bogus",
@@ -113,7 +121,7 @@ public sealed class DiffTests
     public async Task ApiDiffReturnsTotalsAndGatedSymbolIds()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}",
@@ -143,7 +151,7 @@ public sealed class DiffTests
     public async Task ApiDiffPageBeyondLastIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=99",
@@ -159,7 +167,7 @@ public sealed class DiffTests
     public async Task DiffPageBeyondLastIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=99",
@@ -172,7 +180,7 @@ public sealed class DiffTests
     public async Task ApiDiffHugePageIsBadRequestWithoutOverflow()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=2147483647",
@@ -185,7 +193,7 @@ public sealed class DiffTests
     public async Task ApiDiffSameBuildIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdAValue}",
@@ -201,7 +209,7 @@ public sealed class DiffTests
     public async Task ApiDiffUnknownBuildIsNotFound()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync(
             $"/api/diff?from=no-such-build&to={SyntheticAtlas.BuildIdBValue}",

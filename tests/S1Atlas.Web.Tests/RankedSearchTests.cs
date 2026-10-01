@@ -6,13 +6,21 @@ using Xunit;
 
 namespace S1Atlas.Web.Tests;
 
+[Collection("TwoBuildServe")]
 public sealed class RankedSearchTests
 {
+    private readonly SharedTwoBuildServeFixture _shared;
+
+    public RankedSearchTests(SharedTwoBuildServeFixture shared)
+    {
+        _shared = shared;
+    }
+
     [Fact]
     public async Task RankedSearch_OrdersExactSimpleNameFirst()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/search?q=Widget", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -31,7 +39,7 @@ public sealed class RankedSearchTests
     public async Task RankedSearch_MatchesInsideCamelCaseName()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync("/search?q=idget", cancellationToken);
 
@@ -43,7 +51,7 @@ public sealed class RankedSearchTests
     public async Task RankedSearch_TwoCharacterQueryMatchesSimpleNamePrefixOnly()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync("/search?q=Wi", cancellationToken);
 
@@ -58,7 +66,7 @@ public sealed class RankedSearchTests
     public async Task RankedSearch_TwoCharacterQueryFindsTypeOutsideNamespacePrefix()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync("/search?q=Pa", cancellationToken);
 
@@ -70,7 +78,7 @@ public sealed class RankedSearchTests
     public async Task RankedSearch_OneCharacterQueryMatchesSimpleNamePrefixOnly()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         var body = await fixture.GetStringAsync("/search?q=R", cancellationToken);
 
@@ -83,7 +91,7 @@ public sealed class RankedSearchTests
     public async Task RankedSearch_HonorsKindFilterWithTrueTotals()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/search?q=Widget&kind=method", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -100,7 +108,7 @@ public sealed class RankedSearchTests
     public async Task RankedSearch_PagesWithTrueTotals()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+        var fixture = _shared.Serve;
 
         using var response = await fixture.GetAsync("/api/search?q=PagedType&page=1", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
