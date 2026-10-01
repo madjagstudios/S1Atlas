@@ -518,27 +518,6 @@ independent of `--json` (which controls the stdout result).
 
 Without `--game-path`, S1Atlas checks the standard Steam locations under `Program Files (x86)` and `Program Files`.
 
-## Generate the static portal (deprecated)
-
-> Deprecated: `docs generate` and the static portal will be removed in the
-> next minor release. Use [Serve the local web app](#serve-the-local-web-app)
-> (`s1atlas serve`) instead.
-
-```powershell
-s1atlas docs generate
-s1atlas docs generate --build <build-id> --output .\portal
-```
-
-`--build` pins only the Schedule I Installed pages through the preferred,
-integrity-verified extraction authority. S1API and S1MAPI pages independently
-use each codebase/channel's latest completed index and show its source commit and
-index ID; they are not governed by the game-build pin. Scene pages are deferred
-from the portal in V1 and remain available through the CLI and MCP. The command
-is offline and read-only, writes outside the Atlas data root, and reports a
-scan-or-migration-first error for a missing or wrong-schema database without
-creating or migrating it. The default output is `./s1atlas-docs/`; open its
-`index.html` in any browser.
-
 ## Serve the local web app
 
 ```powershell
@@ -883,7 +862,6 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, its decoded serialized fields, serialized references, and an exact code-symbol handoff |
 | `scriptable-object <id\|exact-name\|Namespace.Class> [--json]` | Inspect one ScriptableObject asset (an asset-level MonoBehaviour such as `SpecialCustomerData`) and its decoded serialized fields |
 | `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
-| `docs generate [--build <id>] [--output <dir>]` | **Deprecated** (removal in the next minor release; use `serve`): generate the deterministic, offline static human portal (default `./s1atlas-docs/`) |
 | `serve [--port <n>] [--open]` | Start the loopback-only, read-only local web app (default port 5217; 0 picks an ephemeral port) |
 | `open <selector> [--port <n>]` | Resolve one symbol and open its serve page in the browser (default port 5217; prints the URL with a hint when serve is not running) |
 | `s1atlas-mcp` | Launch the read-only Schedule I Installed MCP server over stdio (no arguments; `mcp serve` is an alias, `--version` prints the version) |

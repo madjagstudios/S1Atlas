@@ -108,8 +108,6 @@ jobs:
         include:
           - name: S1Atlas.Core.Tests
             project: tests/S1Atlas.Core.Tests
-          - name: S1Atlas.Docs.Tests
-            project: tests/S1Atlas.Docs.Tests
           - name: S1Atlas.Extraction.Tests
             project: tests/S1Atlas.Extraction.Tests
           - name: S1Atlas.Indexing.Tests

@@ -30,13 +30,6 @@ Roots: src
 | src/S1Atlas.Core/Scenes/ | 3 |
 | src/S1Atlas.Core/Storage/ | 9 |
 | src/S1Atlas.Core/Tools/ | 14 |
-| src/S1Atlas.Docs/ | 1 |
-| src/S1Atlas.Docs/Content/ | 1 |
-| src/S1Atlas.Docs/Determinism/ | 2 |
-| src/S1Atlas.Docs/Generation/ | 3 |
-| src/S1Atlas.Docs/Identity/ | 2 |
-| src/S1Atlas.Docs/Rendering/ | 4 |
-| src/S1Atlas.Docs/Source/ | 2 |
 | src/S1Atlas.Extraction/ | 11 |
 | src/S1Atlas.Extraction/Attempts/ | 4 |
 | src/S1Atlas.Extraction/Cleanup/ | 6 |

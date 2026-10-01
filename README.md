@@ -78,7 +78,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 
 ## Interfaces
 
-- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, `serve`, and `open` (`docs generate` is deprecated).
+- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, `serve`, and `open`.
 - **Read-only MCP server**: the Schedule I Installed query surface (symbols, source, relationships, call sites, field references, callable surface, scenes), `investigate_seam` with read-only native evidence, `plan_runtime_proof`, S1API/S1MAPI queries, and completed local reference-collection queries, for coding agents (run the installed `s1atlas-mcp` with no arguments).
 - **Local web app**: `s1atlas serve` starts a loopback-only, read-only web app with ranked search, symbol pages, builds, environment, and diffs.
 - **Agent skill**: an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
@@ -96,7 +96,7 @@ S1Atlas.Cli            Human and machine-readable command-line interface
 S1Atlas.Mcp            Read-only MCP stdio server for Schedule I Installed and completed local reference queries
 ```
 
-S1Atlas treats the game install and Steam manifest as **read-only input**. Extraction runs Cpp2IL in isolation and promotes only results that pass the validation policy. Native-body recovery reads `GameAssembly.dll` and `global-metadata.dat` and never launches or mutates the game. CLI, MCP, and portal queries use the same verified index.
+S1Atlas treats the game install and Steam manifest as **read-only input**. Extraction runs Cpp2IL in isolation and promotes only results that pass the validation policy. Native-body recovery reads `GameAssembly.dll` and `global-metadata.dat` and never launches or mutates the game. CLI, MCP, and web-app queries use the same verified index.
 
 Reference collections are local and CLI-indexed. Each completed collection records its selected mods, hashes, and Schedule I base index; MCP exposes the resulting read-only queries and collection list. `reference` stays within one collection, while `all` is the explicit cross-origin view. Body recovery, callability, and reference prior art are separate evidence dimensions, and none establishes the others.
 
@@ -106,11 +106,11 @@ Deep internals, including on-disk data layout, the pinned Cpp2IL definition, the
 
 ## Status
 
-**V1 shipped, and development continues on `main`.** The environment can be discovered; builds can be fingerprinted, extracted, and indexed; symbols, source, relationships, and build diffs are queryable; S1API and S1MAPI are deep-indexed; the static portal, read-only MCP server, and agent skill all ship; and a failed scan never damages the last valid state.
+**V1 shipped, and development continues on `main`.** The environment can be discovered; builds can be fingerprinted, extracted, and indexed; symbols, source, relationships, and build diffs are queryable; S1API and S1MAPI are deep-indexed; the local web app, read-only MCP server, and agent skill all ship; and a failed scan never damages the last valid state.
 
 Since V1, S1Atlas has added static call-site and field-reference queries, callable-surface queries, local reference-mod collections, behavior-ownership seam investigation, runtime-proof planning, and native-body recovery for stubbed IL2CPP methods. The [CHANGELOG](CHANGELOG.md) has the per-version detail.
 
-The static portal defers scene HTML for now; scene intelligence remains available through the CLI and MCP. Known issues and further work are tracked in [Issues](../../issues).
+Scene HTML is deferred for now; scene intelligence remains available through the CLI and MCP. Known issues and further work are tracked in [Issues](../../issues).
 
 ## Contributing
 

@@ -18,7 +18,7 @@ A clear description of the bug and what you expected instead.
 
 ## Steps to reproduce
 
-1. Command run (e.g. `s1atlas search "..."` / `extract` / `index` / `docs generate`)
+1. Command run (e.g. `s1atlas search "..."` / `extract` / `index` / `serve`)
 2. ...
 3. ...
 
@@ -31,7 +31,7 @@ Paste the symbol name or query, not the game-derived content.
 
 - S1Atlas commit (`git rev-parse --short HEAD`):
 - OS / .NET SDK version:
-- Command surface: CLI / MCP / portal
+- Command surface: CLI / MCP / web app
 
 ## Additional context
 

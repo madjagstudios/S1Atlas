@@ -83,13 +83,13 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 - **Local-only golden-facts suite for real-build checks** (AT-61): a new `LocalGameRequired` suite pins a few facts from your own live atlas (a serialized scene field value, an object-reference target name, a method callee set) plus value-free structural invariants, reading expected values from a gitignored `golden-facts.local.json` that the repository-hygiene gate refuses to track. Run it after each game update; see the usage guide.
 
-### Deprecated
+### Removed
 
-- **`docs generate` and the static portal ship for one last minor** (AT-88):
-  `serve` now covers everything the static portal did, plus ranked search
-  and diffs between any two builds, so `docs generate` prints a deprecation
-  notice on every run. The command and the S1Atlas.Docs project will be
-  removed in the next minor release; use `s1atlas serve` instead.
+- **`docs generate` and the static portal are gone** (AT-108): `serve` covers
+  everything the static portal did, plus ranked search and diffs between any
+  two builds, so the deprecated `docs generate` command and the S1Atlas.Docs
+  projects are removed. `s1atlas docs generate` now fails with the normal
+  unknown-command error; use `s1atlas serve` instead.
 
 ### Fixed
 

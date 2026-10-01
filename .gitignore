@@ -59,7 +59,6 @@ reconstructed/
 decompiled/
 candidate-output/
 retained-output/
-s1atlas-docs/
 
 # Local tool-loop scratch (see CONTRIBUTING.md). Root-anchored with an
 # unambiguous name: an unanchored tools/ rule would also swallow source
