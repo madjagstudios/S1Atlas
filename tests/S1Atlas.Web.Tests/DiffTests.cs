@@ -140,26 +140,45 @@ public sealed class DiffTests
     }
 
     [Fact]
-    public async Task ApiDiffPageBeyondEndKeepsTrueTotals()
+    public async Task ApiDiffPageBeyondLastIsBadRequest()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
 
-        using var first = JsonDocument.Parse(await fixture.GetStringAsync(
-            $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=0",
-            cancellationToken));
-        using var beyond = JsonDocument.Parse(await fixture.GetStringAsync(
+        using var response = await fixture.GetAsync(
             $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=99",
-            cancellationToken));
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        var firstData = first.RootElement.GetProperty("data");
-        var beyondData = beyond.RootElement.GetProperty("data");
-        Assert.True(firstData.GetProperty("totalChanged").GetInt32() > 0);
-        Assert.Equal(
-            firstData.GetProperty("totalChanged").GetInt32(),
-            beyondData.GetProperty("totalChanged").GetInt32());
-        Assert.Equal(99, beyondData.GetProperty("page").GetInt32());
-        Assert.Empty(beyondData.GetProperty("changes").EnumerateArray());
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("invalid", json.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task DiffPageBeyondLastIsBadRequest()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=99",
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ApiDiffHugePageIsBadRequestWithoutOverflow()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}&page=2147483647",
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

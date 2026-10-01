@@ -32,11 +32,13 @@ public sealed class ServeQueries
 
     private readonly AtlasReadOnlyServices _services;
     private readonly ApiIndexQueryService _api;
+    private readonly DiffResultCache _diffCache;
 
-    public ServeQueries(AtlasReadOnlyServices services)
+    public ServeQueries(AtlasReadOnlyServices services, DiffResultCache? diffCache = null)
     {
         _services = services;
         _api = new ApiIndexQueryService(services.Repository, services.IndexQueryService);
+        _diffCache = diffCache ?? new DiffResultCache();
     }
 
     public Task<InstalledBuildAuthority> ResolveAuthorityAsync(
@@ -63,9 +65,12 @@ public sealed class ServeQueries
         string indexIdB,
         string? kindFilter,
         CancellationToken ct) =>
-        WithStoreAsync(
-            token => _services.BuildDiffService.DiffAsync(
-                indexIdA, indexIdB, "ScheduleI", "Installed", kindFilter, token),
+        _diffCache.GetOrAddAsync(
+            new DiffCacheKey(indexIdA, indexIdB, "ScheduleI", kindFilter),
+            () => WithStoreAsync(
+                token => _services.BuildDiffService.DiffAsync(
+                    indexIdA, indexIdB, "ScheduleI", "Installed", kindFilter, token),
+                ct),
             ct);
 
     public Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsAsync(
