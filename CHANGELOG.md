@@ -47,6 +47,15 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- **Generated portal no longer prints absolute local paths** (AT-82):
+  the environment page rendered the installation root, the GameAssembly and
+  global-metadata paths, and every dependency path verbatim, leaking
+  machine-specific locations into a shareable page. Paths inside the
+  installation root now render relative to it with forward slashes, paths
+  outside it render as their file name with an explicit marker, and the
+  installation root line only records that it was recorded. Build IDs,
+  hashes, Steam IDs, and versions are unchanged, as is everything stored or
+  returned by the CLI and MCP.
 - **Shared stdio test servers stop leaking and run faster** (AT-61, AT-101):
   every test-spawned `mcp serve` process is now tracked from spawn to exit and
   reaped on dispose and on failed connect, with a regression test proving no

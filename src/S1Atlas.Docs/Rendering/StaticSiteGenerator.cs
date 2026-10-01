@@ -103,9 +103,9 @@ public sealed class StaticSiteGenerator
             Fact("installation executable version", installation.ExecutableVersion),
             Fact("Steam app ID", installation.SteamAppId),
             Fact("Steam build ID", installation.SteamBuildId),
-            Fact("installation root", installation.InstallationRoot),
-            Fact("GameAssembly path", installation.GameAssemblyPath),
-            Fact("global-metadata path", installation.GlobalMetadataPath),
+            Fact("installation root", "recorded (not shown in the portal)"),
+            Fact("GameAssembly path", PortalPathDisplay.ToDisplayPath(installation.GameAssemblyPath, installation.InstallationRoot)),
+            Fact("global-metadata path", PortalPathDisplay.ToDisplayPath(installation.GlobalMetadataPath, installation.InstallationRoot)),
             Fact("Atlas version", snapshot.AtlasVersion),
             Fact("environment identity version", snapshot.IdentityVersion.ToString(System.Globalization.CultureInfo.InvariantCulture))
         };
@@ -113,7 +113,7 @@ public sealed class StaticSiteGenerator
             .OrderBy(dependency => dependency.Kind)
             .ThenBy(dependency => dependency.Version, StringComparer.Ordinal)
             .ThenBy(dependency => dependency.Path, StringComparer.Ordinal)
-            .Select(dependency => $"FACT: dependency {HtmlPageRenderer.Escape(dependency.Kind.ToString())}: {HtmlPageRenderer.Escape(dependency.Version ?? "not recorded")} ({HtmlPageRenderer.Escape(dependency.Path ?? "path not recorded")}); installed={dependency.IsInstalled.ToString().ToLowerInvariant()}; SHA-256={HtmlPageRenderer.Escape(dependency.BinarySha256 ?? "not recorded")}."));
+            .Select(dependency => $"FACT: dependency {HtmlPageRenderer.Escape(dependency.Kind.ToString())}: {HtmlPageRenderer.Escape(dependency.Version ?? "not recorded")} ({HtmlPageRenderer.Escape(PortalPathDisplay.ToDisplayPath(dependency.Path, installation.InstallationRoot) ?? "path not recorded")}); installed={dependency.IsInstalled.ToString().ToLowerInvariant()}; SHA-256={HtmlPageRenderer.Escape(dependency.BinarySha256 ?? "not recorded")}."));
         return "<section><h2>FACT evidence</h2><p>FACT: this is the current resolved Schedule I environment snapshot only.</p><ul>" + string.Join(string.Empty, facts.Select(fact => "<li>" + fact + "</li>")) + "</ul></section>";
     }
 
