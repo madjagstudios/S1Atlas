@@ -951,7 +951,7 @@ internal static class SqliteMigrations
             )
             SELECT rest FROM tail WHERE instr(rest, '.') = 0 LIMIT 1);
 
-        CREATE INDEX ix_symbols_qualified_name ON symbols(qualified_name);
+        CREATE INDEX ix_symbols_qualified_name ON symbols(qualified_name COLLATE NOCASE);
 
         CREATE VIRTUAL TABLE symbols_fts USING fts5(
             qualified_name,

@@ -410,6 +410,144 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<bool> SupportsSymbolSearchIndexAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'symbols_fts';";
+        return Convert.ToInt64(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture) == 1;
+    }
+
+    public async Task<int> CountRankedSymbolMatchesAsync(
+        string indexId,
+        string query,
+        CancellationToken cancellationToken,
+        string? kind = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        if (query.Length < 3)
+        {
+            // No explicit COLLATE: LIKE is case-insensitive by default and
+            // pairing ESCAPE with COLLATE NOCASE keeps SQLite from using
+            // the ix_symbols_qualified_name index here.
+            command.CommandText = """
+                SELECT COUNT(*)
+                FROM symbols AS symbol
+                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                WHERE run.index_id = $indexId
+                  AND run.status = 'Completed'
+                  AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND symbol.qualified_name LIKE $prefix ESCAPE '\';
+                """;
+            command.Parameters.AddWithValue("$prefix", EscapeLikePattern(query) + "%");
+        }
+        else
+        {
+            command.CommandText = """
+                SELECT COUNT(*)
+                FROM symbols_fts
+                INNER JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
+                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                WHERE run.index_id = $indexId
+                  AND run.status = 'Completed'
+                  AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND symbols_fts MATCH $match;
+                """;
+            command.Parameters.AddWithValue("$match", ToFtsPhrase(query));
+        }
+
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public async Task<IReadOnlyList<IndexSymbolRecord>> SearchRankedSymbolsAsync(
+        string indexId,
+        string query,
+        int limit,
+        CancellationToken cancellationToken,
+        string? kind = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The symbol search limit must be positive.");
+
+        var escaped = EscapeLikePattern(query);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        if (query.Length < 3)
+        {
+            command.CommandText = """
+                SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                       symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                       symbol.body_recovery_status, symbol.is_public
+                FROM symbols AS symbol
+                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                WHERE run.index_id = $indexId
+                  AND run.status = 'Completed'
+                  AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND symbol.qualified_name LIKE $prefix ESCAPE '\'
+                ORDER BY
+                    CASE
+                        WHEN symbol.qualified_name = $query COLLATE NOCASE
+                          OR symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 0
+                        ELSE 1
+                    END,
+                    symbol.qualified_name COLLATE BINARY,
+                    symbol.symbol_id COLLATE BINARY
+                LIMIT $limit;
+                """;
+        }
+        else
+        {
+            command.CommandText = """
+                SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                       symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                       symbol.body_recovery_status, symbol.is_public
+                FROM symbols_fts
+                INNER JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
+                INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+                WHERE run.index_id = $indexId
+                  AND run.status = 'Completed'
+                  AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND symbols_fts MATCH $match
+                ORDER BY
+                    CASE
+                        WHEN symbol.qualified_name = $query COLLATE NOCASE
+                          OR symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 0
+                        WHEN symbol.qualified_name LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 1
+                        ELSE 2
+                    END,
+                    bm25(symbols_fts),
+                    symbol.qualified_name COLLATE BINARY,
+                    symbol.symbol_id COLLATE BINARY
+                LIMIT $limit;
+                """;
+            command.Parameters.AddWithValue("$match", ToFtsPhrase(query));
+        }
+
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$query", query);
+        command.Parameters.AddWithValue("$terminal", "%." + escaped);
+        command.Parameters.AddWithValue("$prefix", escaped + "%");
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var result = new List<IndexSymbolRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadSymbol(reader));
+        return result;
+    }
+
     public async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
@@ -475,6 +613,15 @@ public sealed partial class SqliteAtlasRepository
             .Replace("%", "\\%", StringComparison.Ordinal)
             .Replace("_", "\\_", StringComparison.Ordinal);
 
+    private static string ToFtsPhrase(string value) =>
+        "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
+    private static string SimpleNameOf(string qualifiedName)
+    {
+        var dot = qualifiedName.LastIndexOf('.');
+        return dot < 0 ? qualifiedName : qualifiedName[(dot + 1)..];
+    }
+
     private static void AddSnapshotParameters(SqliteCommand command, CodeSnapshotRecord snapshot)
     {
         command.Parameters.AddWithValue("$id", snapshot.SnapshotId);
@@ -522,12 +669,13 @@ public sealed partial class SqliteAtlasRepository
         if (symbols.Count == 0) return;
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, signature, is_best_effort, body_recovery_status, is_public) VALUES ($id,$snapshot,$key,$kind,$name,$signature,$best,$bodyRecovery,$isPublic);";
+        command.CommandText = "INSERT INTO symbols(symbol_id, snapshot_id, canonical_key, kind, qualified_name, simple_name, signature, is_best_effort, body_recovery_status, is_public) VALUES ($id,$snapshot,$key,$kind,$name,$simple,$signature,$best,$bodyRecovery,$isPublic);";
         var id = command.Parameters.Add("$id", SqliteType.Text);
         var snapshot = command.Parameters.Add("$snapshot", SqliteType.Text);
         var key = command.Parameters.Add("$key", SqliteType.Text);
         var kind = command.Parameters.Add("$kind", SqliteType.Text);
         var name = command.Parameters.Add("$name", SqliteType.Text);
+        var simple = command.Parameters.Add("$simple", SqliteType.Text);
         var signature = command.Parameters.Add("$signature", SqliteType.Text);
         var best = command.Parameters.Add("$best", SqliteType.Integer);
         var bodyRecovery = command.Parameters.Add("$bodyRecovery", SqliteType.Text);
@@ -540,6 +688,7 @@ public sealed partial class SqliteAtlasRepository
             key.Value = symbol.CanonicalKey;
             kind.Value = symbol.Kind;
             name.Value = symbol.QualifiedName;
+            simple.Value = SimpleNameOf(symbol.QualifiedName);
             signature.Value = symbol.Signature;
             best.Value = symbol.IsBestEffort ? 1 : 0;
             bodyRecovery.Value = symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value;
