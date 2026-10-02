@@ -160,7 +160,8 @@ public sealed record RelationshipQueryResult(
     RelationshipEndpointQueryResult Target,
     bool IsDerived = false,
     IReadOnlyList<string>? Routes = null,
-    string? GeneratedDetail = null)
+    string? GeneratedDetail = null,
+    string? Label = null)
 {
     public RelationshipQueryResult(
         string relationshipId,
@@ -184,6 +185,37 @@ public sealed record RelationshipQueryResult(
     public string SourceSymbolId => Source.SymbolId ?? string.Empty;
     public string? TargetSymbolId => Target.SymbolId;
     public string? TargetText => Target.RawText;
+}
+
+public enum RelationshipLabelContext
+{
+    Callers,
+    Callees,
+    Readers,
+    Writers,
+    All,
+    Refs
+}
+
+public static class RelationshipLabels
+{
+    public static string? ForRelationship(string kind, string evidence, RelationshipLabelContext context)
+    {
+        if (string.Equals(kind, nameof(RelationshipKind.ReferencesMethod), StringComparison.Ordinal))
+            return string.Equals(evidence, nameof(RelationshipEvidence.Metadata), StringComparison.Ordinal)
+                ? "metadata reference (not called)"
+                : "delegate created (not called)";
+        if (string.Equals(kind, nameof(RelationshipKind.TakesFieldAddress), StringComparison.Ordinal))
+        {
+            if (string.Equals(evidence, nameof(RelationshipEvidence.Metadata), StringComparison.Ordinal))
+                return "metadata reference (not read)";
+            return context == RelationshipLabelContext.Readers
+                ? "possible read (address taken)"
+                : "possible write (address taken)";
+        }
+
+        return null;
+    }
 }
 
 public sealed record RelationshipQueryPageResult(

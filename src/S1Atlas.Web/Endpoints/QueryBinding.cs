@@ -165,4 +165,24 @@ internal static class QueryBinding
 
         throw new ServeInvalidQueryException($"Invalid generated '{value}'. Use 1 or true to include compiler-generated members.");
     }
+
+    internal static bool BindDelegates(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        if (value.Equals("1", StringComparison.Ordinal) || value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Equals("0", StringComparison.Ordinal) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        throw new ServeInvalidQueryException($"Invalid delegates '{value}'. Use 1 or true to include delegate-creation references.");
+    }
 }

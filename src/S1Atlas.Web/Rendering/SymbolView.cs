@@ -229,6 +229,8 @@ internal static class SymbolView
             : $"<a href=\"/symbol/{Html.UrlSegment(other.SymbolId)}\">{Html.Escape(label)}</a>";
         if (ReferenceEquals(other, relationship.Source) && relationship.GeneratedDetail is not null)
             rendered += $" ({Html.Escape(relationship.GeneratedDetail)})";
+        if (relationship.Label is not null)
+            rendered += $" ({Html.Escape(relationship.Label)})";
         return rendered;
     }
 }

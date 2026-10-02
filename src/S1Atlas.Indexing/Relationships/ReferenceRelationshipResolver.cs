@@ -109,6 +109,8 @@ public sealed class ReferenceRelationshipResolver
                             ManagedReferenceKind.Constructs => RelationshipKind.Constructs,
                             ManagedReferenceKind.ReadsField => RelationshipKind.ReadsField,
                             ManagedReferenceKind.WritesField => RelationshipKind.WritesField,
+                            ManagedReferenceKind.ReferencesMethod => RelationshipKind.ReferencesMethod,
+                            ManagedReferenceKind.TakesFieldAddress => RelationshipKind.TakesFieldAddress,
                             _ => throw new ArgumentOutOfRangeException()
                         };
                         var targetKey = CreateIdentityLookupKey(reference.Target);
@@ -123,7 +125,7 @@ public sealed class ReferenceRelationshipResolver
                             target?.SymbolId,
                             reference.Target,
                             kind.ToString(),
-                            RelationshipEvidence.RecoveredIL.ToString(),
+                            reference.Evidence.ToString(),
                             rawSourceId,
                             detail));
                     }

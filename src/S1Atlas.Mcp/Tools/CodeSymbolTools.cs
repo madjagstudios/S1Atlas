@@ -219,7 +219,8 @@ public sealed class CodeSymbolTools
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Return only exact (statically bound) callers; omit may-dispatch callers.")] bool exact = false,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false) =>
+        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
+        [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
         await FindRelationshipsAsync(
             selector,
             buildId,
@@ -229,7 +230,8 @@ public sealed class CodeSymbolTools
             collection,
             RelationshipDirection.Callers,
             exact,
-            includeGenerated);
+            includeGenerated,
+            includeDelegates);
 
     [McpServerTool(Name = "find_callees", Title = "Find callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
@@ -239,8 +241,9 @@ public sealed class CodeSymbolTools
         CancellationToken ct = default,
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false) =>
-        await FindRelationshipsAsync(selector, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, includeGenerated: includeGenerated);
+        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
+        [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
+        await FindRelationshipsAsync(selector, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
 
     [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
@@ -684,7 +687,8 @@ public sealed class CodeSymbolTools
         string? collection,
         RelationshipDirection direction,
         bool exact = false,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        bool includeDelegates = false)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -715,14 +719,14 @@ public sealed class CodeSymbolTools
                 var result = options.Scope == IndexQueryScope.Game
                     ? direction switch
                     {
-                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, exact, includeGenerated),
-                        RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated),
+                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, exact, includeGenerated, includeDelegates),
+                        RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated, includeDelegates),
                         _ => await _services.IndexQueryService.RefsInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated)
                     }
                     : direction switch
                     {
-                        RelationshipDirection.Callers => await _services.FederatedIndexQueryService.CallersAsync(selector, options, ct, exact, includeGenerated: includeGenerated),
-                        RelationshipDirection.Callees => await _services.FederatedIndexQueryService.CalleesAsync(selector, options, ct, includeGenerated: includeGenerated),
+                        RelationshipDirection.Callers => await _services.FederatedIndexQueryService.CallersAsync(selector, options, ct, exact, includeGenerated: includeGenerated, includeDelegates: includeDelegates),
+                        RelationshipDirection.Callees => await _services.FederatedIndexQueryService.CalleesAsync(selector, options, ct, includeGenerated: includeGenerated, includeDelegates: includeDelegates),
                         _ => await _services.FederatedIndexQueryService.RefsAsync(selector, options, ct, includeGenerated: includeGenerated)
                     };
                 return EnvelopeMapper.FromScopedRelationships(authority, result, options.ReferenceCollection);

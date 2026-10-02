@@ -31,6 +31,7 @@ internal static class CallersCommand
         var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
         var exactOption = new Option<bool>("--exact") { Description = "Return only exact (statically bound) callers; omit may-dispatch callers." };
         var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
+        var includeDelegatesOption = IndexQueryCommandFactory.CreateIncludeDelegatesOption();
         var jsonOption = CommandOutput.CreateJsonOption();
 
         var command = new Command(
@@ -45,6 +46,7 @@ internal static class CallersCommand
         command.Options.Add(collectionOption);
         command.Options.Add(exactOption);
         command.Options.Add(includeGeneratedOption);
+        command.Options.Add(includeDelegatesOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -83,6 +85,7 @@ internal static class CallersCommand
 
                     var exact = parseResult.GetValue(exactOption);
                     var includeGenerated = parseResult.GetValue(includeGeneratedOption);
+                    var includeDelegates = parseResult.GetValue(includeDelegatesOption);
                     var result = authority.Run is not null
                         ? service.CallersInIndexAsync(
                             authority.Run,
@@ -92,20 +95,23 @@ internal static class CallersCommand
                             limit,
                             cancellationToken,
                             exact,
-                            includeGenerated: includeGenerated).GetAwaiter().GetResult()
+                            includeGenerated: includeGenerated,
+                            includeDelegates: includeDelegates).GetAwaiter().GetResult()
                         : options.Scope == IndexQueryScope.Game
                             ? service.CallersAsync(
                                 parseResult.GetValue(queryArgument)!,
                                 options,
                                 cancellationToken,
                                 exact,
-                                includeGenerated: includeGenerated).GetAwaiter().GetResult()
+                                includeGenerated: includeGenerated,
+                                includeDelegates: includeDelegates).GetAwaiter().GetResult()
                             : federatedService.CallersAsync(
                                 parseResult.GetValue(queryArgument)!,
                                 options,
                                 cancellationToken,
                                 exact,
-                                includeGenerated: includeGenerated).GetAwaiter().GetResult();
+                                includeGenerated: includeGenerated,
+                                includeDelegates: includeDelegates).GetAwaiter().GetResult();
                     return IndexQueryCommandFactory.Complete(
                         commandOutput,
                         IndexQueryCommandFactory.ToOutput(result));

@@ -24,13 +24,16 @@ internal static class IndexQueryCommandFactory
         ReferenceModQueryService? referenceService = null,
         Func<string, IndexQueryOptions, string, CancellationToken, Task<IndexQueryOutput>>? executeWithReferenceIndex = null,
         Func<string, IndexQueryOptions, CancellationToken, bool, Task<IndexQueryOutput>>? executeWithGenerated = null,
-        Func<string, IndexRunRecord, int, CancellationToken, bool, Task<IndexQueryOutput>>? executeInIndexWithGenerated = null)
+        Func<string, IndexRunRecord, int, CancellationToken, bool, Task<IndexQueryOutput>>? executeInIndexWithGenerated = null,
+        Func<string, IndexQueryOptions, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeWithGeneratedAndDelegates = null,
+        Func<string, IndexRunRecord, int, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeInIndexWithGeneratedAndDelegates = null)
     {
         var classic = execute is not null && executeInIndex is not null;
         var withGenerated = executeWithGenerated is not null && executeInIndexWithGenerated is not null;
-        if (classic == withGenerated)
+        var withDelegates = executeWithGeneratedAndDelegates is not null && executeInIndexWithGeneratedAndDelegates is not null;
+        if ((classic ? 1 : 0) + (withGenerated ? 1 : 0) + (withDelegates ? 1 : 0) != 1)
             throw new ArgumentException(
-                "Provide either execute/executeInIndex or executeWithGenerated/executeInIndexWithGenerated.",
+                "Provide either execute/executeInIndex, executeWithGenerated/executeInIndexWithGenerated, or executeWithGeneratedAndDelegates/executeInIndexWithGeneratedAndDelegates.",
                 nameof(execute));
 
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
@@ -46,6 +49,7 @@ internal static class IndexQueryCommandFactory
         var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
         var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
         var includeGeneratedOption = CreateIncludeGeneratedOption();
+        var includeDelegatesOption = CreateIncludeDelegatesOption();
         var command = new Command(name, "Query the normalized code index.");
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
@@ -57,8 +61,10 @@ internal static class IndexQueryCommandFactory
             command.Options.Add(scopeOption);
             command.Options.Add(collectionOption);
         }
-        if (withGenerated)
+        if (withGenerated || withDelegates)
             command.Options.Add(includeGeneratedOption);
+        if (withDelegates)
+            command.Options.Add(includeDelegatesOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -101,11 +107,20 @@ internal static class IndexQueryCommandFactory
                     if (authority.ErrorCode is not null)
                         return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
 
-                    var includeGenerated = withGenerated && parseResult.GetValue(includeGeneratedOption);
+                    var includeGenerated = (withGenerated || withDelegates) && parseResult.GetValue(includeGeneratedOption);
+                    var includeDelegates = withDelegates && parseResult.GetValue(includeDelegatesOption);
                     IndexQueryOutput data;
                     if (authority.Run is not null)
                     {
-                        data = executeInIndexWithGenerated is not null
+                        data = executeInIndexWithGeneratedAndDelegates is not null
+                            ? executeInIndexWithGeneratedAndDelegates(
+                                parseResult.GetValue(queryArgument)!,
+                                authority.Run,
+                                limit,
+                                cancellationToken,
+                                includeGenerated,
+                                includeDelegates).GetAwaiter().GetResult()
+                            : executeInIndexWithGenerated is not null
                             ? executeInIndexWithGenerated(
                                 parseResult.GetValue(queryArgument)!,
                                 authority.Run,
@@ -121,7 +136,9 @@ internal static class IndexQueryCommandFactory
                     else
                     {
                         var query = parseResult.GetValue(queryArgument)!;
-                        data = executeWithGenerated is not null
+                        data = executeWithGeneratedAndDelegates is not null
+                            ? executeWithGeneratedAndDelegates(query, options, cancellationToken, includeGenerated, includeDelegates).GetAwaiter().GetResult()
+                            : executeWithGenerated is not null
                             ? executeWithGenerated(query, options, cancellationToken, includeGenerated).GetAwaiter().GetResult()
                             : executeWithReferenceIndex is not null && authority.ReferenceIndexId is not null
                                 ? executeWithReferenceIndex(query, options, authority.ReferenceIndexId, cancellationToken).GetAwaiter().GetResult()
@@ -212,6 +229,12 @@ internal static class IndexQueryCommandFactory
             Description = "Include compiler-generated members; show their raw sources instead of credited ones."
         };
 
+    internal static Option<bool> CreateIncludeDelegatesOption() =>
+        new("--include-delegates")
+        {
+            Description = "Include delegate-creation references; they are labeled and never counted as calls."
+        };
+
     internal static string? RewordSearchNotice(string? notice) =>
         notice?.Replace("includeGenerated", "--include-generated", StringComparison.Ordinal);
 
@@ -246,8 +269,9 @@ internal static class IndexQueryCommandFactory
                 var source = FormatEndpoint(relationship.Source);
                 if (relationship.GeneratedDetail is not null)
                     source += $" ({relationship.GeneratedDetail})";
+                var kind = relationship.Label is null ? relationship.Kind : $"{relationship.Kind} ({relationship.Label})";
                 var line =
-                    $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
+                    $"{relationship.RelationshipId} | {kind} | {relationship.Direction} | " +
                     $"{source} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}";
                 if (relationship.IsDerived)
                     line += $" | DERIVED {string.Join("; ", relationship.Routes ?? [])}";

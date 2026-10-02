@@ -1,6 +1,18 @@
 {
   "symbols": [
     {
+      "target": "S1Atlas.ParityFixture.CalliCases::PointerToStatic():System.Void*",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.CalliCases::StaticTarget(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.CalliCases::StaticTarget(System.Int32):System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.CalliCases::PointerToStatic():System.Void*", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
       "target": "S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task`1<System.Int32>",
       "callees": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "async body", "detail": "in async state machine" }
@@ -10,10 +22,8 @@
       "target": "S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32",
       "callees": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::.ctor():System.Void", "reason": "constructs" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" }
-      ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::<Capturing>b__0(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::<Capturing>b__0(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
@@ -45,10 +55,8 @@
     {
       "target": "S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32",
       "callees": [
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" }
-      ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c::<NonCapturing>b__0_0(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c::<NonCapturing>b__0_0(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
@@ -59,41 +67,66 @@
       ]
     },
     {
+      "target": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceAction():System.Action",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceActionTarget():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
       "target": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32>",
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::BuildStaticAction():System.Action",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticActionTarget():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func`2<System.Int32,System.Int32>",
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::InstanceActionTarget():System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceAction():System.Action", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32",
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32>", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" },
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" }
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32>", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::UnsubscribeSelf():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::StaticActionTarget():System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildStaticAction():System.Action", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32",
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func`2<System.Int32,System.Int32>", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" },
-        { "symbol": "S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" }
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func`2<System.Int32,System.Int32>", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged",
       "readers": [
         { "symbol": "S1Atlas.ParityFixture.DelegateCases::RaisePinged(System.Int32):System.Int32", "reason": "field read" },
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor" },
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor" }
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor", "kind": "TakesFieldAddress", "label": "possible read (address taken)" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor", "kind": "TakesFieldAddress", "label": "possible read (address taken)" }
       ],
       "writers": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "address taken" },
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "address taken" }
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" }
       ]
     },
     {
@@ -105,16 +138,21 @@
     {
       "target": "S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void",
       "callees": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor" }
-      ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::UnsubscribeSelf():System.Void",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void", "reason": "event accessor", "kind": "Calls" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void",
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     },
     {
@@ -388,12 +426,12 @@
       "target": "S1Atlas.ParityFixture.MemberCases::System.Action Changed",
       "readers": [
         { "symbol": "S1Atlas.ParityFixture.MemberCases::Touch():System.Void", "reason": "event accessor" },
-        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "event accessor" },
-        { "symbol": "S1Atlas.ParityFixture.MemberCases::remove_Changed(System.Action):System.Void", "reason": "event accessor" }
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "event accessor", "kind": "TakesFieldAddress", "label": "possible read (address taken)" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::remove_Changed(System.Action):System.Void", "reason": "event accessor", "kind": "TakesFieldAddress", "label": "possible read (address taken)" }
       ],
       "writers": [
-        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "address taken" },
-        { "symbol": "S1Atlas.ParityFixture.MemberCases::remove_Changed(System.Action):System.Void", "reason": "address taken" }
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::remove_Changed(System.Action):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" }
       ]
     },
     {
@@ -447,12 +485,33 @@
       ]
     },
     {
+      "target": "S1Atlas.ParityFixture.MemberCases::OnChanged():System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::SubscribeChanged():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::UnsubscribeChanged():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::SubscribeChanged():System.Void",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "event accessor", "kind": "Calls" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::OnChanged():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::UnsubscribeChanged():System.Void",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::remove_Changed(System.Action):System.Void", "reason": "event accessor", "kind": "Calls" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::OnChanged():System.Void", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
       "target": "S1Atlas.ParityFixture.MutablePoint::System.Int32 X",
-      "writers": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken" }
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible read (address taken)" }
       ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" }
       ]
     },
     {
@@ -469,33 +528,45 @@
     },
     {
       "target": "S1Atlas.ParityFixture.RefFieldCases::S1Atlas.ParityFixture.MutablePoint Point",
-      "writers": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken" }
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible read (address taken)" }
       ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.RefFieldCases::System.Int32 Counter",
       "readers": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::ReadCounter():System.Int32", "reason": "field read" }
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::ReadCounter():System.Int32", "reason": "field read" },
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible read (address taken)" }
       ],
       "writers": [
         { "symbol": "S1Atlas.ParityFixture.RefFieldCases::WriteCounter(System.Int32):System.Void", "reason": "field write" },
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "reason": "address taken" }
-      ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.RefFieldCases::System.Int32 Shared",
-      "writers": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void", "reason": "address taken" }
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible read (address taken)" },
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaCompareExchange():System.Int32", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible read (address taken)" }
       ],
-      "knownGaps": [
-        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" },
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaCompareExchange():System.Int32", "reason": "address taken", "kind": "TakesFieldAddress", "label": "possible write (address taken)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.VirtualBase::Compute(System.Int32):System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.VirtualDelegates::BuildVirtualFunc(S1Atlas.ParityFixture.VirtualBase):System.Func`2<System.Int32,System.Int32>", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.VirtualDelegates::BuildVirtualFunc(S1Atlas.ParityFixture.VirtualBase):System.Func`2<System.Int32,System.Int32>",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.VirtualBase::Compute(System.Int32):System.Int32", "reason": "delegate creation", "kind": "ReferencesMethod", "label": "delegate created (not called)" }
       ]
     }
   ]

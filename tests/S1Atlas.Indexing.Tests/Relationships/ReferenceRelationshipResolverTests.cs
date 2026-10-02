@@ -58,6 +58,34 @@ public sealed class ReferenceRelationshipResolverTests
     }
 
     [Fact]
+    public void Reference_resolver_maps_new_kinds()
+    {
+        var snapshotId = "reference-snapshot";
+        var modSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
+        var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        {
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = modSymbol
+        };
+        var decompilation = new ManagedDecompilation("qol.dll", "", [new ManagedTypeFacts(
+            "Mods.Entry", "Mods", "Entry", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [
+                new ManagedReferenceFact(ManagedReferenceKind.ReferencesMethod, gameSymbol.Signature),
+                new ManagedReferenceFact(ManagedReferenceKind.TakesFieldAddress, "Unknown.Target::System.Int32 Value")
+            ], [], "System.Void")])]);
+
+        var relationships = new ReferenceRelationshipResolver().Resolve([new ReferenceModDecompilation("qol", decompilation)], lookup);
+
+        var reference = Assert.Single(relationships, relationship => relationship.Kind == "ReferencesMethod");
+        Assert.Equal(modSymbol.SymbolId, reference.SourceSymbolId);
+        Assert.Equal(gameSymbol.SymbolId, reference.TargetSymbolId);
+        var address = Assert.Single(relationships, relationship => relationship.Kind == "TakesFieldAddress");
+        Assert.Null(address.TargetSymbolId);
+        Assert.Equal("Unknown.Target::System.Int32 Value", address.TargetText);
+        Assert.Equal(RelationshipEvidence.RecoveredIL.ToString(), address.Evidence);
+    }
+
+    [Fact]
     public void CreditsGeneratedSourcesToDeclaringMethodsWithRawSourceIds()
     {
         var snapshotId = "reference-snapshot";

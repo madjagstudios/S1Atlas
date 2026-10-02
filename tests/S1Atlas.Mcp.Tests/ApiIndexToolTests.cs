@@ -333,6 +333,70 @@ public sealed class ApiIndexToolTests
     }
 
     [Fact]
+    public async Task FindApiCallers_SupportsIncludeDelegates()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var creator = ApiSymbol("api-delegate-creator", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Build");
+        var target = ApiSymbol("api-delegate-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Handle");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-delegate",
+            new string('e', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [creator, target],
+            relationships:
+            [
+                new("relationship-delegate", string.Empty, creator.SymbolId, target.SymbolId, null, "ReferencesMethod", "RecoveredIL")
+            ]);
+
+        var hidden = await atlas.Tools.FindApiCallersAsync("s1api", "release", target.QualifiedName, 10, cancellationToken);
+        var shown = await atlas.Tools.FindApiCallersAsync(
+            "s1api", "release", target.QualifiedName, 10, cancellationToken, includeDelegates: true);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(ToolStatus.Resolved, shown.Status);
+        Assert.Empty(hidden.Data!.Relationships);
+        var row = Assert.Single(shown.Data!.Relationships);
+        Assert.Equal(creator.QualifiedName, row.Source.QualifiedName);
+        Assert.Equal("delegate created (not called)", row.Label);
+    }
+
+    [Fact]
+    public async Task FindApiCallees_SupportsIncludeDelegates()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var creator = ApiSymbol("api-delegate-creator", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Build");
+        var target = ApiSymbol("api-delegate-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Handle");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-delegate",
+            new string('e', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [creator, target],
+            relationships:
+            [
+                new("relationship-delegate", string.Empty, creator.SymbolId, target.SymbolId, null, "ReferencesMethod", "RecoveredIL")
+            ]);
+
+        var hidden = await atlas.Tools.FindApiCalleesAsync("s1api", "release", creator.QualifiedName, 10, cancellationToken);
+        var shown = await atlas.Tools.FindApiCalleesAsync(
+            "s1api", "release", creator.QualifiedName, 10, cancellationToken, includeDelegates: true);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(ToolStatus.Resolved, shown.Status);
+        Assert.Empty(hidden.Data!.Relationships);
+        var row = Assert.Single(shown.Data!.Relationships);
+        Assert.Equal(target.QualifiedName, row.Target.QualifiedName);
+        Assert.Equal("delegate created (not called)", row.Label);
+    }
+
+    [Fact]
     public async Task SearchApiSymbols_HidesGeneratedWithNotice()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();

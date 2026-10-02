@@ -391,7 +391,11 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                         references.Add(new ManagedReferenceFact(
                             opcode == OpCodes.Newobj
                                 ? ManagedReferenceKind.Constructs
-                                : opcode == OpCodes.Callvirt ? ManagedReferenceKind.CallsVirtual : ManagedReferenceKind.Calls,
+                                : opcode == OpCodes.Callvirt
+                                    ? ManagedReferenceKind.CallsVirtual
+                                    : opcode == OpCodes.Ldftn || opcode == OpCodes.Ldvirtftn
+                                        ? ManagedReferenceKind.ReferencesMethod
+                                        : ManagedReferenceKind.Calls,
                             GetMemberIdentity(metadata, token, typeProvider)));
                         break;
                     }
@@ -402,8 +406,22 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                         references.Add(new ManagedReferenceFact(
                             opcode is { } op && (op == OpCodes.Stfld || op == OpCodes.Stsfld)
                                 ? ManagedReferenceKind.WritesField
-                                : ManagedReferenceKind.ReadsField,
+                                : opcode == OpCodes.Ldflda || opcode == OpCodes.Ldsflda
+                                    ? ManagedReferenceKind.TakesFieldAddress
+                                    : ManagedReferenceKind.ReadsField,
                             GetMemberIdentity(metadata, token, typeProvider)));
+                        break;
+                    }
+                case OperandType.InlineTok:
+                    {
+                        var token = BitConverter.ToInt32(il, offset);
+                        offset += 4;
+                        var tokenKind = GetTokenReferenceKind(metadata, token);
+                        if (tokenKind is not null)
+                            references.Add(new ManagedReferenceFact(
+                                tokenKind.Value,
+                                GetMemberIdentity(metadata, token, typeProvider),
+                                RelationshipEvidence.Metadata));
                         break;
                     }
                 default:
@@ -512,6 +530,36 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         {
             return UnresolvedMarker("unknown handle kind", $"token-0x{token:X8}");
         }
+    }
+
+    private static ManagedReferenceKind? GetTokenReferenceKind(MetadataReader metadata, int token)
+    {
+        EntityHandle handle;
+        try
+        {
+            handle = MetadataTokens.EntityHandle(token);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+
+        return handle.Kind switch
+        {
+            HandleKind.MethodDefinition => ManagedReferenceKind.ReferencesMethod,
+            HandleKind.MethodSpecification => ManagedReferenceKind.ReferencesMethod,
+            HandleKind.FieldDefinition => ManagedReferenceKind.TakesFieldAddress,
+            HandleKind.MemberReference => IsFieldMemberReference(metadata, (MemberReferenceHandle)handle)
+                ? ManagedReferenceKind.TakesFieldAddress
+                : ManagedReferenceKind.ReferencesMethod,
+            _ => null
+        };
+    }
+
+    private static bool IsFieldMemberReference(MetadataReader metadata, MemberReferenceHandle handle)
+    {
+        var reader = metadata.GetBlobReader(metadata.GetMemberReference(handle).Signature);
+        return reader.Length > 0 && new SignatureHeader(reader.ReadByte()).Kind == SignatureKind.Field;
     }
 
     private static string UnresolvedMarker(string reason, string detail) => $"unresolved:{reason}:{detail}";

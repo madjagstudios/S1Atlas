@@ -69,6 +69,8 @@ public sealed class RelationshipExtractor
                         ManagedReferenceKind.Constructs => RelationshipKind.Constructs,
                         ManagedReferenceKind.ReadsField => RelationshipKind.ReadsField,
                         ManagedReferenceKind.WritesField => RelationshipKind.WritesField,
+                        ManagedReferenceKind.ReferencesMethod => RelationshipKind.ReferencesMethod,
+                        ManagedReferenceKind.TakesFieldAddress => RelationshipKind.TakesFieldAddress,
                         _ => throw new ArgumentOutOfRangeException()
                     };
                     result.Add(new RelationshipFact(
@@ -76,7 +78,7 @@ public sealed class RelationshipExtractor
                         knownMembers.GetValueOrDefault(reference.Target),
                         reference.Target,
                         kind,
-                        RelationshipEvidence.RecoveredIL,
+                        reference.Evidence,
                         credit?.DeclaringKey is null ? null : memberKey,
                         credit?.Detail));
                 }

@@ -552,7 +552,9 @@ may-dispatch callers with the dispatch route and split totals; `?exact=1` on
 the page and on `/api/symbol/<id>/callers` restricts to statically bound
 callers. Relationship rows credit compiler-generated bodies to the declaring
 method with an `in ...` detail; `?generated=1` shows the raw generated rows
-instead. `/builds` lists every known build newest
+instead. `callers`/`callees` exclude delegate creation unless `?delegates=1`
+is set on the page or on `/api/symbol/<id>/callers|callees`; included rows
+read `delegate created (not called)`. `/builds` lists every known build newest
 first with human-readable status labels; `/builds/<id>` shows one build's
 facts, per-codebase symbol counts with links into search filtered to that
 build, adjacent diffs, and the environment when it is the current build.
@@ -737,7 +739,11 @@ exact/derived split totals, while `exact: true` returns only statically
 bound callers. The relationship and search tools also accept
 `includeGenerated` (default `false`): by default generated bodies are
 credited to the declaring method with an `in ...` detail, while `true`
-shows the raw generated rows. Slots with no resolvable indexed symbol contribute no
+shows the raw generated rows. `find_callers`, `find_callees`,
+`find_api_callers`, and `find_api_callees` accept `includeDelegates`
+(default `false`): by default delegate creation is excluded from
+callers/callees, while `true` includes it labeled `delegate created (not
+called)`. Slots with no resolvable indexed symbol contribute no
 routes, so overrides of external framework methods add no derived rows. `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
@@ -888,6 +894,29 @@ Symbol search hides compiler-generated members by default and reports `<n>
 generated result(s) hidden` with the switch that reveals them. `fieldrefs`
 likewise excludes compiler-captured fields unless asked.
 
+## Delegate creation and field addresses
+
+`callers` and `callees` report real calls only. Creating a delegate from a
+method (`ldftn`/`ldvirtftn`) records a `ReferencesMethod` edge instead, and
+taking a field's address (`ldflda`/`ldsflda`) records a `TakesFieldAddress`
+edge; neither is a call, a read, or a write.
+
+Delegate references stay out of `callers`/`callees` unless asked:
+
+- CLI: `--include-delegates` on `callers` and `callees`.
+- MCP: `includeDelegates` on `find_callers`, `find_callees`,
+  `find_api_callers`, and `find_api_callees`.
+- Serve: `?delegates=1` on symbol pages and on the callers/callees APIs.
+
+Included delegate rows are labeled `delegate created (not called)`.
+
+`fieldrefs` always shows address-taken sites in both readers and writers:
+`possible write (address taken)` in writers (and in the combined view) and
+`possible read (address taken)` in readers. `refs` always shows both new
+kinds. `ldtoken` of a method or field records a metadata reference, never a
+call or read; `constrained.` + `callvirt` stays a virtual call; `calli`
+records nothing.
+
 ## Command reference
 
 | Command | Purpose |
@@ -909,8 +938,8 @@ likewise excludes compiler-captured fields unless asked.
 | `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |
 | `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--full-type] [--related-limit <0-50>] [--limit <n>] [--json]` | Show focused, integrity-checked decompiled source and optional callable neighborhood for one resolved symbol |
 | `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | List indexed references to a resolved symbol |
-| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--exact] [--include-generated] [--json]` | List indexed callers of a resolved method, including may-dispatch callers via overrides and interface implementations (`--exact` for statically bound callers only) |
-| `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | List indexed callees of a resolved method, including calls made from compiler-generated bodies |
+| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--exact] [--include-delegates] [--include-generated] [--json]` | List indexed callers of a resolved method, including may-dispatch callers via overrides and interface implementations (`--exact` for statically bound callers only; delegate creation included only with `--include-delegates`) |
+| `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-delegates] [--include-generated] [--json]` | List indexed callees of a resolved method, including calls made from compiler-generated bodies (delegate creation included only with `--include-delegates`) |
 | `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
 | `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--include-generated] [--json]` | Find static recovered-IL field readers and writers for one resolved field (compiler-captured fields excluded unless asked) |
 | `investigate_seam <selector> --question <text> [--codebase <id>] [--channel <id>] [--build <id>] [--scope game\|reference\|all] [--collection <name-or-id>] [--relationship-limit <1-50>] [--owner-limit <1-50>] [--context <n>] [--native-symbol-id <id>] [--native-traversal-budget <0-500>] [--details] [--json]` | Investigate a supportable ownership seam with deterministic candidate ordering, coverage warnings, unknown dimensions, and bounded next actions |

@@ -425,6 +425,134 @@ public sealed class SymbolTests
         Assert.False(rawRow.TryGetProperty("generatedDetail", out _));
     }
 
+    [Fact]
+    public async Task SymbolPageHidesDelegatesByDefault()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync(
+            $"/symbol/{SyntheticAtlas.DelegateTargetMethodId}", cancellationToken);
+
+        Assert.Contains("FACT: 0 callers in this index.", body);
+    }
+
+    [Fact]
+    public async Task SymbolPageShowsLabeledDelegatesWithQuery()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync(
+            $"/symbol/{SyntheticAtlas.DelegateTargetMethodId}?delegates=1", cancellationToken);
+
+        Assert.Contains("FACT: 1 callers in this index.", body);
+        Assert.Contains("Demo.Delegate.Build", body);
+        Assert.Contains("(delegate created (not called))", body);
+    }
+
+    [Fact]
+    public async Task ApiCallersHidesDelegatesByDefault()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.DelegateTargetMethodId}/callers", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        Assert.Empty(json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ApiCallersShowsLabeledDelegatesWithQuery()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.DelegateTargetMethodId}/callers?delegates=1", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        var row = Assert.Single(
+            json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal("ReferencesMethod", row.GetProperty("kind").GetString());
+        Assert.Equal("delegate created (not called)", row.GetProperty("label").GetString());
+    }
+
+    [Fact]
+    public async Task ApiCalleesHidesDelegatesByDefault()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.DelegateBuildMethodId}/callees", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        Assert.Empty(json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ApiCalleesShowsLabeledDelegatesWithQuery()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.DelegateBuildMethodId}/callees?delegates=1", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        var row = Assert.Single(
+            json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal("ReferencesMethod", row.GetProperty("kind").GetString());
+        Assert.Equal("delegate created (not called)", row.GetProperty("label").GetString());
+    }
+
+    [Fact]
+    public async Task ApiReferencesShowsLabeledDelegatesAlways()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.DelegateTargetMethodId}/references", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        var row = Assert.Single(
+            json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal("ReferencesMethod", row.GetProperty("kind").GetString());
+        Assert.Equal("delegate created (not called)", row.GetProperty("label").GetString());
+    }
+
+    [Fact]
+    public async Task ApiReferencesLabelsAddressTaken()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.DelegateCountFieldId}/references", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        var row = Assert.Single(
+            json.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal("TakesFieldAddress", row.GetProperty("kind").GetString());
+        Assert.Equal("possible write (address taken)", row.GetProperty("label").GetString());
+    }
+
     [Theory]
     [InlineData("maybe")]
     [InlineData("2")]

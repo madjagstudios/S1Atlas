@@ -67,7 +67,8 @@ public enum ManagedMemberKind
 
 public sealed record ManagedReferenceFact(
     ManagedReferenceKind Kind,
-    string Target);
+    string Target,
+    RelationshipEvidence Evidence = RelationshipEvidence.RecoveredIL);
 
 public enum ManagedReferenceKind
 {
@@ -75,5 +76,7 @@ public enum ManagedReferenceKind
     CallsVirtual,
     Constructs,
     ReadsField,
-    WritesField
+    WritesField,
+    ReferencesMethod,
+    TakesFieldAddress
 }
