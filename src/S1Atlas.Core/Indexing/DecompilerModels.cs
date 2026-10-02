@@ -12,7 +12,8 @@ public sealed record ManagedTypeFacts(
     string? BaseType,
     IReadOnlyList<string> Interfaces,
     IReadOnlyList<ManagedMemberFacts> Members,
-    bool IsInterface = false);
+    bool IsInterface = false,
+    bool IsCompilerGenerated = false);
 
 public sealed record ManagedMemberFacts(
     string Name,
@@ -29,7 +30,10 @@ public sealed record ManagedMemberFacts(
     bool IsPublic = false,
     bool IsVirtual = false,
     bool IsNewSlot = false,
-    IReadOnlyList<string>? MethodImplDeclarations = null)
+    IReadOnlyList<string>? MethodImplDeclarations = null,
+    bool IsCompilerGenerated = false,
+    string? StateMachineTypeName = null,
+    bool IsAsyncStateMachine = false)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
     public IReadOnlyList<string> MethodImplDeclarationsOrEmpty => MethodImplDeclarations ?? [];

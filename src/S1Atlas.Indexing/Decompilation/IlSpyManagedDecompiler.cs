@@ -76,6 +76,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var members = new List<ManagedMemberFacts>();
         var typeProvider = new MetadataTypeNameProvider();
         var methodImplDeclarations = ReadMethodImplDeclarations(metadata, definition, typeProvider);
+        var typeAttributes = ReadGeneratedAttributes(metadata, definition.GetCustomAttributes());
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = metadata.GetFieldDefinition(fieldHandle);
@@ -87,7 +88,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 false,
                 [],
                 ValueType: valueType,
-                IsPublic: IsPublic(field.Attributes)));
+                IsPublic: IsPublic(field.Attributes),
+                IsCompilerGenerated: ReadGeneratedAttributes(metadata, field.GetCustomAttributes()).IsCompilerGenerated));
         }
 
         foreach (var propertyHandle in definition.GetProperties())
@@ -104,7 +106,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 [],
                 ParameterTypes: parameterTypes,
                 ValueType: signature.ReturnType,
-                IsPublic: IsPublic(metadata, property.GetAccessors().Getter, property.GetAccessors().Setter)));
+                IsPublic: IsPublic(metadata, property.GetAccessors().Getter, property.GetAccessors().Setter),
+                IsCompilerGenerated: ReadGeneratedAttributes(metadata, property.GetCustomAttributes()).IsCompilerGenerated));
         }
 
         foreach (var eventHandle in definition.GetEvents())
@@ -119,7 +122,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 false,
                 [],
                 ValueType: valueType,
-                IsPublic: IsPublic(metadata, @event.GetAccessors().Adder, @event.GetAccessors().Remover, @event.GetAccessors().Raiser)));
+                IsPublic: IsPublic(metadata, @event.GetAccessors().Adder, @event.GetAccessors().Remover, @event.GetAccessors().Raiser),
+                IsCompilerGenerated: ReadGeneratedAttributes(metadata, @event.GetCustomAttributes()).IsCompilerGenerated));
         }
 
         foreach (var methodHandle in definition.GetMethods())
@@ -153,6 +157,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 bodyAnalysis.MatchesVerifiedStubPattern,
                 bodyAnalysis.MatchesInteropWrapperPattern);
             var bodyRecoveryStatus = BodyClassifier.Classify(bodyFacts);
+            var generatedAttributes = ReadGeneratedAttributes(metadata, method.GetCustomAttributes());
 
             members.Add(new ManagedMemberFacts(
                 methodName,
@@ -168,7 +173,10 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 IsPublic: IsPublic(method.Attributes),
                 IsVirtual: (method.Attributes & MethodAttributes.Virtual) != 0,
                 IsNewSlot: (method.Attributes & MethodAttributes.NewSlot) != 0,
-                MethodImplDeclarations: methodImplDeclarations.GetValueOrDefault(methodHandle)));
+                MethodImplDeclarations: methodImplDeclarations.GetValueOrDefault(methodHandle),
+                IsCompilerGenerated: generatedAttributes.IsCompilerGenerated,
+                StateMachineTypeName: generatedAttributes.StateMachineTypeName,
+                IsAsyncStateMachine: generatedAttributes.IsAsyncStateMachine));
         }
 
         return new ManagedTypeFacts(
@@ -178,7 +186,128 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             baseType,
             interfaces,
             members,
-            IsInterface: (definition.Attributes & TypeAttributes.Interface) != 0);
+            IsInterface: (definition.Attributes & TypeAttributes.Interface) != 0,
+            IsCompilerGenerated: typeAttributes.IsCompilerGenerated);
+    }
+
+    private sealed record GeneratedAttributeFacts(bool IsCompilerGenerated, string? StateMachineTypeName, bool IsAsyncStateMachine);
+
+    private static GeneratedAttributeFacts ReadGeneratedAttributes(
+        MetadataReader metadata, CustomAttributeHandleCollection attributes)
+    {
+        var generated = false;
+        string? stateMachine = null;
+        var isAsync = false;
+        foreach (var handle in attributes)
+        {
+            var attributeType = AttributeTypeName(metadata, handle);
+            if (attributeType is null)
+                continue;
+            if (string.Equals(attributeType, "System.Runtime.CompilerServices.CompilerGeneratedAttribute", StringComparison.Ordinal))
+            {
+                generated = true;
+            }
+            else if (IsStateMachineAttribute(attributeType, out var async))
+            {
+                var decoded = StateMachineArgument(metadata, handle);
+                if (decoded is not null)
+                {
+                    stateMachine = decoded;
+                    isAsync = async;
+                }
+            }
+        }
+
+        return new GeneratedAttributeFacts(generated, stateMachine, isAsync);
+    }
+
+    private static bool IsStateMachineAttribute(string attributeType, out bool isAsync)
+    {
+        if (string.Equals(attributeType, "System.Runtime.CompilerServices.AsyncStateMachineAttribute", StringComparison.Ordinal)
+            || string.Equals(attributeType, "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute", StringComparison.Ordinal))
+        {
+            isAsync = true;
+            return true;
+        }
+
+        if (string.Equals(attributeType, "System.Runtime.CompilerServices.IteratorStateMachineAttribute", StringComparison.Ordinal))
+        {
+            isAsync = false;
+            return true;
+        }
+
+        isAsync = false;
+        return false;
+    }
+
+    private static string? AttributeTypeName(MetadataReader metadata, CustomAttributeHandle handle)
+    {
+        try
+        {
+            var ctor = metadata.GetCustomAttribute(handle).Constructor;
+            return ctor.Kind switch
+            {
+                HandleKind.MethodDefinition => GetTypeName(metadata, metadata.GetMethodDefinition((MethodDefinitionHandle)ctor).GetDeclaringType()),
+                HandleKind.MemberReference => TryGetMemberParentName(
+                    metadata, metadata.GetMemberReference((MemberReferenceHandle)ctor).Parent, out var name, out _) ? name : null,
+                _ => null
+            };
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+    }
+
+    private static string? StateMachineArgument(MetadataReader metadata, CustomAttributeHandle handle)
+    {
+        try
+        {
+            var value = metadata.GetCustomAttribute(handle).DecodeValue(new StateMachineAttributeTypeProvider());
+            return value.FixedArguments.Length == 1 ? value.FixedArguments[0].Value as string : null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+    }
+
+    private static string NormalizeAttributeTypeName(string name)
+    {
+        var generics = name.IndexOf("[[", StringComparison.Ordinal);
+        var withoutGenerics = generics < 0 ? name : name[..generics];
+        var assembly = withoutGenerics.IndexOf(',');
+        return (assembly < 0 ? withoutGenerics : withoutGenerics[..assembly]).Trim();
+    }
+
+    private sealed class StateMachineAttributeTypeProvider : ICustomAttributeTypeProvider<string?>
+    {
+        public string? GetPrimitiveType(PrimitiveTypeCode typeCode) => null;
+
+        public string? GetSystemType() => string.Empty;
+
+        public string? GetSZArrayType(string? elementType) => null;
+
+        public string? GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
+            GetTypeName(reader, handle);
+
+        public string? GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
+            GetTypeName(reader, handle);
+
+        public string? GetTypeFromSerializedName(string name) => NormalizeAttributeTypeName(name);
+
+        public PrimitiveTypeCode GetUnderlyingEnumType(string? type) => PrimitiveTypeCode.Int32;
+
+        public bool IsSystemType(string? type) =>
+            string.Equals(type, "System.Type", StringComparison.Ordinal) || type is not null && type.Length == 0;
     }
 
     private static Dictionary<MethodDefinitionHandle, IReadOnlyList<string>> ReadMethodImplDeclarations(
