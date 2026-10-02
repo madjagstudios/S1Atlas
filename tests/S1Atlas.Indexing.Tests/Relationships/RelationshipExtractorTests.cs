@@ -45,4 +45,49 @@ public sealed class RelationshipExtractorTests
         Assert.Equal("Demo.Service::Do()", call.TargetText);
         Assert.Equal(RelationshipEvidence.RecoveredIL, call.Evidence);
     }
+
+    [Fact]
+    public void References_method_maps_to_references_method()
+    {
+        var input = new ManagedDecompilation(
+            "fixture.dll",
+            "",
+            [new ManagedTypeFacts(
+                "Demo.Owner", "Demo", "Owner", null, [],
+                [new ManagedMemberFacts(
+                    "Build", ManagedMemberKind.Method, "Build()", true,
+                    [new ManagedReferenceFact(ManagedReferenceKind.ReferencesMethod, "Demo.Target::Run()")])]),
+            new ManagedTypeFacts(
+                "Demo.Target", "Demo", "Target", null, [],
+                [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run()", true, [])])]);
+
+        var result = new RelationshipExtractor().Extract(input, CodebaseKind.S1Api, CodeChannel.Release);
+
+        var reference = Assert.Single(result, relationship => relationship.Kind == RelationshipKind.ReferencesMethod);
+        Assert.NotNull(reference.TargetKey);
+        Assert.Equal("Demo.Target::Run()", reference.TargetText);
+        Assert.Equal(RelationshipEvidence.RecoveredIL, reference.Evidence);
+    }
+
+    [Fact]
+    public void Takes_field_address_maps_and_preserves_evidence()
+    {
+        var input = new ManagedDecompilation(
+            "fixture.dll",
+            "",
+            [new ManagedTypeFacts(
+                "Demo.Owner", "Demo", "Owner", null, [],
+                [new ManagedMemberFacts(
+                    "Bump", ManagedMemberKind.Method, "Bump()", true,
+                    [new ManagedReferenceFact(
+                        ManagedReferenceKind.TakesFieldAddress,
+                        "Demo.Widget::Count",
+                        RelationshipEvidence.Metadata)])])]);
+
+        var result = new RelationshipExtractor().Extract(input, CodebaseKind.S1Api, CodeChannel.Release);
+
+        var address = Assert.Single(result, relationship => relationship.Kind == RelationshipKind.TakesFieldAddress);
+        Assert.Equal("Demo.Widget::Count", address.TargetText);
+        Assert.Equal(RelationshipEvidence.Metadata, address.Evidence);
+    }
 }
