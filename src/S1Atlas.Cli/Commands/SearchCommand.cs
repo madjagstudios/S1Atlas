@@ -21,14 +21,14 @@ internal static class SearchCommand
                 [],
                 result.TotalCount,
                 result.ReturnedCount,
-                result.ResolutionStatus is { } status
+                Resolution: result.ResolutionStatus is { } status
                     ? new SymbolResolutionResult(status, null, [])
                     : null);
         }, async (query, run, limit, ct) =>
         {
             var result = await service.SearchInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, null, ct);
             return new IndexQueryOutput(result.Results, [], [], result.TotalCount, result.ReturnedCount,
-                result.TotalCount == 0
+                Resolution: result.TotalCount == 0
                     ? new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, [])
                     : null);
         }, includeScopeOptions: true);

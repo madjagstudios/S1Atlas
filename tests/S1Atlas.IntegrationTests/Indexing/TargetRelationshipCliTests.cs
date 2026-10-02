@@ -120,6 +120,154 @@ public sealed class TargetRelationshipCliTests
             "InvalidOptionCombination",
             invalidJson.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
+
+    [Fact]
+    public async Task Callers_scope_all_returns_expanded_json_with_routes_and_split_totals()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run(
+            "callers",
+            "Demo.Hierarchy.Mid.Run",
+            "--scope",
+            "all",
+            "--collection",
+            atlas.Collection,
+            "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(3, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(3, data.GetProperty("returnedCount").GetInt32());
+        Assert.Equal(1, data.GetProperty("exactCount").GetInt32());
+        Assert.Equal(2, data.GetProperty("derivedCount").GetInt32());
+        var relationships = data.GetProperty("relationships").EnumerateArray().ToArray();
+        Assert.Equal(
+            ["call-005-game", "call-004-game", "call-006-reference"],
+            relationships.Select(item => item.GetProperty("relationshipId").GetString()!).ToArray());
+
+        Assert.False(relationships[0].GetProperty("isDerived").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, relationships[0].GetProperty("routes").ValueKind);
+
+        foreach (var derived in relationships.Skip(1))
+        {
+            Assert.True(derived.GetProperty("isDerived").GetBoolean());
+            Assert.Equal(
+                ["via Demo.Hierarchy.Base.Run"],
+                derived.GetProperty("routes").EnumerateArray().Select(item => item.GetString()!).ToArray());
+        }
+
+        Assert.Equal("game", relationships[1].GetProperty("source").GetProperty("origin").GetString());
+        Assert.Equal("reference", relationships[2].GetProperty("source").GetProperty("origin").GetString());
+    }
+
+    [Fact]
+    public async Task Callers_exact_returns_only_fact_rows()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run(
+            "callers",
+            "Demo.Hierarchy.Mid.Run",
+            "--scope",
+            "all",
+            "--collection",
+            atlas.Collection,
+            "--exact",
+            "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(1, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, data.GetProperty("exactCount").GetInt32());
+        Assert.Equal(0, data.GetProperty("derivedCount").GetInt32());
+        var relationship = Assert.Single(data.GetProperty("relationships").EnumerateArray());
+        Assert.Equal("call-005-game", relationship.GetProperty("relationshipId").GetString());
+        Assert.False(relationship.GetProperty("isDerived").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Callers_paging_returns_fact_first_with_unknown_totals()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run(
+            "callers",
+            "Demo.Hierarchy.Mid.Run",
+            "--scope",
+            "all",
+            "--collection",
+            atlas.Collection,
+            "--limit",
+            "1",
+            "--json");
+
+        Assert.Equal(0, result.ExitCode);
+
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("totalCount").ValueKind);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("exactCount").ValueKind);
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("derivedCount").ValueKind);
+        Assert.Equal(1, data.GetProperty("returnedCount").GetInt32());
+        var relationship = Assert.Single(data.GetProperty("relationships").EnumerateArray());
+        Assert.Equal("call-005-game", relationship.GetProperty("relationshipId").GetString());
+        Assert.False(relationship.GetProperty("isDerived").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Callers_human_output_marks_derived_rows_with_routes_and_split_totals()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run(
+            "callers",
+            "Demo.Hierarchy.Mid.Run",
+            "--scope",
+            "all",
+            "--collection",
+            atlas.Collection);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        Assert.Contains("call-005-game", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("call-004-game", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("DERIVED", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("via Demo.Hierarchy.Base.Run", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Found 3 matches. Showing 3.", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Exact 1. Derived 2.", result.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Callers_not_found_reports_symbol_not_found()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run("callers", "No.Such.Symbol", "--json");
+
+        Assert.Equal(1, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal("SymbolNotFound", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Callers_ambiguous_reports_ambiguous_symbol()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run("callers", "Run", "--json");
+
+        Assert.Equal(1, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal("AmbiguousSymbol", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.NotEmpty(document.RootElement.GetProperty("data").GetProperty("candidates").EnumerateArray());
+    }
 }
 
 internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
@@ -299,6 +447,8 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
                 [
                     new IndexRelationshipRecord("call-001-game", snapshot.SnapshotId, callSourceA.SymbolId, null, "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()", "Calls", "fixture:game"),
                     new IndexRelationshipRecord("call-003-game", snapshot.SnapshotId, callSourceB.SymbolId, null, "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()", "Calls", "fixture:game"),
+                    new IndexRelationshipRecord("call-004-game", snapshot.SnapshotId, callSourceA.SymbolId, hierarchyBase.SymbolId, "Demo.Hierarchy.Base::Run()", "CallsVirtual", "fixture:game"),
+                    new IndexRelationshipRecord("call-005-game", snapshot.SnapshotId, callSourceB.SymbolId, hierarchyMid.SymbolId, "Demo.Hierarchy.Mid::Run()", "Calls", "fixture:game"),
                     new IndexRelationshipRecord("field-001-game-read", snapshot.SnapshotId, fieldReader.SymbolId, field.SymbolId, "Demo.State::Value", "ReadsField", "fixture:game"),
                     new IndexRelationshipRecord("field-003-game-write", snapshot.SnapshotId, fieldWriter.SymbolId, field.SymbolId, "Demo.State::Value", "WritesField", "fixture:game"),
                     new IndexRelationshipRecord("hier-001-mid-overrides", snapshot.SnapshotId, hierarchyMid.SymbolId, hierarchyBase.SymbolId, "Demo.Hierarchy.Base::Run()", "Overrides", "Metadata"),
@@ -339,6 +489,7 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
                 [],
                 [
                     new IndexRelationshipRecord("call-002-reference", snapshot.SnapshotId, callSource.SymbolId, null, "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()", "Calls", "fixture:reference"),
+                    new IndexRelationshipRecord("call-006-reference", snapshot.SnapshotId, callSource.SymbolId, "game-hierarchy-base", "Demo.Hierarchy.Base::Run()", "CallsVirtual", "fixture:reference"),
                     new IndexRelationshipRecord("field-002-reference-read", snapshot.SnapshotId, fieldReader.SymbolId, "game-field", "Demo.State::Value", "ReadsField", "fixture:reference"),
                     new IndexRelationshipRecord("field-004-reference-write", snapshot.SnapshotId, fieldWriter.SymbolId, referenceField.SymbolId, "qol/Qol.Config::Setting", "WritesField", "fixture:reference"),
                     new IndexRelationshipRecord("hier-005-mod-overrides", snapshot.SnapshotId, hierarchyMod.SymbolId, "game-hierarchy-base", "Demo.Hierarchy.Base::Run()", "Overrides", "Metadata")

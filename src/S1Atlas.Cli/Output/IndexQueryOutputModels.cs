@@ -8,6 +8,8 @@ internal sealed record IndexQueryOutput(
     IReadOnlyList<SourceQueryResult> Sources,
     int? TotalCount = null,
     int? ReturnedCount = null,
+    int? ExactCount = null,
+    int? DerivedCount = null,
     SymbolResolutionResult? Resolution = null,
     BodyRecoveryStatus? BodyRecoveryStatus = null,
     bool? CallerCompletenessBoundedByTargetResolution = null,
