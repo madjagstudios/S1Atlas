@@ -171,6 +171,15 @@ internal static class IndexQueryCommandFactory
         Resolution: result.Resolution,
         CompletenessNotice: result.CompletenessNotice);
 
+    internal static IndexQueryOutput ToOutput(HierarchyQueryResult result) => new(
+        [],
+        result.Nodes.Select(node => node.Edge).ToArray(),
+        [],
+        TotalCount: result.TotalCount,
+        ReturnedCount: result.ReturnedCount,
+        Resolution: result.Resolution,
+        HierarchyNodes: result.Nodes);
+
     internal static void WriteHuman(IndexQueryOutput data, TextWriter writer)
     {
         if (data.TotalCount is int totalCount && data.ReturnedCount is int returnedCount)
@@ -179,11 +188,24 @@ internal static class IndexQueryCommandFactory
         foreach (var symbol in data.Symbols)
             writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
 
-        foreach (var relationship in data.Relationships)
+        if (data.HierarchyNodes is { } hierarchyNodes)
         {
-            writer.WriteLine(
-                $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
-                $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+            foreach (var node in hierarchyNodes)
+            {
+                var relationship = node.Edge;
+                writer.WriteLine(
+                    $"depth {node.Depth} | {(node.IsDirect ? "direct" : "transitive")} | {relationship.Kind} | {relationship.Direction} | " +
+                    $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+            }
+        }
+        else
+        {
+            foreach (var relationship in data.Relationships)
+            {
+                writer.WriteLine(
+                    $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
+                    $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+            }
         }
 
         if (data.CallableSurface?.CallableSurface is { } callable)
