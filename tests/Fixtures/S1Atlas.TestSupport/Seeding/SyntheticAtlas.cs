@@ -26,6 +26,8 @@ public sealed class SyntheticAtlas : IAsyncDisposable
     public const string CallerMethodId = "method-serve-caller";
     public const string ExecuteMethodId = "method-serve-execute";
     public const string BaseTypeId = "type-serve-base";
+    public const string BaseRenderMethodId = "method-serve-baserender";
+    public const string RenderMethodId = "method-serve-render";
     public const string PayloadTypeId = "type-serve-payload";
     public const string ResultTypeId = "type-serve-result";
     public const string HostileTypeId = "type-serve-hostile";
@@ -394,6 +396,24 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 "Demo.WidgetBase",
                 false),
             new(
+                Sid(BaseRenderMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.WidgetBase::Render()",
+                "Method",
+                "Demo.WidgetBase.Render",
+                "System.Void Demo.WidgetBase::Render()",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
+                Sid(RenderMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Widget::Render()",
+                "Method",
+                "Demo.Widget.Render",
+                "System.Void Demo.Widget::Render()",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
                 Sid(PayloadTypeId),
                 snapshotId,
                 "ScheduleI:Installed:Type:Demo.Payload",
@@ -516,6 +536,14 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                         null,
                         "Inherits",
                         "fixture:inherits"),
+                    new IndexRelationshipRecord(
+                        Sid("rel-serve-overrides"),
+                        snapshotId,
+                        Sid(RenderMethodId),
+                        Sid(BaseRenderMethodId),
+                        null,
+                        "Overrides",
+                        "fixture:overrides"),
                     new IndexRelationshipRecord(
                         Sid("rel-serve-parameter"),
                         snapshotId,

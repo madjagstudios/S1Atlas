@@ -47,7 +47,7 @@ public sealed class BuildsTests
         Assert.Contains("Indexed and verified", body);
         Assert.Contains("2026-08-16", body);
         Assert.Contains($"/search?build={SyntheticAtlas.BuildIdBValue}", body);
-        Assert.Contains("40 symbols", body);
+        Assert.Contains("42 symbols", body);
         Assert.Contains("/search?codebase=s1api", body);
         Assert.Contains($"/diff?from={SyntheticAtlas.BuildIdAValue}", body);
         Assert.Contains($"to={SyntheticAtlas.BuildIdBValue}", body);
@@ -65,7 +65,7 @@ public sealed class BuildsTests
 
         Assert.Contains($"<h1>{SyntheticAtlas.BuildIdAValue}</h1>", body);
         Assert.Contains($"/search?build={SyntheticAtlas.BuildIdAValue}", body);
-        Assert.Contains("9 symbols", body);
+        Assert.Contains("11 symbols", body);
         Assert.Contains($"/diff?from={SyntheticAtlas.BuildIdAValue}", body);
         Assert.Contains($"to={SyntheticAtlas.BuildIdBValue}", body);
         Assert.DoesNotContain("Environment for this build", body);
@@ -138,7 +138,7 @@ public sealed class BuildsTests
         var surfaces = data.GetProperty("surfaces").EnumerateArray().ToArray();
         Assert.Contains(surfaces, surface =>
             surface.GetProperty("codebase").GetString() == "ScheduleI"
-            && surface.GetProperty("symbolCount").GetInt32() == 40);
+            && surface.GetProperty("symbolCount").GetInt32() == 42);
         var diffs = data.GetProperty("adjacentDiffs").EnumerateArray().ToArray();
         Assert.Single(diffs);
         Assert.Equal(SyntheticAtlas.BuildIdAValue, diffs[0].GetProperty("fromBuildId").GetString());

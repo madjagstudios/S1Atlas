@@ -12,7 +12,10 @@ internal sealed record SymbolModel(
     SourceSnippetQueryResult? Source,
     RelationshipQuerySetResult Callers,
     RelationshipQuerySetResult Callees,
-    RelationshipQuerySetResult References);
+    RelationshipQuerySetResult References,
+    RelationshipQuerySetResult Overrides,
+    RelationshipQuerySetResult OverriddenBy,
+    RelationshipQuerySetResult Derived);
 
 internal static class SymbolView
 {
@@ -40,6 +43,17 @@ internal static class SymbolView
         RenderRelationships(body, "Callers", "callers", model.Callers, symbol.SymbolId);
         RenderRelationships(body, "Callees", "callees", model.Callees, symbol.SymbolId);
         RenderRelationships(body, "References", "references", model.References, symbol.SymbolId);
+        if (symbol.Kind.Equals("Method", StringComparison.Ordinal))
+        {
+            RenderRelationships(body, "Overrides", "overrides", model.Overrides, symbol.SymbolId);
+            RenderRelationships(body, "Overridden by", "overriders", model.OverriddenBy, symbol.SymbolId);
+        }
+
+        if (symbol.Kind.Equals("Type", StringComparison.Ordinal))
+        {
+            RenderRelationships(body, "Derived types", "derived types", model.Derived, symbol.SymbolId);
+        }
+
         return Html.Layout(symbol.QualifiedName, body.ToString());
     }
 

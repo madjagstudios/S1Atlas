@@ -20,8 +20,9 @@ public sealed class SymbolTests
         Assert.StartsWith("text/html", response.Content.Headers.ContentType?.ToString());
         Assert.Contains("<h1>Demo.Widget</h1>", body);
         Assert.Contains("FACT: Type Demo.Widget in Schedule I (Installed).", body);
-        Assert.Contains("FACT: 3 members.", body);
+        Assert.Contains("FACT: 4 members.", body);
         Assert.Contains("Demo.Widget.Run", body);
+        Assert.Contains("Demo.Widget.Render", body);
         Assert.Contains("Demo.Widget.CheckPhysics", body);
         Assert.Contains("Demo.Widget._state", body);
         Assert.Contains("Assembly-CSharp.cs", body);
@@ -45,6 +46,41 @@ public sealed class SymbolTests
         Assert.Contains("FACT: 1 callees in this index.", body);
         Assert.Contains("Demo.Service.Execute", body);
         Assert.Contains("public void Run()", body);
+    }
+
+    [Fact]
+    public async Task GameMethodPageShowsOverridesAndOverriddenBy()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var derived = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.RenderMethodId}", cancellationToken);
+        var @base = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.BaseRenderMethodId}", cancellationToken);
+
+        Assert.Contains("<h2>Overrides</h2>", derived);
+        Assert.Contains("FACT: 1 overrides in this index.", derived);
+        Assert.Contains("Demo.WidgetBase.Render", derived);
+        Assert.DoesNotContain("<h2>Derived types</h2>", derived);
+
+        Assert.Contains("<h2>Overridden by</h2>", @base);
+        Assert.Contains("FACT: 1 overriders in this index.", @base);
+        Assert.Contains("Demo.Widget.Render", @base);
+        Assert.DoesNotContain("<h2>Derived types</h2>", @base);
+    }
+
+    [Fact]
+    public async Task GameTypePageShowsDerivedTypes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.BaseTypeId}", cancellationToken);
+
+        Assert.Contains("<h2>Derived types</h2>", body);
+        Assert.Contains("FACT: 1 derived types in this index.", body);
+        Assert.Contains("Demo.Widget", body);
+        Assert.DoesNotContain("<h2>Overrides</h2>", body);
+        Assert.DoesNotContain("<h2>Overridden by</h2>", body);
     }
 
     [Fact]
