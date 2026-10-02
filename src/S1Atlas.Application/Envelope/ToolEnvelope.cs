@@ -91,8 +91,12 @@ public sealed record ToolEnvelope<T>(
     T? Data,
     IReadOnlyList<object> Candidates,
     IReadOnlyList<ProvenanceEntry> Provenance,
-    ToolError? Error) where T : class
+    ToolError? Error,
+    IReadOnlyList<object>? Suggestions = null,
+    int? TotalCandidateCount = null) where T : class
 {
+    public IReadOnlyList<object> Suggestions { get; init; } = Suggestions ?? [];
+
     public BuildContext? BuildA { get; init; }
     public BuildContext? BuildB { get; init; }
 
@@ -131,6 +135,20 @@ public sealed record ToolEnvelope<T>(
             provenance,
             error);
 
+    public static ToolEnvelope<T> NotFound(
+        BuildContext? build,
+        ToolError? error,
+        IReadOnlyList<object>? suggestions,
+        params ProvenanceEntry[] provenance) =>
+        new(
+            ToolStatus.NotFound,
+            build,
+            null,
+            Array.Empty<object>(),
+            provenance,
+            error,
+            suggestions);
+
     public static ToolEnvelope<T> Ambiguous(
         BuildContext? build,
         IReadOnlyList<object> candidates,
@@ -142,6 +160,21 @@ public sealed record ToolEnvelope<T>(
             candidates,
             provenance,
             null);
+
+    public static ToolEnvelope<T> Ambiguous(
+        BuildContext? build,
+        IReadOnlyList<object> candidates,
+        int? totalCandidateCount,
+        params ProvenanceEntry[] provenance) =>
+        new(
+            ToolStatus.Ambiguous,
+            build,
+            null,
+            candidates,
+            provenance,
+            null,
+            null,
+            totalCandidateCount);
 
     public static ToolEnvelope<T> Unavailable(
         ToolError error,

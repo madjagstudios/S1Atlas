@@ -629,6 +629,8 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
 
         Assert.Equal("ambiguous", root.GetProperty("status").GetString());
         Assert.Equal(2, root.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(2, root.GetProperty("totalCandidateCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("suggestions").GetArrayLength());
         Assert.True(!root.TryGetProperty("data", out var data) || data.ValueKind is JsonValueKind.Null);
     }
 

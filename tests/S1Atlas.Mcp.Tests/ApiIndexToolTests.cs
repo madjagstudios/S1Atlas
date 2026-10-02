@@ -536,6 +536,8 @@ public sealed class ApiIndexToolTests
 
         Assert.Equal(ToolStatus.Ambiguous, ambiguous.Status);
         Assert.Equal(2, ambiguous.Candidates.Count);
+        Assert.Equal(2, ambiguous.TotalCandidateCount);
+        Assert.Empty(ambiguous.Suggestions);
 
         var sourceIdentity = new string('g', 40);
         var sourceText = "namespace Demo;\npublic sealed class Api\n{\n    public void Run() { }\n}\n";

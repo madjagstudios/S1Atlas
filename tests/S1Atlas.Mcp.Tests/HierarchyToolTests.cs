@@ -120,6 +120,8 @@ public sealed class HierarchyToolTests
 
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Equal("SymbolNotFound", envelope.Error?.Code);
+        Assert.Empty(envelope.Suggestions);
+        Assert.Null(envelope.TotalCandidateCount);
     }
 
     [Fact]
@@ -136,6 +138,8 @@ public sealed class HierarchyToolTests
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.NotEmpty(envelope.Candidates);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
     }
 
     private static CodeSymbolTools CreateTools(McpTestAtlas atlas)
