@@ -83,7 +83,7 @@ public sealed record ProvenanceEntry(
     string? ExtractionId,
     string? IndexId);
 
-public sealed record ToolError(string Code, string Message);
+public sealed record ToolError(string Code, string Message, string? Hint = null);
 
 public sealed record ToolEnvelope<T>(
     ToolStatus Status,
