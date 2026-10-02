@@ -339,6 +339,18 @@ public sealed class GeneratedBodyResolverTests
         Assert.Equal("unmapped: ambiguous overloads sharing 'Foo'", mapping.Detail);
     }
 
+    [Fact]
+    public void VisibleDetail_ShowsMappedByDefaultAndReasonsInRawMode()
+    {
+        Assert.Equal("in lambda", GeneratedBodyResolver.VisibleDetail("in lambda", false));
+        Assert.Null(GeneratedBodyResolver.VisibleDetail("in lambda", true));
+        Assert.Equal(
+            "unmapped: ambiguous overloads sharing 'Foo'",
+            GeneratedBodyResolver.VisibleDetail("unmapped: ambiguous overloads sharing 'Foo'", true));
+        Assert.Null(GeneratedBodyResolver.VisibleDetail(null, false));
+        Assert.Null(GeneratedBodyResolver.VisibleDetail(null, true));
+    }
+
     private static ManagedMemberFacts Method(string name, string returnType, params string[] parameterTypes) =>
         Method(name, returnType, parameterTypes, null, null, false);
 

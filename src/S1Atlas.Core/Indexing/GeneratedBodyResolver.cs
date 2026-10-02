@@ -48,6 +48,15 @@ public static class GeneratedBodyResolver
         return ResolveEntries(entries);
     }
 
+    public static string? VisibleDetail(string? detail, bool includeGenerated)
+    {
+        if (detail is null)
+            return null;
+        if (!includeGenerated)
+            return detail;
+        return detail.StartsWith("unmapped:", StringComparison.Ordinal) ? detail : null;
+    }
+
     public static IReadOnlyDictionary<string, GeneratedBodyMapping> MapSymbols(
         IEnumerable<IndexSymbolRecord> symbols,
         CodebaseKind codebase,

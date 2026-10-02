@@ -243,14 +243,14 @@ public sealed class ReferenceModQueryService
             cancellationToken);
     }
 
-    public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
-        RelationshipAsync(selector, options, RelationshipMode.Refs, cancellationToken);
+    public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false) =>
+        RelationshipAsync(selector, options, RelationshipMode.Refs, cancellationToken, includeGenerated: includeGenerated);
 
-    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false) =>
-        RelationshipAsync(selector, options, RelationshipMode.Callers, cancellationToken, exact);
+    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false, bool includeGenerated = false) =>
+        RelationshipAsync(selector, options, RelationshipMode.Callers, cancellationToken, exact, includeGenerated);
 
-    public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
-        RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken);
+    public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false) =>
+        RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken, includeGenerated: includeGenerated);
 
     internal async Task<HierarchyQueryResult> HierarchyAsync(
         string selector,
@@ -396,7 +396,8 @@ public sealed class ReferenceModQueryService
         IndexQueryOptions options,
         RelationshipMode mode,
         CancellationToken cancellationToken,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         var selection = await RequireSelectionAsync(options, cancellationToken);
@@ -453,8 +454,8 @@ public sealed class ReferenceModQueryService
             ? selectedRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         if (mode == RelationshipMode.Callers && !exact)
-            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken);
-        var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken);
+            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated);
+        var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated);
         return new RelationshipQuerySetResult(
             resolution,
             relationships,
@@ -473,7 +474,8 @@ public sealed class ReferenceModQueryService
         bool selectedIsGame,
         BodyRecoveryStatus? bodyStatus,
         bool includeGameEndpoints,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var exactRecords = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
             selection.Run.IndexId, id, cancellationToken);
@@ -481,7 +483,8 @@ public sealed class ReferenceModQueryService
             selection,
             exactRecords.Select(edge => (edge, "Incoming")).ToArray(),
             includeGameEndpoints,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         // A game-resolved selector fills slots declared in the game index, so
         // the walk runs there while incoming edges are collected here.
         var walkIndexId = selectedIsGame ? selection.Context.GameIndexId : selection.Run.IndexId;
@@ -491,7 +494,8 @@ public sealed class ReferenceModQueryService
             selection,
             derivedEdges.Select(item => (item.Edge, "Incoming")).ToArray(),
             includeGameEndpoints,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         // The mapped rows are sorted by relationship id while the expansion
         // emits walk encounter order, so routes join by id, not by position.
         var routesById = derivedEdges.ToDictionary(
@@ -524,9 +528,10 @@ public sealed class ReferenceModQueryService
         IndexSelection selection,
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> edges,
         bool includeGameEndpoints,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
-        var ids = edges.SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
+        var ids = edges.SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId, item.Edge.GeneratedSourceSymbolId })
             .Where(id => id is not null)
             .Cast<string>()
             .Distinct(StringComparer.Ordinal)
@@ -544,8 +549,16 @@ public sealed class ReferenceModQueryService
                 item.Edge.Kind,
                 item.Edge.Evidence,
                 item.Direction,
-                MapEndpoint(item.Edge.SourceSymbolId, null, referenceById, gameById, selection),
-                MapEndpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, referenceById, gameById, selection)))
+                MapEndpoint(
+                    includeGenerated && item.Edge.GeneratedSourceSymbolId is not null
+                        ? item.Edge.GeneratedSourceSymbolId
+                        : item.Edge.SourceSymbolId,
+                    null,
+                    referenceById,
+                    gameById,
+                    selection),
+                MapEndpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, referenceById, gameById, selection),
+                GeneratedDetail: GeneratedBodyResolver.VisibleDetail(item.Edge.GeneratedDetail, includeGenerated)))
             .ToArray();
     }
 

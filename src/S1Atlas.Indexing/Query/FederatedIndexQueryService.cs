@@ -136,14 +136,14 @@ public sealed class FederatedIndexQueryService
                     relatedLimit);
     }
 
-    public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
-        RelationshipsAsync(selector, options, RelationshipKind.Refs, cancellationToken);
+    public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false) =>
+        RelationshipsAsync(selector, options, RelationshipKind.Refs, cancellationToken, includeGenerated: includeGenerated);
 
-    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false) =>
-        RelationshipsAsync(selector, options, RelationshipKind.Callers, cancellationToken, exact);
+    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false, bool includeGenerated = false) =>
+        RelationshipsAsync(selector, options, RelationshipKind.Callers, cancellationToken, exact, includeGenerated);
 
-    public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
-        RelationshipsAsync(selector, options, RelationshipKind.Callees, cancellationToken);
+    public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false) =>
+        RelationshipsAsync(selector, options, RelationshipKind.Callees, cancellationToken, includeGenerated: includeGenerated);
 
     public Task<HierarchyQueryResult> OverridesAsync(
         string selector,
@@ -218,14 +218,15 @@ public sealed class FederatedIndexQueryService
         IndexQueryOptions options,
         FieldReferenceFilter filter,
         CancellationToken cancellationToken,
-        string? referenceIndexId = null)
+        string? referenceIndexId = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         ValidateOptions(options);
         ValidateLimit(options.Limit);
 
         if (options.Scope == IndexQueryScope.Game)
-            return await _game.FieldReferencesAsync(selector, GameOptions(options, options.Limit), filter, cancellationToken);
+            return await _game.FieldReferencesAsync(selector, GameOptions(options, options.Limit), filter, cancellationToken, includeGenerated);
 
         var selection = await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
         if (selection is null)
@@ -240,7 +241,7 @@ public sealed class FederatedIndexQueryService
             return new FieldReferenceQueryResult(resolution, new RelationshipQueryPageResult(0, 0, []));
 
         if (resolution.Symbol.Origin == "reference")
-            return await ReferenceFieldReferencesAsync(selection, resolution, filter, options.Limit, cancellationToken);
+            return await ReferenceFieldReferencesAsync(selection, resolution, filter, options.Limit, cancellationToken, includeGenerated);
 
         var game = await _game.FieldReferencesInIndexAsync(
             selection.GameRun,
@@ -249,13 +250,15 @@ public sealed class FederatedIndexQueryService
             selector,
             options.Limit,
             filter,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         var reference = await ReferenceFieldReferencesForTargetSymbolAsync(
             selection,
             resolution.Symbol.SymbolId,
             filter,
             options.Limit,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         return new FieldReferenceQueryResult(
             resolution,
             MergeRelationshipPages(game.Page, reference, options.Limit));
@@ -266,7 +269,8 @@ public sealed class FederatedIndexQueryService
         IndexQueryOptions options,
         RelationshipKind kind,
         CancellationToken cancellationToken,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         var selection = options.Scope == IndexQueryScope.All
             ? await _reference.GetSelectionForFederationAsync(options, cancellationToken)
@@ -284,12 +288,12 @@ public sealed class FederatedIndexQueryService
             return new RelationshipQuerySetResult(resolution, [], null, kind == RelationshipKind.Callers, string.Empty);
 
         if (resolution.Symbol.Origin == "reference")
-            return await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken, exact);
+            return await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken, exact, includeGenerated);
 
-        var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken, selection?.GameRun, exact);
+        var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken, selection?.GameRun, exact, includeGenerated);
         if (options.Scope != IndexQueryScope.All || string.IsNullOrWhiteSpace(options.ReferenceCollection))
             return game;
-        var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken, exact);
+        var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken, exact, includeGenerated);
         return MergeRelationships(resolution, game, reference, kind, options.Limit);
     }
 
@@ -394,19 +398,20 @@ public sealed class FederatedIndexQueryService
         RelationshipKind kind,
         CancellationToken cancellationToken,
         IndexRunRecord? pinnedRun = null,
-        bool exact = false) =>
+        bool exact = false,
+        bool includeGenerated = false) =>
         pinnedRun is null
             ? kind switch
             {
-                RelationshipKind.Refs => _game.RefsAsync(selector, GameOptions(options, options.Limit), cancellationToken),
-                RelationshipKind.Callers => _game.CallersAsync(selector, GameOptions(options, options.Limit), cancellationToken, exact),
-                _ => _game.CalleesAsync(selector, GameOptions(options, options.Limit), cancellationToken)
+                RelationshipKind.Refs => _game.RefsAsync(selector, GameOptions(options, options.Limit), cancellationToken, includeGenerated),
+                RelationshipKind.Callers => _game.CallersAsync(selector, GameOptions(options, options.Limit), cancellationToken, exact, includeGenerated),
+                _ => _game.CalleesAsync(selector, GameOptions(options, options.Limit), cancellationToken, includeGenerated)
             }
             : kind switch
             {
-                RelationshipKind.Refs => _game.RefsInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken),
-                RelationshipKind.Callers => _game.CallersInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken, exact),
-                _ => _game.CalleesInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken)
+                RelationshipKind.Refs => _game.RefsInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken, includeGenerated),
+                RelationshipKind.Callers => _game.CallersInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken, exact, includeGenerated),
+                _ => _game.CalleesInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken, includeGenerated)
             };
 
     private Task<RelationshipQuerySetResult> ReferenceRelationshipsAsync(
@@ -414,12 +419,13 @@ public sealed class FederatedIndexQueryService
         IndexQueryOptions options,
         RelationshipKind kind,
         CancellationToken cancellationToken,
-        bool exact = false) =>
+        bool exact = false,
+        bool includeGenerated = false) =>
         kind switch
         {
-            RelationshipKind.Refs => _reference.RefsAsync(selector, options, cancellationToken),
-            RelationshipKind.Callers => _reference.CallersAsync(selector, options, cancellationToken, exact),
-            _ => _reference.CalleesAsync(selector, options, cancellationToken)
+            RelationshipKind.Refs => _reference.RefsAsync(selector, options, cancellationToken, includeGenerated),
+            RelationshipKind.Callers => _reference.CallersAsync(selector, options, cancellationToken, exact, includeGenerated),
+            _ => _reference.CalleesAsync(selector, options, cancellationToken, includeGenerated)
         };
 
     private async Task<CallSiteQueryResult> ReferenceCallSitesAsync(
@@ -476,14 +482,16 @@ public sealed class FederatedIndexQueryService
         SymbolResolutionResult resolution,
         FieldReferenceFilter filter,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var page = await ReferenceFieldReferencesForTargetSymbolAsync(
             selection,
             resolution.Symbol!.SymbolId,
             filter,
             limit,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         return new FieldReferenceQueryResult(resolution, page);
     }
 
@@ -492,7 +500,8 @@ public sealed class FederatedIndexQueryService
         string targetSymbolId,
         FieldReferenceFilter filter,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var totalCount = 0;
         var edges = new List<IndexRelationshipRecord>();
@@ -519,7 +528,8 @@ public sealed class FederatedIndexQueryService
                 .ToArray(),
             totalCount,
             includeGameEndpoints: true,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
     }
 
     private static RelationshipQuerySetResult MergeRelationships(
@@ -585,14 +595,15 @@ public sealed class FederatedIndexQueryService
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
         int totalCount,
         bool includeGameEndpoints,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var ordered = selectedEdges
             .OrderBy(item => item.Edge.RelationshipId, StringComparer.Ordinal)
             .ThenBy(item => item.Direction, StringComparer.Ordinal)
             .ToArray();
         var ids = ordered
-            .SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
+            .SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId, item.Edge.GeneratedSourceSymbolId })
             .Where(id => id is not null)
             .Cast<string>()
             .Distinct(StringComparer.Ordinal)
@@ -609,8 +620,16 @@ public sealed class FederatedIndexQueryService
                 item.Edge.Kind,
                 item.Edge.Evidence,
                 item.Direction,
-                MapReferenceEndpoint(item.Edge.SourceSymbolId, null, referenceById, gameById, selection),
-                MapReferenceEndpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, referenceById, gameById, selection)))
+                MapReferenceEndpoint(
+                    includeGenerated && item.Edge.GeneratedSourceSymbolId is not null
+                        ? item.Edge.GeneratedSourceSymbolId
+                        : item.Edge.SourceSymbolId,
+                    null,
+                    referenceById,
+                    gameById,
+                    selection),
+                MapReferenceEndpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, referenceById, gameById, selection),
+                GeneratedDetail: GeneratedBodyResolver.VisibleDetail(item.Edge.GeneratedDetail, includeGenerated)))
             .ToArray();
         return new RelationshipQueryPageResult(totalCount, relationships.Length, relationships);
     }
