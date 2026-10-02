@@ -27,4 +27,13 @@
   <Target Name="CopyScriptLayoutFixture" AfterTargets="Build">
     <Copy SourceFiles="@(ScriptLayoutFixtureAssembly)" DestinationFolder="$(OutDir)script-layout-fixture" SkipUnchangedFiles="true" />
   </Target>
+  <!-- The parity fixture is indexed from its own subfolder and never loaded. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fixtures\S1Atlas.ParityFixture\S1Atlas.ParityFixture.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="ParityFixtureAssembly" />
+  </ItemGroup>
+  <Target Name="CopyParityFixture" AfterTargets="Build">
+    <Copy SourceFiles="@(ParityFixtureAssembly)" DestinationFolder="$(OutDir)parity-fixture" SkipUnchangedFiles="true" />
+  </Target>
 </Project>
