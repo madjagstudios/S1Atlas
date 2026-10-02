@@ -154,7 +154,10 @@
         { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32", "reason": "direct call" },
         { "symbol": "S1Atlas.ParityFixture.DispatchDerived::CallBase():System.Int32", "reason": "base call" }
       ],
-      "overriders": ["S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32"]
+      "overriders": [
+        "S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32",
+        "S1Atlas.ParityFixture.DispatchGrandchild::Foo():System.Int32"
+      ]
     },
     {
       "target": "S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32",
@@ -174,7 +177,8 @@
       "callers": [
         { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32", "reason": "virtual dispatch" },
         { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32", "reason": "virtual dispatch" }
-      ]
+      ],
+      "overriders": ["S1Atlas.ParityFixture.DispatchGrandchild::Foo():System.Int32"]
     },
     {
       "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32",
@@ -266,6 +270,22 @@
         "S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32",
         "S1Atlas.ParityFixture.DispatchInherited::Serve():System.Int32 (inherited)"
       ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.EventBase::add_Changed(System.EventHandler):System.Void",
+      "overriders": ["S1Atlas.ParityFixture.EventDerived::add_Changed(System.EventHandler):System.Void"]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBase`1::Describe():System.String",
+      "overriders": ["S1Atlas.ParityFixture.GenericDerived::Describe():System.String"]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.IWorker::Work():System.Int32",
+      "implementers": ["S1Atlas.ParityFixture.ImplBase::Work():System.Int32"]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.PropBase::get_Label():System.String",
+      "overriders": ["S1Atlas.ParityFixture.PropDerived::get_Label():System.String"]
     },
     {
       "target": "S1Atlas.ParityFixture.GenericBox`1::!0 <Item>k__BackingField",

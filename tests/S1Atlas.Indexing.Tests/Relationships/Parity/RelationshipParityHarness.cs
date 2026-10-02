@@ -44,6 +44,7 @@ public static class RelationshipParityHarness
         await using var index = await IndexFixtureAsync(cancellationToken);
         var service = new IndexQueryService(index.Repository);
         var symbolIds = await MapKindsAndNamesToIdsAsync(index.Repository, index.Run.IndexId, cancellationToken);
+        var namesById = symbolIds.ToDictionary(item => item.Value, item => (item.Key.Kind, item.Key.Name), StringComparer.Ordinal);
 
         var differences = new List<ParityDifference>();
         var matchedGaps = new HashSet<ParityKnownGap>();
@@ -52,9 +53,10 @@ public static class RelationshipParityHarness
         foreach (var target in oracle.Targets)
         {
             var found = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
-            foreach (var relation in new[] { "callers", "callees", "readers", "writers" })
+            var overriddenBy = await OverriddenByEdgesAsync(target, index.Repository, index.Run.IndexId, symbolIds, namesById, cancellationToken);
+            foreach (var relation in new[] { "callers", "callees", "readers", "writers", "overridden-by" })
             {
-                var expected = EdgesFor(target, relation);
+                var expected = relation == "overridden-by" ? overriddenBy : EdgesFor(target, relation);
                 var actual = found[relation];
                 foreach (var edge in expected)
                 {
@@ -204,7 +206,8 @@ public static class RelationshipParityHarness
             ["callers"] = [],
             ["callees"] = [],
             ["readers"] = [],
-            ["writers"] = []
+            ["writers"] = [],
+            ["overridden-by"] = []
         };
 
         var callers = await service.CallersInIndexAsync(
@@ -239,7 +242,87 @@ public static class RelationshipParityHarness
                 found["writers"].Add(symbol);
         }
 
+        var overriddenBy = await service.OverriddenByInIndexAsync(
+            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, 10, cancellationToken);
+        foreach (var node in overriddenBy.Nodes)
+        {
+            var symbol = IncomingSymbol(node.Edge);
+            if (symbol is not null)
+                found["overridden-by"].Add(symbol);
+        }
+
         return found;
+    }
+
+    private const string InheritedSuffix = " (inherited)";
+
+    private static async Task<IReadOnlyList<ParityEdge>> OverriddenByEdgesAsync(
+        ParityTarget target,
+        S1Atlas.Storage.Sqlite.SqliteAtlasRepository repository,
+        string indexId,
+        Dictionary<(string Kind, string Name), string> symbolIds,
+        IReadOnlyDictionary<string, (string Kind, string Name)> namesById,
+        CancellationToken cancellationToken)
+    {
+        var edges = target.Overriders
+            .Select(symbol => new ParityEdge(symbol, "override"))
+            .ToList();
+        foreach (var recorded in target.Implementers)
+        {
+            if (!recorded.EndsWith(InheritedSuffix, StringComparison.Ordinal))
+            {
+                edges.Add(new ParityEdge(recorded, "implementation"));
+                continue;
+            }
+
+            var named = recorded[..^InheritedSuffix.Length];
+            var resolved = await ResolveInheritedAsync(repository, indexId, symbolIds, namesById, named, cancellationToken);
+            edges.Add(new ParityEdge(resolved ?? named, "inherited implementation"));
+        }
+
+        return edges;
+    }
+
+    private static async Task<string?> ResolveInheritedAsync(
+        S1Atlas.Storage.Sqlite.SqliteAtlasRepository repository,
+        string indexId,
+        Dictionary<(string Kind, string Name), string> symbolIds,
+        IReadOnlyDictionary<string, (string Kind, string Name)> namesById,
+        string named,
+        CancellationToken cancellationToken)
+    {
+        var separator = named.IndexOf("::", StringComparison.Ordinal);
+        if (separator < 0)
+            return null;
+        if (!symbolIds.TryGetValue(("Type", named[..separator]), out var typeId))
+            return null;
+        var memberPart = named[(separator + 2)..];
+        var visited = new HashSet<string>([typeId], StringComparer.Ordinal);
+        var queue = new Queue<string>();
+        queue.Enqueue(typeId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var outgoing = await repository.GetCompletedRelationshipsBySourceSymbolIdAsync(indexId, current, cancellationToken);
+            foreach (var edge in outgoing)
+            {
+                if (!string.Equals(edge.Kind, "Inherits", StringComparison.Ordinal)
+                    || edge.TargetSymbolId is null
+                    || !visited.Add(edge.TargetSymbolId))
+                {
+                    continue;
+                }
+
+                queue.Enqueue(edge.TargetSymbolId);
+                if (!namesById.TryGetValue(edge.TargetSymbolId, out var baseName) || baseName.Kind != "Type")
+                    continue;
+                var candidate = baseName.Name + "::" + memberPart;
+                if (symbolIds.ContainsKey((KindFor(candidate), candidate)))
+                    return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static string? IncomingSymbol(RelationshipQueryResult edge)

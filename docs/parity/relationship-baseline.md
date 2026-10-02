@@ -38,10 +38,13 @@ later tickets update it in the same PR that fixes a gap.
 | field initializer | 2 | 2 | 0 | 0 | 0 |
 | field read | 4 | 4 | 0 | 0 | 0 |
 | field write | 3 | 3 | 0 | 0 | 0 |
+| implementation | 3 | 3 | 0 | 0 | 0 |
+| inherited implementation | 1 | 1 | 0 | 0 | 0 |
 | interface dispatch | 4 | 0 | 4 | 0 | 0 |
 | iterator body | 2 | 0 | 2 | 0 | 1 |
 | lambda body | 4 | 0 | 4 | 0 | 2 |
 | local function body | 4 | 0 | 4 | 0 | 2 |
+| override | 7 | 7 | 0 | 0 | 0 |
 | property accessor | 10 | 10 | 0 | 0 | 0 |
 | static constructor | 1 | 1 | 0 | 0 | 0 |
 | virtual dispatch | 8 | 0 | 8 | 0 | 0 |
