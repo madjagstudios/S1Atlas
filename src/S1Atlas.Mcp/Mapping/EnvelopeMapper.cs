@@ -524,7 +524,7 @@ public static class EnvelopeMapper
                     endpoint.RelativePath,
                     endpoint.Sha256))));
         if (result.Relationships.Any(edge => edge.IsDerived))
-            envelope = envelope with { Provenance = [..envelope.Provenance, Derived(authority, "dispatch-expansion")] };
+            envelope = envelope with { Provenance = [.. envelope.Provenance, Derived(authority, "dispatch-expansion")] };
         return envelope;
     }
 
