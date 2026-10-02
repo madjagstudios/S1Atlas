@@ -19,6 +19,7 @@ public sealed class RelationshipExtractor
                 (Name: ManagedMemberIdentity.Render(type.FullName, member), Kind: ToSymbolKind(member.Kind))))
             .GroupBy(item => item.Name, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => SymbolIdentity.Create(codebase, channel, group.First().Kind, group.Key).CanonicalKey, StringComparer.Ordinal);
+        var generatedBodies = GeneratedBodyResolver.ResolveAll(decompilation, codebase, channel);
         foreach (var type in decompilation.Types)
         {
             var source = SymbolIdentity.Create(codebase, channel, SymbolKind.Type, type.FullName).CanonicalKey;
@@ -57,6 +58,8 @@ public sealed class RelationshipExtractor
                 if (!string.IsNullOrWhiteSpace(member.ReturnType) &&
                     !string.Equals(CanonicalSignatureRenderer.RenderType(member.ReturnType), "System.Void", StringComparison.Ordinal))
                     result.Add(Metadata(memberKey, RelationshipKind.ReturnType, CanonicalSignatureRenderer.RenderType(member.ReturnType), knownTypes));
+                var credit = generatedBodies.GetValueOrDefault(memberKey);
+                var creditedSource = credit?.DeclaringKey ?? memberKey;
                 foreach (var reference in member.References)
                 {
                     var kind = reference.Kind switch
@@ -68,7 +71,14 @@ public sealed class RelationshipExtractor
                         ManagedReferenceKind.WritesField => RelationshipKind.WritesField,
                         _ => throw new ArgumentOutOfRangeException()
                     };
-                    result.Add(new RelationshipFact(memberKey, knownMembers.GetValueOrDefault(reference.Target), reference.Target, kind, RelationshipEvidence.RecoveredIL));
+                    result.Add(new RelationshipFact(
+                        creditedSource,
+                        knownMembers.GetValueOrDefault(reference.Target),
+                        reference.Target,
+                        kind,
+                        RelationshipEvidence.RecoveredIL,
+                        credit?.DeclaringKey is null ? null : memberKey,
+                        credit?.Detail));
                 }
             }
         }

@@ -53,13 +53,15 @@ public sealed class IndexQueryService
         string query,
         IndexQueryOptions options,
         CancellationToken cancellationToken,
-        SymbolKind? kind = null)
+        SymbolKind? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         if (options.Limit <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "The query result limit must be positive.");
 
         var totalCount = 0;
+        var hiddenCount = 0;
         var completedIndexCount = 0;
         var candidates = new List<SymbolQueryResult>();
         foreach (var channel in Channels(options))
@@ -74,8 +76,11 @@ public sealed class IndexQueryService
                 query,
                 options.Limit,
                 kind,
-                cancellationToken);
+                cancellationToken,
+                includeGenerated);
             totalCount += result.TotalCount;
+            if (GeneratedSearchNotice.TryParseHiddenCount(result.SearchNotice, out var channelHidden))
+                hiddenCount += channelHidden;
             candidates.AddRange(result.Results);
         }
 
@@ -91,7 +96,8 @@ public sealed class IndexQueryService
             totalCount,
             results.Length,
             results,
-            completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null);
+            completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null,
+            GeneratedSearchNotice.ForHidden(hiddenCount));
     }
 
     public async Task<SymbolResolutionResult> ResolveAsync(
@@ -176,11 +182,15 @@ public sealed class IndexQueryService
         string query,
         int limit,
         SymbolKind? kind,
-        CancellationToken cancellationToken) =>
-        SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken, includeGenerated);
 
     internal const string SearchIndexFallbackNotice =
         "search index not built; run any s1atlas write command, e.g. `s1atlas index`, to upgrade";
+
+    private static string CombineNotices(string first, string? second) =>
+        second is null ? first : first + "; " + second;
 
     // Serve-only ranked search. Uses the FTS trigram index when the atlas has
     // been migrated; otherwise falls back to the LIKE scan with a visible
@@ -192,7 +202,8 @@ public sealed class IndexQueryService
         string query,
         int limit,
         SymbolKind? kind,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -203,12 +214,17 @@ public sealed class IndexQueryService
         if (!await _repository.SupportsSymbolSearchIndexAsync(cancellationToken))
         {
             var fallbackTotal = await _repository.CountCompletedSymbolMatchesAsync(
-                run.IndexId, query, cancellationToken, kindName);
+                run.IndexId, query, cancellationToken, kindName, includeGenerated);
+            var fallbackHidden = await GeneratedSearchNotice.ForHiddenAsync(
+                () => _repository.CountCompletedSymbolMatchesAsync(
+                    run.IndexId, query, cancellationToken, kindName, includeGenerated: true),
+                fallbackTotal,
+                includeGenerated);
             if (fallbackTotal == 0)
-                return new SymbolSearchResult(0, 0, [], null, SearchIndexFallbackNotice);
+                return new SymbolSearchResult(0, 0, [], null, CombineNotices(SearchIndexFallbackNotice, fallbackHidden));
 
             var fallbackSymbols = await _repository.SearchCompletedSymbolsAsync(
-                run.IndexId, query, limit, cancellationToken, kindName);
+                run.IndexId, query, limit, cancellationToken, kindName, includeGenerated);
             return new SymbolSearchResult(
                 fallbackTotal,
                 fallbackSymbols.Count,
@@ -216,19 +232,24 @@ public sealed class IndexQueryService
                     .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
                     .ToArray(),
                 null,
-                SearchIndexFallbackNotice);
+                CombineNotices(SearchIndexFallbackNotice, fallbackHidden));
         }
 
-        var totalCount = await _repository.CountRankedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName);
+        var totalCount = await _repository.CountRankedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName, includeGenerated);
+        var notice = await GeneratedSearchNotice.ForHiddenAsync(
+            () => _repository.CountRankedSymbolMatchesAsync(
+                run.IndexId, query, cancellationToken, kindName, includeGenerated: true),
+            totalCount,
+            includeGenerated);
         if (totalCount == 0)
-            return new SymbolSearchResult(0, 0, [], null);
+            return new SymbolSearchResult(0, 0, [], null, notice);
 
         var symbols = await _repository.SearchRankedSymbolsAsync(
-            run.IndexId, query, limit, cancellationToken, kindName);
+            run.IndexId, query, limit, cancellationToken, kindName, includeGenerated);
         var results = symbols
             .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
             .ToArray();
-        return new SymbolSearchResult(totalCount, results.Length, results, null);
+        return new SymbolSearchResult(totalCount, results.Length, results, null, notice);
     }
 
     public async Task<SymbolResolutionResult> ResolveInIndexAsync(
@@ -378,9 +399,10 @@ public sealed class IndexQueryService
         string query,
         SymbolKind kind,
         IndexQueryOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
-        return (await SearchAsync(query, options, cancellationToken, kind)).Results;
+        return (await SearchAsync(query, options, cancellationToken, kind, includeGenerated)).Results;
     }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> FindInIndexAsync(
@@ -390,16 +412,18 @@ public sealed class IndexQueryService
         string query,
         SymbolKind kind,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
-        return (await SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken)).Results;
+        return (await SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken, includeGenerated)).Results;
     }
 
     public Task<RelationshipQuerySetResult> RefsAsync(
         string selector,
         IndexQueryOptions options,
-        CancellationToken cancellationToken) =>
-        RelationshipSetAsync(selector, options, RelationshipQueryMode.Refs, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Refs, cancellationToken, includeGenerated: includeGenerated);
 
     public Task<RelationshipQuerySetResult> RefsInIndexAsync(
         IndexRunRecord run,
@@ -407,8 +431,9 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string selector,
         int limit,
-        CancellationToken cancellationToken) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Refs, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Refs, cancellationToken, includeGenerated: includeGenerated);
 
     public async Task<RelationshipQuerySetResult> RelatedTypesInIndexAsync(
         IndexRunRecord run,
@@ -446,8 +471,9 @@ public sealed class IndexQueryService
         string selector,
         IndexQueryOptions options,
         CancellationToken cancellationToken,
-        bool exact = false) =>
-        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callers, cancellationToken, exact);
+        bool exact = false,
+        bool includeGenerated = false) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callers, cancellationToken, exact, includeGenerated);
 
     public Task<RelationshipQuerySetResult> CallersInIndexAsync(
         IndexRunRecord run,
@@ -456,14 +482,16 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         CancellationToken cancellationToken,
-        bool exact = false) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken, exact);
+        bool exact = false,
+        bool includeGenerated = false) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken, exact, includeGenerated);
 
     public Task<RelationshipQuerySetResult> CalleesAsync(
         string selector,
         IndexQueryOptions options,
-        CancellationToken cancellationToken) =>
-        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callees, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callees, cancellationToken, includeGenerated: includeGenerated);
 
     public Task<RelationshipQuerySetResult> CalleesInIndexAsync(
         IndexRunRecord run,
@@ -471,8 +499,9 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string selector,
         int limit,
-        CancellationToken cancellationToken) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken, includeGenerated: includeGenerated);
 
     public Task<HierarchyQueryResult> OverridesAsync(
         string selector,
@@ -611,8 +640,9 @@ public sealed class IndexQueryService
         string selector,
         IndexQueryOptions options,
         FieldReferenceFilter filter,
-        CancellationToken cancellationToken) =>
-        FieldReferencesAcrossChannelsAsync(selector, options, filter, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        FieldReferencesAcrossChannelsAsync(selector, options, filter, cancellationToken, includeGenerated);
 
     public Task<FieldReferenceQueryResult> FieldReferencesInIndexAsync(
         IndexRunRecord run,
@@ -621,15 +651,17 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         FieldReferenceFilter filter,
-        CancellationToken cancellationToken) =>
-        FieldReferencesInRunAsync(run, codebase, channel, selector, limit, filter, cancellationToken);
+        CancellationToken cancellationToken,
+        bool includeGenerated = false) =>
+        FieldReferencesInRunAsync(run, codebase, channel, selector, limit, filter, cancellationToken, includeGenerated);
 
     private async Task<RelationshipQuerySetResult> RelationshipSetAsync(
         string selector,
         IndexQueryOptions options,
         RelationshipQueryMode mode,
         CancellationToken cancellationToken,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
 
@@ -649,14 +681,16 @@ public sealed class IndexQueryService
             mode,
             int.MaxValue,
             cancellationToken,
-            exact);
+            exact,
+            includeGenerated);
     }
 
     private async Task<FieldReferenceQueryResult> FieldReferencesAcrossChannelsAsync(
         string selector,
         IndexQueryOptions options,
         FieldReferenceFilter filter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         ValidateQueryLimit(options.Limit, nameof(options));
@@ -669,7 +703,8 @@ public sealed class IndexQueryService
             selection.Selected.Value,
             options.Limit,
             filter,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
     }
 
     public async Task<SourceSnippetResolutionResult> SourceInIndexAsync(
@@ -735,7 +770,8 @@ public sealed class IndexQueryService
         string query,
         int limit,
         SymbolKind? kind,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -743,20 +779,26 @@ public sealed class IndexQueryService
             throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
 
         var kindName = kind?.ToString();
-        var totalCount = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName);
+        var totalCount = await _repository.CountCompletedSymbolMatchesAsync(run.IndexId, query, cancellationToken, kindName, includeGenerated);
+        var notice = await GeneratedSearchNotice.ForHiddenAsync(
+            () => _repository.CountCompletedSymbolMatchesAsync(
+                run.IndexId, query, cancellationToken, kindName, includeGenerated: true),
+            totalCount,
+            includeGenerated);
         if (totalCount == 0)
-            return new SymbolSearchResult(0, 0, [], null);
+            return new SymbolSearchResult(0, 0, [], null, notice);
 
         var symbols = await _repository.SearchCompletedSymbolsAsync(
             run.IndexId,
             query,
             limit,
             cancellationToken,
-            kindName);
+            kindName,
+            includeGenerated);
         var results = symbols
             .Select(symbol => SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbol, SymbolResolver.OriginFor(codebase)))
             .ToArray();
-        return new SymbolSearchResult(totalCount, results.Length, results, null);
+        return new SymbolSearchResult(totalCount, results.Length, results, null, notice);
     }
 
     private static IndexCallableSurfaceRecord CreateLegacyCallableSurface(IndexRunRecord run, IndexSymbolRecord symbol) =>
@@ -821,7 +863,8 @@ public sealed class IndexQueryService
         int limit,
         RelationshipQueryMode mode,
         CancellationToken cancellationToken,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -842,7 +885,8 @@ public sealed class IndexQueryService
             mode,
             limit,
             cancellationToken,
-            exact);
+            exact,
+            includeGenerated);
     }
 
     private async Task<RelationshipQuerySetResult> RelationshipSetFromSelectedAsync(
@@ -850,7 +894,8 @@ public sealed class IndexQueryService
         RelationshipQueryMode mode,
         int limit,
         CancellationToken cancellationToken,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
             selected.Run.IndexId,
@@ -861,14 +906,15 @@ public sealed class IndexQueryService
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         if (mode == RelationshipQueryMode.Callers && !exact)
-            return await ExpandedCallersFromSelectedAsync(selected, bodyRecoveryStatus, limit, cancellationToken);
+            return await ExpandedCallersFromSelectedAsync(selected, bodyRecoveryStatus, limit, cancellationToken, includeGenerated);
         var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken);
         var relationships = (await MapRelationshipPageAsync(
             selected.Run,
             selectedEdges.Relationships,
             selectedEdges.TotalCount,
             selected.Symbol.Origin,
-            cancellationToken)).Relationships;
+            cancellationToken,
+            includeGenerated)).Relationships;
 
         var notice = mode == RelationshipQueryMode.Refs
             ? string.Empty
@@ -888,7 +934,8 @@ public sealed class IndexQueryService
         SelectedSymbol selected,
         BodyRecoveryStatus? bodyRecoveryStatus,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
             selected.Run.IndexId,
@@ -901,7 +948,8 @@ public sealed class IndexQueryService
                 .Select(edge => (edge, "Incoming"))
                 .ToArray(),
             selected.Symbol.Origin,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         var derivedEdges = await DispatchExpansion.CollectDerivedAsync(
             _repository,
             selected.Run.IndexId,
@@ -912,7 +960,8 @@ public sealed class IndexQueryService
             selected.Run,
             derivedEdges.Select(item => (item.Edge, "Incoming")).ToArray(),
             selected.Symbol.Origin,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         // Routes join by relationship id so the flagging stays correct no
         // matter what order the mapper emits.
         var routesById = derivedEdges.ToDictionary(
@@ -1016,7 +1065,8 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         FieldReferenceFilter filter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -1026,15 +1076,28 @@ public sealed class IndexQueryService
         if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
             return new FieldReferenceQueryResult(selection.Resolution, new RelationshipQueryPageResult(0, 0, []));
 
-        return await FieldReferencesFromSelectedAsync(selection.Selected.Value, limit, filter, cancellationToken);
+        return await FieldReferencesFromSelectedAsync(selection.Selected.Value, limit, filter, cancellationToken, includeGenerated);
     }
 
     private async Task<FieldReferenceQueryResult> FieldReferencesFromSelectedAsync(
         SelectedSymbol selected,
         int limit,
         FieldReferenceFilter filter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
+        if (!includeGenerated)
+        {
+            var target = await _repository.GetCompletedSymbolByIdAsync(
+                selected.Run.IndexId,
+                selected.Symbol.SymbolId,
+                cancellationToken);
+            if (target is not null && target.IsGenerated)
+                return new FieldReferenceQueryResult(
+                    new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+                    new RelationshipQueryPageResult(0, 0, []));
+        }
+
         var kinds = FieldRelationshipKinds(filter);
         var totalCount = 0;
         var edges = new List<IndexRelationshipRecord>();
@@ -1061,7 +1124,8 @@ public sealed class IndexQueryService
                 .ToArray(),
             totalCount,
             selected.Symbol.Origin,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
         return new FieldReferenceQueryResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
             page);
@@ -1112,12 +1176,13 @@ public sealed class IndexQueryService
         IndexRunRecord run,
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
         string? origin,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var endpointIds = selectedEdges
-            .SelectMany(item => item.Edge.TargetSymbolId is null
-                ? new[] { item.Edge.SourceSymbolId }
-                : new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId })
+            .SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId, item.Edge.GeneratedSourceSymbolId })
+            .Where(id => id is not null)
+            .Select(id => id!)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var endpointSymbols = await _repository.GetCompletedSymbolsByIdsAsync(run.IndexId, endpointIds, cancellationToken);
@@ -1128,8 +1193,15 @@ public sealed class IndexQueryService
                 item.Edge.Kind,
                 item.Edge.Evidence,
                 item.Direction,
-                Endpoint(item.Edge.SourceSymbolId, null, byId, origin),
-                Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId, origin)))
+                Endpoint(
+                    includeGenerated && item.Edge.GeneratedSourceSymbolId is not null
+                        ? item.Edge.GeneratedSourceSymbolId
+                        : item.Edge.SourceSymbolId,
+                    null,
+                    byId,
+                    origin),
+                Endpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, byId, origin),
+                GeneratedDetail: GeneratedBodyResolver.VisibleDetail(item.Edge.GeneratedDetail, includeGenerated)))
             .ToArray();
     }
 
@@ -1138,13 +1210,14 @@ public sealed class IndexQueryService
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> selectedEdges,
         int totalCount,
         string? origin,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var ordered = selectedEdges
             .OrderBy(item => item.Edge.RelationshipId, StringComparer.Ordinal)
             .ThenBy(item => item.Direction, StringComparer.Ordinal)
             .ToArray();
-        var relationships = await MapRelationshipEdgesAsync(run, ordered, origin, cancellationToken);
+        var relationships = await MapRelationshipEdgesAsync(run, ordered, origin, cancellationToken, includeGenerated);
         return new RelationshipQueryPageResult(totalCount, relationships.Count, relationships);
     }
 

@@ -41,7 +41,7 @@ internal static class RelationshipQuerySql
     internal const string SelectByTargetTextExact = """
         SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
                relationship.target_symbol_id, relationship.target_text,
-               relationship.relationship_kind, relationship.evidence
+               relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
         FROM index_runs AS run
         INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
             ON relationship.snapshot_id = run.snapshot_id
@@ -57,7 +57,7 @@ internal static class RelationshipQuerySql
     internal const string SelectByTargetTextPrefix = """
         SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
                relationship.target_symbol_id, relationship.target_text,
-               relationship.relationship_kind, relationship.evidence
+               relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
         FROM index_runs AS run
         INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
             ON relationship.snapshot_id = run.snapshot_id
@@ -90,7 +90,7 @@ internal static class RelationshipQuerySql
     internal const string SelectByTargetSymbol = """
         SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
                relationship.target_symbol_id, relationship.target_text,
-               relationship.relationship_kind, relationship.evidence
+               relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
         FROM index_runs AS run
         INNER JOIN relationships AS relationship INDEXED BY ix_relationships_target_kind
             ON relationship.snapshot_id = run.snapshot_id

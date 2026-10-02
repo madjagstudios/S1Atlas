@@ -32,6 +32,7 @@ internal static class FieldRefsCommand
         var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
         var readersOption = new Option<bool>("--readers") { Description = "Return only field reads." };
         var writersOption = new Option<bool>("--writers") { Description = "Return only field writes." };
+        var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
         var jsonOption = CommandOutput.CreateJsonOption();
 
         var command = new Command("fieldrefs", "Find field read/write relationships for one resolved symbol.");
@@ -44,6 +45,7 @@ internal static class FieldRefsCommand
         command.Options.Add(collectionOption);
         command.Options.Add(readersOption);
         command.Options.Add(writersOption);
+        command.Options.Add(includeGeneratedOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -93,6 +95,7 @@ internal static class FieldRefsCommand
                         : parseResult.GetValue(writersOption)
                             ? FieldReferenceFilter.Writers
                             : FieldReferenceFilter.All;
+                    var includeGenerated = parseResult.GetValue(includeGeneratedOption);
 
                     var result = authority.Run is not null
                         ? service.FieldReferencesInIndexAsync(
@@ -102,19 +105,22 @@ internal static class FieldRefsCommand
                             parseResult.GetValue(queryArgument)!,
                             limit,
                             filter,
-                            cancellationToken).GetAwaiter().GetResult()
+                            cancellationToken,
+                            includeGenerated: includeGenerated).GetAwaiter().GetResult()
                         : options.Scope == IndexQueryScope.Game
                             ? service.FieldReferencesAsync(
                                 parseResult.GetValue(queryArgument)!,
                                 options,
                                 filter,
-                                cancellationToken).GetAwaiter().GetResult()
+                                cancellationToken,
+                                includeGenerated: includeGenerated).GetAwaiter().GetResult()
                             : federatedService.FieldReferencesAsync(
                                 parseResult.GetValue(queryArgument)!,
                                 options,
                                 filter,
                                 cancellationToken,
-                                authority.ReferenceIndexId).GetAwaiter().GetResult();
+                                authority.ReferenceIndexId,
+                                includeGenerated: includeGenerated).GetAwaiter().GetResult();
                     return IndexQueryCommandFactory.Complete(
                         commandOutput,
                         IndexQueryCommandFactory.ToOutput(result));

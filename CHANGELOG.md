@@ -8,6 +8,28 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Compiler-generated bodies credited to declaring methods** (AT-66):
+  calls and field accesses inside lambdas, async/iterator state machines,
+  and local functions are now credited to the method that declares them,
+  labeled with an `in ...` detail (`in lambda`, `in async state machine`,
+  `in iterator state machine`, `in local function {Name}`, nested bodies
+  joined outermost-first). `callees` includes calls made from generated
+  bodies; a single resolver maps bodies attributes-first with naming plus
+  `newobj` confirmation, and unmapped bodies stay on the generated member
+  with an `unmapped: {reason}` detail rather than a guess.
+  Attribute-mapped async/iterator overloads resolve, while `<>c` lambda
+  overloads stay unmapped with a reason when the declaring overload is
+  ambiguous. `--include-generated` (CLI
+  `callers`/`callees`/`refs`/`fieldrefs`/`search`), `includeGenerated`
+  (MCP relationship and search tools), and `?generated=1` (serve pages
+  and relationship/search APIs) show the raw generated rows instead.
+  Symbol search hides generated members by default with an `<n> generated
+  result(s) hidden` notice, and `fieldrefs` excludes compiler-captured
+  fields unless asked. The credit is stored at index time (mapping plus
+  pre-rendered detail on the edge, flag on the symbol) so queries stay
+  declarative and search totals stay exact in SQL; compiler attributes
+  exist only at index time. Indexes rebuild (schema v13).
+
 - **Dispatch-aware callers with routes and `--exact`** (AT-65): `callers`
   now returns exact (statically bound) callers plus may-dispatch callers —
   call sites targeting an overridden base slot or interface method the

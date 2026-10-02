@@ -159,7 +159,8 @@ public sealed record RelationshipQueryResult(
     RelationshipEndpointQueryResult Source,
     RelationshipEndpointQueryResult Target,
     bool IsDerived = false,
-    IReadOnlyList<string>? Routes = null)
+    IReadOnlyList<string>? Routes = null,
+    string? GeneratedDetail = null)
 {
     public RelationshipQueryResult(
         string relationshipId,

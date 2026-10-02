@@ -253,7 +253,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $id AND run.status = 'Completed'
@@ -276,7 +276,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $id AND run.status = 'Completed'
@@ -318,7 +318,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM index_runs AS run
                 INNER JOIN symbols AS symbol INDEXED BY ux_symbols_snapshot_key
                     ON symbol.snapshot_id = run.snapshot_id
@@ -345,7 +345,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
@@ -381,7 +381,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 command.CommandText = $"""
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status, symbol.is_public
+                           symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                     FROM symbols AS symbol
                     INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                     WHERE run.index_id = $indexId
@@ -395,7 +395,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             return (IReadOnlyList<IndexSymbolRecord>)result.OrderBy(symbol => symbol.SymbolId, StringComparer.Ordinal).ToArray();
         }, cancellationToken);
 
-    public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null) =>
+    public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
         WithConnectionAsync(async connection =>
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
@@ -408,6 +408,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND (symbol.is_generated = 0 OR $includeGenerated)
                   AND (
                       symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
                       OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
@@ -415,11 +416,12 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 """;
             command.Parameters.AddWithValue("$indexId", indexId);
             command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+            command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
             command.Parameters.AddWithValue("$contains", "%" + EscapeLikePattern(query) + "%");
             return Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
         }, cancellationToken);
 
-    public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null) =>
+    public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
         WithConnectionAsync(async connection =>
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
@@ -430,12 +432,13 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND (symbol.is_generated = 0 OR $includeGenerated)
                   AND (
                       symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
                       OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
@@ -456,6 +459,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 """;
             command.Parameters.AddWithValue("$indexId", indexId);
             command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+            command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
             command.Parameters.AddWithValue("$query", query);
             command.Parameters.AddWithValue("$terminal", "%." + escaped);
             command.Parameters.AddWithValue("$prefix", escaped + "%");
@@ -475,7 +479,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) == 1;
         }, cancellationToken);
 
-    public Task<int> CountRankedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null) =>
+    public Task<int> CountRankedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
         WithConnectionAsync(async connection =>
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
@@ -493,6 +497,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                     WHERE run.index_id = $indexId
                       AND run.status = 'Completed'
                       AND ($kind IS NULL OR symbol.kind = $kind)
+                      AND (symbol.is_generated = 0 OR $includeGenerated)
                       AND symbol.simple_name LIKE $prefix ESCAPE '\';
                     """;
                 command.Parameters.AddWithValue("$prefix", EscapeLikePattern(query) + "%");
@@ -510,6 +515,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                     WHERE run.index_id = $indexId
                       AND run.status = 'Completed'
                       AND ($kind IS NULL OR symbol.kind = $kind)
+                      AND (symbol.is_generated = 0 OR $includeGenerated)
                       AND symbols_fts MATCH $match;
                     """;
                 command.Parameters.AddWithValue("$match", ToFtsPhrase(query));
@@ -517,10 +523,11 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
 
             command.Parameters.AddWithValue("$indexId", indexId);
             command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+            command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
             return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
         }, cancellationToken);
 
-    public Task<IReadOnlyList<IndexSymbolRecord>> SearchRankedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null) =>
+    public Task<IReadOnlyList<IndexSymbolRecord>> SearchRankedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
         WithConnectionAsync(async connection =>
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
@@ -533,12 +540,13 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 command.CommandText = """
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status, symbol.is_public
+                           symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                     FROM symbols AS symbol
                     INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                     WHERE run.index_id = $indexId
                       AND run.status = 'Completed'
                       AND ($kind IS NULL OR symbol.kind = $kind)
+                      AND (symbol.is_generated = 0 OR $includeGenerated)
                       AND symbol.simple_name LIKE $prefix ESCAPE '\'
                     ORDER BY
                         CASE
@@ -555,13 +563,14 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 command.CommandText = """
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status, symbol.is_public
+                           symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                     FROM symbols_fts
                     CROSS JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
                     CROSS JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                     WHERE run.index_id = $indexId
                       AND run.status = 'Completed'
                       AND ($kind IS NULL OR symbol.kind = $kind)
+                      AND (symbol.is_generated = 0 OR $includeGenerated)
                       AND symbols_fts MATCH $match
                     ORDER BY
                         CASE
@@ -580,6 +589,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
 
             command.Parameters.AddWithValue("$indexId", indexId);
             command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+            command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
             command.Parameters.AddWithValue("$query", query);
             command.Parameters.AddWithValue("$terminal", "%." + escaped);
             command.Parameters.AddWithValue("$prefix", escaped + "%");
@@ -677,7 +687,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = source is null
                 ? """
                   SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
-                         relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence
+                         relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
                   FROM relationships AS relationship
                   INNER JOIN index_runs AS run ON run.snapshot_id = relationship.snapshot_id
                   WHERE run.index_id = $indexId AND run.status = 'Completed'
@@ -685,7 +695,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                   """
                 : $"""
                    SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
-                          relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence
+                          relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
                    FROM relationships AS relationship
                    INNER JOIN index_runs AS run ON run.snapshot_id = relationship.snapshot_id
                    WHERE run.index_id = $indexId
@@ -1830,7 +1840,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
         new(reader.GetString(0), reader.GetString(1), Enum.Parse<IndexRunStatus>(reader.GetString(2)), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 
     private static IndexSymbolRecord ReadSymbol(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)), reader.GetInt64(8) != 0);
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)), reader.GetInt64(8) != 0, !reader.IsDBNull(9) && reader.GetInt64(9) != 0);
 
     private static IndexCallableSurfaceRecord ReadCallableSurface(SqliteDataReader reader) =>
         new(
@@ -1858,7 +1868,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             reader.GetString(5));
 
     private static IndexRelationshipRecord ReadRelationship(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6));
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8));
 
     private static IndexSourceFileRecord ReadSourceFile(SqliteDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4));

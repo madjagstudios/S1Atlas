@@ -10,11 +10,12 @@ namespace S1Atlas.Cli.Commands;
 internal static class CalleesCommand
 {
     public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
-        IndexQueryCommandFactory.Create("callees", service, authorityResolver, repository, output, error, cancellationToken, async (query, options, ct) =>
+        IndexQueryCommandFactory.Create("callees", service, authorityResolver, repository, output, error, cancellationToken,
+        executeWithGenerated: async (query, options, ct, includeGenerated) =>
         {
             var result = options.Scope == IndexQueryScope.Game
-                ? await service.CalleesAsync(query, options, ct)
-                : await federatedService.CalleesAsync(query, options, ct);
+                ? await service.CalleesAsync(query, options, ct, includeGenerated: includeGenerated)
+                : await federatedService.CalleesAsync(query, options, ct, includeGenerated: includeGenerated);
             return new IndexQueryOutput(
                 [],
                 result.Relationships,
@@ -23,7 +24,8 @@ internal static class CalleesCommand
                 BodyRecoveryStatus: result.BodyRecoveryStatus,
                 CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
                 CompletenessNotice: result.CompletenessNotice);
-        }, async (query, run, limit, ct) => ToOutput(await service.CalleesInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct)),
+        },
+        executeInIndexWithGenerated: async (query, run, limit, ct, includeGenerated) => ToOutput(await service.CalleesInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct, includeGenerated: includeGenerated)),
         includeScopeOptions: true);
 
     private static IndexQueryOutput ToOutput(RelationshipQuerySetResult result) => new([], result.Relationships, [],

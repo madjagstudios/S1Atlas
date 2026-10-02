@@ -37,7 +37,7 @@ public sealed partial class SqliteAtlasRepository
             command.CommandText = $"""
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
@@ -164,7 +164,7 @@ public sealed partial class SqliteAtlasRepository
         command.CommandText = $"""
             SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
                    relationship.target_symbol_id, relationship.target_text,
-                   relationship.relationship_kind, relationship.evidence
+                   relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
             FROM relationships AS relationship
             INNER JOIN index_runs AS run ON run.snapshot_id = relationship.snapshot_id
             WHERE run.index_id = $indexId
@@ -190,5 +190,7 @@ public sealed partial class SqliteAtlasRepository
             reader.IsDBNull(3) ? null : reader.GetString(3),
             reader.IsDBNull(4) ? null : reader.GetString(4),
             reader.GetString(5),
-            reader.GetString(6));
+            reader.GetString(6),
+            reader.IsDBNull(7) ? null : reader.GetString(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8));
 }

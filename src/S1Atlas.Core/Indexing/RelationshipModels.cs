@@ -30,4 +30,6 @@ public sealed record RelationshipFact(
     string? TargetKey,
     string? TargetText,
     RelationshipKind Kind,
-    RelationshipEvidence Evidence);
+    RelationshipEvidence Evidence,
+    string? GeneratedSourceKey = null,
+    string? GeneratedDetail = null);

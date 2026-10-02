@@ -97,23 +97,36 @@ public sealed class ServeQueries
     public Task<int> CountSymbolsAsync(string indexId, CancellationToken ct) =>
         WithStoreAsync(token => _services.Repository.CountCompletedSymbolsAsync(indexId, token), ct);
 
-    public Task<SymbolSearchResult> SearchGameAsync(
+    public async Task<SymbolSearchResult> SearchGameAsync(
         IndexRunRecord run,
         string query,
         SymbolKind? kind,
         int limit,
-        CancellationToken ct) =>
-        WithStoreAsync(
+        CancellationToken ct,
+        bool includeGenerated = false)
+    {
+        var result = await WithStoreAsync(
             token => _services.IndexQueryService.SearchRankedInIndexAsync(
-                run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, kind, token),
+                run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, kind, token, includeGenerated),
             ct);
+        return result with { SearchNotice = RewordSearchNotice(result.SearchNotice) };
+    }
 
-    public Task<SymbolSearchResult> SearchApiAsync(
+    public async Task<SymbolSearchResult> SearchApiAsync(
         ApiIndexSelection selection,
         string query,
         int limit,
-        CancellationToken ct) =>
-        WithStoreAsync(token => _api.SearchRankedSelectedAsync(selection, query, limit, token), ct);
+        CancellationToken ct,
+        bool includeGenerated = false)
+    {
+        var result = await WithStoreAsync(
+            token => _api.SearchRankedSelectedAsync(selection, query, limit, token, includeGenerated),
+            ct);
+        return result with { SearchNotice = RewordSearchNotice(result.SearchNotice) };
+    }
+
+    private static string? RewordSearchNotice(string? notice) =>
+        notice?.Replace("includeGenerated", "?generated=1", StringComparison.Ordinal);
 
     public Task<SymbolQueryResult?> GetSymbolAsync(string indexId, string symbolId, CancellationToken ct) =>
         WithStoreAsync(
@@ -152,7 +165,8 @@ public sealed class ServeQueries
         ServeRelationshipDirection direction,
         int limit,
         CancellationToken ct,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         if (direction is ServeRelationshipDirection.Overrides or ServeRelationshipDirection.OverriddenBy or ServeRelationshipDirection.Derived)
             return GetHierarchyAsync(index, symbolId, direction, limit, ct);
@@ -166,7 +180,7 @@ public sealed class ServeQueries
                 _ => ApiRelationshipDirection.References
             };
             return WithStoreAsync(
-                token => _api.RelationshipsSelectedAsync(selection, symbolId, limit, apiDirection, null, token, exact),
+                token => _api.RelationshipsSelectedAsync(selection, symbolId, limit, apiDirection, null, token, exact, includeGenerated),
                 ct);
         }
 
@@ -174,11 +188,11 @@ public sealed class ServeQueries
             token => direction switch
             {
                 ServeRelationshipDirection.Callers => _services.IndexQueryService.CallersInIndexAsync(
-                    index.Run, index.Codebase, index.Channel, symbolId, limit, token, exact),
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token, exact, includeGenerated),
                 ServeRelationshipDirection.Callees => _services.IndexQueryService.CalleesInIndexAsync(
-                    index.Run, index.Codebase, index.Channel, symbolId, limit, token),
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token, includeGenerated),
                 _ => _services.IndexQueryService.RefsInIndexAsync(
-                    index.Run, index.Codebase, index.Channel, symbolId, limit, token)
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token, includeGenerated)
             },
             ct);
     }

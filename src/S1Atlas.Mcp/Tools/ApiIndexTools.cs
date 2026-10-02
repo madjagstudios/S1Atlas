@@ -45,7 +45,8 @@ public sealed class ApiIndexTools
         [Description("API channel: installed, release, or preview.")] string channel,
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
         [Description("Max results (1-500).")] int limit = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
     {
         if (!TryParseScope<SymbolSearchResult>(codebase, channel, out var parsedCodebase, out var parsedChannel, out var scopeError))
             return scopeError;
@@ -65,7 +66,8 @@ public sealed class ApiIndexTools
                 selection,
                 query,
                 boundedLimit,
-                ct);
+                ct,
+                includeGenerated);
             return EnvelopeMapper.FromApiSearch(catalog, selection, result);
         });
     }
@@ -131,8 +133,9 @@ public sealed class ApiIndexTools
         string selector,
         int limit = 50,
         CancellationToken ct = default,
-        bool exact = false) =>
-        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callers, null, ct, exact);
+        bool exact = false,
+        bool includeGenerated = false) =>
+        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callers, null, ct, exact, includeGenerated);
 
     [McpServerTool(Name = "find_api_callees", Title = "Find API callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiCalleesAsync(
@@ -140,8 +143,9 @@ public sealed class ApiIndexTools
         string channel,
         string selector,
         int limit = 50,
-        CancellationToken ct = default) =>
-        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callees, null, ct);
+        CancellationToken ct = default,
+        bool includeGenerated = false) =>
+        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callees, null, ct, includeGenerated: includeGenerated);
 
     [McpServerTool(Name = "find_api_references", Title = "Find API references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiReferencesAsync(
@@ -149,8 +153,9 @@ public sealed class ApiIndexTools
         string channel,
         string selector,
         int limit = 50,
-        CancellationToken ct = default) =>
-        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.References, null, ct);
+        CancellationToken ct = default,
+        bool includeGenerated = false) =>
+        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.References, null, ct, includeGenerated: includeGenerated);
 
     [McpServerTool(Name = "find_api_related_types", Title = "Find API related types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find inheritance, interface, and other type relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiRelatedTypesAsync(
@@ -198,7 +203,8 @@ public sealed class ApiIndexTools
         bool readers = false,
         bool writers = false,
         int limit = 50,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool includeGenerated = false)
     {
         if (!TryParseScope<FieldReferenceQueryResult>(codebase, channel, out var parsedCodebase, out var parsedChannel, out var scopeError))
             return scopeError;
@@ -222,7 +228,7 @@ public sealed class ApiIndexTools
                     ? FieldReferenceFilter.Writers
                     : FieldReferenceFilter.All;
             var result = await _services.ApiIndexQueryService.FieldReferencesSelectedAsync(
-                selection, selector, boundedLimit, filter, ct);
+                selection, selector, boundedLimit, filter, ct, includeGenerated);
             return EnvelopeMapper.FromApiFieldReferences(catalog, selection, result);
         });
     }
@@ -235,7 +241,8 @@ public sealed class ApiIndexTools
         ApiRelationshipDirection direction,
         IReadOnlyList<string>? relationKinds,
         CancellationToken ct,
-        bool exact = false)
+        bool exact = false,
+        bool includeGenerated = false)
     {
         if (!TryParseScope<RelationshipQuerySetResult>(codebase, channel, out var parsedCodebase, out var parsedChannel, out var scopeError))
             return scopeError;
@@ -262,7 +269,8 @@ public sealed class ApiIndexTools
                     ? null
                     : new HashSet<string>(relationKinds, StringComparer.OrdinalIgnoreCase),
                 ct,
-                exact);
+                exact,
+                includeGenerated);
             return EnvelopeMapper.FromApiRelationships(catalog, selection, result);
         });
     }

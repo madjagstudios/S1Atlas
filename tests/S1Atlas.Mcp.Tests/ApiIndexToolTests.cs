@@ -295,6 +295,112 @@ public sealed class ApiIndexToolTests
     }
 
     [Fact]
+    public async Task FindApiCallers_CreditedDetailByDefaultAndRawWithFlag()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var foo = ApiSymbol("api-credit-foo", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiCredit.Foo");
+        var lambda = ApiSymbol(
+            "api-credit-lambda", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiCredit.Foo+<>c::<Foo>b__0_0",
+            isGenerated: true);
+        var leaf = ApiSymbol("api-credit-leaf", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiCredit.Leaf");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-credit",
+            new string('a', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [foo, lambda, leaf],
+            relationships:
+            [
+                new("relationship-credit", string.Empty, foo.SymbolId, leaf.SymbolId, null, "Calls", "Body",
+                    GeneratedSourceSymbolId: lambda.SymbolId, GeneratedDetail: "in lambda")
+            ]);
+
+        var credited = await atlas.Tools.FindApiCallersAsync("s1api", "release", leaf.QualifiedName, 10, cancellationToken);
+        var raw = await atlas.Tools.FindApiCallersAsync(
+            "s1api", "release", leaf.QualifiedName, 10, cancellationToken, includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, credited.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        var creditedRow = Assert.Single(credited.Data!.Relationships);
+        var rawRow = Assert.Single(raw.Data!.Relationships);
+        Assert.Equal(foo.QualifiedName, creditedRow.Source.QualifiedName);
+        Assert.Equal("in lambda", creditedRow.GeneratedDetail);
+        Assert.Equal(lambda.QualifiedName, rawRow.Source.QualifiedName);
+        Assert.Null(rawRow.GeneratedDetail);
+    }
+
+    [Fact]
+    public async Task SearchApiSymbols_HidesGeneratedWithNotice()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var foo = ApiSymbol("api-search-foo", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiSearch.Foo");
+        var lambda = ApiSymbol(
+            "api-search-lambda", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiSearch.Foo+<>c::<Foo>b__0_0",
+            isGenerated: true);
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-search-credit",
+            new string('b', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [foo, lambda]);
+
+        var hidden = await atlas.Tools.SearchApiSymbolsAsync("s1api", "release", "ApiSearch.Foo", 10, cancellationToken);
+        var raw = await atlas.Tools.SearchApiSymbolsAsync(
+            "s1api", "release", "ApiSearch.Foo", 10, cancellationToken, includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        Assert.Equal(1, hidden.Data!.TotalCount);
+        Assert.Equal(foo.QualifiedName, Assert.Single(hidden.Data.Results).QualifiedName);
+        Assert.Equal(
+            "1 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            hidden.Data.SearchNotice);
+        Assert.Equal(2, raw.Data!.TotalCount);
+        Assert.Null(raw.Data.SearchNotice);
+    }
+
+    [Fact]
+    public async Task FindApiFieldReferences_GeneratedFieldEmptyByDefault()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var foo = ApiSymbol("api-field-foo", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiField.Foo");
+        var capture = ApiSymbol(
+            "api-field-capture", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiField.Widget+<>c__DisplayClass0_0::x",
+            kind: "Field", isGenerated: true);
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-field-credit",
+            new string('c', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [foo, capture],
+            relationships:
+            [
+                new("relationship-field-read", string.Empty, foo.SymbolId, capture.SymbolId, null, "ReadsField", "Body")
+            ]);
+
+        var hidden = await atlas.Tools.FindApiFieldReferencesAsync(
+            "s1api", "release", capture.QualifiedName, false, false, 10, cancellationToken);
+        var raw = await atlas.Tools.FindApiFieldReferencesAsync(
+            "s1api", "release", capture.QualifiedName, false, false, 10, cancellationToken, includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        Assert.Equal(0, hidden.Data!.TotalCount);
+        Assert.Empty(hidden.Data.Page.Relationships);
+        var row = Assert.Single(raw.Data!.Page.Relationships);
+        Assert.Equal(foo.QualifiedName, row.Source.QualifiedName);
+    }
+
+    [Fact]
     public async Task Missing_and_stale_api_indexes_return_explicit_statuses()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
@@ -467,16 +573,19 @@ public sealed class ApiIndexToolTests
         CodeChannel channel,
         string qualifiedName,
         string? signature = null,
-        BodyRecoveryStatus? bodyRecoveryStatus = null) =>
+        BodyRecoveryStatus? bodyRecoveryStatus = null,
+        string kind = "Method",
+        bool isGenerated = false) =>
         new(
             symbolId,
             string.Empty,
-            $"{codebase}:{channel}:Method:{qualifiedName}:{signature ?? "void"}",
-            "Method",
+            $"{codebase}:{channel}:{kind}:{qualifiedName}:{signature ?? "void"}",
+            kind,
             qualifiedName,
             signature ?? $"System.Void {qualifiedName}()",
             false,
-            bodyRecoveryStatus);
+            bodyRecoveryStatus,
+            IsGenerated: isGenerated);
 
     private static string Sha256(string value) =>
         Sha256(Encoding.UTF8.GetBytes(value));

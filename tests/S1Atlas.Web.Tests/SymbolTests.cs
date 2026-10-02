@@ -367,4 +367,93 @@ public sealed class SymbolTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("Invalid exact", body);
     }
+
+    [Fact]
+    public async Task GameMethodPageShowsCreditedCallerDetail()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.CreditLeafMethodId}", cancellationToken);
+
+        Assert.Contains("Demo.Credit.Foo", body);
+        Assert.Contains("(in lambda)", body);
+        Assert.DoesNotContain("b__0_0", body);
+    }
+
+    [Fact]
+    public async Task GameMethodPageGeneratedShowsRawCaller()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync(
+            $"/symbol/{SyntheticAtlas.CreditLeafMethodId}?generated=1", cancellationToken);
+
+        Assert.Contains("Demo.Credit.Foo+&lt;&gt;c::&lt;Foo&gt;b__0_0", body);
+        Assert.DoesNotContain("(in lambda)", body);
+    }
+
+    [Fact]
+    public async Task ApiCallersGeneratedReturnsRawRows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var creditedResponse = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.CreditLeafMethodId}/callers", cancellationToken);
+        var creditedBody = await creditedResponse.Content.ReadAsStringAsync(cancellationToken);
+        using var rawResponse = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.CreditLeafMethodId}/callers?generated=1", cancellationToken);
+        var rawBody = await rawResponse.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, creditedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, rawResponse.StatusCode);
+        using var creditedJson = JsonDocument.Parse(creditedBody);
+        using var rawJson = JsonDocument.Parse(rawBody);
+        var creditedRow = Assert.Single(
+            creditedJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        var rawRow = Assert.Single(
+            rawJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal(
+            "Demo.Credit.Foo",
+            creditedRow.GetProperty("source").GetProperty("qualifiedName").GetString());
+        Assert.Equal("in lambda", creditedRow.GetProperty("generatedDetail").GetString());
+        Assert.Equal(
+            "Demo.Credit.Foo+<>c::<Foo>b__0_0",
+            rawRow.GetProperty("source").GetProperty("qualifiedName").GetString());
+        Assert.False(rawRow.TryGetProperty("generatedDetail", out _));
+    }
+
+    [Theory]
+    [InlineData("maybe")]
+    [InlineData("2")]
+    public async Task ApiCallersRejectBadGenerated(string generated)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.RunMethodId}/callers?generated={generated}", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Invalid generated", body);
+    }
+
+    [Theory]
+    [InlineData("maybe")]
+    [InlineData("2")]
+    public async Task SymbolPageRejectsBadGenerated(string generated)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/symbol/{SyntheticAtlas.RunMethodId}?generated={generated}", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Invalid generated", body);
+    }
 }

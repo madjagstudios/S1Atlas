@@ -155,6 +155,73 @@ public sealed class RankedSearchTests
             json.RootElement.GetProperty("data").GetProperty("searchNotice").GetString());
     }
 
+    [Fact]
+    public async Task RankedSearch_HidesGeneratedWithNotice()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = _shared.Serve;
+
+        var body = await fixture.GetStringAsync("/search?q=Foo", cancellationToken);
+
+        Assert.Contains("Demo.Credit.Foo", body);
+        Assert.Contains(
+            "1 generated result(s) hidden. Re-run with ?generated=1 to include them.",
+            body);
+        Assert.DoesNotContain("b__0_0", body);
+    }
+
+    [Fact]
+    public async Task RankedSearch_GeneratedListsRawHits()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = _shared.Serve;
+
+        var body = await fixture.GetStringAsync("/search?q=Foo&generated=1", cancellationToken);
+
+        Assert.Contains("Demo.Credit.Foo+&lt;&gt;c::&lt;Foo&gt;b__0_0", body);
+        Assert.DoesNotContain("result(s) hidden", body);
+    }
+
+    [Fact]
+    public async Task RankedSearch_ApiHidesGeneratedWithNotice()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = _shared.Serve;
+
+        using var hiddenResponse = await fixture.GetAsync("/api/search?q=Foo", cancellationToken);
+        var hiddenBody = await hiddenResponse.Content.ReadAsStringAsync(cancellationToken);
+        using var rawResponse = await fixture.GetAsync("/api/search?q=Foo&generated=1", cancellationToken);
+        var rawBody = await rawResponse.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, hiddenResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, rawResponse.StatusCode);
+        using var hiddenJson = JsonDocument.Parse(hiddenBody);
+        using var rawJson = JsonDocument.Parse(rawBody);
+        var hiddenData = hiddenJson.RootElement.GetProperty("data");
+        var rawData = rawJson.RootElement.GetProperty("data");
+        Assert.Equal(1, hiddenData.GetProperty("totalCount").GetInt32());
+        Assert.Equal(
+            "1 generated result(s) hidden. Re-run with ?generated=1 to include them.",
+            hiddenData.GetProperty("searchNotice").GetString());
+        Assert.Equal(2, rawData.GetProperty("totalCount").GetInt32());
+        Assert.False(rawData.TryGetProperty("searchNotice", out _));
+    }
+
+    [Theory]
+    [InlineData("/search?q=Foo&generated=maybe")]
+    [InlineData("/api/search?q=Foo&generated=2")]
+    public async Task RankedSearch_RejectsBadGenerated(string path)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var fixture = _shared.Serve;
+
+        using var response = await fixture.GetAsync(path, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Invalid generated", body);
+    }
+
     private static async Task DowngradeSearchIndexAsync(string dataRoot, CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(

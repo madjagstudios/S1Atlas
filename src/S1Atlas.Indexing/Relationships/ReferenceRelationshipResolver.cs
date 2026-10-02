@@ -14,6 +14,33 @@ public sealed class ReferenceRelationshipResolver
         return (origin, identity.Type, identity.Name, identity.Arity, identity.Signature);
     }
 
+    private static string SourceKeyFor(ManagedMemberKind kind, string signature)
+    {
+        var symbolKind = kind switch
+        {
+            ManagedMemberKind.Constructor => SymbolKind.Constructor,
+            ManagedMemberKind.Method => SymbolKind.Method,
+            ManagedMemberKind.Field => SymbolKind.Field,
+            ManagedMemberKind.Property => SymbolKind.Property,
+            ManagedMemberKind.Event => SymbolKind.Event,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+        return SymbolIdentity.Create(CodebaseKind.ReferenceMod, CodeChannel.Installed, symbolKind, signature).CanonicalKey;
+    }
+
+    private static string RenderedNameOf(string canonicalKey)
+    {
+        var index = -1;
+        for (var part = 0; part < 3; part++)
+        {
+            index = canonicalKey.IndexOf(':', index + 1);
+            if (index < 0)
+                return canonicalKey;
+        }
+
+        return canonicalKey[(index + 1)..];
+    }
+
     private static (string Type, string Name, int Arity, string Signature) CreateIdentityLookupKey(string signature)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(signature);
@@ -52,6 +79,7 @@ public sealed class ReferenceRelationshipResolver
         var result = new List<IndexRelationshipRecord>();
         foreach (var mod in mods)
         {
+            var credit = GeneratedBodyResolver.ResolveAll(mod.Decompilation, CodebaseKind.ReferenceMod, CodeChannel.Installed);
             foreach (var type in mod.Decompilation.Types)
             {
                 foreach (var member in type.Members)
@@ -59,6 +87,19 @@ public sealed class ReferenceRelationshipResolver
                     var sourceSignature = ManagedMemberIdentity.Render(type.FullName, member);
                     if (!symbols.TryGetValue(CreateLookupKey(mod.ModId, sourceSignature), out var source))
                         continue;
+                    var mapping = credit.GetValueOrDefault(SourceKeyFor(member.Kind, sourceSignature));
+                    var credited = source;
+                    string? rawSourceId = null;
+                    if (mapping?.DeclaringKey is not null
+                        && symbols.TryGetValue(CreateLookupKey(mod.ModId, RenderedNameOf(mapping.DeclaringKey)), out var declaring)
+                        && !string.Equals(declaring.SymbolId, source.SymbolId, StringComparison.Ordinal))
+                    {
+                        credited = declaring;
+                        rawSourceId = source.SymbolId;
+                    }
+
+                    var detail = rawSourceId is not null || mapping?.DeclaringKey is null ? mapping?.Detail : null;
+
                     foreach (var reference in member.References)
                     {
                         var kind = reference.Kind switch
@@ -76,13 +117,15 @@ public sealed class ReferenceRelationshipResolver
                             : [];
                         var target = candidates.Length == 1 ? candidates[0] : null;
                         result.Add(new IndexRelationshipRecord(
-                            Indexing.Workflow.IndexingWorkflow.HashId(source.SymbolId + "\n" + kind + "\n" + reference.Target),
-                            source.SnapshotId,
-                            source.SymbolId,
+                            Indexing.Workflow.IndexingWorkflow.HashId((rawSourceId ?? credited.SymbolId) + "\n" + kind + "\n" + reference.Target),
+                            credited.SnapshotId,
+                            credited.SymbolId,
                             target?.SymbolId,
                             reference.Target,
                             kind.ToString(),
-                            RelationshipEvidence.RecoveredIL.ToString()));
+                            RelationshipEvidence.RecoveredIL.ToString(),
+                            rawSourceId,
+                            detail));
                     }
                 }
             }

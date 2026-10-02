@@ -57,6 +57,42 @@ public sealed class ReferenceRelationshipResolverTests
         Assert.Equal("Unknown.Target::System.Int32 Value", unresolved.TargetText);
     }
 
+    [Fact]
+    public void CreditsGeneratedSourcesToDeclaringMethodsWithRawSourceIds()
+    {
+        var snapshotId = "reference-snapshot";
+        var runSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
+        var lambdaSymbol = new IndexSymbolRecord("mod-lambda", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry+<>c::<Run>b__0_0():System.Void", "Method", "qol/Mods.Entry+<>c::<Run>b__0_0():System.Void", "Mods.Entry+<>c::<Run>b__0_0():System.Void", false);
+        var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        {
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", runSymbol.Signature)] = runSymbol,
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", lambdaSymbol.Signature)] = lambdaSymbol
+        };
+        var decompilation = new ManagedDecompilation("qol.dll", "", [
+            new ManagedTypeFacts(
+                "Mods.Entry", "Mods", "Entry", null, [],
+                [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [], [], "System.Void")]),
+            new ManagedTypeFacts(
+                "Mods.Entry+<>c", "", "<>c", null, [],
+                [new ManagedMemberFacts("<Run>b__0_0", ManagedMemberKind.Method, "lambda", true, [
+                    new ManagedReferenceFact(ManagedReferenceKind.Calls, gameSymbol.Signature)
+                ], [], "System.Void")])
+        ]);
+
+        var relationships = new ReferenceRelationshipResolver().Resolve([new ReferenceModDecompilation("qol", decompilation)], lookup);
+
+        var call = Assert.Single(relationships);
+        Assert.Equal(runSymbol.SymbolId, call.SourceSymbolId);
+        Assert.Equal(lambdaSymbol.SymbolId, call.GeneratedSourceSymbolId);
+        Assert.Equal("in lambda", call.GeneratedDetail);
+        Assert.Equal(gameSymbol.SymbolId, call.TargetSymbolId);
+        Assert.Equal(
+            S1Atlas.Indexing.Workflow.IndexingWorkflow.HashId(lambdaSymbol.SymbolId + "\n" + RelationshipKind.Calls + "\n" + gameSymbol.Signature),
+            call.RelationshipId);
+    }
+
     private sealed class CountingReadOnlyDictionary<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> inner) : IReadOnlyDictionary<TKey, TValue>
         where TKey : notnull
     {

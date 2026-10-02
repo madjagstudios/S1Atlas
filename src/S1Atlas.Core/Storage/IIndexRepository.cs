@@ -34,7 +34,8 @@ public sealed record IndexSymbolRecord(
     string Signature,
     bool IsBestEffort,
     BodyRecoveryStatus? BodyRecoveryStatus = null,
-    bool IsPublic = false);
+    bool IsPublic = false,
+    bool IsGenerated = false);
 
 public enum CallableSurfaceKind
 {
@@ -99,7 +100,9 @@ public sealed record IndexRelationshipRecord(
     string? TargetSymbolId,
     string? TargetText,
     string Kind,
-    string Evidence);
+    string Evidence,
+    string? GeneratedSourceSymbolId = null,
+    string? GeneratedDetail = null);
 
 public sealed record IndexWriteSet(
     IReadOnlyList<IndexSymbolRecord> Symbols,
@@ -153,13 +156,13 @@ public interface IIndexRepository
         CancellationToken cancellationToken);
     Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken);
-    Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null);
-    Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null);
+    Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false);
+    Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false);
     Task<bool> SupportsSymbolSearchIndexAsync(CancellationToken cancellationToken) =>
         throw new NotSupportedException("Symbol search index detection is not supported by this index repository.");
-    Task<int> CountRankedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null) =>
+    Task<int> CountRankedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
         throw new NotSupportedException("Ranked symbol counting is not supported by this index repository.");
-    Task<IReadOnlyList<IndexSymbolRecord>> SearchRankedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null) =>
+    Task<IReadOnlyList<IndexSymbolRecord>> SearchRankedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
         throw new NotSupportedException("Ranked symbol search is not supported by this index repository.");
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsBySourceSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
