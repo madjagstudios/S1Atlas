@@ -208,7 +208,8 @@ public sealed class ApiIndexQueryService
         int limit,
         ApiRelationshipDirection direction,
         IReadOnlySet<string>? relationshipKinds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool exact = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -238,7 +239,7 @@ public sealed class ApiIndexQueryService
                     relationshipKinds,
                     cancellationToken),
             ApiRelationshipDirection.Callers => await _indexQueryService.CallersInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken),
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, exact),
             ApiRelationshipDirection.Callees => await _indexQueryService.CalleesInIndexAsync(
                 run, selection.Codebase, selection.Channel, selector, limit, cancellationToken),
             _ => await _indexQueryService.RefsInIndexAsync(

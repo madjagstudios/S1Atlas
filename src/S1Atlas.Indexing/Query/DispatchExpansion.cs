@@ -24,21 +24,23 @@ public static class DispatchExpansion
 {
     public static async Task<IReadOnlyList<DerivedCallerEdge>> CollectDerivedAsync(
         IIndexRepository repository,
-        string indexId,
+        string walkIndexId,
+        string incomingIndexId,
         string startSymbolId,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(repository);
-        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(walkIndexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(incomingIndexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(startSymbolId);
 
-        var paths = await CollectSlotPathsAsync(repository, indexId, startSymbolId, cancellationToken);
+        var paths = await CollectSlotPathsAsync(repository, walkIndexId, startSymbolId, cancellationToken);
         if (paths.Count == 0)
             return [];
-        var incomingBySlot = await CollectSlotIncomingAsync(repository, indexId, paths, cancellationToken);
+        var incomingBySlot = await CollectSlotIncomingAsync(repository, incomingIndexId, paths, cancellationToken);
         if (incomingBySlot.Count == 0)
             return [];
-        var names = await ResolveSlotNamesAsync(repository, indexId, paths, cancellationToken);
+        var names = await ResolveSlotNamesAsync(repository, walkIndexId, paths, cancellationToken);
 
         var routesByEdge = new Dictionary<string, (IndexRelationshipRecord Edge, HashSet<string> Routes)>(
             StringComparer.Ordinal);
