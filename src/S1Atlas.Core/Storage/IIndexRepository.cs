@@ -156,6 +156,10 @@ public interface IIndexRepository
         CancellationToken cancellationToken);
     Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken);
+    Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdPrefixAsync(string indexId, string prefix, int limit, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Completed symbol prefix lookup is not supported by this index repository.");
+    Task<int> CountCompletedSymbolsByIdPrefixAsync(string indexId, string prefix, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Completed symbol prefix counting is not supported by this index repository.");
     Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false);
     Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false);
     Task<bool> SupportsSymbolSearchIndexAsync(CancellationToken cancellationToken) =>
