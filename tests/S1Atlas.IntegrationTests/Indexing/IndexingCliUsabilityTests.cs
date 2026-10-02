@@ -711,6 +711,51 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Truncated_exact_signature_human_output_reports_at_least_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedDuplicateSignatureIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "System.Void Dup::Clone()", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Found at least 51 candidates; showing 10.", text, StringComparison.Ordinal);
+        Assert.Contains("10 | Method |", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("11 | Method |", text, StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Truncated_exact_signature_json_reports_null_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedDuplicateSignatureIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "System.Void Dup::Clone()", "--channel", "all", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        using var document = JsonDocument.Parse(output.ToString());
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(51, data.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("totalCandidateCount").ValueKind);
+    }
+
+    [Fact]
     public async Task NotFound_human_output_lists_nearest_matches_with_search_hint()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -1040,6 +1085,44 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
             indexId,
             new IndexWriteSet(symbols, [], [], [], []),
             "2026-08-14T18:23:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedDuplicateSignatureIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-dup-signature";
+        const string indexId = "index-cli-dup-signature";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-dup-signature",
+            "2026-08-14T18:24:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = Enumerable.Range(0, 55)
+            .Select(index =>
+            {
+                var suffix = index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+                return new IndexSymbolRecord(
+                    "dup" + index.ToString("x4") + new string('0', 57),
+                    snapshotId,
+                    $"ScheduleI:Installed:Method:Dup.Clone{suffix}::Run()",
+                    "Method",
+                    "Dup.Clone" + suffix,
+                    "System.Void Dup::Clone()",
+                    false);
+            })
+            .ToArray();
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T18:25:00Z",
             cancellationToken);
     }
 

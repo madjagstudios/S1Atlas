@@ -171,10 +171,11 @@ internal static class IndexQueryCommandFactory
 
     /// <summary>
     /// Shared selector-failure presenter for every symbol-taking command. Ambiguous
-    /// resolutions render the numbered candidate table (stdout) with the exact total
-    /// and the narrowest disambiguation hint; unknown selectors render up to 5
-    /// near-match suggestions with a search hint. Returns null when the resolution
-    /// carries no failure so callers continue on their success path.
+    /// resolutions render the numbered candidate table (stdout) with the exact total,
+    /// or an at-least count when the candidate pool was truncated, plus the narrowest
+    /// disambiguation hint; unknown selectors render up to 5 near-match suggestions
+    /// with a search hint. Returns null when the resolution carries no failure so
+    /// callers continue on their success path.
     /// </summary>
     internal static int? FailureForResolution(
         CommandOutput commandOutput,
@@ -183,7 +184,6 @@ internal static class IndexQueryCommandFactory
     {
         if (resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
         {
-            var total = ambiguous.TotalCandidateCount ?? ambiguous.Candidates.Count;
             return commandOutput.FailureWithData(
                 "AmbiguousSymbol",
                 "The symbol selector matched multiple candidates. Re-run with a full symbol ID or a unique short-ID prefix.",
@@ -191,7 +191,7 @@ internal static class IndexQueryCommandFactory
                     ambiguous.Candidates,
                     ambiguous.Suggestions,
                     ambiguous.TotalCandidateCount),
-                writer => WriteCandidates(writer, ambiguous.Candidates, total));
+                writer => WriteCandidates(writer, ambiguous.Candidates, ambiguous.TotalCandidateCount));
         }
 
         if (resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
@@ -220,10 +220,12 @@ internal static class IndexQueryCommandFactory
     internal static void WriteCandidates(
         TextWriter writer,
         IReadOnlyList<SymbolQueryResult> candidates,
-        int total)
+        int? total)
     {
         var shown = candidates.Take(MaxHumanCandidates).ToArray();
-        writer.WriteLine($"Found {total} candidates; showing {shown.Length}.");
+        writer.WriteLine(total is null
+            ? $"Found at least {candidates.Count} candidates; showing {shown.Length}."
+            : $"Found {total} candidates; showing {shown.Length}.");
         for (var i = 0; i < shown.Length; i++)
         {
             WriteCandidateRow(writer, i + 1, shown[i]);

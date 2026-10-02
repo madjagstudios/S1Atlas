@@ -58,7 +58,7 @@ public sealed class SymbolResolver
         if (exactCanonical.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactCanonical[0], OriginFor(codebase)));
         if (exactCanonical.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactCanonical, exactCanonical.Length);
+            return Ambiguous(indexId, codebase, channel, exactCanonical, TotalUnlessTruncated(records.Count, exactCanonical.Length));
 
         var exactSignature = records
             .Where(record => string.Equals(record.Signature, selector, StringComparison.OrdinalIgnoreCase))
@@ -66,7 +66,7 @@ public sealed class SymbolResolver
         if (exactSignature.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactSignature[0], OriginFor(codebase)));
         if (exactSignature.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactSignature, exactSignature.Length);
+            return Ambiguous(indexId, codebase, channel, exactSignature, TotalUnlessTruncated(records.Count, exactSignature.Length));
 
         var exactQualifiedName = records
             .Where(record => string.Equals(record.QualifiedName, selector, StringComparison.OrdinalIgnoreCase))
@@ -74,7 +74,7 @@ public sealed class SymbolResolver
         if (exactQualifiedName.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactQualifiedName[0], OriginFor(codebase)));
         if (exactQualifiedName.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactQualifiedName, exactQualifiedName.Length);
+            return Ambiguous(indexId, codebase, channel, exactQualifiedName, TotalUnlessTruncated(records.Count, exactQualifiedName.Length));
 
         var bestRank = Rank(records[0], searchQuery);
         var best = records
@@ -83,7 +83,7 @@ public sealed class SymbolResolver
         if (best.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, best[0], OriginFor(codebase)));
         var shown = best.Length > CandidateLimit ? best.Take(CandidateLimit).ToArray() : best;
-        return Ambiguous(indexId, codebase, channel, shown, best.Length > CandidateLimit ? null : best.Length);
+        return Ambiguous(indexId, codebase, channel, shown, TotalUnlessTruncated(records.Count, best.Length));
     }
 
     private async Task<IReadOnlyList<IndexSymbolRecord>> SearchKindsAsync(
@@ -316,6 +316,9 @@ public sealed class SymbolResolver
             ? selector[(kindSeparator + 1)..]
             : selector;
     }
+
+    private static int? TotalUnlessTruncated(int fetched, int matches) =>
+        fetched > CandidateLimit ? null : matches;
 
     private static SymbolResolutionResult Resolved(SymbolQueryResult symbol) =>
         new(SymbolResolutionStatus.Resolved, symbol, []);

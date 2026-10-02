@@ -620,6 +620,24 @@ public sealed class SymbolResolverTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Truncated_exact_signature_reports_unknown_total()
+    {
+        var fixture = await SeedDuplicateSignatureAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            fixture.Signature,
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Ambiguous, result.Status);
+        Assert.Equal(51, result.Candidates.Count);
+        Assert.Null(result.TotalCandidateCount);
+    }
+
+    [Fact]
     public async Task Truncated_tie_reports_unknown_total()
     {
         var fixture = await SeedTieAsync(TestContext.Current.CancellationToken);
@@ -772,6 +790,45 @@ public sealed class SymbolResolverTests : IAsyncDisposable
             "2026-08-14T03:15:00Z",
             cancellationToken);
         return new TieFixture(indexId);
+    }
+
+    private async Task<DuplicateSignatureFixture> SeedDuplicateSignatureAsync(CancellationToken cancellationToken)
+    {
+        await _repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-resolver-dup-signature";
+        const string indexId = "index-resolver-dup-signature";
+        const string signature = "System.Void Dup::Clone()";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "resolver-dup-signature-source",
+            "2026-08-14T03:16:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = new List<IndexSymbolRecord>();
+        for (var clone = 0; clone < 55; clone++)
+        {
+            var key = $"S1Api:Release:Method:Dup.Clone{clone:00}::Run()";
+            symbols.Add(new IndexSymbolRecord(
+                HashId(snapshotId + "\n" + key),
+                snapshotId,
+                key,
+                "Method",
+                $"Dup.Clone{clone:00}",
+                signature,
+                false));
+        }
+
+        await _repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T03:17:00Z",
+            cancellationToken);
+        return new DuplicateSignatureFixture(indexId, signature);
     }
 
     private async Task<ResolverFixture> SeedAsync(CancellationToken cancellationToken)
@@ -950,4 +1007,6 @@ public sealed class SymbolResolverTests : IAsyncDisposable
     private sealed record SuggestionFixture(string IndexId);
 
     private sealed record TieFixture(string IndexId);
+
+    private sealed record DuplicateSignatureFixture(string IndexId, string Signature);
 }
