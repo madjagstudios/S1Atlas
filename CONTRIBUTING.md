@@ -19,6 +19,9 @@ tool for Schedule I mod development. Contributions are welcome via pull request.
   commits or content, no machine-specific paths, no agent-process residue,
   no internal or private references, and no game content. CI enforces these
   rules on every pull request.
+- **No plan-step references in commit messages.** Subjects and bodies must
+  not cite work-plan steps ("Task N", "step N", "phase N"); describe the
+  change instead. The public-content gate enforces this.
 
 ## Development
 
