@@ -280,7 +280,9 @@
     {
       "target": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void",
       "callers": [
-        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32", "reason": "constructs" }
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32", "reason": "constructs" },
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32", "reason": "constructs" },
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseConvert():System.String", "reason": "constructs" }
       ]
     },
     {
@@ -293,6 +295,22 @@
       "target": "S1Atlas.ParityFixture.GenericBox`1::set_Item(!0):System.Void",
       "callers": [
         { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBox`1::!0 Stored",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32", "reason": "field read" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32", "reason": "field write" },
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "field initializer" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBox`1::Convert`1(!!0):!!0",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseConvert():System.String", "reason": "constructed generic" }
       ]
     },
     {
@@ -310,9 +328,45 @@
       ]
     },
     {
+      "target": "S1Atlas.ParityFixture.GenericDrivers::UseConvert():System.String",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "constructs" },
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::Convert`1(!!0):!!0", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericDrivers::UseNested():System.String",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.GenericOuter`1+GenericInner`1::.ctor():System.Void", "reason": "constructs" },
+        { "symbol": "S1Atlas.ParityFixture.GenericOuter`1+GenericInner`1::Describe(!0,!1):System.String", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "constructs" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32",
+      "callees": []
+    },
+    {
       "target": "S1Atlas.ParityFixture.GenericHelpers::Echo`1(!!0):!!0",
       "callers": [
         { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaGenericMethod():System.String", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericOuter`1+GenericInner`1::.ctor():System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseNested():System.String", "reason": "constructs" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericOuter`1+GenericInner`1::Describe(!0,!1):System.String",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseNested():System.String", "reason": "constructed generic" }
       ]
     },
     {

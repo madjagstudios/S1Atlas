@@ -182,8 +182,16 @@ public static class RelationshipParityHarness
     private static string TicketFor(string reason) =>
         ReasonTickets.TryGetValue(reason, out var ticket) ? ticket : "unowned";
 
-    private static string ReasonForExtra(string symbol) =>
-        symbol.StartsWith("0x", StringComparison.Ordinal) ? "unresolved token" : "unexpected edge";
+    private static string ReasonForExtra(string symbol)
+    {
+        if (symbol.StartsWith("unresolved:", StringComparison.Ordinal))
+        {
+            var parts = symbol.Split(':');
+            return parts.Length > 1 ? parts[1] : "unresolved";
+        }
+
+        return symbol.StartsWith("0x", StringComparison.Ordinal) ? "unresolved token" : "unexpected edge";
+    }
 
     private static async Task<Dictionary<string, HashSet<string>>> QueryTargetAsync(
         IndexQueryService service,
