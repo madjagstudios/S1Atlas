@@ -240,7 +240,8 @@ public sealed class SymbolResolver
             version,
             license,
             relativePath,
-            sha256);
+            sha256,
+            record.SymbolId.Length >= 12 ? record.SymbolId[..12] : record.SymbolId);
 
     internal static string? OriginFor(CodebaseKind codebase) =>
         codebase == CodebaseKind.ScheduleI ? "game" : null;

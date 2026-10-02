@@ -41,6 +41,24 @@ public sealed class SymbolResolverTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Resolved_symbol_carries_twelve_character_short_id()
+    {
+        var fixture = await SeedAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            fixture.ExactId.SymbolId,
+            fixture.Codebase,
+            fixture.Channel,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.NotNull(result.Symbol);
+        Assert.Equal(fixture.ExactId.SymbolId[..12], result.Symbol.ShortId);
+    }
+
+    [Fact]
     public async Task Exact_canonical_key_or_signature_resolves_before_textual_matching()
     {
         var fixture = await SeedAsync(TestContext.Current.CancellationToken);
