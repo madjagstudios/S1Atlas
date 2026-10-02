@@ -42,14 +42,14 @@ later tickets update it in the same PR that fixes a gap.
 | field write | 3 | 3 | 0 | 0 | 0 |
 | implementation | 3 | 3 | 0 | 0 | 0 |
 | inherited implementation | 1 | 1 | 0 | 0 | 0 |
-| interface dispatch | 4 | 0 | 4 | 0 | 0 |
+| interface dispatch | 4 | 4 | 0 | 0 | 0 |
 | iterator body | 2 | 0 | 2 | 0 | 1 |
 | lambda body | 4 | 0 | 4 | 0 | 2 |
 | local function body | 4 | 0 | 4 | 0 | 2 |
 | override | 7 | 7 | 0 | 0 | 0 |
 | property accessor | 10 | 10 | 0 | 0 | 0 |
 | static constructor | 1 | 1 | 0 | 0 | 0 |
-| virtual dispatch | 8 | 0 | 8 | 0 | 0 |
+| virtual dispatch | 8 | 8 | 0 | 0 | 0 |
 
 ## Differences
 
@@ -85,18 +85,6 @@ later tickets update it in the same PR that fixes a gap.
 | S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged | writers | S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void | MISSING | address taken | AT-67 |
 | S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged | writers | S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void | MISSING | address taken | AT-67 |
 | S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void | callees | S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | MISLABELED | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaConcrete(S1Atlas.ParityFixture.DispatchConcrete):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32 | callees | S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32 | callees | S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaConcrete(S1Atlas.ParityFixture.DispatchConcrete):System.Int32 | callees | S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32 | callees | S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | callees | S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32 | MISSING | interface dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | callees | S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32 | MISSING | interface dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | MISSING | interface dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | MISSING | interface dispatch | AT-65 |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:.ctor | EXTRA | array accessor | unowned |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:Get | EXTRA | array accessor | unowned |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:Set | EXTRA | array accessor | unowned |
