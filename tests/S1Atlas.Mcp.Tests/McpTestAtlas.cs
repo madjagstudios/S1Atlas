@@ -74,6 +74,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
     public string GameFieldSelector => "Demo.Widget._state";
     public string CreditFooSelector => "Demo.Credit.Foo";
     public string CreditLeafSelector => "Demo.Credit.Leaf";
+    public string DelegateBuildSelector => "Demo.Delegate.Build";
+    public string DelegateTargetSelector => "Demo.Delegate.Handle";
     public string CreditCaptureSelector => "Demo.Capture.Widget+<>c__DisplayClass0_0::x";
     public string ReferenceFieldSelector => "qol/Qol.Config.Setting";
     public string AmbiguousFieldSelector => "SharedValue";
@@ -329,7 +331,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
     public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(
         string buildId = BuildIdASeed,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
-        bool includeGeneratedCredit = false)
+        bool includeGeneratedCredit = false,
+        bool includeDelegates = false)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -344,7 +347,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             indexId: null,
             compareBodyFingerprint: "compare-body-same",
             methodBodyStatus,
-            includeGeneratedCredit);
+            includeGeneratedCredit,
+            includeDelegates);
         atlas.IndexId = seeded.IndexId;
         atlas.IndexIdA = seeded.IndexId;
         atlas.ExtractionIdA = seeded.ExtractionId;
@@ -591,7 +595,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string? indexId,
         string compareBodyFingerprint,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
-        bool includeGeneratedCredit = false)
+        bool includeGeneratedCredit = false,
+        bool includeDelegates = false)
     {
         await SeedCurrentBuildAsync(buildId);
         var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
@@ -619,7 +624,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             resolvedIndexId,
             compareBodyFingerprint,
             methodBodyStatus,
-            includeGeneratedCredit);
+            includeGeneratedCredit,
+            includeDelegates);
 
         return new HealthySeed(buildId, seeded.Extraction.ExtractionId, seeded.InputSnapshot.InputSnapshotId, resolvedIndexId);
     }
@@ -756,7 +762,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string indexId,
         string compareBodyFingerprint,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
-        bool includeGeneratedCredit = false)
+        bool includeGeneratedCredit = false,
+        bool includeDelegates = false)
     {
         var ct = CancellationToken.None;
         string Id(string value) => extractionId == NonAuthoritativeExtractionId
@@ -865,6 +872,50 @@ public sealed class McpTestAtlas : IAsyncDisposable
             return symbols;
         }
 
+        List<IndexSymbolRecord> WithDelegateSymbols(List<IndexSymbolRecord> symbols)
+        {
+            if (includeDelegates)
+                symbols.AddRange(
+                [
+                    new IndexSymbolRecord(
+                        Id("method-delegate-build"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Delegate::Build()",
+                        "Method",
+                        "Demo.Delegate.Build",
+                        "System.Void Demo.Delegate::Build()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        Id("method-delegate-target"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Delegate::Handle()",
+                        "Method",
+                        "Demo.Delegate.Handle",
+                        "System.Void Demo.Delegate::Handle()",
+                        false,
+                        BodyRecoveryStatus.Recovered)
+                ]);
+            return symbols;
+        }
+
+        List<IndexRelationshipRecord> WithDelegateEdges(List<IndexRelationshipRecord> edges)
+        {
+            if (includeDelegates)
+                edges.AddRange(
+                [
+                    new IndexRelationshipRecord(
+                        Id("delegate-create"),
+                        snapshotId,
+                        Id("method-delegate-build"),
+                        Id("method-delegate-target"),
+                        null,
+                        "ReferencesMethod",
+                        "RecoveredIL")
+                ]);
+            return edges;
+        }
+
         List<IndexRelationshipRecord> WithCreditEdges(List<IndexRelationshipRecord> edges)
         {
             if (includeGeneratedCredit)
@@ -895,7 +946,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
         await _repository.CompleteIndexRunAsync(
             indexId,
             new IndexWriteSet(
-                WithCreditSymbols(
+                WithDelegateSymbols(WithCreditSymbols(
                 [
                     new IndexSymbolRecord(
                         Id("symbol-" + extractionId),
@@ -1067,7 +1118,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "Beta.State.SharedValue",
                         "System.Int32 Beta.State::SharedValue",
                         false)
-                ]),
+                ])),
                 [sourceFile],
                 [sourceLocation, typeSourceLocation, runtimeSourceLocation],
                 [
@@ -1080,7 +1131,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "method-body",
                         compareBodyFingerprint)
                 ],
-                WithCreditEdges(
+                WithDelegateEdges(WithCreditEdges(
                 [
                     new IndexRelationshipRecord(
                         Id("incoming-call"),
@@ -1186,7 +1237,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink(System.Boolean)",
                         "Calls",
                         "fixture:callsite-overload")
-                ]),
+                ])),
                 [new IndexCallableSurfaceRecord(
                     Id("callable-method"),
                     indexId,

@@ -945,6 +945,97 @@ public sealed class CodeSymbolToolTests
         Assert.Equal(ToolStatus.NotFound, missing.Status);
     }
 
+    [Fact]
+    public async Task FindCallers_HidesDelegatesByDefault()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeDelegates: true);
+        var tools = CreateTools(atlas);
+
+        var hidden = await tools.FindCallersAsync(
+            atlas.DelegateTargetSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(0, hidden.Data!.TotalCount);
+        Assert.Empty(hidden.Data.Relationships);
+    }
+
+    [Fact]
+    public async Task FindCallers_IncludesLabeledDelegatesWhenAsked()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeDelegates: true);
+        var tools = CreateTools(atlas);
+
+        var shown = await tools.FindCallersAsync(
+            atlas.DelegateTargetSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeDelegates: true);
+
+        Assert.Equal(ToolStatus.Resolved, shown.Status);
+        var row = Assert.Single(shown.Data!.Relationships);
+        Assert.Equal("ReferencesMethod", row.Kind);
+        Assert.Equal(atlas.DelegateBuildSelector, row.Source.QualifiedName);
+        Assert.Equal("delegate created (not called)", row.Label);
+    }
+
+    [Fact]
+    public async Task FindCallees_HidesDelegatesByDefault()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeDelegates: true);
+        var tools = CreateTools(atlas);
+
+        var hidden = await tools.FindCalleesAsync(
+            atlas.DelegateBuildSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Empty(hidden.Data!.Relationships);
+    }
+
+    [Fact]
+    public async Task FindCallees_IncludesLabeledDelegatesWhenAsked()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeDelegates: true);
+        var tools = CreateTools(atlas);
+
+        var shown = await tools.FindCalleesAsync(
+            atlas.DelegateBuildSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeDelegates: true);
+
+        Assert.Equal(ToolStatus.Resolved, shown.Status);
+        var row = Assert.Single(shown.Data!.Relationships);
+        Assert.Equal("ReferencesMethod", row.Kind);
+        Assert.Equal(atlas.DelegateTargetSelector, row.Target.QualifiedName);
+        Assert.Equal("delegate created (not called)", row.Label);
+    }
+
+    [Fact]
+    public async Task RelationshipEnvelope_CarriesLabel()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeDelegates: true);
+        var tools = CreateTools(atlas);
+
+        var shown = await tools.FindCallersAsync(
+            atlas.DelegateTargetSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeDelegates: true);
+
+        Assert.Equal(ToolStatus.Resolved, shown.Status);
+        var row = Assert.Single(shown.Data!.Relationships);
+        Assert.Equal("delegate created (not called)", row.Label);
+    }
+
     private static CodeSymbolTools CreateTools(McpTestAtlas atlas)
     {
         var services = McpServerComposition.BuildReadOnlyServices(atlas.DataRoot);
