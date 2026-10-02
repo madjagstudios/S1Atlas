@@ -250,10 +250,18 @@ internal static class RecoverNativeBodyCommand
                 .Select(record => record.SymbolId)
                 .ToArray();
             var combined = new ShortIdMatch(ShortIdMatchKind.Ambiguous, null, shown, total);
+            var signatures = matches.ToDictionary(
+                record => record.SymbolId,
+                record => record.Signature,
+                StringComparer.Ordinal);
+
+            string DescribeSymbol(string candidateId) =>
+                $"{ShortId.Display(candidateId)} ({signatures[candidateId]})";
+
             return new SymbolIdResolution(
                 symbolIds,
                 $"The --symbol-id prefix '{id}' matches {total} symbols; " +
-                $"re-run with a full symbol ID: {ShortId.FormatMatchList(combined)}.");
+                $"re-run with a full symbol ID or one of these short IDs: {ShortId.FormatMatchList(combined, DescribeSymbol)}.");
         }
 
         return new SymbolIdResolution(resolved, null);

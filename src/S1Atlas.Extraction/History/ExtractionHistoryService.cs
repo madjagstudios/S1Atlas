@@ -261,7 +261,21 @@ internal sealed class ExtractionHistoryService
             ExtractionFailureStage.Recovery,
             ExtractionFailureCode.AmbiguousHistoryEntry,
             $"The history ID prefix '{id}' matches {total} entries; " +
-            $"re-run with a full extraction or attempt ID: {ShortId.FormatMatchList(combined)}.");
+            $"re-run with a full extraction or attempt ID, or one of these short IDs: {ShortId.FormatMatchList(combined, DescribeEntry)}.");
+
+        string DescribeEntry(string candidateId)
+        {
+            var extraction = extractions.FirstOrDefault(entry => string.Equals(
+                entry.ExtractionId, candidateId, StringComparison.Ordinal));
+            if (extraction is not null)
+            {
+                return $"{ShortId.Display(candidateId)} (Extraction, created {extraction.CreatedAtUtc:O})";
+            }
+
+            var attempt = attempts.First(entry => string.Equals(
+                entry.AttemptId, candidateId, StringComparison.Ordinal));
+            return $"{ShortId.Display(candidateId)} (Attempt {attempt.Status}, created {attempt.CreatedAtUtc:O})";
+        }
     }
 
     /// <summary>

@@ -70,8 +70,10 @@ public sealed class RecoverNativeBodySymbolIdTests : IAsyncDisposable
 
         Assert.NotNull(resolution.AmbiguousMessage);
         Assert.Contains("matches 2 symbols", resolution.AmbiguousMessage, StringComparison.Ordinal);
-        Assert.Contains(first, resolution.AmbiguousMessage, StringComparison.Ordinal);
-        Assert.Contains(second, resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.Contains("abcdef120000 (Ns::M0():System.Void)", resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.Contains("abcdef121111 (Ns::M1():System.Void)", resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(first, resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(second, resolution.AmbiguousMessage, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -90,8 +92,10 @@ public sealed class RecoverNativeBodySymbolIdTests : IAsyncDisposable
         Assert.NotNull(resolution.AmbiguousMessage);
         Assert.Contains("matches 12 symbols", resolution.AmbiguousMessage, StringComparison.Ordinal);
         Assert.Contains("(showing 10 of 12)", resolution.AmbiguousMessage, StringComparison.Ordinal);
-        Assert.Contains(ids[0], resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.Contains("abcdef0000ff (Ns::M0():System.Void)", resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain(ids[0], resolution.AmbiguousMessage, StringComparison.Ordinal);
         Assert.DoesNotContain(ids[11], resolution.AmbiguousMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdef000bff", resolution.AmbiguousMessage, StringComparison.Ordinal);
     }
 
     private async Task SeedCompletedIndexAsync(

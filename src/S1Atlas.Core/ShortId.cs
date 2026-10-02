@@ -122,12 +122,16 @@ public static class ShortId
     /// <summary>
     /// Formats an ambiguous match's shown IDs as a comma-separated list with a
     /// "(showing M of N)" suffix when the total exceeds the shown sample.
+    /// <paramref name="describe"/> maps each full ID to its display form, so failure
+    /// messages can list short IDs with a distinguishing date or name instead of raw
+    /// 64-character IDs.
     /// </summary>
-    public static string FormatMatchList(ShortIdMatch match)
+    public static string FormatMatchList(ShortIdMatch match, Func<string, string> describe)
     {
         ArgumentNullException.ThrowIfNull(match);
+        ArgumentNullException.ThrowIfNull(describe);
 
-        var list = string.Join(", ", match.Shown);
+        var list = string.Join(", ", match.Shown.Select(describe));
         return match.TotalCount > match.Shown.Count
             ? $"{list} (showing {match.Shown.Count} of {match.TotalCount})"
             : list;

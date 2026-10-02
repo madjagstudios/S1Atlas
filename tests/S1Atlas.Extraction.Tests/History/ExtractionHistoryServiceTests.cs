@@ -195,8 +195,8 @@ public sealed class ExtractionHistoryServiceTests
     public async Task ShowAsync_AmbiguousPrefix_ListsMatchesAndFails()
     {
         using var fixture = await HistoryFixture.CreateAsync(TestContext.Current.CancellationToken);
-        var firstAttemptId = new string('0', 31) + "1";
-        var secondAttemptId = new string('0', 31) + "2";
+        var firstAttemptId = "00000000" + new string('1', 24);
+        var secondAttemptId = "00000000" + new string('2', 24);
         await fixture.SeedValidatedExtractionAsync(
             firstAttemptId, [1, 2, 3, 4], PromotionTestData.RecipeId,
             PromotionTestData.BaseTime, autoPrefer: false, storeReport: true,
@@ -213,8 +213,10 @@ public sealed class ExtractionHistoryServiceTests
 
         Assert.Equal(ExtractionFailureCode.AmbiguousHistoryEntry, exception.Code);
         Assert.Contains("2 entries", exception.Message, StringComparison.Ordinal);
-        Assert.Contains(firstAttemptId, exception.Message, StringComparison.Ordinal);
-        Assert.Contains(secondAttemptId, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("000000001111 (Attempt Succeeded, created", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("000000002222 (Attempt Succeeded, created", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(firstAttemptId, exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(secondAttemptId, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

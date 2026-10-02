@@ -81,8 +81,16 @@ public sealed class RecoverNativeBodyCliTests
         Assert.Equal(string.Empty, result.StandardError);
         AssertJsonErrorCode(result.StandardOutput, "AmbiguousSymbol");
         Assert.Contains("matches 2 symbols", result.StandardOutput, StringComparison.Ordinal);
-        Assert.Contains(atlas.FirstPrefixSymbolId, result.StandardOutput, StringComparison.Ordinal);
-        Assert.Contains(atlas.SecondPrefixSymbolId, result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains(
+            "abcdef120000 (System.Void Game.Prefix::First())",
+            result.StandardOutput,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "abcdef121111 (System.Void Game.Prefix::Second())",
+            result.StandardOutput,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(atlas.FirstPrefixSymbolId, result.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain(atlas.SecondPrefixSymbolId, result.StandardOutput, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -124,6 +124,14 @@ internal static class DiffCommand
         {
             var builds = atlasRepository.ListBuildsAsync(ct).GetAwaiter().GetResult();
             var match = ShortId.MatchPrefix(builds.Select(candidate => candidate.BuildId), buildId);
+
+            string DescribeBuild(string candidateId)
+            {
+                var candidate = builds.First(entry => string.Equals(
+                    entry.BuildId, candidateId, StringComparison.Ordinal));
+                return $"{ShortId.Display(candidateId)} (first seen {candidate.FirstSeenAtUtc:O})";
+            }
+
             if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
             {
                 buildId = match.Id;
@@ -134,7 +142,7 @@ internal static class DiffCommand
             {
                 throw new InvalidOperationException(
                     $"Build prefix '{buildId}' matches {match.TotalCount} builds; " +
-                    $"re-run with a full build ID: {ShortId.FormatMatchList(match)}.");
+                    $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
             }
             else
             {

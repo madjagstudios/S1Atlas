@@ -238,7 +238,14 @@ internal sealed class ExtractionInputResolver
                 ExtractionFailureStage.InputResolution,
                 ExtractionFailureCode.AmbiguousBuildPrefix,
                 $"Atlas build prefix '{requestedBuildId}' matches {match.TotalCount} builds; " +
-                $"re-run with a full build ID: {ShortId.FormatMatchList(match)}.");
+                $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
+        }
+
+        string DescribeBuild(string buildId)
+        {
+            var build = builds.First(candidate => string.Equals(
+                candidate.BuildId, buildId, StringComparison.Ordinal));
+            return $"{ShortId.Display(buildId)} (first seen {build.FirstSeenAtUtc:O})";
         }
 
         return null;

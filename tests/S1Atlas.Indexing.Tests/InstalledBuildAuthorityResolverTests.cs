@@ -60,8 +60,10 @@ public sealed class InstalledBuildAuthorityResolverTests
         Assert.Equal("ABCDEF12", result.RequestedBuildId);
         Assert.Null(result.ResolvedBuildId);
         Assert.Contains("2 builds", result.Message, StringComparison.Ordinal);
-        Assert.Contains(first, result.Message, StringComparison.Ordinal);
-        Assert.Contains(second, result.Message, StringComparison.Ordinal);
+        Assert.Contains("abcdef120000 (first seen", result.Message, StringComparison.Ordinal);
+        Assert.Contains("abcdef121111 (first seen", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(first, result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(second, result.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -93,8 +93,10 @@ public sealed class ExtractionInputResolverTests
 
         Assert.Equal(ExtractionFailureCode.AmbiguousBuildPrefix, exception.Code);
         Assert.Contains("2 builds", exception.Message, StringComparison.Ordinal);
-        Assert.Contains(first.BuildId, exception.Message, StringComparison.Ordinal);
-        Assert.Contains(second.BuildId, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("abcdef120000 (first seen", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("abcdef121111 (first seen", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(first.BuildId, exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(second.BuildId, exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -116,21 +116,23 @@ public sealed class ShortIdTests
     }
 
     [Fact]
-    public void FormatMatchList_joins_shown_ids_and_reports_truncation()
+    public void FormatMatchList_joins_described_ids_and_reports_truncation()
     {
         var truncated = ShortId.MatchPrefix(
-            Enumerable.Range(0, 12).Select(index => "abcdef00" + index.ToString("x2")),
+            Enumerable.Range(0, 12).Select(index => "abcdef00" + index.ToString("x2") + new string('f', 52)),
             "abcdef00");
 
         Assert.Equal(
-            "abcdef0000, abcdef0001, abcdef0002, abcdef0003, abcdef0004, " +
-            "abcdef0005, abcdef0006, abcdef0007, abcdef0008, abcdef0009 " +
+            "abcdef0000ff, abcdef0001ff, abcdef0002ff, abcdef0003ff, abcdef0004ff, " +
+            "abcdef0005ff, abcdef0006ff, abcdef0007ff, abcdef0008ff, abcdef0009ff " +
             "(showing 10 of 12)",
-            ShortId.FormatMatchList(truncated));
+            ShortId.FormatMatchList(truncated, ShortId.Display));
 
         var exact = ShortId.MatchPrefix(["abcdef0010", "abcdef0011"], "abcdef001");
 
         Assert.Equal(ShortIdMatchKind.Ambiguous, exact.Kind);
-        Assert.Equal("abcdef0010, abcdef0011", ShortId.FormatMatchList(exact));
+        Assert.Equal(
+            "abcdef0010 <10>, abcdef0011 <11>",
+            ShortId.FormatMatchList(exact, id => $"{ShortId.Display(id)} <{id[8..10]}>"));
     }
 }

@@ -61,6 +61,14 @@ public sealed class InstalledBuildAuthorityResolver
                 var match = ShortId.MatchPrefix(
                     builds.Select(build => build.BuildId),
                     requestedBuildId);
+
+                string DescribeBuild(string buildId)
+                {
+                    var build = builds.First(candidate => string.Equals(
+                        candidate.BuildId, buildId, StringComparison.Ordinal));
+                    return $"{ShortId.Display(buildId)} (first seen {build.FirstSeenAtUtc:O})";
+                }
+
                 if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
                 {
                     resolvedBuildId = match.Id;
@@ -72,7 +80,7 @@ public sealed class InstalledBuildAuthorityResolver
                         requestedBuildId,
                         null,
                         $"The build prefix '{requestedBuildId}' matches {match.TotalCount} builds; " +
-                        $"re-run with a full build ID: {ShortId.FormatMatchList(match)}.");
+                        $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
                 }
                 else
                 {

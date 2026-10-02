@@ -161,8 +161,10 @@ public sealed class DiffCommandTests : IAsyncDisposable
         Assert.Equal(1, exitCode);
         var text = output.ToString();
         Assert.Contains("matches 2 builds", text, StringComparison.Ordinal);
-        Assert.Contains(buildIdA, text, StringComparison.Ordinal);
-        Assert.Contains(buildIdB, text, StringComparison.Ordinal);
+        Assert.Contains("abcdef120000 (first seen", text, StringComparison.Ordinal);
+        Assert.Contains("abcdef121111 (first seen", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(buildIdA, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(buildIdB, text, StringComparison.Ordinal);
     }
 
     [Fact]
