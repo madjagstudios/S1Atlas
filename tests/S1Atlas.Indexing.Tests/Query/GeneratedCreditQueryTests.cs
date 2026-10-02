@@ -20,6 +20,10 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
     private const string GameStray = "Demo.Multi+<>c::<Foo>b__0_0():System.Void";
     private const string GameGenField = "Demo.Widget+<>c__DisplayClass0_0::x";
     private const string GameUserField = "Demo.Widget::count";
+    private const string GameDispatchBase = "Demo.Dispatch.Base::Execute():System.Void";
+    private const string GameDispatchOverride = "Demo.Dispatch.Derived::Execute():System.Void";
+    private const string GameDispatchCaller = "Demo.Dispatch.Caller::Run():System.Void";
+    private const string GameDispatchLambda = "Demo.Dispatch.Caller+<>c::<Run>b__0_0():System.Void";
     private const string RefFoo = "Demo.RefFoo::Run():System.Void";
     private const string RefLambda = "Demo.RefFoo+<>c::<Run>b__0_0():System.Void";
     private const string RefLeaf = "Demo.RefLeaf::Help():System.Int32";
@@ -312,6 +316,34 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task GameScope_DispatchDerivedRowCarriesGeneratedDetail()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+        var options = new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Game);
+
+        var combined = await service.CallersAsync(
+            GameDispatchOverride, options, TestContext.Current.CancellationToken);
+        var row = Assert.Single(combined.Relationships);
+        Assert.Equal(GameDispatchCaller, row.Source.QualifiedName);
+        Assert.Equal("in lambda", row.GeneratedDetail);
+        Assert.True(row.IsDerived);
+        Assert.Equal([$"via {GameDispatchBase}"], row.Routes);
+
+        var exact = await service.CallersAsync(
+            GameDispatchOverride, options, TestContext.Current.CancellationToken, exact: true);
+        Assert.Equal(0, exact.TotalCount);
+        Assert.Empty(exact.Relationships);
+
+        var raw = await service.CallersAsync(
+            GameDispatchOverride, options, TestContext.Current.CancellationToken, includeGenerated: true);
+        var rawRow = Assert.Single(raw.Relationships);
+        Assert.Equal(GameDispatchLambda, rawRow.Source.QualifiedName);
+        Assert.Null(rawRow.GeneratedDetail);
+        Assert.True(rawRow.IsDerived);
+        Assert.Equal([$"via {GameDispatchBase}"], rawRow.Routes);
+    }
+
+    [Fact]
     public async Task GameScope_FieldReferencesCreditLambdaReaders()
     {
         var service = await SeedAsync(TestContext.Current.CancellationToken);
@@ -379,10 +411,14 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
         var stray = Method("symbol-stray", snapshot.SnapshotId, GameStray, isGenerated: true);
         var genField = Field("symbol-widget-capture", snapshot.SnapshotId, GameGenField, isGenerated: true);
         var userField = Field("symbol-widget-count", snapshot.SnapshotId, GameUserField);
+        var dispatchBase = Method("symbol-dispatch-base", snapshot.SnapshotId, GameDispatchBase);
+        var dispatchOverride = Method("symbol-dispatch-override", snapshot.SnapshotId, GameDispatchOverride);
+        var dispatchCaller = Method("symbol-dispatch-caller", snapshot.SnapshotId, GameDispatchCaller);
+        var dispatchLambda = Method("symbol-dispatch-lambda", snapshot.SnapshotId, GameDispatchLambda, isGenerated: true);
         await repository.CompleteIndexRunAsync(
             run.IndexId,
             new IndexWriteSet(
-                [foo, lambda, leaf, leaf2, other, stray, genField, userField],
+                [foo, lambda, leaf, leaf2, other, stray, genField, userField, dispatchBase, dispatchOverride, dispatchCaller, dispatchLambda],
                 [],
                 [],
                 [],
@@ -407,7 +443,14 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
                     new IndexRelationshipRecord(
                         "rel-count-read", snapshot.SnapshotId, foo.SymbolId, userField.SymbolId,
                         userField.QualifiedName, "ReadsField", "Body",
-                        GeneratedSourceSymbolId: lambda.SymbolId, GeneratedDetail: "in lambda")
+                        GeneratedSourceSymbolId: lambda.SymbolId, GeneratedDetail: "in lambda"),
+                    new IndexRelationshipRecord(
+                        "rel-dispatch-override", snapshot.SnapshotId, dispatchOverride.SymbolId, dispatchBase.SymbolId,
+                        dispatchBase.QualifiedName, "Overrides", "Metadata"),
+                    new IndexRelationshipRecord(
+                        "rel-dispatch-call", snapshot.SnapshotId, dispatchCaller.SymbolId, dispatchBase.SymbolId,
+                        dispatchBase.QualifiedName, "CallsVirtual", "Body",
+                        GeneratedSourceSymbolId: dispatchLambda.SymbolId, GeneratedDetail: "in lambda")
                 ]),
             "2026-09-01T12:00:00Z",
             cancellationToken);
