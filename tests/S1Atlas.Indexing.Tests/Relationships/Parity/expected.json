@@ -1,0 +1,407 @@
+{
+  "symbols": [
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task<System.Int32>",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "async body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "local function body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32", "reason": "lambda body" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32", "reason": "lambda body" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable<System.Int32>", "reason": "iterator body" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task<System.Int32>", "reason": "async body" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32", "reason": "local function body" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32", "reason": "local function body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable<System.Int32>",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "iterator body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "local function body" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func<System.Int32,System.Int32>",
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func<System.Int32,System.Int32>",
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32",
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func<System.Int32,System.Int32>", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32",
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func<System.Int32,System.Int32>", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void", "relation": "callers", "reason": "delegate creation", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::System.Func<System.Int32,System.Int32> Pinged",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::RaisePinged(System.Int32):System.Int32", "reason": "field read" },
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func<System.Int32,System.Int32>):System.Void", "reason": "event accessor" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func<System.Int32,System.Int32>):System.Void", "reason": "event accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func<System.Int32,System.Int32>):System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void", "reason": "event accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func<System.Int32,System.Int32>):System.Void", "reason": "event accessor" }
+      ],
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void",
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DelegateHolder::System.Func<System.Int32,System.Int32> Handler",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateHolder::Fire(System.Int32):System.Int32", "reason": "field read" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void", "reason": "field initializer" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchAbstract::Compute(System.Int32):System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32", "reason": "direct call" }
+      ],
+      "overriders": ["S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32"]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchBase::Bar():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaBaseBar(S1Atlas.ParityFixture.DispatchBase):System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchBase::Foo():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32", "reason": "direct call" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchDerived::CallBase():System.Int32", "reason": "base call" }
+      ],
+      "overriders": ["S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32"]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32", "reason": "virtual dispatch" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaConcrete(S1Atlas.ParityFixture.DispatchConcrete):System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDerived::CallBase():System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchBase::Foo():System.Int32", "reason": "base call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32", "reason": "virtual dispatch" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchAbstract::Compute(System.Int32):System.Int32", "reason": "direct call" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32", "reason": "virtual dispatch" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchBase::Foo():System.Int32", "reason": "direct call" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32", "reason": "virtual dispatch" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaBaseBar(S1Atlas.ParityFixture.DispatchBase):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchBase::Bar():System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaConcrete(S1Atlas.ParityFixture.DispatchConcrete):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaHider(S1Atlas.ParityFixture.DispatchHider):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchHider::Bar():System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaImplicit(S1Atlas.ParityFixture.DispatchImplicit):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaInherited(S1Atlas.ParityFixture.DispatchInherited):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.IDispatchContract::Serve():System.Int32", "reason": "direct call" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32", "reason": "interface dispatch" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32", "reason": "interface dispatch" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32", "reason": "interface dispatch" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchHider::Bar():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaHider(S1Atlas.ParityFixture.DispatchHider):System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32", "reason": "interface dispatch" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaImplicit(S1Atlas.ParityFixture.DispatchImplicit):System.Int32", "reason": "direct call" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaInherited(S1Atlas.ParityFixture.DispatchInherited):System.Int32", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.IDispatchContract::Serve():System.Int32",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32", "reason": "direct call" }
+      ],
+      "implementers": [
+        "S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32",
+        "S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32",
+        "S1Atlas.ParityFixture.DispatchInherited::Serve():System.Int32 (inherited)"
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBox`1::!0 <Item>k__BackingField",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::get_Item():!0", "reason": "property accessor" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "field initializer" },
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::set_Item(!0):System.Void", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32", "reason": "constructs" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBox`1::Touch(!0):!0",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericBox`1::set_Item(!0):System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericDrivers::ViaConstructedType():System.Int32",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "constructs" },
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::set_Item(!0):System.Void", "reason": "property accessor" },
+        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::Touch(!0):!0", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericDrivers::ViaGenericMethod():System.String",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.GenericHelpers::Echo`1(!!0):!!0", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.GenericHelpers::Echo`1(!!0):!!0",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::ViaGenericMethod():System.String", "reason": "constructed generic" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::System.Action Changed",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::Touch():System.Void", "reason": "event accessor" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "event accessor" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void", "reason": "event accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::System.Int32 <AutoProperty>k__BackingField",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::get_AutoProperty():System.Int32", "reason": "property accessor" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::.ctor():System.Void", "reason": "field initializer" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::set_AutoProperty(System.Int32):System.Void", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::System.Int32 ConstructedCount",
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::.cctor():System.Void", "reason": "static constructor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::System.Int32 ValueField",
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::.ctor():System.Void", "reason": "field write" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::System.Int32 _backing",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::get_ManualProperty():System.Int32", "reason": "property accessor" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::set_ManualProperty(System.Int32):System.Void", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::.ctor():System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::.ctor(System.Int32):System.Void", "reason": "constructs" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::.ctor(System.Int32):System.Void",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::.ctor():System.Void", "reason": "constructs" },
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::set_AutoProperty(System.Int32):System.Void", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MemberCases::set_AutoProperty(System.Int32):System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.MemberCases::.ctor(System.Int32):System.Void", "reason": "property accessor" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.MutablePoint::System.Int32 X",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "field read" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "field write" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.RefFieldCases::Bump(System.Int32&):System.Void",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void",
+      "callees": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::Bump(System.Int32&):System.Void", "reason": "direct call" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.RefFieldCases::S1Atlas.ParityFixture.MutablePoint Point",
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "reason": "address taken" }
+      ],
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.RefFieldCases::System.Int32 Counter",
+      "readers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::ReadCounter():System.Int32", "reason": "field read" }
+      ],
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::WriteCounter(System.Int32):System.Void", "reason": "field write" },
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "reason": "address taken" }
+      ],
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+      ]
+    },
+    {
+      "target": "S1Atlas.ParityFixture.RefFieldCases::System.Int32 Shared",
+      "writers": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void", "reason": "address taken" }
+      ],
+      "knownGaps": [
+        { "symbol": "S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void", "relation": "readers", "reason": "address taken", "ticket": "AT-67" }
+      ]
+    }
+  ]
+}
