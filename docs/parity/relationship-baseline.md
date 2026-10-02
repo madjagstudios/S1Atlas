@@ -31,11 +31,11 @@ later tickets update it in the same PR that fixes a gap.
 | address taken | 8 | 0 | 8 | 0 | 4 |
 | array accessor | 0 | 0 | 0 | 3 | 0 |
 | async body | 2 | 0 | 2 | 0 | 1 |
-| base call | 2 | 2 | 0 | 0 | 0 |
+| base call | 3 | 3 | 0 | 0 | 0 |
 | constructed generic | 8 | 8 | 0 | 0 | 0 |
 | constructs | 12 | 12 | 0 | 0 | 0 |
 | delegate creation | 0 | 0 | 0 | 0 | 10 |
-| direct call | 22 | 22 | 0 | 0 | 0 |
+| direct call | 23 | 23 | 0 | 0 | 0 |
 | event accessor | 7 | 7 | 0 | 0 | 0 |
 | field initializer | 2 | 2 | 0 | 0 | 0 |
 | field read | 4 | 4 | 0 | 0 | 0 |
