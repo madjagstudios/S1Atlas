@@ -23,6 +23,11 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
     private const string ApiBase = "Demo.ApiBase::Run():System.Void";
     private const string ApiOverride = "Demo.ApiOverride::Run():System.Void";
     private const string ApiCaller = "Demo.ApiCaller::Run():System.Void";
+    private const string RefChainTop = "Demo.RefChainTop::Run():System.Void";
+    private const string RefChainMid = "Demo.RefChainMid::Run():System.Void";
+    private const string RefChainLeaf = "Demo.RefChainLeaf::Run():System.Void";
+    private const string RefChainCallerTop = "Demo.RefChainCallerTop::Run():System.Void";
+    private const string RefChainCallerMid = "Demo.RefChainCallerMid::Run():System.Void";
 
     private readonly string _root = Path.Combine(
         Path.GetTempPath(),
@@ -114,6 +119,25 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
         Assert.Equal(RefCaller, row.Source.QualifiedName);
         Assert.True(row.IsDerived);
         Assert.Equal([$"via {RefBase}"], row.Routes);
+    }
+
+    [Fact]
+    public async Task ReferenceScope_TwoSlotChain_LabelsEachRowWithItsOwnRoute()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+
+        var result = await service.CallersAsync(
+            RefChainLeaf,
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Reference, Collection),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
+        Assert.Equal(0, result.ExactCount);
+        Assert.Equal(2, result.DerivedCount);
+        var byCaller = result.Relationships.ToDictionary(edge => edge.Source.QualifiedName!, StringComparer.Ordinal);
+        Assert.All(result.Relationships, edge => Assert.True(edge.IsDerived));
+        Assert.Equal([$"via {RefChainMid}"], byCaller[RefChainCallerMid].Routes);
+        Assert.Equal([$"via {RefChainMid}, {RefChainTop}"], byCaller[RefChainCallerTop].Routes);
     }
 
     [Fact]
@@ -290,7 +314,12 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
         var refBase = Method("symbol-ref-base", snapshot.SnapshotId, RefBase, CodebaseKind.ReferenceMod, CodeChannel.Installed);
         var refOverride = Method("symbol-ref-override", snapshot.SnapshotId, RefOverride, CodebaseKind.ReferenceMod, CodeChannel.Installed);
         var refCaller = Method("symbol-ref-caller", snapshot.SnapshotId, RefCaller, CodebaseKind.ReferenceMod, CodeChannel.Installed);
-        var symbols = new List<IndexSymbolRecord> { modCaller, refBase, refOverride, refCaller };
+        var chainTop = Method("symbol-ref-chain-top", snapshot.SnapshotId, RefChainTop, CodebaseKind.ReferenceMod, CodeChannel.Installed);
+        var chainMid = Method("symbol-ref-chain-mid", snapshot.SnapshotId, RefChainMid, CodebaseKind.ReferenceMod, CodeChannel.Installed);
+        var chainLeaf = Method("symbol-ref-chain-leaf", snapshot.SnapshotId, RefChainLeaf, CodebaseKind.ReferenceMod, CodeChannel.Installed);
+        var chainCallerTop = Method("symbol-ref-chain-caller-top", snapshot.SnapshotId, RefChainCallerTop, CodebaseKind.ReferenceMod, CodeChannel.Installed);
+        var chainCallerMid = Method("symbol-ref-chain-caller-mid", snapshot.SnapshotId, RefChainCallerMid, CodebaseKind.ReferenceMod, CodeChannel.Installed);
+        var symbols = new List<IndexSymbolRecord> { modCaller, refBase, refOverride, refCaller, chainTop, chainMid, chainLeaf, chainCallerTop, chainCallerMid };
         await repository.CompleteIndexRunAsync(
             run.IndexId,
             new IndexWriteSet(
@@ -307,7 +336,21 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
                         refBase.QualifiedName, "Overrides", "Metadata"),
                     new IndexRelationshipRecord(
                         "rel-ref-call", snapshot.SnapshotId, refCaller.SymbolId, refBase.SymbolId,
-                        refBase.QualifiedName, "CallsVirtual", "Body")
+                        refBase.QualifiedName, "CallsVirtual", "Body"),
+                    new IndexRelationshipRecord(
+                        "rel-ref-chain-ov-leaf", snapshot.SnapshotId, chainLeaf.SymbolId, chainMid.SymbolId,
+                        chainMid.QualifiedName, "Overrides", "Metadata"),
+                    new IndexRelationshipRecord(
+                        "rel-ref-chain-ov-mid", snapshot.SnapshotId, chainMid.SymbolId, chainTop.SymbolId,
+                        chainTop.QualifiedName, "Overrides", "Metadata"),
+                    // The mid-slot edge sorts after the top-slot edge so the
+                    // walk encounter order differs from relationship-id order.
+                    new IndexRelationshipRecord(
+                        "rel-ref-chain-aa-top", snapshot.SnapshotId, chainCallerTop.SymbolId, chainTop.SymbolId,
+                        chainTop.QualifiedName, "CallsVirtual", "Body"),
+                    new IndexRelationshipRecord(
+                        "rel-ref-chain-zz-mid", snapshot.SnapshotId, chainCallerMid.SymbolId, chainMid.SymbolId,
+                        chainMid.QualifiedName, "CallsVirtual", "Body")
                 ],
                 ReferenceIndexContext: new ReferenceIndexContextRecord(run.IndexId, gameIndexId, buildId),
                 ReferenceMods:

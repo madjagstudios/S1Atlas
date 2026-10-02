@@ -913,8 +913,12 @@ public sealed class IndexQueryService
             derivedEdges.Select(item => (item.Edge, "Incoming")).ToArray(),
             selected.Symbol.Origin,
             cancellationToken);
+        // Routes join by relationship id so the flagging stays correct no
+        // matter what order the mapper emits.
+        var routesById = derivedEdges.ToDictionary(
+            item => item.Edge.RelationshipId, item => item.Routes, StringComparer.Ordinal);
         var flagged = derived
-            .Zip(derivedEdges, (row, item) => row with { IsDerived = true, Routes = item.Routes })
+            .Select(row => row with { IsDerived = true, Routes = routesById[row.RelationshipId] })
             .ToArray();
         var page = DispatchExpansion.MergeAndTake(exact, flagged, limit);
         return new RelationshipQuerySetResult(

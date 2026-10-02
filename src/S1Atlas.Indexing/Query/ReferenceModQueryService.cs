@@ -492,8 +492,12 @@ public sealed class ReferenceModQueryService
             derivedEdges.Select(item => (item.Edge, "Incoming")).ToArray(),
             includeGameEndpoints,
             cancellationToken);
+        // The mapped rows are sorted by relationship id while the expansion
+        // emits walk encounter order, so routes join by id, not by position.
+        var routesById = derivedEdges.ToDictionary(
+            item => item.Edge.RelationshipId, item => item.Routes, StringComparer.Ordinal);
         var flagged = derived
-            .Zip(derivedEdges, (row, item) => row with { IsDerived = true, Routes = item.Routes })
+            .Select(row => row with { IsDerived = true, Routes = routesById[row.RelationshipId] })
             .ToArray();
         var page = DispatchExpansion.MergeAndTake(exact, flagged, int.MaxValue);
         return new RelationshipQuerySetResult(
