@@ -926,7 +926,7 @@ Every symbol-taking command (`callers`, `callees`, `refs`, `fieldrefs`,
 `open`, `investigate_seam`, plus the MCP `get_*` and `find_*` tools) accepts
 the same selector forms, resolved in this order:
 
-1. Full 64-character symbol ID.
+1. Full 64-character symbol ID (lowercase).
 2. Unique short-ID prefix: 8 to 63 hex characters of either case.
 3. Canonical key (`ScheduleI:Installed:Method:...`).
 4. Exact signature.
@@ -941,8 +941,9 @@ candidate table); `--json` keeps full IDs and adds a `shortId` field.
 
 An ambiguous selector exits 1 with `AmbiguousSymbol` and a numbered candidate
 table (number, kind, qualified name, signature, short ID, codebase) capped at
-10 human rows with the exact total (`Found 12 candidates; showing 10.`), plus
-the narrowest working hint: the exact signature when signatures differ,
+10 human rows with the exact total (`Found 12 candidates; showing 10.`), or
+`Found at least N candidates; showing 10.` when the pool truncates past 50,
+plus the narrowest working hint: the exact signature when signatures differ,
 otherwise a short ID from the table. An unknown selector exits 1 with
 `SymbolNotFound`: human output prints `Found 0 matches.`, plus up to 5
 `Nearest matches` rows and a spelling/`search` hint when close names exist.
@@ -954,8 +955,10 @@ they are accepted: `--build`/`--build-id`, `diff` build arguments,
 `extractions show`, and `recover-native-body --symbol-id`. Ambiguous prefixes
 fail listing labeled short IDs (builds show their first-seen time, history
 entries their kind and creation time, symbols their signature) that can be
-re-run directly. Scene, GameObject, component, and asset ambiguity renders
-numbered candidate rows with counts and exact-ID hints.
+re-run directly. Prefixes accept either hex case everywhere, and full-length
+build IDs do too; full symbol and extraction IDs must be lowercase. Scene,
+GameObject, component, and asset ambiguity renders numbered candidate rows
+with counts and exact-ID hints.
 
 ## Command reference
 
