@@ -37,6 +37,10 @@ public sealed class SyntheticAtlas : IAsyncDisposable
     public const string CreditLambdaMethodId = "method-serve-credit-lambda";
     public const string CreditLeafMethodId = "method-serve-credit-leaf";
     public const string CreditCaptureFieldId = "field-serve-credit-capture";
+    public const string DelegateBuildMethodId = "method-serve-delegate-build";
+    public const string DelegateTargetMethodId = "method-serve-delegate-target";
+    public const string DelegateCountFieldId = "field-serve-delegate-count";
+    public const string DelegateTakeMethodId = "method-serve-delegate-take";
 
     public const string CatalogTypeId = "type-serve-catalog";
     public const string LookupMethodId = "method-serve-lookup";
@@ -471,6 +475,42 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 "System.Int32 Demo.Capture::Holder+<>c__DisplayClass0_0::x",
                 false,
                 IsGenerated: true),
+            new(
+                Sid(DelegateBuildMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Delegate::Build()",
+                "Method",
+                "Demo.Delegate.Build",
+                "System.Void Demo.Delegate::Build()",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
+                Sid(DelegateTargetMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Delegate::Handle()",
+                "Method",
+                "Demo.Delegate.Handle",
+                "System.Void Demo.Delegate::Handle()",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
+                Sid(DelegateCountFieldId),
+                snapshotId,
+                "ScheduleI:Installed:Field:Demo.Delegate::System.Int32 Count",
+                "Field",
+                "Demo.Delegate.Count",
+                "System.Int32 Demo.Delegate::Count",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
+                Sid(DelegateTakeMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Delegate::Take()",
+                "Method",
+                "Demo.Delegate.Take",
+                "System.Void Demo.Delegate::Take()",
+                false,
+                BodyRecoveryStatus.Recovered),
         };
         if (variant.IncludeCheckPhysics)
         {
@@ -652,6 +692,22 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                         null,
                         "ReadsField",
                         "fixture:credit-reads"),
+                    new IndexRelationshipRecord(
+                        Sid("rel-serve-delegate-create"),
+                        snapshotId,
+                        Sid(DelegateBuildMethodId),
+                        Sid(DelegateTargetMethodId),
+                        null,
+                        "ReferencesMethod",
+                        "RecoveredIL"),
+                    new IndexRelationshipRecord(
+                        Sid("rel-serve-delegate-address"),
+                        snapshotId,
+                        Sid(DelegateTakeMethodId),
+                        Sid(DelegateCountFieldId),
+                        null,
+                        "TakesFieldAddress",
+                        "RecoveredIL"),
                 ]),
             BaseTime.AddMinutes(completedMinutes).ToString("O"),
             cancellationToken);
