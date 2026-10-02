@@ -11,7 +11,8 @@ public sealed record ManagedTypeFacts(
     string Name,
     string? BaseType,
     IReadOnlyList<string> Interfaces,
-    IReadOnlyList<ManagedMemberFacts> Members);
+    IReadOnlyList<ManagedMemberFacts> Members,
+    bool IsInterface = false);
 
 public sealed record ManagedMemberFacts(
     string Name,
@@ -25,9 +26,13 @@ public sealed record ManagedMemberFacts(
     int GenericParameterCount = 0,
     ManagedMethodBodyFacts? BodyFacts = null,
     BodyRecoveryStatus? BodyRecoveryStatus = null,
-    bool IsPublic = false)
+    bool IsPublic = false,
+    bool IsVirtual = false,
+    bool IsNewSlot = false,
+    IReadOnlyList<string>? MethodImplDeclarations = null)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
+    public IReadOnlyList<string> MethodImplDeclarationsOrEmpty => MethodImplDeclarations ?? [];
 }
 
 public sealed record ManagedMethodBodyFacts(

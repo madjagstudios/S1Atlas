@@ -75,6 +75,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
 
         var members = new List<ManagedMemberFacts>();
         var typeProvider = new MetadataTypeNameProvider();
+        var methodImplDeclarations = ReadMethodImplDeclarations(metadata, definition, typeProvider);
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = metadata.GetFieldDefinition(fieldHandle);
@@ -164,10 +165,52 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 GenericParameterCount: genericParameterCount,
                 BodyFacts: bodyFacts,
                 BodyRecoveryStatus: bodyRecoveryStatus,
-                IsPublic: IsPublic(method.Attributes)));
+                IsPublic: IsPublic(method.Attributes),
+                IsVirtual: (method.Attributes & MethodAttributes.Virtual) != 0,
+                IsNewSlot: (method.Attributes & MethodAttributes.NewSlot) != 0,
+                MethodImplDeclarations: methodImplDeclarations.GetValueOrDefault(methodHandle)));
         }
 
-        return new ManagedTypeFacts(fullName, @namespace, name, baseType, interfaces, members);
+        return new ManagedTypeFacts(
+            fullName,
+            @namespace,
+            name,
+            baseType,
+            interfaces,
+            members,
+            IsInterface: (definition.Attributes & TypeAttributes.Interface) != 0);
+    }
+
+    private static Dictionary<MethodDefinitionHandle, IReadOnlyList<string>> ReadMethodImplDeclarations(
+        MetadataReader metadata,
+        TypeDefinition definition,
+        MetadataTypeNameProvider typeProvider)
+    {
+        var declarations = new Dictionary<MethodDefinitionHandle, List<string>>();
+        foreach (var implementationHandle in definition.GetMethodImplementations())
+        {
+            var implementation = metadata.GetMethodImplementation(implementationHandle);
+            if (implementation.MethodBody.Kind != HandleKind.MethodDefinition)
+                continue;
+            var identity = implementation.MethodDeclaration.Kind switch
+            {
+                HandleKind.MethodDefinition => GetMethodIdentity(metadata, (MethodDefinitionHandle)implementation.MethodDeclaration, typeProvider),
+                HandleKind.MemberReference => GetMemberReferenceIdentity(metadata, (MemberReferenceHandle)implementation.MethodDeclaration, typeProvider),
+                _ => UnresolvedMarker("unknown method-impl declaration", $"token-0x{MetadataTokens.GetToken(implementation.MethodDeclaration):X8}")
+            };
+            var body = (MethodDefinitionHandle)implementation.MethodBody;
+            if (!declarations.TryGetValue(body, out var list))
+            {
+                list = [];
+                declarations[body] = list;
+            }
+
+            list.Add(identity);
+        }
+
+        return declarations.ToDictionary(
+            item => item.Key,
+            item => (IReadOnlyList<string>)item.Value.OrderBy(value => value, StringComparer.Ordinal).ToArray());
     }
 
     private static bool IsNoBodyByDesign(MethodDefinition method) =>
