@@ -905,6 +905,7 @@ public sealed class IndexQueryService
         var derivedEdges = await DispatchExpansion.CollectDerivedAsync(
             _repository,
             selected.Run.IndexId,
+            selected.Run.IndexId,
             selected.Symbol.SymbolId,
             cancellationToken);
         var derived = await MapRelationshipEdgesAsync(
