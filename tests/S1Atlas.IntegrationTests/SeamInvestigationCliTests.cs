@@ -748,6 +748,13 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
         return atlas;
     }
 
+    public static async Task<SeamInvestigationCliAtlas> CreateRoutingAsync()
+    {
+        var atlas = await CreateEmptyAsync("routing");
+        await atlas.SeedRoutingFixtureAsync();
+        return atlas;
+    }
+
     public (int ExitCode, string StandardOutput, string StandardError) Run(params string[] args)
     {
         var application = new CliApplication(DataRoot, "0.1.0-test");
@@ -884,6 +891,28 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
             [],
             includeCallableSurface: false);
         return (first.SymbolId, second.SymbolId);
+    }
+
+    private async Task SeedRoutingFixtureAsync()
+    {
+        const string buildId = "build-routing";
+        const string snapshotId = "snapshot-routing";
+        await SeedValidatedExtractionOnlyAsync(buildId);
+
+        var dupA = Method("dup-a", snapshotId, "Game.Routing.Alpha.Dup", BodyRecoveryStatus.Recovered);
+        var dupB = Method("dup-b", snapshotId, "Game.Routing.Beta.Dup", BodyRecoveryStatus.Recovered);
+        var widget = Method("widget-1", snapshotId, "Game.Routing.Widget", BodyRecoveryStatus.Recovered);
+        var gadget = Type("gadget-1", snapshotId, "Game.Routing.Gadget");
+        var valueA = Field("value-a", snapshotId, "Game.Routing.Alpha.Value");
+        var valueB = Field("value-b", snapshotId, "Game.Routing.Beta.Value");
+        await CompleteGameRunAsync(
+            buildId,
+            "index-routing",
+            snapshotId,
+            dupA,
+            [dupB, widget, gadget, valueA, valueB],
+            [],
+            includeCallableSurface: false);
     }
 
     private async Task SeedValidatedExtractionOnlyAsync(string buildId)
@@ -1194,6 +1223,19 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
             snapshotId,
             "ScheduleI:Installed:Type:" + qualifiedName,
             "Type",
+            qualifiedName,
+            qualifiedName,
+            false);
+
+    private static IndexSymbolRecord Field(
+        string id,
+        string snapshotId,
+        string qualifiedName) =>
+        new(
+            id,
+            snapshotId,
+            "ScheduleI:Installed:Field:" + qualifiedName,
+            "Field",
             qualifiedName,
             qualifiedName,
             false);

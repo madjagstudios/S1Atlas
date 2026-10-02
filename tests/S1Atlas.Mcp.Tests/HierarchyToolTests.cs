@@ -142,6 +142,45 @@ public sealed class HierarchyToolTests
         Assert.Empty(envelope.Suggestions);
     }
 
+    [Fact]
+    public async Task FindOverriders_Ambiguous_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindOverridersAsync(
+            "Render",
+            buildId: null,
+            limit: 50,
+            depth: 10,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.NotEmpty(envelope.Candidates);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task FindDerivedTypes_Ambiguous_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindDerivedTypesAsync(
+            "Render",
+            buildId: null,
+            limit: 50,
+            depth: 10,
+            offset: 0,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.NotEmpty(envelope.Candidates);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
     private static CodeSymbolTools CreateTools(McpTestAtlas atlas)
     {
         var services = McpServerComposition.BuildReadOnlyServices(atlas.DataRoot);

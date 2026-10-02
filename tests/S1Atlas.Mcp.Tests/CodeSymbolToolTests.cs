@@ -551,6 +551,55 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task FindCallees_AmbiguousSelector_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCalleesAsync(
+            "worker",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task FindReferences_AmbiguousSelector_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindReferencesAsync(
+            "worker",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task FindRelatedTypes_TypoSelector_ReturnsNotFoundWithSuggestions()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindRelatedTypesAsync(
+            "Widjet",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.NotEmpty(envelope.Suggestions);
+    }
+
+    [Fact]
     public async Task FindReferences_ReturnsIncomingAndOutgoingEdges()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
