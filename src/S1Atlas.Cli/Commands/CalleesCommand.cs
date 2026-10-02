@@ -11,11 +11,11 @@ internal static class CalleesCommand
 {
     public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create("callees", service, authorityResolver, repository, output, error, cancellationToken,
-        executeWithGenerated: async (query, options, ct, includeGenerated) =>
+        executeWithGeneratedAndDelegates: async (query, options, ct, includeGenerated, includeDelegates) =>
         {
             var result = options.Scope == IndexQueryScope.Game
-                ? await service.CalleesAsync(query, options, ct, includeGenerated: includeGenerated)
-                : await federatedService.CalleesAsync(query, options, ct, includeGenerated: includeGenerated);
+                ? await service.CalleesAsync(query, options, ct, includeGenerated: includeGenerated, includeDelegates: includeDelegates)
+                : await federatedService.CalleesAsync(query, options, ct, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
             return new IndexQueryOutput(
                 [],
                 result.Relationships,
@@ -25,7 +25,7 @@ internal static class CalleesCommand
                 CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
                 CompletenessNotice: result.CompletenessNotice);
         },
-        executeInIndexWithGenerated: async (query, run, limit, ct, includeGenerated) => ToOutput(await service.CalleesInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct, includeGenerated: includeGenerated)),
+        executeInIndexWithGeneratedAndDelegates: async (query, run, limit, ct, includeGenerated, includeDelegates) => ToOutput(await service.CalleesInIndexAsync(run, CodebaseKind.ScheduleI, CodeChannel.Installed, query, limit, ct, includeGenerated: includeGenerated, includeDelegates: includeDelegates)),
         includeScopeOptions: true);
 
     private static IndexQueryOutput ToOutput(RelationshipQuerySetResult result) => new([], result.Relationships, [],
