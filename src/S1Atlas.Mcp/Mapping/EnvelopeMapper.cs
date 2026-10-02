@@ -497,8 +497,9 @@ public static class EnvelopeMapper
     public static ToolEnvelope<RelationshipQuerySetResult> FromScopedRelationships(
         InstalledBuildAuthority authority,
         RelationshipQuerySetResult result,
-        string? collection) =>
-        AddReferenceProvenance(
+        string? collection)
+    {
+        var envelope = AddReferenceProvenance(
             FromRelationships(authority, result),
             authority,
             collection,
@@ -522,6 +523,10 @@ public static class EnvelopeMapper
                     endpoint.License,
                     endpoint.RelativePath,
                     endpoint.Sha256))));
+        if (result.Relationships.Any(edge => edge.IsDerived))
+            envelope = envelope with { Provenance = [..envelope.Provenance, Derived(authority, "dispatch-expansion")] };
+        return envelope;
+    }
 
     public static ToolEnvelope<CallSiteQueryResult> FromCallSites(
         InstalledBuildAuthority authority,

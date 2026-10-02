@@ -214,7 +214,8 @@ public sealed class CodeSymbolTools
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null) =>
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
+        [Description("Return only exact (statically bound) callers; omit may-dispatch callers.")] bool exact = false) =>
         await FindRelationshipsAsync(
             selector,
             buildId,
@@ -222,7 +223,8 @@ public sealed class CodeSymbolTools
             ct,
             scope,
             collection,
-            RelationshipDirection.Callers);
+            RelationshipDirection.Callers,
+            exact);
 
     [McpServerTool(Name = "find_callees", Title = "Find callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
@@ -669,7 +671,8 @@ public sealed class CodeSymbolTools
         CancellationToken ct,
         string? scope,
         string? collection,
-        RelationshipDirection direction)
+        RelationshipDirection direction,
+        bool exact = false)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
@@ -700,13 +703,13 @@ public sealed class CodeSymbolTools
                 var result = options.Scope == IndexQueryScope.Game
                     ? direction switch
                     {
-                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct),
+                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, exact),
                         RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct),
                         _ => await _services.IndexQueryService.RefsInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct)
                     }
                     : direction switch
                     {
-                        RelationshipDirection.Callers => await _services.FederatedIndexQueryService.CallersAsync(selector, options, ct),
+                        RelationshipDirection.Callers => await _services.FederatedIndexQueryService.CallersAsync(selector, options, ct, exact),
                         RelationshipDirection.Callees => await _services.FederatedIndexQueryService.CalleesAsync(selector, options, ct),
                         _ => await _services.FederatedIndexQueryService.RefsAsync(selector, options, ct)
                     };
