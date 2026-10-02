@@ -68,6 +68,7 @@ public sealed record ManagedReferenceFact(
 public enum ManagedReferenceKind
 {
     Calls,
+    CallsVirtual,
     Constructs,
     ReadsField,
     WritesField

@@ -14,7 +14,7 @@ public sealed class GenericMemberReferenceIdentityTests
         var drivers = await FindMembersAsync("GenericDrivers", "ViaConstructedType");
         Assert.Contains(
             drivers.References,
-            reference => reference.Kind == ManagedReferenceKind.Calls
+            reference => reference.Kind == ManagedReferenceKind.CallsVirtual
                 && reference.Target == $"{FixtureNamespace}.GenericBox`1::Touch(!0):!0");
         Assert.DoesNotContain(drivers.References, reference => reference.Target.StartsWith("0x"));
     }
@@ -74,7 +74,7 @@ public sealed class GenericMemberReferenceIdentityTests
         var driver = await FindMembersAsync("GenericDrivers", "UseList");
         Assert.Contains(
             driver.References,
-            reference => reference.Kind == ManagedReferenceKind.Calls
+            reference => reference.Kind == ManagedReferenceKind.CallsVirtual
                 && reference.Target == "System.Collections.Generic.List`1::Add(!0):System.Void");
         Assert.DoesNotContain(driver.References, reference => reference.Target.StartsWith("0x"));
     }

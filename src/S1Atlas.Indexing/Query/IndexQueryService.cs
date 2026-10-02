@@ -565,12 +565,17 @@ public sealed class IndexQueryService
         ValidateQueryLimit(limit, nameof(limit));
 
         var targetQuery = await ResolveCallSiteTargetQueryAsync(run, codebase, channel, selector, cancellationToken);
-        var totalCount = await _repository.CountCompletedRelationshipsByTargetTextAsync(
-            run.IndexId,
-            targetQuery.TargetText,
-            targetQuery.MatchMode,
-            "Calls",
-            cancellationToken);
+        var totalCount = 0;
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            totalCount += await _repository.CountCompletedRelationshipsByTargetTextAsync(
+                run.IndexId,
+                targetQuery.TargetText,
+                targetQuery.MatchMode,
+                kind,
+                cancellationToken);
+        }
+
         if (totalCount == 0)
         {
             return new CallSiteQueryResult(
@@ -578,13 +583,19 @@ public sealed class IndexQueryService
                 CallSiteCompletenessNotice);
         }
 
-        var edges = await _repository.GetCompletedRelationshipsByTargetTextAsync(
-            run.IndexId,
-            targetQuery.TargetText,
-            targetQuery.MatchMode,
-            "Calls",
-            limit,
-            cancellationToken);
+        var fetched = new List<IndexRelationshipRecord>();
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            fetched.AddRange(await _repository.GetCompletedRelationshipsByTargetTextAsync(
+                run.IndexId,
+                targetQuery.TargetText,
+                targetQuery.MatchMode,
+                kind,
+                limit,
+                cancellationToken));
+        }
+
+        var edges = CallSiteKinds.MergeAndTake(fetched, limit);
         var relationships = await MapRelationshipPageAsync(
             run,
             edges.Select(edge => (edge, "Incoming")).ToArray(),
@@ -1340,6 +1351,7 @@ public sealed class IndexQueryService
 
     private static bool IsCallLike(string kind) =>
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
+        string.Equals(kind, "CallsVirtual", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
 
     private static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) =>

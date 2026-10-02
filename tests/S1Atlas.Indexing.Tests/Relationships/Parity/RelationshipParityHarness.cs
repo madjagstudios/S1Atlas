@@ -364,13 +364,13 @@ public static class RelationshipParityHarness
         };
         foreach (var edge in refs.Relationships)
         {
-            if (edge.Direction == "Incoming" && (edge.Kind == "Calls" || edge.Kind == "Constructs"))
+            if (edge.Direction == "Incoming" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs"))
             {
                 var symbol = IncomingSymbol(edge);
                 if (symbol is not null)
                     fromRefs["callers"].Add(symbol);
             }
-            else if (edge.Direction == "Outgoing" && (edge.Kind == "Calls" || edge.Kind == "Constructs"))
+            else if (edge.Direction == "Outgoing" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs"))
             {
                 var symbol = OutgoingSymbol(edge);
                 if (symbol is not null)

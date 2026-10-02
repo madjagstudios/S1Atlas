@@ -746,6 +746,7 @@ public sealed class ReferenceModQueryService
 
     private static bool IsCallLike(string kind) =>
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
+        string.Equals(kind, "CallsVirtual", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
 
     private static bool IsCallable(string kind) => kind is "Method" or "Constructor";

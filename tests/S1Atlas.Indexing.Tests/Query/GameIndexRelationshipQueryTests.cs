@@ -127,7 +127,8 @@ public sealed class GameIndexRelationshipQueryTests : IAsyncDisposable
         Assert.Equal(9, result.TotalCount);
         Assert.Equal(2, result.ReturnedCount);
         Assert.Equal(["callsite-api-a-installed", "callsite-api-a-preview"], result.Relationships.Select(edge => edge.RelationshipId));
-        Assert.Equal(3, recorder.TargetTextReadLimits.Count);
+        // One bounded read per channel per call kind (Calls, CallsVirtual).
+        Assert.Equal(6, recorder.TargetTextReadLimits.Count);
         Assert.All(recorder.TargetTextReadLimits, limit => Assert.Equal(2, limit));
     }
 

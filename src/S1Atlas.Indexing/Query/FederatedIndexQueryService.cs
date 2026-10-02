@@ -428,22 +428,33 @@ public sealed class FederatedIndexQueryService
             CodeChannel.Installed,
             selector,
             cancellationToken);
-        var totalCount = await Repository.CountCompletedRelationshipsByTargetTextAsync(
-            selection.Run.IndexId,
-            query.TargetText,
-            query.MatchMode,
-            "Calls",
-            cancellationToken);
+        var totalCount = 0;
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            totalCount += await Repository.CountCompletedRelationshipsByTargetTextAsync(
+                selection.Run.IndexId,
+                query.TargetText,
+                query.MatchMode,
+                kind,
+                cancellationToken);
+        }
+
         if (totalCount == 0)
             return new CallSiteQueryResult(new RelationshipQueryPageResult(0, 0, []), CallSiteCompletenessNotice);
 
-        var edges = await Repository.GetCompletedRelationshipsByTargetTextAsync(
-            selection.Run.IndexId,
-            query.TargetText,
-            query.MatchMode,
-            "Calls",
-            limit,
-            cancellationToken);
+        var fetched = new List<IndexRelationshipRecord>();
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            fetched.AddRange(await Repository.GetCompletedRelationshipsByTargetTextAsync(
+                selection.Run.IndexId,
+                query.TargetText,
+                query.MatchMode,
+                kind,
+                limit,
+                cancellationToken));
+        }
+
+        var edges = CallSiteKinds.MergeAndTake(fetched, limit);
         var page = await MapReferenceRelationshipPageAsync(
             selection,
             edges.Select(edge => (edge, "Incoming")).ToArray(),
