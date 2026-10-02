@@ -34,7 +34,8 @@ public sealed record IndexSymbolRecord(
     string Signature,
     bool IsBestEffort,
     BodyRecoveryStatus? BodyRecoveryStatus = null,
-    bool IsPublic = false);
+    bool IsPublic = false,
+    bool IsGenerated = false);
 
 public enum CallableSurfaceKind
 {
@@ -99,7 +100,9 @@ public sealed record IndexRelationshipRecord(
     string? TargetSymbolId,
     string? TargetText,
     string Kind,
-    string Evidence);
+    string Evidence,
+    string? GeneratedSourceSymbolId = null,
+    string? GeneratedDetail = null);
 
 public sealed record IndexWriteSet(
     IReadOnlyList<IndexSymbolRecord> Symbols,

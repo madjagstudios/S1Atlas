@@ -981,6 +981,23 @@ internal static class SqliteMigrations
         INSERT INTO symbols_fts(symbols_fts) VALUES ('rebuild');
         """;
 
+    // Compiler-generated body credit. is_generated is backfilled once here and set
+    // by the symbol writer for new rows; the relationship columns stay null for
+    // pre-credit rows, which render raw. Old runs are stale after the index
+    // schema bump, so no relationship backfill is attempted.
+    private const string GeneratedBodyCreditV17Sql = """
+        ALTER TABLE symbols ADD COLUMN is_generated INTEGER NULL CHECK (is_generated IN (0, 1));
+        ALTER TABLE relationships ADD COLUMN generated_source_symbol_id TEXT NULL REFERENCES symbols(symbol_id);
+        ALTER TABLE relationships ADD COLUMN generated_detail TEXT NULL;
+
+        UPDATE symbols SET is_generated = CASE
+            WHEN qualified_name GLOB '*::[<]*' OR qualified_name GLOB '*+[<]*'
+              OR qualified_name GLOB '[<]*' OR qualified_name GLOB '*/[<]*' THEN 1
+            ELSE 0 END;
+
+        CREATE INDEX ix_symbols_generated ON symbols(snapshot_id, is_generated);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -998,6 +1015,7 @@ internal static class SqliteMigrations
         new(13, "scene-type-tree-source-v13", SceneTypeTreeSourceV13Sql),
         new(14, "scene-script-fields-v14", SceneScriptFieldsV14Sql),
         new(15, "native-evidence-method-extent-v15", NativeEvidenceMethodExtentV15Sql),
-        new(16, "symbol-search-fts-v16", SymbolSearchFtsV16Sql, RequiresFts5Trigram: true)
+        new(16, "symbol-search-fts-v16", SymbolSearchFtsV16Sql, RequiresFts5Trigram: true),
+        new(17, "generated-body-credit-v17", GeneratedBodyCreditV17Sql)
     ];
 }

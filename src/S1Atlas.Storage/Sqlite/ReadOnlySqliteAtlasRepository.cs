@@ -253,7 +253,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $id AND run.status = 'Completed'
@@ -276,7 +276,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $id AND run.status = 'Completed'
@@ -318,7 +318,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM index_runs AS run
                 INNER JOIN symbols AS symbol INDEXED BY ux_symbols_snapshot_key
                     ON symbol.snapshot_id = run.snapshot_id
@@ -345,7 +345,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
@@ -381,7 +381,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 command.CommandText = $"""
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status, symbol.is_public
+                           symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                     FROM symbols AS symbol
                     INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                     WHERE run.index_id = $indexId
@@ -430,7 +430,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = """
                 SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                        symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                       symbol.body_recovery_status, symbol.is_public
+                       symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                 FROM symbols AS symbol
                 INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                 WHERE run.index_id = $indexId
@@ -533,7 +533,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 command.CommandText = """
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status, symbol.is_public
+                           symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                     FROM symbols AS symbol
                     INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
                     WHERE run.index_id = $indexId
@@ -555,7 +555,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 command.CommandText = """
                     SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
                            symbol.qualified_name, symbol.signature, symbol.is_best_effort,
-                           symbol.body_recovery_status, symbol.is_public
+                           symbol.body_recovery_status, symbol.is_public, symbol.is_generated
                     FROM symbols_fts
                     CROSS JOIN symbols AS symbol ON symbol.rowid = symbols_fts.rowid
                     CROSS JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
@@ -677,7 +677,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             command.CommandText = source is null
                 ? """
                   SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
-                         relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence
+                         relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
                   FROM relationships AS relationship
                   INNER JOIN index_runs AS run ON run.snapshot_id = relationship.snapshot_id
                   WHERE run.index_id = $indexId AND run.status = 'Completed'
@@ -685,7 +685,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                   """
                 : $"""
                    SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
-                          relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence
+                          relationship.target_symbol_id, relationship.target_text, relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
                    FROM relationships AS relationship
                    INNER JOIN index_runs AS run ON run.snapshot_id = relationship.snapshot_id
                    WHERE run.index_id = $indexId
@@ -1830,7 +1830,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
         new(reader.GetString(0), reader.GetString(1), Enum.Parse<IndexRunStatus>(reader.GetString(2)), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5));
 
     private static IndexSymbolRecord ReadSymbol(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)), reader.GetInt64(8) != 0);
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt64(6) != 0, reader.IsDBNull(7) ? null : Enum.Parse<BodyRecoveryStatus>(reader.GetString(7)), reader.GetInt64(8) != 0, !reader.IsDBNull(9) && reader.GetInt64(9) != 0);
 
     private static IndexCallableSurfaceRecord ReadCallableSurface(SqliteDataReader reader) =>
         new(
@@ -1858,7 +1858,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
             reader.GetString(5));
 
     private static IndexRelationshipRecord ReadRelationship(SqliteDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6));
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8));
 
     private static IndexSourceFileRecord ReadSourceFile(SqliteDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4));
