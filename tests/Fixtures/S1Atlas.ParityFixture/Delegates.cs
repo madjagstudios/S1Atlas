@@ -15,6 +15,16 @@ public sealed class DelegateCases
     public int RaisePinged(int value) => Pinged?.Invoke(value) ?? value;
 
     public void SubscribeSelf() => Pinged += InstanceTarget;
+
+    public void UnsubscribeSelf() => Pinged -= InstanceTarget;
+
+    public Action BuildStaticAction() => StaticActionTarget;
+
+    public Action BuildInstanceAction() => InstanceActionTarget;
+
+    public static void StaticActionTarget() { }
+
+    public void InstanceActionTarget() { }
 }
 
 public sealed class DelegateHolder

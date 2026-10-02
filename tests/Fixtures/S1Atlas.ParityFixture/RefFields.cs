@@ -22,6 +22,8 @@ public sealed class RefFieldCases
 
     public void BumpSharedViaInterlocked() => Interlocked.Increment(ref Shared);
 
+    public int BumpSharedViaCompareExchange() => Interlocked.CompareExchange(ref Shared, 1, 0);
+
     public void MovePoint(int dx) => Point.X += dx;
 
     private static void Bump(ref int slot) => slot++;

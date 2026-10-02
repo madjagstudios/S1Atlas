@@ -37,4 +37,10 @@ public sealed class MemberCases
     {
         Changed?.Invoke();
     }
+
+    public static void OnChanged() { }
+
+    public void SubscribeChanged() => Changed += OnChanged;
+
+    public void UnsubscribeChanged() => Changed -= OnChanged;
 }
