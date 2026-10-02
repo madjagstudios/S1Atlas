@@ -786,6 +786,78 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task MethodTypo_double_colon_form_suggests_method()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedMethodSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "Demo.Methods.Calculator::ComputeTotl", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MethodTypo_dot_form_suggests_method()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedMethodSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "Demo.Methods.Calculator.ComputeTotl", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MethodTypo_bare_form_suggests_method()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedMethodSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "ComputeTotl", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NotFound_json_carries_suggestions()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -1163,6 +1235,41 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
             indexId,
             new IndexWriteSet(symbols, [], [], [], []),
             "2026-08-14T18:23:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedMethodSuggestionIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-method-suggest";
+        const string indexId = "index-cli-method-suggest";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-method-suggest",
+            "2026-08-14T18:26:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = new[]
+        {
+            new IndexSymbolRecord(
+                new string('e', 64),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Methods.Calculator::ComputeTotal(System.Int32)",
+                "Method",
+                "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+                "System.Int32 Demo.Methods.Calculator::ComputeTotal(System.Int32)",
+                false),
+        };
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T18:27:00Z",
             cancellationToken);
     }
 

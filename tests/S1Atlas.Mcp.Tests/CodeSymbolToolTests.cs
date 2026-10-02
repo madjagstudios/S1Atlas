@@ -136,6 +136,24 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task GetMethod_MethodTypoSelector_ReturnsNotFoundWithMethodSuggestion()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetMethodAsync(
+            "Demo.Widget::Rendor",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Null(envelope.Data);
+        Assert.Contains(
+            envelope.Suggestions,
+            suggestion => ((SymbolQueryResult)suggestion).QualifiedName == "Demo.Widget.Render");
+    }
+
+    [Fact]
     public async Task GetMethod_AmbiguousSelector_ReturnsAmbiguousWithCandidates()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();

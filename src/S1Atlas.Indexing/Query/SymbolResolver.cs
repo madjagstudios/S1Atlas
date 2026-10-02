@@ -201,8 +201,7 @@ public sealed class SymbolResolver
         HashSet<string>? kindNames,
         CancellationToken cancellationToken)
     {
-        var separator = searchQuery.LastIndexOf('.');
-        var segment = separator >= 0 ? searchQuery[(separator + 1)..] : searchQuery;
+        var segment = SymbolNames.SimpleName(searchQuery);
         var loweredSegment = segment.ToLowerInvariant();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var scored = new List<(IndexSymbolRecord Record, int Distance, int Order)>();
@@ -214,7 +213,7 @@ public sealed class SymbolResolver
             {
                 if (!seen.Add(record.SymbolId))
                     continue;
-                var distance = EditDistance(SimpleName(record.QualifiedName).ToLowerInvariant(), loweredSegment);
+                var distance = EditDistance(SymbolNames.SimpleName(record.QualifiedName).ToLowerInvariant(), loweredSegment);
                 if (distance <= MaxSuggestionDistance)
                     scored.Add((record, distance, order++));
             }
@@ -240,9 +239,6 @@ public sealed class SymbolResolver
             yield return rung;
         }
     }
-
-    private static string SimpleName(string qualifiedName) =>
-        qualifiedName[(qualifiedName.LastIndexOf('.') + 1)..];
 
     private static int EditDistance(string left, string right)
     {
