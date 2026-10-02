@@ -260,7 +260,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                         var token = BitConverter.ToInt32(il, offset);
                         offset += 4;
                         references.Add(new ManagedReferenceFact(
-                            opcode == OpCodes.Newobj ? ManagedReferenceKind.Constructs : ManagedReferenceKind.Calls,
+                            opcode == OpCodes.Newobj
+                                ? ManagedReferenceKind.Constructs
+                                : opcode == OpCodes.Callvirt ? ManagedReferenceKind.CallsVirtual : ManagedReferenceKind.Calls,
                             GetMemberIdentity(metadata, token, typeProvider)));
                         break;
                     }

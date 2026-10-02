@@ -8,6 +8,22 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Dispatch-aware callers with routes and `--exact`** (AT-65): `callers`
+  now returns exact (statically bound) callers plus may-dispatch callers —
+  call sites targeting an overridden base slot or interface method the
+  selected method fills — labeled `DERIVED` with the route taken (immediate
+  slot first, full multi-hop chain), exact/derived/combined split totals,
+  and FACT-first paging. Indexing distinguishes the `callvirt` opcode as a
+  new `CallsVirtual` edge kind so only virtual sites feed the expansion and
+  non-virtual base calls stay exact-only. `--exact` (CLI), `exact: true`
+  (MCP `find_callers`/`find_api_callers`, with a `dispatch-expansion`
+  provenance entry on expanded results), and `?exact=1` (serve page and
+  `/api/symbol/<id>/callers`) preserve the previous exact-only behavior;
+  ownership-seam investigation keeps exact callers. The parity harness now
+  requires the `DERIVED` label on dispatch rows (all 12 virtual/interface
+  rows found) and cross-checks callee-side dispatch rows against expanded
+  callers. Indexes rebuild (schema v12).
+
 - **Override/implementation graph with `overrides`, `overridden-by`, and
   `derived` queries** (AT-65): indexing records `Overrides` (method to the
   base-class slot it fills, immediate slot only) and `ImplementsMethod`

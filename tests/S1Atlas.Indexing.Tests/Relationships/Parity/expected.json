@@ -176,7 +176,8 @@
       "target": "S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32",
       "callers": [
         { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32", "reason": "virtual dispatch" },
-        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32", "reason": "virtual dispatch" }
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32", "reason": "virtual dispatch" },
+        { "symbol": "S1Atlas.ParityFixture.DispatchGrandchild::CallBase2():System.Int32", "reason": "base call" }
       ],
       "overriders": ["S1Atlas.ParityFixture.DispatchGrandchild::Foo():System.Int32"]
     },
@@ -277,6 +278,9 @@
     },
     {
       "target": "S1Atlas.ParityFixture.GenericBase`1::Describe():System.String",
+      "callers": [
+        { "symbol": "S1Atlas.ParityFixture.DispatchDrivers::ViaGenericBase(S1Atlas.ParityFixture.GenericBase`1<System.Int32>):System.String", "reason": "direct call" }
+      ],
       "overriders": ["S1Atlas.ParityFixture.GenericDerived::Describe():System.String"]
     },
     {

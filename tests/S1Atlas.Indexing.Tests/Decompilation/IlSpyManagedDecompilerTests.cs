@@ -50,7 +50,7 @@ public sealed class IlSpyManagedDecompilerTests
 
         var body = Assert.Single(type.Members, member => member.Name == "BuildAndTouch");
         Assert.True(body.HasBody);
-        Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.Calls);
+        Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.CallsVirtual);
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.Constructs);
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.ReadsField);
         Assert.Contains(body.References, reference => reference.Kind == ManagedReferenceKind.WritesField);

@@ -123,4 +123,24 @@ internal static class QueryBinding
 
         throw new ServeInvalidQueryException($"Invalid limit '{value}'. Use 1 to {MaxLimit}.");
     }
+
+    internal static bool BindExact(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        if (value.Equals("1", StringComparison.Ordinal) || value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Equals("0", StringComparison.Ordinal) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        throw new ServeInvalidQueryException($"Invalid exact '{value}'. Use 1 or true for exact-only callers.");
+    }
 }

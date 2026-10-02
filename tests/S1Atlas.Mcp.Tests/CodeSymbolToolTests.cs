@@ -431,6 +431,99 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
+    public async Task FindCallers_ExpandsDispatchWithRoutesAndSplitCounts()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallersAsync(
+            atlas.HierarchyDerivedMethodSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(2, envelope.Data!.TotalCount);
+        Assert.Equal(1, envelope.Data.ExactCount);
+        Assert.Equal(1, envelope.Data.DerivedCount);
+        Assert.Equal(
+            ["dispatch-direct-call", "dispatch-virtual-call"],
+            envelope.Data.Relationships.Select(edge => edge.RelationshipId));
+
+        var exact = envelope.Data.Relationships[0];
+        Assert.False(exact.IsDerived);
+        Assert.Null(exact.Routes);
+
+        var derived = envelope.Data.Relationships[1];
+        Assert.True(derived.IsDerived);
+        Assert.Equal(["via Demo.WidgetBase.Render"], derived.Routes);
+
+        Assert.Contains(
+            envelope.Provenance,
+            entry => entry.Classification == ProvenanceClassification.Derived && entry.Source == "dispatch-expansion");
+    }
+
+    [Fact]
+    public async Task FindCallers_Exact_ReturnsOnlyFactRows()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallersAsync(
+            atlas.HierarchyDerivedMethodSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            exact: true);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(1, envelope.Data!.TotalCount);
+        Assert.Equal(1, envelope.Data.ExactCount);
+        Assert.Equal(0, envelope.Data.DerivedCount);
+        var row = Assert.Single(envelope.Data.Relationships);
+        Assert.Equal("dispatch-direct-call", row.RelationshipId);
+        Assert.False(row.IsDerived);
+        Assert.DoesNotContain(envelope.Provenance, entry => entry.Source == "dispatch-expansion");
+    }
+
+    [Fact]
+    public async Task FindCallers_UnknownSelector_ReturnsNotFound()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallersAsync(
+            "Demo.DoesNotExist",
+            buildId: null,
+            ct: CancellationToken.None);
+        var exact = await tools.FindCallersAsync(
+            "Demo.DoesNotExist",
+            buildId: null,
+            ct: CancellationToken.None,
+            exact: true);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Null(envelope.Data);
+        Assert.Equal(ToolStatus.NotFound, exact.Status);
+        Assert.Null(exact.Data);
+    }
+
+    [Fact]
+    public async Task FindCallers_AmbiguousSelector_ReturnsAmbiguousWithCandidates()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCallersAsync(
+            "worker",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+    }
+
+    [Fact]
     public async Task FindReferences_ReturnsIncomingAndOutgoingEdges()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();

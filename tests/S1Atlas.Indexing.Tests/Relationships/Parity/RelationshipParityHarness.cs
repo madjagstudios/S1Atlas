@@ -49,10 +49,11 @@ public static class RelationshipParityHarness
         var differences = new List<ParityDifference>();
         var matchedGaps = new HashSet<ParityKnownGap>();
         var consistencyNotes = new List<string>();
+        var derivedCallersCache = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
         foreach (var target in oracle.Targets)
         {
-            var found = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
+            var (found, derived) = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
             var overriddenBy = await OverriddenByEdgesAsync(target, index.Repository, index.Run.IndexId, symbolIds, namesById, cancellationToken);
             foreach (var relation in new[] { "callers", "callees", "readers", "writers", "overridden-by" })
             {
@@ -60,7 +61,14 @@ public static class RelationshipParityHarness
                 var actual = found[relation];
                 foreach (var edge in expected)
                 {
-                    if (actual.Contains(edge.Symbol))
+                    var matched = relation switch
+                    {
+                        "callers" when IsDispatchReason(edge.Reason) => derived[relation].Contains(edge.Symbol),
+                        "callees" when IsDispatchReason(edge.Reason) => (await DerivedCallersOfAsync(
+                            service, index.Run, symbolIds, derivedCallersCache, edge.Symbol, cancellationToken)).Contains(target.Target),
+                        _ => actual.Contains(edge.Symbol)
+                    };
+                    if (matched)
                     {
                         differences.Add(new ParityDifference(
                             target.Target, relation, edge.Symbol, ParityClassification.Found, edge.Reason, TicketFor(edge.Reason)));
@@ -72,7 +80,8 @@ public static class RelationshipParityHarness
                     }
                 }
 
-                foreach (var symbol in actual.Where(symbol => !expected.Any(edge => edge.Symbol == symbol)))
+                var reported = actual.Concat(derived[relation]).Distinct(StringComparer.Ordinal);
+                foreach (var symbol in reported.Where(symbol => !expected.Any(edge => edge.Symbol == symbol)))
                 {
                     var gap = target.KnownGaps.FirstOrDefault(gap =>
                         gap.Relation == relation && gap.Symbol == symbol);
@@ -195,13 +204,54 @@ public static class RelationshipParityHarness
         return symbol.StartsWith("0x", StringComparison.Ordinal) ? "unresolved token" : "unexpected edge";
     }
 
-    private static async Task<Dictionary<string, HashSet<string>>> QueryTargetAsync(
+    private static bool IsDispatchReason(string reason) =>
+        string.Equals(reason, "virtual dispatch", StringComparison.Ordinal)
+            || string.Equals(reason, "interface dispatch", StringComparison.Ordinal);
+
+    private static async Task<HashSet<string>> DerivedCallersOfAsync(
+        IndexQueryService service,
+        IndexRunRecord run,
+        Dictionary<(string Kind, string Name), string> symbolIds,
+        Dictionary<string, HashSet<string>> cache,
+        string symbol,
+        CancellationToken cancellationToken)
+    {
+        if (!cache.TryGetValue(symbol, out var callers))
+        {
+            callers = [];
+            if (symbolIds.TryGetValue((KindFor(symbol), symbol), out var selector))
+            {
+                var result = await service.CallersInIndexAsync(
+                    run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, cancellationToken);
+                foreach (var edge in result.Relationships.Where(edge => edge.IsDerived))
+                {
+                    var caller = IncomingSymbol(edge);
+                    if (caller is not null)
+                        callers.Add(caller);
+                }
+            }
+
+            cache[symbol] = callers;
+        }
+
+        return callers;
+    }
+
+    private static async Task<(Dictionary<string, HashSet<string>> Found, Dictionary<string, HashSet<string>> Derived)> QueryTargetAsync(
         IndexQueryService service,
         IndexRunRecord run,
         string selector,
         CancellationToken cancellationToken)
     {
         var found = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            ["callers"] = [],
+            ["callees"] = [],
+            ["readers"] = [],
+            ["writers"] = [],
+            ["overridden-by"] = []
+        };
+        var derived = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
         {
             ["callers"] = [],
             ["callees"] = [],
@@ -216,7 +266,7 @@ public static class RelationshipParityHarness
         {
             var symbol = IncomingSymbol(edge);
             if (symbol is not null)
-                found["callers"].Add(symbol);
+                (edge.IsDerived ? derived : found)["callers"].Add(symbol);
         }
 
         var callees = await service.CalleesInIndexAsync(
@@ -251,7 +301,7 @@ public static class RelationshipParityHarness
                 found["overridden-by"].Add(symbol);
         }
 
-        return found;
+        return (found, derived);
     }
 
     private const string InheritedSuffix = " (inherited)";
@@ -364,13 +414,13 @@ public static class RelationshipParityHarness
         };
         foreach (var edge in refs.Relationships)
         {
-            if (edge.Direction == "Incoming" && (edge.Kind == "Calls" || edge.Kind == "Constructs"))
+            if (edge.Direction == "Incoming" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs"))
             {
                 var symbol = IncomingSymbol(edge);
                 if (symbol is not null)
                     fromRefs["callers"].Add(symbol);
             }
-            else if (edge.Direction == "Outgoing" && (edge.Kind == "Calls" || edge.Kind == "Constructs"))
+            else if (edge.Direction == "Outgoing" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs"))
             {
                 var symbol = OutgoingSymbol(edge);
                 if (symbol is not null)

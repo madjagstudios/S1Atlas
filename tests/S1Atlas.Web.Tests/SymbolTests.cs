@@ -287,4 +287,84 @@ public sealed class SymbolTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Contains("Invalid limit", body);
     }
+
+    [Fact]
+    public async Task GameMethodPageShowsDerivedCallersWithRoutesAndSplitTotals()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.RenderMethodId}", cancellationToken);
+
+        Assert.Contains("FACT: 2 callers in this index.", body);
+        Assert.Contains("FACT: 1 exact, 1 may-dispatch callers.", body);
+        Assert.Contains("DERIVED: may dispatch (via Demo.WidgetBase.Render).", body);
+        Assert.Contains("Demo.Service.Execute", body);
+        Assert.Contains("Demo.Caller.Invoke", body);
+    }
+
+    [Fact]
+    public async Task GameMethodPageExactShowsOnlyFactCallers()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.RenderMethodId}?exact=1", cancellationToken);
+
+        Assert.Contains("FACT: 1 callers in this index.", body);
+        Assert.Contains("FACT: 1 exact, 0 may-dispatch callers.", body);
+        Assert.Contains("Demo.Service.Execute", body);
+        Assert.DoesNotContain("may dispatch", body);
+    }
+
+    [Fact]
+    public async Task ApiCallersDefaultsToExpandedAndHonorsExact()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var expandedResponse = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.RenderMethodId}/callers", cancellationToken);
+        var expandedBody = await expandedResponse.Content.ReadAsStringAsync(cancellationToken);
+        using var expanded = JsonDocument.Parse(expandedBody);
+        var expandedData = expanded.RootElement.GetProperty("data");
+        Assert.Equal("resolved", expanded.RootElement.GetProperty("status").GetString());
+        Assert.Equal(2, expandedData.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, expandedData.GetProperty("exactCount").GetInt32());
+        Assert.Equal(1, expandedData.GetProperty("derivedCount").GetInt32());
+        var rows = expandedData.GetProperty("relationships").EnumerateArray().ToArray();
+        Assert.Equal(2, rows.Length);
+        Assert.False(rows[0].GetProperty("isDerived").GetBoolean());
+        Assert.True(rows[1].GetProperty("isDerived").GetBoolean());
+        Assert.Equal(
+            "via Demo.WidgetBase.Render",
+            Assert.Single(rows[1].GetProperty("routes").EnumerateArray()).GetString());
+
+        using var exactResponse = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.RenderMethodId}/callers?exact=1", cancellationToken);
+        var exactBody = await exactResponse.Content.ReadAsStringAsync(cancellationToken);
+        using var exact = JsonDocument.Parse(exactBody);
+        var exactData = exact.RootElement.GetProperty("data");
+        Assert.Equal(1, exactData.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, exactData.GetProperty("exactCount").GetInt32());
+        Assert.Equal(0, exactData.GetProperty("derivedCount").GetInt32());
+        var row = Assert.Single(exactData.GetProperty("relationships").EnumerateArray());
+        Assert.False(row.GetProperty("isDerived").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("maybe")]
+    [InlineData("2")]
+    public async Task ApiCallersRejectBadExact(string exact)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        using var response = await fixture.GetAsync(
+            $"/api/symbol/{SyntheticAtlas.RunMethodId}/callers?exact={exact}", cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Invalid exact", body);
+    }
 }

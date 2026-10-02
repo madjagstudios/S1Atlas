@@ -341,12 +341,12 @@ public sealed class SeamInvestigationService
         CancellationToken cancellationToken)
     {
         if (options.Scope == IndexQueryScope.Game && IsGameSymbol(symbol))
-            return await _gameQuery.CallersInIndexAsync(PinnedRun(symbol), CodebaseKind.ScheduleI, CodeChannel.Installed, symbol.SymbolId, options.Limit, cancellationToken);
+            return await _gameQuery.CallersInIndexAsync(PinnedRun(symbol), CodebaseKind.ScheduleI, CodeChannel.Installed, symbol.SymbolId, options.Limit, cancellationToken, exact: true);
         if (options.Scope == IndexQueryScope.Reference && options.Codebase == CodebaseKind.ReferenceMod)
-            return await _referenceQuery.CallersAsync(symbol.SymbolId, options, cancellationToken);
+            return await _referenceQuery.CallersAsync(symbol.SymbolId, options, cancellationToken, exact: true);
         if (options.Scope != IndexQueryScope.Game)
-            return await _federatedQuery.CallersAsync(symbol.SymbolId, options, cancellationToken);
-        return await _gameQuery.CallersAsync(symbol.SymbolId, options, cancellationToken);
+            return await _federatedQuery.CallersAsync(symbol.SymbolId, options, cancellationToken, exact: true);
+        return await _gameQuery.CallersAsync(symbol.SymbolId, options, cancellationToken, exact: true);
     }
 
     private async Task<RelationshipQuerySetResult> CalleesAsync(

@@ -10,6 +10,7 @@ public enum RelationshipKind
     ParameterType,
     ReturnType,
     Calls,
+    CallsVirtual,
     Constructs,
     ReadsField,
     WritesField,

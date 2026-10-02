@@ -149,6 +149,10 @@ internal static class IndexQueryCommandFactory
         [],
         result.Relationships,
         [],
+        TotalCount: result.TotalCount,
+        ReturnedCount: result.Relationships.Count,
+        ExactCount: result.ExactCount,
+        DerivedCount: result.DerivedCount,
         Resolution: result.Resolution,
         BodyRecoveryStatus: result.BodyRecoveryStatus,
         CallerCompletenessBoundedByTargetResolution: result.CallerCompletenessBoundedByTargetResolution,
@@ -185,6 +189,9 @@ internal static class IndexQueryCommandFactory
         if (data.TotalCount is int totalCount && data.ReturnedCount is int returnedCount)
             writer.WriteLine($"Found {totalCount} matches. Showing {returnedCount}.");
 
+        if (data.ExactCount is int exactCount && data.DerivedCount is int derivedCount)
+            writer.WriteLine($"Exact {exactCount}. Derived {derivedCount}.");
+
         foreach (var symbol in data.Symbols)
             writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
 
@@ -202,9 +209,12 @@ internal static class IndexQueryCommandFactory
         {
             foreach (var relationship in data.Relationships)
             {
-                writer.WriteLine(
+                var line =
                     $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
-                    $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}");
+                    $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}";
+                if (relationship.IsDerived)
+                    line += $" | DERIVED {string.Join("; ", relationship.Routes ?? [])}";
+                writer.WriteLine(line);
             }
         }
 

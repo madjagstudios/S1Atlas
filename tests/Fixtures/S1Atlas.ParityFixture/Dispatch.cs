@@ -30,6 +30,7 @@ public class DispatchHider : DispatchBase
 public class DispatchGrandchild : DispatchDerived
 {
     public override int Foo() => 7;
+    public int CallBase2() => base.Foo();
 }
 
 public class DispatchNewVirtual : DispatchBase
@@ -109,6 +110,21 @@ public class ImplDerived : ImplBase, IWorker
 {
 }
 
+public interface IMulti
+{
+    int Multi();
+}
+
+public class MultiBase : IMulti
+{
+    public virtual int Multi() => 1;
+}
+
+public class MultiDerived : MultiBase, IMulti
+{
+    public override int Multi() => 2;
+}
+
 public static class DispatchDrivers
 {
     public static int ViaBase(DispatchBase value) => value.Foo();
@@ -120,4 +136,6 @@ public static class DispatchDrivers
     public static int ViaInterface(IDispatchContract value) => value.Serve();
     public static int ViaImplicit(DispatchImplicit value) => value.Serve();
     public static int ViaInherited(DispatchInherited value) => value.Serve();
+    public static int ViaMulti(IMulti value) => value.Multi();
+    public static string ViaGenericBase(GenericBase<int> value) => value.Describe();
 }

@@ -64,6 +64,7 @@ public sealed class ReferenceRelationshipResolver
                         var kind = reference.Kind switch
                         {
                             ManagedReferenceKind.Calls => RelationshipKind.Calls,
+                            ManagedReferenceKind.CallsVirtual => RelationshipKind.CallsVirtual,
                             ManagedReferenceKind.Constructs => RelationshipKind.Constructs,
                             ManagedReferenceKind.ReadsField => RelationshipKind.ReadsField,
                             ManagedReferenceKind.WritesField => RelationshipKind.WritesField,

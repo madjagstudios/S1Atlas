@@ -1032,6 +1032,22 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "Overrides",
                         "fixture:overrides"),
                     new IndexRelationshipRecord(
+                        Id("dispatch-virtual-call"),
+                        snapshotId,
+                        Id("method-caller"),
+                        Id("method-widgetbase-render"),
+                        null,
+                        "CallsVirtual",
+                        "fixture:dispatch-virtual-call"),
+                    new IndexRelationshipRecord(
+                        Id("dispatch-direct-call"),
+                        snapshotId,
+                        Id("method-service-execute"),
+                        Id("method-widget-render"),
+                        null,
+                        "Calls",
+                        "fixture:dispatch-direct-call"),
+                    new IndexRelationshipRecord(
                         Id("parameter-type-payload"),
                         snapshotId,
                         Id(MethodSymbolId),

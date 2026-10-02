@@ -243,6 +243,58 @@ public sealed class ApiIndexToolTests
     }
 
     [Fact]
+    public async Task FindApiCallers_ExpandsDispatchAndHonorsExact()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var baseMethod = ApiSymbol("api-dispatch-base", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Base");
+        var overrideMethod = ApiSymbol("api-dispatch-override", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Override");
+        var caller = ApiSymbol("api-dispatch-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Caller");
+        var direct = ApiSymbol("api-dispatch-direct", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Direct");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-dispatch",
+            new string('d', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [baseMethod, overrideMethod, caller, direct],
+            relationships:
+            [
+                new("relationship-override", string.Empty, overrideMethod.SymbolId, baseMethod.SymbolId, null, "Overrides", "metadata"),
+                new("relationship-virtual", string.Empty, caller.SymbolId, baseMethod.SymbolId, null, "CallsVirtual", "metadata"),
+                new("relationship-direct", string.Empty, direct.SymbolId, overrideMethod.SymbolId, null, "Calls", "metadata")
+            ]);
+
+        var expanded = await atlas.Tools.FindApiCallersAsync("s1api", "release", overrideMethod.QualifiedName, 10, cancellationToken);
+
+        Assert.Equal(ToolStatus.Resolved, expanded.Status);
+        Assert.Equal(2, expanded.Data!.TotalCount);
+        Assert.Equal(1, expanded.Data.ExactCount);
+        Assert.Equal(1, expanded.Data.DerivedCount);
+        Assert.Equal(
+            ["relationship-direct", "relationship-virtual"],
+            expanded.Data.Relationships.Select(edge => edge.RelationshipId));
+        var derived = expanded.Data.Relationships[1];
+        Assert.True(derived.IsDerived);
+        Assert.Equal(["via Demo.Dispatch.Base"], derived.Routes);
+        Assert.Contains(
+            expanded.Provenance,
+            entry => entry.Classification == ProvenanceClassification.Derived && entry.Source == "dispatch-expansion");
+
+        var exact = await atlas.Tools.FindApiCallersAsync("s1api", "release", overrideMethod.QualifiedName, 10, cancellationToken, exact: true);
+
+        Assert.Equal(ToolStatus.Resolved, exact.Status);
+        Assert.Equal(1, exact.Data!.TotalCount);
+        Assert.Equal(1, exact.Data.ExactCount);
+        Assert.Equal(0, exact.Data.DerivedCount);
+        var row = Assert.Single(exact.Data.Relationships);
+        Assert.Equal("relationship-direct", row.RelationshipId);
+        Assert.False(row.IsDerived);
+        Assert.DoesNotContain(exact.Provenance, entry => entry.Source == "dispatch-expansion");
+    }
+
+    [Fact]
     public async Task Missing_and_stale_api_indexes_return_explicit_statuses()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();

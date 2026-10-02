@@ -445,8 +445,9 @@ public sealed class IndexQueryService
     public Task<RelationshipQuerySetResult> CallersAsync(
         string selector,
         IndexQueryOptions options,
-        CancellationToken cancellationToken) =>
-        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callers, cancellationToken);
+        CancellationToken cancellationToken,
+        bool exact = false) =>
+        RelationshipSetAsync(selector, options, RelationshipQueryMode.Callers, cancellationToken, exact);
 
     public Task<RelationshipQuerySetResult> CallersInIndexAsync(
         IndexRunRecord run,
@@ -454,8 +455,9 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string selector,
         int limit,
-        CancellationToken cancellationToken) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken);
+        CancellationToken cancellationToken,
+        bool exact = false) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken, exact);
 
     public Task<RelationshipQuerySetResult> CalleesAsync(
         string selector,
@@ -565,12 +567,17 @@ public sealed class IndexQueryService
         ValidateQueryLimit(limit, nameof(limit));
 
         var targetQuery = await ResolveCallSiteTargetQueryAsync(run, codebase, channel, selector, cancellationToken);
-        var totalCount = await _repository.CountCompletedRelationshipsByTargetTextAsync(
-            run.IndexId,
-            targetQuery.TargetText,
-            targetQuery.MatchMode,
-            "Calls",
-            cancellationToken);
+        var totalCount = 0;
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            totalCount += await _repository.CountCompletedRelationshipsByTargetTextAsync(
+                run.IndexId,
+                targetQuery.TargetText,
+                targetQuery.MatchMode,
+                kind,
+                cancellationToken);
+        }
+
         if (totalCount == 0)
         {
             return new CallSiteQueryResult(
@@ -578,13 +585,19 @@ public sealed class IndexQueryService
                 CallSiteCompletenessNotice);
         }
 
-        var edges = await _repository.GetCompletedRelationshipsByTargetTextAsync(
-            run.IndexId,
-            targetQuery.TargetText,
-            targetQuery.MatchMode,
-            "Calls",
-            limit,
-            cancellationToken);
+        var fetched = new List<IndexRelationshipRecord>();
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            fetched.AddRange(await _repository.GetCompletedRelationshipsByTargetTextAsync(
+                run.IndexId,
+                targetQuery.TargetText,
+                targetQuery.MatchMode,
+                kind,
+                limit,
+                cancellationToken));
+        }
+
+        var edges = CallSiteKinds.MergeAndTake(fetched, limit);
         var relationships = await MapRelationshipPageAsync(
             run,
             edges.Select(edge => (edge, "Incoming")).ToArray(),
@@ -615,7 +628,8 @@ public sealed class IndexQueryService
         string selector,
         IndexQueryOptions options,
         RelationshipQueryMode mode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool exact = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
 
@@ -634,7 +648,8 @@ public sealed class IndexQueryService
             selection.Selected.Value,
             mode,
             int.MaxValue,
-            cancellationToken);
+            cancellationToken,
+            exact);
     }
 
     private async Task<FieldReferenceQueryResult> FieldReferencesAcrossChannelsAsync(
@@ -805,7 +820,8 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         RelationshipQueryMode mode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool exact = false)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -825,14 +841,16 @@ public sealed class IndexQueryService
             selection.Selected.Value,
             mode,
             limit,
-            cancellationToken);
+            cancellationToken,
+            exact);
     }
 
     private async Task<RelationshipQuerySetResult> RelationshipSetFromSelectedAsync(
         SelectedSymbol selected,
         RelationshipQueryMode mode,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool exact = false)
     {
         var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
             selected.Run.IndexId,
@@ -842,6 +860,8 @@ public sealed class IndexQueryService
         BodyRecoveryStatus? bodyRecoveryStatus = IsCallable(symbolRecord.Kind)
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
+        if (mode == RelationshipQueryMode.Callers && !exact)
+            return await ExpandedCallersFromSelectedAsync(selected, bodyRecoveryStatus, limit, cancellationToken);
         var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken);
         var relationships = (await MapRelationshipPageAsync(
             selected.Run,
@@ -859,7 +879,57 @@ public sealed class IndexQueryService
             bodyRecoveryStatus,
             mode == RelationshipQueryMode.Callers,
             notice,
-            selectedEdges.TotalCount);
+            selectedEdges.TotalCount,
+            ExactCount: mode == RelationshipQueryMode.Callers ? selectedEdges.TotalCount : null,
+            DerivedCount: mode == RelationshipQueryMode.Callers ? 0 : null);
+    }
+
+    private async Task<RelationshipQuerySetResult> ExpandedCallersFromSelectedAsync(
+        SelectedSymbol selected,
+        BodyRecoveryStatus? bodyRecoveryStatus,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+            selected.Run.IndexId,
+            selected.Symbol.SymbolId,
+            cancellationToken);
+        var exact = await MapRelationshipEdgesAsync(
+            selected.Run,
+            incoming
+                .Where(edge => IsCallLike(edge.Kind))
+                .Select(edge => (edge, "Incoming"))
+                .ToArray(),
+            selected.Symbol.Origin,
+            cancellationToken);
+        var derivedEdges = await DispatchExpansion.CollectDerivedAsync(
+            _repository,
+            selected.Run.IndexId,
+            selected.Run.IndexId,
+            selected.Symbol.SymbolId,
+            cancellationToken);
+        var derived = await MapRelationshipEdgesAsync(
+            selected.Run,
+            derivedEdges.Select(item => (item.Edge, "Incoming")).ToArray(),
+            selected.Symbol.Origin,
+            cancellationToken);
+        // Routes join by relationship id so the flagging stays correct no
+        // matter what order the mapper emits.
+        var routesById = derivedEdges.ToDictionary(
+            item => item.Edge.RelationshipId, item => item.Routes, StringComparer.Ordinal);
+        var flagged = derived
+            .Select(row => row with { IsDerived = true, Routes = routesById[row.RelationshipId] })
+            .ToArray();
+        var page = DispatchExpansion.MergeAndTake(exact, flagged, limit);
+        return new RelationshipQuerySetResult(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+            page.Relationships,
+            bodyRecoveryStatus,
+            true,
+            CompletenessNotice(bodyRecoveryStatus, true),
+            page.ExactCount + page.DerivedCount,
+            page.ExactCount,
+            page.DerivedCount);
     }
 
     private async Task<HierarchyQueryResult> HierarchyInRunAsync(
@@ -1340,6 +1410,7 @@ public sealed class IndexQueryService
 
     private static bool IsCallLike(string kind) =>
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
+        string.Equals(kind, "CallsVirtual", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
 
     private static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) =>

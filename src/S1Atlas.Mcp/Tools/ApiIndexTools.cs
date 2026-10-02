@@ -130,8 +130,9 @@ public sealed class ApiIndexTools
         string channel,
         string selector,
         int limit = 50,
-        CancellationToken ct = default) =>
-        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callers, null, ct);
+        CancellationToken ct = default,
+        bool exact = false) =>
+        QueryApiRelationshipsAsync(codebase, channel, selector, limit, ApiRelationshipDirection.Callers, null, ct, exact);
 
     [McpServerTool(Name = "find_api_callees", Title = "Find API callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships in a completed S1API or S1MAPI index.")]
     public Task<ToolEnvelope<RelationshipQuerySetResult>> FindApiCalleesAsync(
@@ -233,7 +234,8 @@ public sealed class ApiIndexTools
         int limit,
         ApiRelationshipDirection direction,
         IReadOnlyList<string>? relationKinds,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool exact = false)
     {
         if (!TryParseScope<RelationshipQuerySetResult>(codebase, channel, out var parsedCodebase, out var parsedChannel, out var scopeError))
             return scopeError;
@@ -259,7 +261,8 @@ public sealed class ApiIndexTools
                 relationKinds is null
                     ? null
                     : new HashSet<string>(relationKinds, StringComparer.OrdinalIgnoreCase),
-                ct);
+                ct,
+                exact);
             return EnvelopeMapper.FromApiRelationships(catalog, selection, result);
         });
     }

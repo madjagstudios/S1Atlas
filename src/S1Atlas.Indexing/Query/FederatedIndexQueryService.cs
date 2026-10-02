@@ -139,8 +139,8 @@ public sealed class FederatedIndexQueryService
     public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipsAsync(selector, options, RelationshipKind.Refs, cancellationToken);
 
-    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
-        RelationshipsAsync(selector, options, RelationshipKind.Callers, cancellationToken);
+    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false) =>
+        RelationshipsAsync(selector, options, RelationshipKind.Callers, cancellationToken, exact);
 
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipsAsync(selector, options, RelationshipKind.Callees, cancellationToken);
@@ -265,7 +265,8 @@ public sealed class FederatedIndexQueryService
         string selector,
         IndexQueryOptions options,
         RelationshipKind kind,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool exact = false)
     {
         var selection = options.Scope == IndexQueryScope.All
             ? await _reference.GetSelectionForFederationAsync(options, cancellationToken)
@@ -283,12 +284,12 @@ public sealed class FederatedIndexQueryService
             return new RelationshipQuerySetResult(resolution, [], null, kind == RelationshipKind.Callers, string.Empty);
 
         if (resolution.Symbol.Origin == "reference")
-            return await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
+            return await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken, exact);
 
-        var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken, selection?.GameRun);
+        var game = await GameRelationshipsAsync(selector, options, kind, cancellationToken, selection?.GameRun, exact);
         if (options.Scope != IndexQueryScope.All || string.IsNullOrWhiteSpace(options.ReferenceCollection))
             return game;
-        var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
+        var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken, exact);
         return MergeRelationships(resolution, game, reference, kind, options.Limit);
     }
 
@@ -392,26 +393,32 @@ public sealed class FederatedIndexQueryService
         IndexQueryOptions options,
         RelationshipKind kind,
         CancellationToken cancellationToken,
-        IndexRunRecord? pinnedRun = null) =>
+        IndexRunRecord? pinnedRun = null,
+        bool exact = false) =>
         pinnedRun is null
             ? kind switch
             {
                 RelationshipKind.Refs => _game.RefsAsync(selector, GameOptions(options, options.Limit), cancellationToken),
-                RelationshipKind.Callers => _game.CallersAsync(selector, GameOptions(options, options.Limit), cancellationToken),
+                RelationshipKind.Callers => _game.CallersAsync(selector, GameOptions(options, options.Limit), cancellationToken, exact),
                 _ => _game.CalleesAsync(selector, GameOptions(options, options.Limit), cancellationToken)
             }
             : kind switch
             {
                 RelationshipKind.Refs => _game.RefsInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken),
-                RelationshipKind.Callers => _game.CallersInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken),
+                RelationshipKind.Callers => _game.CallersInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken, exact),
                 _ => _game.CalleesInIndexAsync(pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, options.Limit, cancellationToken)
             };
 
-    private Task<RelationshipQuerySetResult> ReferenceRelationshipsAsync(string selector, IndexQueryOptions options, RelationshipKind kind, CancellationToken cancellationToken) =>
+    private Task<RelationshipQuerySetResult> ReferenceRelationshipsAsync(
+        string selector,
+        IndexQueryOptions options,
+        RelationshipKind kind,
+        CancellationToken cancellationToken,
+        bool exact = false) =>
         kind switch
         {
             RelationshipKind.Refs => _reference.RefsAsync(selector, options, cancellationToken),
-            RelationshipKind.Callers => _reference.CallersAsync(selector, options, cancellationToken),
+            RelationshipKind.Callers => _reference.CallersAsync(selector, options, cancellationToken, exact),
             _ => _reference.CalleesAsync(selector, options, cancellationToken)
         };
 
@@ -428,22 +435,33 @@ public sealed class FederatedIndexQueryService
             CodeChannel.Installed,
             selector,
             cancellationToken);
-        var totalCount = await Repository.CountCompletedRelationshipsByTargetTextAsync(
-            selection.Run.IndexId,
-            query.TargetText,
-            query.MatchMode,
-            "Calls",
-            cancellationToken);
+        var totalCount = 0;
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            totalCount += await Repository.CountCompletedRelationshipsByTargetTextAsync(
+                selection.Run.IndexId,
+                query.TargetText,
+                query.MatchMode,
+                kind,
+                cancellationToken);
+        }
+
         if (totalCount == 0)
             return new CallSiteQueryResult(new RelationshipQueryPageResult(0, 0, []), CallSiteCompletenessNotice);
 
-        var edges = await Repository.GetCompletedRelationshipsByTargetTextAsync(
-            selection.Run.IndexId,
-            query.TargetText,
-            query.MatchMode,
-            "Calls",
-            limit,
-            cancellationToken);
+        var fetched = new List<IndexRelationshipRecord>();
+        foreach (var kind in CallSiteKinds.Names)
+        {
+            fetched.AddRange(await Repository.GetCompletedRelationshipsByTargetTextAsync(
+                selection.Run.IndexId,
+                query.TargetText,
+                query.MatchMode,
+                kind,
+                limit,
+                cancellationToken));
+        }
+
+        var edges = CallSiteKinds.MergeAndTake(fetched, limit);
         var page = await MapReferenceRelationshipPageAsync(
             selection,
             edges.Select(edge => (edge, "Incoming")).ToArray(),
@@ -511,7 +529,7 @@ public sealed class FederatedIndexQueryService
         RelationshipKind kind,
         int limit)
     {
-        var relationships = game.Relationships
+        var deduped = game.Relationships
             .Concat(reference.Relationships)
             .GroupBy(edge => (
                 Origin: edge.Source.Origin ?? string.Empty,
@@ -520,22 +538,46 @@ public sealed class FederatedIndexQueryService
                 RelationshipId: edge.RelationshipId,
                 Direction: edge.Direction))
             .Select(group => group.First())
-            .OrderBy(edge => edge.RelationshipId, StringComparer.Ordinal)
-            .ThenBy(edge => edge.Source.Origin, StringComparer.Ordinal)
-            .ThenBy(edge => edge.Source.ReferenceModId, StringComparer.Ordinal)
-            .ThenBy(edge => edge.Target.SymbolId, StringComparer.Ordinal)
             .ToArray();
-        var totalCount = game.TotalCount is int gameTotal && reference.TotalCount is int referenceTotal &&
-                         game.Relationships.Count == gameTotal && reference.Relationships.Count == referenceTotal
-            ? (int?)relationships.Length
-            : null;
+        var relationships = kind == RelationshipKind.Callers
+            ? deduped
+                .OrderBy(edge => edge.IsDerived)
+                .ThenBy(DispatchExpansion.CallerIdentity, StringComparer.Ordinal)
+                .ThenBy(edge => edge.RelationshipId, StringComparer.Ordinal)
+                .ThenBy(edge => edge.Source.Origin, StringComparer.Ordinal)
+                .ThenBy(edge => edge.Source.ReferenceModId, StringComparer.Ordinal)
+                .ThenBy(edge => edge.Target.SymbolId, StringComparer.Ordinal)
+                .ToArray()
+            : deduped
+                .OrderBy(edge => edge.RelationshipId, StringComparer.Ordinal)
+                .ThenBy(edge => edge.Source.Origin, StringComparer.Ordinal)
+                .ThenBy(edge => edge.Source.ReferenceModId, StringComparer.Ordinal)
+                .ThenBy(edge => edge.Target.SymbolId, StringComparer.Ordinal)
+                .ToArray();
+        var unpaged = game.TotalCount is int gameTotal && reference.TotalCount is int referenceTotal &&
+                      game.Relationships.Count == gameTotal && reference.Relationships.Count == referenceTotal;
+        var totalCount = unpaged ? (int?)relationships.Length : null;
+        int? exactCount = null;
+        int? derivedCount = null;
+        if (unpaged
+            && game.ExactCount is int gameExact
+            && game.DerivedCount is int gameDerived
+            && reference.ExactCount is int referenceExact
+            && reference.DerivedCount is int referenceDerived)
+        {
+            exactCount = gameExact + referenceExact;
+            derivedCount = gameDerived + referenceDerived;
+        }
+
         return new RelationshipQuerySetResult(
             resolution,
             relationships.Take(limit).ToArray(),
             game.BodyRecoveryStatus ?? reference.BodyRecoveryStatus,
             kind == RelationshipKind.Callers,
             game.CompletenessNotice + reference.CompletenessNotice,
-            totalCount);
+            totalCount,
+            exactCount,
+            derivedCount);
     }
 
     private async Task<RelationshipQueryPageResult> MapReferenceRelationshipPageAsync(

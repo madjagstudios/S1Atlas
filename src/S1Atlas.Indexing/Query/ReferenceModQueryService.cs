@@ -246,8 +246,8 @@ public sealed class ReferenceModQueryService
     public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipAsync(selector, options, RelationshipMode.Refs, cancellationToken);
 
-    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
-        RelationshipAsync(selector, options, RelationshipMode.Callers, cancellationToken);
+    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false) =>
+        RelationshipAsync(selector, options, RelationshipMode.Callers, cancellationToken, exact);
 
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken);
@@ -395,7 +395,8 @@ public sealed class ReferenceModQueryService
         string selector,
         IndexQueryOptions options,
         RelationshipMode mode,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool exact = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         var selection = await RequireSelectionAsync(options, cancellationToken);
@@ -451,6 +452,8 @@ public sealed class ReferenceModQueryService
         BodyRecoveryStatus? bodyStatus = selectedRecord is not null && IsCallable(selectedRecord.Kind)
             ? selectedRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
+        if (mode == RelationshipMode.Callers && !exact)
+            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken);
         var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken);
         return new RelationshipQuerySetResult(
             resolution,
@@ -458,7 +461,54 @@ public sealed class ReferenceModQueryService
             bodyStatus,
             mode == RelationshipMode.Callers,
             mode == RelationshipMode.Refs ? string.Empty : "Reference relationships are limited to persisted target resolutions.",
-            relationships.Count);
+            relationships.Count,
+            ExactCount: mode == RelationshipMode.Callers ? relationships.Count : null,
+            DerivedCount: mode == RelationshipMode.Callers ? 0 : null);
+    }
+
+    private async Task<RelationshipQuerySetResult> ExpandedCallersAsync(
+        IndexSelection selection,
+        SymbolResolutionResult resolution,
+        string id,
+        bool selectedIsGame,
+        BodyRecoveryStatus? bodyStatus,
+        bool includeGameEndpoints,
+        CancellationToken cancellationToken)
+    {
+        var exactRecords = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
+            selection.Run.IndexId, id, cancellationToken);
+        var exact = await MapRelationshipsAsync(
+            selection,
+            exactRecords.Select(edge => (edge, "Incoming")).ToArray(),
+            includeGameEndpoints,
+            cancellationToken);
+        // A game-resolved selector fills slots declared in the game index, so
+        // the walk runs there while incoming edges are collected here.
+        var walkIndexId = selectedIsGame ? selection.Context.GameIndexId : selection.Run.IndexId;
+        var derivedEdges = await DispatchExpansion.CollectDerivedAsync(
+            _repository, walkIndexId, selection.Run.IndexId, id, cancellationToken);
+        var derived = await MapRelationshipsAsync(
+            selection,
+            derivedEdges.Select(item => (item.Edge, "Incoming")).ToArray(),
+            includeGameEndpoints,
+            cancellationToken);
+        // The mapped rows are sorted by relationship id while the expansion
+        // emits walk encounter order, so routes join by id, not by position.
+        var routesById = derivedEdges.ToDictionary(
+            item => item.Edge.RelationshipId, item => item.Routes, StringComparer.Ordinal);
+        var flagged = derived
+            .Select(row => row with { IsDerived = true, Routes = routesById[row.RelationshipId] })
+            .ToArray();
+        var page = DispatchExpansion.MergeAndTake(exact, flagged, int.MaxValue);
+        return new RelationshipQuerySetResult(
+            resolution,
+            page.Relationships,
+            bodyStatus,
+            true,
+            "Reference relationships are limited to persisted target resolutions.",
+            page.ExactCount + page.DerivedCount,
+            page.ExactCount,
+            page.DerivedCount);
     }
 
     private async Task<SymbolResolutionResult> ResolveInIndexAsync(IndexSelection selection, string selector, CancellationToken cancellationToken)
@@ -746,6 +796,7 @@ public sealed class ReferenceModQueryService
 
     private static bool IsCallLike(string kind) =>
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
+        string.Equals(kind, "CallsVirtual", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
 
     private static bool IsCallable(string kind) => kind is "Method" or "Constructor";

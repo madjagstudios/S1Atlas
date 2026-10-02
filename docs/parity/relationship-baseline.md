@@ -3,8 +3,11 @@
 Owner map: AT-65 owns virtual/interface dispatch gaps, AT-66 owns
 compiler-generated-body gaps, AT-67 owns delegate-creation and address-taken
 gaps. Entries marked `unowned` fit none of those tickets. AT-65 part A
-(override/implementation graph and hierarchy queries) is done; the 12
-`AT-65` rows below are dispatch-aware callers, which are part B.
+(override/implementation graph and hierarchy queries) and part B
+(dispatch-aware callers) are done; no `AT-65` rows remain below.
+Dispatch rows read FOUND because the harness cross-checks callee-side
+expectations against expanded callers; the `callees` query itself stays
+exact-only and returns no dispatch targets.
 
 Conventions: call and construct edges are pinned on both endpoints; field
 edges are pinned on the field only; delegate-creation edges (mislabeled as
@@ -31,25 +34,25 @@ later tickets update it in the same PR that fixes a gap.
 | address taken | 8 | 0 | 8 | 0 | 4 |
 | array accessor | 0 | 0 | 0 | 3 | 0 |
 | async body | 2 | 0 | 2 | 0 | 1 |
-| base call | 2 | 2 | 0 | 0 | 0 |
+| base call | 3 | 3 | 0 | 0 | 0 |
 | constructed generic | 8 | 8 | 0 | 0 | 0 |
 | constructs | 12 | 12 | 0 | 0 | 0 |
 | delegate creation | 0 | 0 | 0 | 0 | 10 |
-| direct call | 22 | 22 | 0 | 0 | 0 |
+| direct call | 23 | 23 | 0 | 0 | 0 |
 | event accessor | 7 | 7 | 0 | 0 | 0 |
 | field initializer | 2 | 2 | 0 | 0 | 0 |
 | field read | 4 | 4 | 0 | 0 | 0 |
 | field write | 3 | 3 | 0 | 0 | 0 |
 | implementation | 3 | 3 | 0 | 0 | 0 |
 | inherited implementation | 1 | 1 | 0 | 0 | 0 |
-| interface dispatch | 4 | 0 | 4 | 0 | 0 |
+| interface dispatch | 4 | 4 | 0 | 0 | 0 |
 | iterator body | 2 | 0 | 2 | 0 | 1 |
 | lambda body | 4 | 0 | 4 | 0 | 2 |
 | local function body | 4 | 0 | 4 | 0 | 2 |
 | override | 7 | 7 | 0 | 0 | 0 |
 | property accessor | 10 | 10 | 0 | 0 | 0 |
 | static constructor | 1 | 1 | 0 | 0 | 0 |
-| virtual dispatch | 8 | 0 | 8 | 0 | 0 |
+| virtual dispatch | 8 | 8 | 0 | 0 | 0 |
 
 ## Differences
 
@@ -85,18 +88,6 @@ later tickets update it in the same PR that fixes a gap.
 | S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged | writers | S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void | MISSING | address taken | AT-67 |
 | S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged | writers | S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void | MISSING | address taken | AT-67 |
 | S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void | callees | S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | MISLABELED | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaConcrete(S1Atlas.ParityFixture.DispatchConcrete):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaAbstract(S1Atlas.ParityFixture.DispatchAbstract):System.Int32 | callees | S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaBase(S1Atlas.ParityFixture.DispatchBase):System.Int32 | callees | S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaConcrete(S1Atlas.ParityFixture.DispatchConcrete):System.Int32 | callees | S1Atlas.ParityFixture.DispatchConcrete::Compute(System.Int32):System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaDerived(S1Atlas.ParityFixture.DispatchDerived):System.Int32 | callees | S1Atlas.ParityFixture.DispatchDerived::Foo():System.Int32 | MISSING | virtual dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | callees | S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32 | MISSING | interface dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | callees | S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32 | MISSING | interface dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchExplicit::S1Atlas.ParityFixture.IDispatchContract.Serve():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | MISSING | interface dispatch | AT-65 |
-| S1Atlas.ParityFixture.DispatchImplicit::Serve():System.Int32 | callers | S1Atlas.ParityFixture.DispatchDrivers::ViaInterface(S1Atlas.ParityFixture.IDispatchContract):System.Int32 | MISSING | interface dispatch | AT-65 |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:.ctor | EXTRA | array accessor | unowned |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:Get | EXTRA | array accessor | unowned |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:Set | EXTRA | array accessor | unowned |

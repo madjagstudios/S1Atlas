@@ -28,7 +28,7 @@ public sealed record IndexingWorkflowResult(
 
 public sealed class IndexingWorkflow
 {
-    public const int IndexSchemaVersion = 11;
+    public const int IndexSchemaVersion = 12;
     internal const string DecompilerPackage = "ICSharpCode.Decompiler";
     internal static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
