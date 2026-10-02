@@ -732,7 +732,7 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         Assert.Contains("Demo.Probe.Compute", text, StringComparison.Ordinal);
         Assert.Contains("Demo.Probe.Compare", text, StringComparison.Ordinal);
         Assert.Contains(
-            "Hint: no symbol matched 'Compote'; check the spelling or run 's1atlas search \"Compote\".",
+            "Hint: no symbol matched 'Compote'; check the spelling or run 's1atlas search \"Compote\"'.",
             text,
             StringComparison.Ordinal);
         var stderr = error.ToString();

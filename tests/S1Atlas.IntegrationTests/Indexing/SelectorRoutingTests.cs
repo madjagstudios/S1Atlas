@@ -58,7 +58,7 @@ public sealed class SelectorRoutingTests
         Assert.Contains("Found 0 matches.", result.StandardOutput, StringComparison.Ordinal);
         Assert.Contains("Nearest matches:", result.StandardOutput, StringComparison.Ordinal);
         Assert.Contains(
-            $"Hint: no symbol matched '{typoQuery}'; check the spelling or run 's1atlas search \"{typoQuery}\".",
+            $"Hint: no symbol matched '{typoQuery}'; check the spelling or run 's1atlas search \"{typoQuery}\"'.",
             result.StandardOutput,
             StringComparison.Ordinal);
         Assert.Contains("Code:    SymbolNotFound", result.StandardError, StringComparison.Ordinal);

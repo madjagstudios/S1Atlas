@@ -251,7 +251,7 @@ internal static class IndexQueryCommandFactory
 
         var display = DisplaySelector(selector);
         writer.WriteLine(
-            $"Hint: no symbol matched '{display}'; check the spelling or run 's1atlas search \"{display}\".");
+            $"Hint: no symbol matched '{display}'; check the spelling or run 's1atlas search \"{display}\"'.");
     }
 
     internal static void WriteCandidateRow(TextWriter writer, int number, SymbolQueryResult candidate) =>
