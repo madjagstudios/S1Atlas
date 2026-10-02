@@ -17,13 +17,22 @@ internal static class IndexQueryCommandFactory
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken,
-        Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>> execute,
-        Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>> executeInIndex,
+        Func<string, IndexQueryOptions, CancellationToken, Task<IndexQueryOutput>>? execute = null,
+        Func<string, IndexRunRecord, int, CancellationToken, Task<IndexQueryOutput>>? executeInIndex = null,
         Func<IndexQueryOptions, string?>? validateOptions = null,
         bool includeScopeOptions = false,
         ReferenceModQueryService? referenceService = null,
-        Func<string, IndexQueryOptions, string, CancellationToken, Task<IndexQueryOutput>>? executeWithReferenceIndex = null)
+        Func<string, IndexQueryOptions, string, CancellationToken, Task<IndexQueryOutput>>? executeWithReferenceIndex = null,
+        Func<string, IndexQueryOptions, CancellationToken, bool, Task<IndexQueryOutput>>? executeWithGenerated = null,
+        Func<string, IndexRunRecord, int, CancellationToken, bool, Task<IndexQueryOutput>>? executeInIndexWithGenerated = null)
     {
+        var classic = execute is not null && executeInIndex is not null;
+        var withGenerated = executeWithGenerated is not null && executeInIndexWithGenerated is not null;
+        if (classic == withGenerated)
+            throw new ArgumentException(
+                "Provide either execute/executeInIndex or executeWithGenerated/executeInIndexWithGenerated.",
+                nameof(execute));
+
         var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
@@ -36,6 +45,7 @@ internal static class IndexQueryCommandFactory
         var jsonOption = CommandOutput.CreateJsonOption();
         var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
         var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var includeGeneratedOption = CreateIncludeGeneratedOption();
         var command = new Command(name, "Query the normalized code index.");
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
@@ -47,6 +57,8 @@ internal static class IndexQueryCommandFactory
             command.Options.Add(scopeOption);
             command.Options.Add(collectionOption);
         }
+        if (withGenerated)
+            command.Options.Add(includeGeneratedOption);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
@@ -89,21 +101,31 @@ internal static class IndexQueryCommandFactory
                     if (authority.ErrorCode is not null)
                         return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
 
+                    var includeGenerated = withGenerated && parseResult.GetValue(includeGeneratedOption);
                     IndexQueryOutput data;
                     if (authority.Run is not null)
                     {
-                        data = executeInIndex(
-                            parseResult.GetValue(queryArgument)!,
-                            authority.Run,
-                            limit,
-                            cancellationToken).GetAwaiter().GetResult();
+                        data = executeInIndexWithGenerated is not null
+                            ? executeInIndexWithGenerated(
+                                parseResult.GetValue(queryArgument)!,
+                                authority.Run,
+                                limit,
+                                cancellationToken,
+                                includeGenerated).GetAwaiter().GetResult()
+                            : executeInIndex!(
+                                parseResult.GetValue(queryArgument)!,
+                                authority.Run,
+                                limit,
+                                cancellationToken).GetAwaiter().GetResult();
                     }
                     else
                     {
                         var query = parseResult.GetValue(queryArgument)!;
-                        data = executeWithReferenceIndex is not null && authority.ReferenceIndexId is not null
-                            ? executeWithReferenceIndex(query, options, authority.ReferenceIndexId, cancellationToken).GetAwaiter().GetResult()
-                            : execute(query, options, cancellationToken).GetAwaiter().GetResult();
+                        data = executeWithGenerated is not null
+                            ? executeWithGenerated(query, options, cancellationToken, includeGenerated).GetAwaiter().GetResult()
+                            : executeWithReferenceIndex is not null && authority.ReferenceIndexId is not null
+                                ? executeWithReferenceIndex(query, options, authority.ReferenceIndexId, cancellationToken).GetAwaiter().GetResult()
+                                : execute!(query, options, cancellationToken).GetAwaiter().GetResult();
                     }
                     return Complete(commandOutput, data);
                 },
@@ -184,10 +206,22 @@ internal static class IndexQueryCommandFactory
         Resolution: result.Resolution,
         HierarchyNodes: result.Nodes);
 
+    internal static Option<bool> CreateIncludeGeneratedOption() =>
+        new("--include-generated")
+        {
+            Description = "Include compiler-generated members; show their raw sources instead of credited ones."
+        };
+
+    internal static string? RewordSearchNotice(string? notice) =>
+        notice?.Replace("includeGenerated", "--include-generated", StringComparison.Ordinal);
+
     internal static void WriteHuman(IndexQueryOutput data, TextWriter writer)
     {
         if (data.TotalCount is int totalCount && data.ReturnedCount is int returnedCount)
             writer.WriteLine($"Found {totalCount} matches. Showing {returnedCount}.");
+
+        if (!string.IsNullOrWhiteSpace(data.SearchNotice))
+            writer.WriteLine(data.SearchNotice);
 
         if (data.ExactCount is int exactCount && data.DerivedCount is int derivedCount)
             writer.WriteLine($"Exact {exactCount}. Derived {derivedCount}.");
@@ -209,9 +243,12 @@ internal static class IndexQueryCommandFactory
         {
             foreach (var relationship in data.Relationships)
             {
+                var source = FormatEndpoint(relationship.Source);
+                if (relationship.GeneratedDetail is not null)
+                    source += $" ({relationship.GeneratedDetail})";
                 var line =
                     $"{relationship.RelationshipId} | {relationship.Kind} | {relationship.Direction} | " +
-                    $"{FormatEndpoint(relationship.Source)} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}";
+                    $"{source} -> {FormatEndpoint(relationship.Target)} | evidence: {relationship.Evidence}";
                 if (relationship.IsDerived)
                     line += $" | DERIVED {string.Join("; ", relationship.Routes ?? [])}";
                 writer.WriteLine(line);

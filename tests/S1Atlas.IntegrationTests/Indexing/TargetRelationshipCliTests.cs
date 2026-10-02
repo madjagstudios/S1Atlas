@@ -268,6 +268,143 @@ public sealed class TargetRelationshipCliTests
         Assert.Equal("AmbiguousSymbol", document.RootElement.GetProperty("error").GetProperty("code").GetString());
         Assert.NotEmpty(document.RootElement.GetProperty("data").GetProperty("candidates").EnumerateArray());
     }
+
+    [Fact]
+    public async Task Callers_renders_credited_detail_and_raw_with_flag()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var credited = atlas.Run("callers", "Demo.Credit.Leaf");
+        var raw = atlas.Run("callers", "Demo.Credit.Leaf", "--include-generated");
+
+        Assert.Equal(0, credited.ExitCode);
+        Assert.Contains("Demo.Credit.Foo", credited.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("(in lambda)", credited.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("<>c", credited.StandardOutput, StringComparison.Ordinal);
+
+        Assert.Equal(0, raw.ExitCode);
+        Assert.Contains("Demo.Credit.Foo+<>c::<Foo>b__0_0", raw.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("(in lambda)", raw.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Callers_json_carries_generated_detail_with_stable_ids()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var credited = atlas.Run("callers", "Demo.Credit.Leaf", "--json");
+        var raw = atlas.Run("callers", "Demo.Credit.Leaf", "--include-generated", "--json");
+
+        Assert.Equal(0, credited.ExitCode);
+        Assert.Equal(0, raw.ExitCode);
+        using var creditedJson = JsonDocument.Parse(credited.StandardOutput);
+        using var rawJson = JsonDocument.Parse(raw.StandardOutput);
+        var creditedRow = Assert.Single(creditedJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        var rawRow = Assert.Single(rawJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+
+        Assert.Equal("Demo.Credit.Foo", creditedRow.GetProperty("source").GetProperty("qualifiedName").GetString());
+        Assert.Equal("in lambda", creditedRow.GetProperty("generatedDetail").GetString());
+        Assert.Equal("Demo.Credit.Foo+<>c::<Foo>b__0_0", rawRow.GetProperty("source").GetProperty("qualifiedName").GetString());
+        Assert.Equal(JsonValueKind.Null, rawRow.GetProperty("generatedDetail").ValueKind);
+        Assert.Equal(
+            creditedRow.GetProperty("relationshipId").GetString(),
+            rawRow.GetProperty("relationshipId").GetString());
+    }
+
+    [Fact]
+    public async Task Callees_includes_body_calls_with_details()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var result = atlas.Run("callees", "Demo.Credit.Foo");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Demo.Credit.Leaf", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("(in lambda)", result.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Refs_accepts_flag_with_credited_and_raw_modes()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var credited = atlas.Run("refs", "Demo.Credit.Leaf", "--json");
+        var raw = atlas.Run("refs", "Demo.Credit.Leaf", "--include-generated", "--json");
+
+        Assert.Equal(0, credited.ExitCode);
+        Assert.Equal(0, raw.ExitCode);
+        using var creditedJson = JsonDocument.Parse(credited.StandardOutput);
+        using var rawJson = JsonDocument.Parse(raw.StandardOutput);
+        var creditedRow = Assert.Single(creditedJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        var rawRow = Assert.Single(rawJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+
+        Assert.Equal("Demo.Credit.Foo", creditedRow.GetProperty("source").GetProperty("qualifiedName").GetString());
+        Assert.Equal("in lambda", creditedRow.GetProperty("generatedDetail").GetString());
+        Assert.Equal("Demo.Credit.Foo+<>c::<Foo>b__0_0", rawRow.GetProperty("source").GetProperty("qualifiedName").GetString());
+    }
+
+    [Fact]
+    public async Task Search_hides_generated_with_notice_and_lists_with_flag()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var hidden = atlas.Run("search", "Foo");
+        var raw = atlas.Run("search", "Foo", "--include-generated");
+        var hiddenJson = atlas.Run("search", "Foo", "--json");
+
+        Assert.Equal(0, hidden.ExitCode);
+        Assert.Contains("Demo.Credit.Foo", hidden.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains(
+            "1 generated result(s) hidden. Re-run with --include-generated to include them.",
+            hidden.StandardOutput,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("<>c", hidden.StandardOutput, StringComparison.Ordinal);
+
+        Assert.Equal(0, raw.ExitCode);
+        Assert.Contains("Demo.Credit.Foo+<>c::<Foo>b__0_0", raw.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("hidden", raw.StandardOutput, StringComparison.Ordinal);
+
+        Assert.Equal(0, hiddenJson.ExitCode);
+        using var document = JsonDocument.Parse(hiddenJson.StandardOutput);
+        Assert.Equal(
+            "1 generated result(s) hidden. Re-run with --include-generated to include them.",
+            document.RootElement.GetProperty("data").GetProperty("searchNotice").GetString());
+    }
+
+    [Fact]
+    public async Task FieldRefs_of_generated_field_empty_by_default_and_populated_with_flag()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var hidden = atlas.Run("fieldrefs", "Demo.Capture.Widget+<>c__DisplayClass0_0::x", "--json");
+        var raw = atlas.Run("fieldrefs", "Demo.Capture.Widget+<>c__DisplayClass0_0::x", "--include-generated", "--json");
+
+        Assert.Equal(0, hidden.ExitCode);
+        Assert.Equal(0, raw.ExitCode);
+        using var hiddenJson = JsonDocument.Parse(hidden.StandardOutput);
+        using var rawJson = JsonDocument.Parse(raw.StandardOutput);
+
+        Assert.Equal(0, hiddenJson.RootElement.GetProperty("data").GetProperty("totalCount").GetInt32());
+        Assert.Empty(hiddenJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        var row = Assert.Single(rawJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal("Demo.Credit.Foo", row.GetProperty("source").GetProperty("qualifiedName").GetString());
+    }
+
+    [Fact]
+    public async Task IncludeGenerated_flag_accepted_on_ambiguous_and_not_found()
+    {
+        await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
+
+        var ambiguous = atlas.Run("callers", "Run", "--include-generated", "--json");
+        var missing = atlas.Run("callers", "No.Such.Symbol", "--include-generated", "--json");
+
+        Assert.Equal(1, ambiguous.ExitCode);
+        Assert.Equal(1, missing.ExitCode);
+        using var ambiguousJson = JsonDocument.Parse(ambiguous.StandardOutput);
+        using var missingJson = JsonDocument.Parse(missing.StandardOutput);
+        Assert.Equal("AmbiguousSymbol", ambiguousJson.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("SymbolNotFound", missingJson.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
 }
 
 internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
@@ -436,11 +573,15 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
         var hierarchyBaseType = Type("game-hierarchy-basetype", snapshot.SnapshotId, "Demo.Hierarchy.Base");
         var hierarchyMidType = Type("game-hierarchy-midtype", snapshot.SnapshotId, "Demo.Hierarchy.Mid");
         var hierarchyLeafType = Type("game-hierarchy-leaftype", snapshot.SnapshotId, "Demo.Hierarchy.Leaf");
+        var creditFoo = Method("game-credit-foo", snapshot.SnapshotId, "Demo.Credit.Foo");
+        var creditLambda = Method("game-credit-lambda", snapshot.SnapshotId, "Demo.Credit.Foo+<>c::<Foo>b__0_0", isGenerated: true);
+        var creditLeaf = Method("game-credit-leaf", snapshot.SnapshotId, "Demo.Credit.Leaf");
+        var creditCapture = Field("game-credit-capture", snapshot.SnapshotId, "Demo.Capture.Widget+<>c__DisplayClass0_0::x", isGenerated: true);
 
         await _repository.CompleteIndexRunAsync(
             run.IndexId,
             new IndexWriteSet(
-                [callSourceA, callSourceB, fieldReader, fieldWriter, field, hierarchyBase, hierarchyMid, hierarchyLeaf, hierarchyBaseType, hierarchyMidType, hierarchyLeafType],
+                [callSourceA, callSourceB, fieldReader, fieldWriter, field, hierarchyBase, hierarchyMid, hierarchyLeaf, hierarchyBaseType, hierarchyMidType, hierarchyLeafType, creditFoo, creditLambda, creditLeaf, creditCapture],
                 [],
                 [],
                 [],
@@ -454,7 +595,9 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
                     new IndexRelationshipRecord("hier-001-mid-overrides", snapshot.SnapshotId, hierarchyMid.SymbolId, hierarchyBase.SymbolId, "Demo.Hierarchy.Base::Run()", "Overrides", "Metadata"),
                     new IndexRelationshipRecord("hier-002-leaf-overrides", snapshot.SnapshotId, hierarchyLeaf.SymbolId, hierarchyMid.SymbolId, "Demo.Hierarchy.Mid::Run()", "Overrides", "Metadata"),
                     new IndexRelationshipRecord("hier-003-mid-inherits", snapshot.SnapshotId, hierarchyMidType.SymbolId, hierarchyBaseType.SymbolId, "Demo.Hierarchy.Base", "Inherits", "Metadata"),
-                    new IndexRelationshipRecord("hier-004-leaf-inherits", snapshot.SnapshotId, hierarchyLeafType.SymbolId, hierarchyMidType.SymbolId, "Demo.Hierarchy.Mid", "Inherits", "Metadata")
+                    new IndexRelationshipRecord("hier-004-leaf-inherits", snapshot.SnapshotId, hierarchyLeafType.SymbolId, hierarchyMidType.SymbolId, "Demo.Hierarchy.Mid", "Inherits", "Metadata"),
+                    new IndexRelationshipRecord("call-100-credit", snapshot.SnapshotId, creditFoo.SymbolId, creditLeaf.SymbolId, "Demo.Credit::Leaf", "Calls", "Body", GeneratedSourceSymbolId: creditLambda.SymbolId, GeneratedDetail: "in lambda"),
+                    new IndexRelationshipRecord("field-100-credit-read", snapshot.SnapshotId, creditFoo.SymbolId, creditCapture.SymbolId, "Demo.Capture::Widget", "ReadsField", "Body")
                 ]),
             BaseTime.AddMinutes(4).ToString("O"),
             CancellationToken.None);
@@ -609,7 +752,7 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
         await writeTask;
     }
 
-    private static IndexSymbolRecord Method(string id, string snapshotId, string qualifiedName) =>
+    private static IndexSymbolRecord Method(string id, string snapshotId, string qualifiedName, bool isGenerated = false) =>
         new(
             id,
             snapshotId,
@@ -618,9 +761,10 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
             qualifiedName,
             "System.Void " + CanonicalMember(qualifiedName) + "()",
             false,
-            BodyRecoveryStatus.Recovered);
+            BodyRecoveryStatus.Recovered,
+            IsGenerated: isGenerated);
 
-    private static IndexSymbolRecord Field(string id, string snapshotId, string qualifiedName)
+    private static IndexSymbolRecord Field(string id, string snapshotId, string qualifiedName, bool isGenerated = false)
     {
         var separator = qualifiedName.LastIndexOf('.');
         var typeName = qualifiedName[..separator];
@@ -632,7 +776,8 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
             "Field",
             qualifiedName,
             "System.Int32 " + typeName + "::" + fieldName,
-            false);
+            false,
+            IsGenerated: isGenerated);
     }
 
     private static IndexSymbolRecord Type(string id, string snapshotId, string qualifiedName) =>
