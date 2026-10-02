@@ -646,6 +646,31 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Evaluate_IdentityV1Snapshot_ReportsApiNotApplicable()
+    {
+        await using var harness = await AuthorityHarness.EmptyAsync();
+        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+            {
+                DataSource = harness.DatabasePath,
+                Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite,
+                Pooling = false
+            }.ToString());
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var downgrade = connection.CreateCommand();
+        downgrade.CommandText = "UPDATE environment_snapshots SET identity_version = 1;";
+        await downgrade.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        var service = CreateService(harness);
+
+        var report = await service.EvaluateAsync(CancellationToken.None);
+
+        var api = Item(report, ReadinessItemIds.ApiIndex);
+        Assert.Equal(ReadinessState.NotApplicable, api.State);
+        Assert.Equal(ReadinessFixCommands.Scan, api.FixCommand);
+    }
+
+    [Fact]
     public async Task Evaluate_NoSnapshot_ReportsReferenceNotApplicable()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();

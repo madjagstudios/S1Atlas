@@ -1,4 +1,5 @@
 using System.CommandLine;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core.Storage;
 
@@ -8,6 +9,7 @@ internal static class StatusCommand
 {
     public static Command Create(
         IAtlasRepository repository,
+        IAtlasReadinessService readiness,
         TextWriter output,
         TextWriter error,
         CancellationToken cancellationToken)
@@ -33,6 +35,8 @@ internal static class StatusCommand
                         .GetAwaiter()
                         .GetResult();
 
+                    var report = readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult();
+                    var readinessOutput = StatusReadinessOutput.FromReport(report);
                     if (snapshot is null)
                     {
                         var empty = new StatusOutput(
@@ -43,11 +47,15 @@ internal static class StatusCommand
                             SteamBuildId: null,
                             CapturedAtUtc: null,
                             InstalledDependencyCount: 0,
-                            DependencyCount: 0);
+                            DependencyCount: 0,
+                            Readiness: readinessOutput);
                         return commandOutput.Success(
                             empty,
-                            writer => writer.WriteLine(
-                                "No indexed builds. Run 's1atlas scan'."));
+                            writer =>
+                            {
+                                writer.WriteLine("No indexed builds. Run 's1atlas scan'.");
+                                writer.WriteLine(report.NextStep.Summary);
+                            });
                     }
 
                     var installedCount = snapshot.Dependencies.Count(
@@ -60,7 +68,8 @@ internal static class StatusCommand
                         SteamBuildId: snapshot.Installation.SteamBuildId,
                         CapturedAtUtc: snapshot.CapturedAtUtc,
                         InstalledDependencyCount: installedCount,
-                        DependencyCount: snapshot.Dependencies.Count);
+                        DependencyCount: snapshot.Dependencies.Count,
+                        Readiness: readinessOutput);
 
                     return commandOutput.Success(
                         data,
@@ -76,6 +85,7 @@ internal static class StatusCommand
                             writer.WriteLine($"Captured: {snapshot.CapturedAtUtc:O}");
                             writer.WriteLine(
                                 $"Dependencies installed: {installedCount}/{snapshot.Dependencies.Count}");
+                            writer.WriteLine(report.NextStep.Summary);
                         });
                 },
                 commandOutput,

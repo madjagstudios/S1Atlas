@@ -536,6 +536,17 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 true);
         }
 
+        if (snapshot.IdentityVersion != 2)
+        {
+            return new ReadinessItem(
+                ReadinessItemIds.ApiIndex,
+                title,
+                ReadinessState.NotApplicable,
+                "Optional; the environment snapshot predates API indexing; re-run 's1atlas scan'.",
+                ReadinessFixCommands.Scan,
+                true);
+        }
+
         var environmentSnapshotId = EnvironmentSnapshotId.Create(snapshot);
         foreach (var codebase in ApiCodebases)
         {
