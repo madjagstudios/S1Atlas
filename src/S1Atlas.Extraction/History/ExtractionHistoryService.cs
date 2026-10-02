@@ -204,7 +204,10 @@ internal sealed class ExtractionHistoryService
                 candidate => string.Equals(candidate.AttemptId, id, StringComparison.Ordinal));
             if (attempt is null)
             {
-                return null;
+                // A 32-char hex string is also a valid prefix: probe both
+                // namespaces before giving up so extraction prefixes and
+                // either-case attempt IDs resolve.
+                return await ShowByPrefixAsync(id, id.ToLowerInvariant(), cancellationToken);
             }
 
             return new ExtractionHistoryDetail(

@@ -220,6 +220,44 @@ public sealed class ExtractionHistoryServiceTests
     }
 
     [Fact]
+    public async Task ShowAsync_ThirtyTwoCharExtractionPrefix_ResolvesExtraction()
+    {
+        using var fixture = await HistoryFixture.CreateAsync(TestContext.Current.CancellationToken);
+        var extractionId = await fixture.SeedValidatedExtractionAsync(
+            new string('1', 32), [1, 2, 3, 4], PromotionTestData.RecipeId,
+            PromotionTestData.BaseTime, autoPrefer: true, storeReport: true,
+            ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid, preferenceEligible: true,
+            TestContext.Current.CancellationToken);
+
+        var detail = await fixture.Service().ShowAsync(
+            extractionId[..32], TestContext.Current.CancellationToken);
+
+        Assert.NotNull(detail);
+        Assert.Equal(ExtractionHistoryEntryKind.ValidatedExtraction, detail!.Kind);
+        Assert.Equal(extractionId, detail.Extraction!.ExtractionId);
+        Assert.True(detail.IntegrityVerified);
+    }
+
+    [Fact]
+    public async Task ShowAsync_UppercaseFullAttemptId_ResolvesAttempt()
+    {
+        using var fixture = await HistoryFixture.CreateAsync(TestContext.Current.CancellationToken);
+        var attemptId = new string('c', 32);
+        await fixture.SeedValidatedExtractionAsync(
+            attemptId, [1, 2, 3, 4], PromotionTestData.RecipeId,
+            PromotionTestData.BaseTime, autoPrefer: false, storeReport: true,
+            ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid, preferenceEligible: true,
+            TestContext.Current.CancellationToken);
+
+        var detail = await fixture.Service().ShowAsync(
+            attemptId.ToUpperInvariant(), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(detail);
+        Assert.Equal(ExtractionHistoryEntryKind.Attempt, detail!.Kind);
+        Assert.Equal(attemptId, detail.Attempt!.AttemptId);
+    }
+
+    [Fact]
     public async Task ShowAsync_UnknownPrefix_ReturnsNull()
     {
         using var fixture = await HistoryFixture.CreateAsync(TestContext.Current.CancellationToken);
