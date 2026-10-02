@@ -109,6 +109,63 @@ public sealed class DiffCommandTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Diff_build_prefixes_resolve_to_full_builds()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(ct);
+
+        var buildIdA = "abcdef12" + new string('0', 56);
+        var buildIdB = "12345678" + new string('0', 56);
+        await SeedScheduleIBuildWithIndexAsync(buildIdA, "ext-pa", "idx-pa",
+            [MakeSymbol("ScheduleI:Installed:Method:Old::Run():System.Void", "Method", "Old.Run", "Old::Run():System.Void")],
+            [MakeFingerprint("sym-0", "declaration", "aaa")],
+            [], ct);
+        await SeedScheduleIBuildWithIndexAsync(buildIdB, "ext-pb", "idx-pb",
+            [MakeSymbol("ScheduleI:Installed:Method:New::Start():System.Void", "Method", "New.Start", "New::Start():System.Void")],
+            [MakeFingerprint("sym-0", "declaration", "bbb")],
+            [], ct);
+
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(["diff", "ABCDEF12", "12345678", "--json"], output, error, ct);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        var json = JsonDocument.Parse(output.ToString());
+        var data = json.RootElement.GetProperty("data");
+        Assert.Equal(1, data.GetProperty("counts").GetProperty("added").GetInt32());
+        Assert.Equal(1, data.GetProperty("counts").GetProperty("removed").GetInt32());
+    }
+
+    [Fact]
+    public async Task Diff_ambiguous_build_prefix_lists_matches_and_fails()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(ct);
+
+        var buildIdA = "abcdef12" + new string('0', 56);
+        var buildIdB = "abcdef12" + new string('1', 56);
+        var buildIdC = "12345678" + new string('0', 56);
+        await SeedScheduleIBuildWithIndexAsync(buildIdA, "ext-aa", "idx-aa", [], [], [], ct);
+        await SeedScheduleIBuildWithIndexAsync(buildIdB, "ext-ab", "idx-ab", [], [], [], ct);
+        await SeedScheduleIBuildWithIndexAsync(buildIdC, "ext-ac", "idx-ac", [], [], [], ct);
+
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(["diff", "abcdef12", buildIdC, "--json"], output, error, ct);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("matches 2 builds", text, StringComparison.Ordinal);
+        Assert.Contains(buildIdA, text, StringComparison.Ordinal);
+        Assert.Contains(buildIdB, text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Diff_unsupported_channel_returns_error()
     {
         var ct = TestContext.Current.CancellationToken;

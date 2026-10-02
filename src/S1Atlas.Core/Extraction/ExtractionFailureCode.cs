@@ -7,6 +7,8 @@ public enum ExtractionFailureCode
     ToolChecksumMismatch,
     ToolProbeFailed,
     BuildNotFound,
+    AmbiguousBuildPrefix,
+    AmbiguousHistoryEntry,
     LiveInputNotFound,
     BuildInputMismatch,
     ArchivedInputInvalid,

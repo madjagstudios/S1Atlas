@@ -1,6 +1,7 @@
 using System.CommandLine;
 using S1Atlas.Application.Authority;
 using S1Atlas.Cli.Output;
+using S1Atlas.Core;
 using S1Atlas.Core.Storage;
 using S1Atlas.NativeRecovery;
 
@@ -101,6 +102,20 @@ internal static class RecoverNativeBodyCommand
                 authority.Message ?? "The requested Schedule I build is unavailable.");
         }
 
+        if (authority.IndexId is not null)
+        {
+            var resolution = ResolveSymbolIdsAsync(
+                    indexRepository, authority.IndexId, symbolIds, cancellationToken)
+                .GetAwaiter()
+                .GetResult();
+            if (resolution.AmbiguousMessage is not null)
+            {
+                return commandOutput.Failure(1, "AmbiguousSymbol", resolution.AmbiguousMessage);
+            }
+
+            symbolIds = resolution.Resolved;
+        }
+
         var installation = composition.LocateInstallationAsync(cancellationToken).GetAwaiter().GetResult();
         if (installation is null)
         {
@@ -185,6 +200,68 @@ internal static class RecoverNativeBodyCommand
 
         return commandOutput.Success(data, writer => WriteHuman(record, writer));
     }
+
+    /// <summary>
+    /// Resolves unique short-ID prefixes to full symbol IDs against the resolved
+    /// index. Full IDs, non-hex input, and unmatched prefixes pass through to the
+    /// provider unchanged; an ambiguous prefix returns a failure message listing
+    /// the matches instead of resolved IDs.
+    /// </summary>
+    internal static async Task<SymbolIdResolution> ResolveSymbolIdsAsync(
+        IIndexRepository indexRepository,
+        string indexId,
+        IReadOnlyList<string> symbolIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(indexRepository);
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentNullException.ThrowIfNull(symbolIds);
+
+        var resolved = new string[symbolIds.Count];
+        for (var i = 0; i < symbolIds.Count; i++)
+        {
+            var id = symbolIds[i];
+            if (!ShortId.TryParsePrefix(id, out var prefix))
+            {
+                resolved[i] = id;
+                continue;
+            }
+
+            var matches = await indexRepository.GetCompletedSymbolsByIdPrefixAsync(
+                indexId, prefix, ShortId.MaxShownMatches + 1, cancellationToken);
+            if (matches.Count == 0)
+            {
+                resolved[i] = id;
+                continue;
+            }
+
+            if (matches.Count == 1)
+            {
+                resolved[i] = matches[0].SymbolId;
+                continue;
+            }
+
+            var total = matches.Count > ShortId.MaxShownMatches
+                ? await indexRepository.CountCompletedSymbolsByIdPrefixAsync(
+                    indexId, prefix, cancellationToken)
+                : matches.Count;
+            var shown = matches
+                .Take(ShortId.MaxShownMatches)
+                .Select(record => record.SymbolId)
+                .ToArray();
+            var combined = new ShortIdMatch(ShortIdMatchKind.Ambiguous, null, shown, total);
+            return new SymbolIdResolution(
+                symbolIds,
+                $"The --symbol-id prefix '{id}' matches {total} symbols; " +
+                $"re-run with a full symbol ID: {ShortId.FormatMatchList(combined)}.");
+        }
+
+        return new SymbolIdResolution(resolved, null);
+    }
+
+    internal sealed record SymbolIdResolution(
+        IReadOnlyList<string> Resolved,
+        string? AmbiguousMessage);
 
     private static void WriteHuman(NativeRecoveryRecord record, TextWriter writer)
     {

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Cli.Output;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Diff;
@@ -66,9 +67,9 @@ internal static class DiffCommand
                     atlasRepository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
 
                     var indexIdA = ResolveIndexId(
-                        idA, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, cancellationToken);
+                        idA, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, atlasRepository, cancellationToken);
                     var indexIdB = ResolveIndexId(
-                        idB, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, cancellationToken);
+                        idB, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, atlasRepository, cancellationToken);
 
                     if (string.Equals(indexIdA, indexIdB, StringComparison.Ordinal))
                         return commandOutput.Failure(1, "SameIndex",
@@ -115,11 +116,31 @@ internal static class DiffCommand
         IIndexRepository indexRepository,
         IExtractionRepository extractionRepository,
         IValidatedExtractionRepository validatedExtractionRepository,
+        IAtlasRepository atlasRepository,
         CancellationToken ct)
     {
         var build = extractionRepository.GetBuildAsync(buildId, ct).GetAwaiter().GetResult();
         if (build is null)
-            throw new InvalidOperationException($"Build '{Truncate(buildId)}' not found.");
+        {
+            var builds = atlasRepository.ListBuildsAsync(ct).GetAwaiter().GetResult();
+            var match = ShortId.MatchPrefix(builds.Select(candidate => candidate.BuildId), buildId);
+            if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
+            {
+                buildId = match.Id;
+                build = builds.First(candidate => string.Equals(
+                    candidate.BuildId, match.Id, StringComparison.Ordinal));
+            }
+            else if (match.Kind == ShortIdMatchKind.Ambiguous)
+            {
+                throw new InvalidOperationException(
+                    $"Build prefix '{buildId}' matches {match.TotalCount} builds; " +
+                    $"re-run with a full build ID: {ShortId.FormatMatchList(match)}.");
+            }
+            else
+            {
+                throw new InvalidOperationException($"Build '{Truncate(buildId)}' not found.");
+            }
+        }
 
         IndexRunRecord? index;
         if (codebase == CodebaseKind.ScheduleI)

@@ -686,6 +686,8 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
     public string DataRoot { get; }
     public string TargetSymbolId { get; private set; } = string.Empty;
     public string ExpectedExtractionId { get; private set; } = string.Empty;
+    public string FirstPrefixSymbolId { get; private set; } = string.Empty;
+    public string SecondPrefixSymbolId { get; private set; } = string.Empty;
 
     public static async Task<SeamInvestigationCliAtlas> CreateOc32Async()
     {
@@ -717,6 +719,15 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
     {
         var atlas = await CreateEmptyAsync("no-index");
         await atlas.SeedValidatedExtractionOnlyAsync("build-no-index");
+        return atlas;
+    }
+
+    public static async Task<SeamInvestigationCliAtlas> CreateSymbolPrefixAsync()
+    {
+        var atlas = await CreateEmptyAsync("symbol-prefix");
+        var (first, second) = await atlas.SeedSymbolPrefixFixtureAsync();
+        atlas.FirstPrefixSymbolId = first;
+        atlas.SecondPrefixSymbolId = second;
         return atlas;
     }
 
@@ -829,6 +840,33 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
             [targetB],
             [],
             includeCallableSurface: false);
+    }
+
+    private async Task<(string First, string Second)> SeedSymbolPrefixFixtureAsync()
+    {
+        const string buildId = "build-symbol-prefix";
+        const string snapshotId = "snapshot-symbol-prefix";
+        await SeedValidatedExtractionOnlyAsync(buildId);
+
+        var first = Method(
+            "abcdef12" + new string('0', 56),
+            snapshotId,
+            "Game.Prefix.First",
+            BodyRecoveryStatus.Recovered);
+        var second = Method(
+            "abcdef12" + new string('1', 56),
+            snapshotId,
+            "Game.Prefix.Second",
+            BodyRecoveryStatus.Recovered);
+        await CompleteGameRunAsync(
+            buildId,
+            "index-symbol-prefix",
+            snapshotId,
+            first,
+            [second],
+            [],
+            includeCallableSurface: false);
+        return (first.SymbolId, second.SymbolId);
     }
 
     private async Task SeedValidatedExtractionOnlyAsync(string buildId)

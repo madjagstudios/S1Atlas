@@ -106,6 +106,7 @@ public sealed class EnvelopeTests
     {
         { InstalledBuildAuthorityStatus.NoCurrentBuild, ToolStatus.Unavailable, "NoCurrentBuild" },
         { InstalledBuildAuthorityStatus.BuildNotFound, ToolStatus.Invalid, "BuildNotFound" },
+        { InstalledBuildAuthorityStatus.AmbiguousBuildPrefix, ToolStatus.Invalid, "AmbiguousBuildPrefix" },
         { InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction, ToolStatus.NotFound, "NoPreferredVerifiedExtraction" },
         { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, ToolStatus.Unavailable, "ExtractionIntegrityFailure" },
         { InstalledBuildAuthorityStatus.NoCompletedIndex, ToolStatus.NotFound, "NoCompletedIndex" },
