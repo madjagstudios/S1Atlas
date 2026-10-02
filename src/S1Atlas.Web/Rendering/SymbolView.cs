@@ -224,8 +224,11 @@ internal static class SymbolView
             ? relationship.Target
             : relationship.Source;
         var label = other.QualifiedName ?? other.Signature ?? other.RawText ?? "(unresolved)";
-        return string.IsNullOrEmpty(other.SymbolId)
+        var rendered = string.IsNullOrEmpty(other.SymbolId)
             ? Html.Escape(label)
             : $"<a href=\"/symbol/{Html.UrlSegment(other.SymbolId)}\">{Html.Escape(label)}</a>";
+        if (ReferenceEquals(other, relationship.Source) && relationship.GeneratedDetail is not null)
+            rendered += $" ({Html.Escape(relationship.GeneratedDetail)})";
+        return rendered;
     }
 }

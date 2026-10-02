@@ -23,7 +23,8 @@ internal sealed record SearchArgs(
     SymbolKind? Kind,
     CodebaseKind Codebase,
     int Page,
-    string? Build);
+    string? Build,
+    bool IncludeGenerated);
 
 internal sealed record DiffArgs(
     string? From,
@@ -49,7 +50,8 @@ internal static class QueryBinding
             BindKind(query["kind"].ToString()),
             BindCodebase(query["codebase"].ToString()),
             BindPage(query["page"].ToString(), MaxPage),
-            BindBuild(query["build"].ToString()));
+            BindBuild(query["build"].ToString()),
+            BindGenerated(query["generated"].ToString()));
 
     internal static string? BindBuild(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -142,5 +144,25 @@ internal static class QueryBinding
         }
 
         throw new ServeInvalidQueryException($"Invalid exact '{value}'. Use 1 or true for exact-only callers.");
+    }
+
+    internal static bool BindGenerated(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        if (value.Equals("1", StringComparison.Ordinal) || value.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Equals("0", StringComparison.Ordinal) || value.Equals("false", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        throw new ServeInvalidQueryException($"Invalid generated '{value}'. Use 1 or true to include compiler-generated members.");
     }
 }

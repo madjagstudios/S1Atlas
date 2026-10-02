@@ -33,6 +33,11 @@ public sealed class SyntheticAtlas : IAsyncDisposable
     public const string HostileTypeId = "type-serve-hostile";
     public const string HostileQualifiedName = "Evil.<img src=x onerror=alert(1)>";
 
+    public const string CreditFooMethodId = "method-serve-credit-foo";
+    public const string CreditLambdaMethodId = "method-serve-credit-lambda";
+    public const string CreditLeafMethodId = "method-serve-credit-leaf";
+    public const string CreditCaptureFieldId = "field-serve-credit-capture";
+
     public const string CatalogTypeId = "type-serve-catalog";
     public const string LookupMethodId = "method-serve-lookup";
     public const string AssistMethodId = "method-serve-assist";
@@ -429,6 +434,43 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 "Demo.Result",
                 "Demo.Result",
                 false),
+            new(
+                Sid(CreditFooMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Credit::Foo()",
+                "Method",
+                "Demo.Credit.Foo",
+                "System.Void Demo.Credit::Foo()",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
+                Sid(CreditLambdaMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Credit::Foo+<>c::<Foo>b__0_0()",
+                "Method",
+                "Demo.Credit.Foo+<>c::<Foo>b__0_0",
+                "System.Void Demo.Credit::Foo+<>c::<Foo>b__0_0()",
+                false,
+                BodyRecoveryStatus.Recovered,
+                IsGenerated: true),
+            new(
+                Sid(CreditLeafMethodId),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Credit::Leaf()",
+                "Method",
+                "Demo.Credit.Leaf",
+                "System.Void Demo.Credit::Leaf()",
+                false,
+                BodyRecoveryStatus.Recovered),
+            new(
+                Sid(CreditCaptureFieldId),
+                snapshotId,
+                "ScheduleI:Installed:Field:Demo.Capture::System.Int32 Holder+<>c__DisplayClass0_0::x",
+                "Field",
+                "Demo.Capture.Holder+<>c__DisplayClass0_0::x",
+                "System.Int32 Demo.Capture::Holder+<>c__DisplayClass0_0::x",
+                false,
+                IsGenerated: true),
         };
         if (variant.IncludeCheckPhysics)
         {
@@ -592,6 +634,24 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                         null,
                         "WritesField",
                         "fixture:writes-field"),
+                    new IndexRelationshipRecord(
+                        Sid("rel-serve-credit-call"),
+                        snapshotId,
+                        Sid(CreditFooMethodId),
+                        Sid(CreditLeafMethodId),
+                        null,
+                        "Calls",
+                        "fixture:credit-call",
+                        GeneratedSourceSymbolId: Sid(CreditLambdaMethodId),
+                        GeneratedDetail: "in lambda"),
+                    new IndexRelationshipRecord(
+                        Sid("rel-serve-credit-reads"),
+                        snapshotId,
+                        Sid(CreditFooMethodId),
+                        Sid(CreditCaptureFieldId),
+                        null,
+                        "ReadsField",
+                        "fixture:credit-reads"),
                 ]),
             BaseTime.AddMinutes(completedMinutes).ToString("O"),
             cancellationToken);

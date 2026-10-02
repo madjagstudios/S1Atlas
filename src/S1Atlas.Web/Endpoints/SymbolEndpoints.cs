@@ -54,9 +54,11 @@ internal static class SymbolEndpoints
         var symbol = outcome.Symbol;
         var index = outcome.Index;
         bool exact;
+        bool includeGenerated;
         try
         {
             exact = QueryBinding.BindExact(context.Request.Query["exact"].ToString());
+            includeGenerated = QueryBinding.BindGenerated(context.Request.Query["generated"].ToString());
         }
         catch (ServeInvalidQueryException exception)
         {
@@ -67,9 +69,9 @@ internal static class SymbolEndpoints
             ? await queries.GetMembersAsync(index, symbol, ct)
             : new MemberListResult([], 0, false);
         var source = await queries.GetSourceAsync(index, symbol.SymbolId, symbol.Kind.Equals("Type", StringComparison.Ordinal), ct);
-        var callers = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callers, QueryBinding.DefaultRelationshipLimit, ct, exact);
-        var callees = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callees, QueryBinding.DefaultRelationshipLimit, ct);
-        var references = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.References, QueryBinding.DefaultRelationshipLimit, ct);
+        var callers = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callers, QueryBinding.DefaultRelationshipLimit, ct, exact, includeGenerated);
+        var callees = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callees, QueryBinding.DefaultRelationshipLimit, ct, includeGenerated: includeGenerated);
+        var references = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.References, QueryBinding.DefaultRelationshipLimit, ct, includeGenerated: includeGenerated);
         var overrides = symbol.Kind.Equals("Method", StringComparison.Ordinal)
             ? await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Overrides, QueryBinding.DefaultRelationshipLimit, ct)
             : EmptyRelationships();
@@ -145,10 +147,12 @@ internal static class SymbolEndpoints
     {
         int limit;
         bool exact;
+        bool includeGenerated;
         try
         {
             limit = QueryBinding.BindLimit(context.Request.Query["limit"].ToString(), QueryBinding.DefaultRelationshipLimit);
             exact = QueryBinding.BindExact(context.Request.Query["exact"].ToString());
+            includeGenerated = QueryBinding.BindGenerated(context.Request.Query["generated"].ToString());
         }
         catch (ServeInvalidQueryException exception)
         {
@@ -171,7 +175,7 @@ internal static class SymbolEndpoints
             return ServeHttp.Envelope(MissingRelationshipsEnvelope(outcome));
         }
 
-        var result = await queries.GetRelationshipsAsync(outcome.Index, outcome.Symbol.SymbolId, direction, limit, ct, exact);
+        var result = await queries.GetRelationshipsAsync(outcome.Index, outcome.Symbol.SymbolId, direction, limit, ct, exact, includeGenerated);
         return ServeHttp.Envelope(outcome.Index.ApiSelection is { } selection
             ? ServeEnvelopes.FromApiRelationships(outcome.Catalog, selection, result)
             : ServeEnvelopes.FromRelationships(outcome.Authority, result));

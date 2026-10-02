@@ -13,7 +13,8 @@ internal sealed record SearchModel(
     int PageSize,
     SymbolSearchResult Result,
     string? Build,
-    bool ResultsLinkable);
+    bool ResultsLinkable,
+    bool IncludeGenerated = false);
 
 internal static class SearchView
 {
@@ -94,6 +95,11 @@ internal static class SearchView
             body.Append($"<input type=\"hidden\" name=\"build\" value=\"{Html.Escape(model.Build)}\"> ");
         }
 
+        if (model.IncludeGenerated)
+        {
+            body.Append("<input type=\"hidden\" name=\"generated\" value=\"1\"> ");
+        }
+
         body.Append("<button type=\"submit\">Search</button></form>");
         return body.ToString();
     }
@@ -146,6 +152,11 @@ internal static class SearchView
         if (model.Build is not null)
         {
             query += $"&build={Uri.EscapeDataString(model.Build)}";
+        }
+
+        if (model.IncludeGenerated)
+        {
+            query += "&generated=1";
         }
 
         return query;

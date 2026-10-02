@@ -71,7 +71,8 @@ internal static class SearchEndpoints
             QueryBinding.SearchPageSize,
             result with { Results = page, ReturnedCount = page.Length },
             args.Build,
-            linkable);
+            linkable,
+            args.IncludeGenerated);
         return ServeHttp.Html(SearchView.Render(model));
     }
 
@@ -124,7 +125,7 @@ internal static class SearchEndpoints
 
             var linkable = args.Build is null || await IsCurrentBuildAsync(queries, args.Build, ct);
             return (
-                await queries.SearchGameAsync(authority.IndexRun, args.Query, args.Kind, limit, ct),
+                await queries.SearchGameAsync(authority.IndexRun, args.Query, args.Kind, limit, ct, args.IncludeGenerated),
                 Html.ChannelLabel(CodeChannel.Installed),
                 linkable);
         }
@@ -147,7 +148,7 @@ internal static class SearchEndpoints
             ?? throw new ServeScopeMissingException(
                 $"No completed {Html.CodebaseLabel(args.Codebase)} index exists yet.");
         return (
-            await queries.SearchApiAsync(selection, args.Query, limit, ct),
+            await queries.SearchApiAsync(selection, args.Query, limit, ct, args.IncludeGenerated),
             Html.ChannelLabel(selection.Channel),
             true);
     }
@@ -183,7 +184,7 @@ internal static class SearchEndpoints
                     new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."));
             }
 
-            var result = await queries.SearchGameAsync(authority.IndexRun, args.Query, args.Kind, limit, ct);
+            var result = await queries.SearchGameAsync(authority.IndexRun, args.Query, args.Kind, limit, ct, args.IncludeGenerated);
             return ServeEnvelopes.FromSearch(authority, Slice(result, args));
         }
 
@@ -211,7 +212,7 @@ internal static class SearchEndpoints
             return ServeEnvelopes.FromApiSelectionFailure<SymbolSearchResult>(catalog, fallback);
         }
 
-        var apiResult = await queries.SearchApiAsync(selection, args.Query, limit, ct);
+        var apiResult = await queries.SearchApiAsync(selection, args.Query, limit, ct, args.IncludeGenerated);
         return ServeEnvelopes.FromApiSearch(catalog, selection, Slice(apiResult, args));
     }
 
@@ -238,5 +239,5 @@ internal static class SearchEndpoints
             "<h1>Search</h1>" + SearchFormOnly(args) + $"<p>{Html.Escape(message)}</p>");
 
     private static string SearchFormOnly(SearchArgs args) =>
-        SearchView.RenderForm(new SearchModel(args.Query, args.Kind?.ToString(), args.Codebase, string.Empty, args.Page, QueryBinding.SearchPageSize, new SymbolSearchResult(0, 0, [], null), args.Build, true));
+        SearchView.RenderForm(new SearchModel(args.Query, args.Kind?.ToString(), args.Codebase, string.Empty, args.Page, QueryBinding.SearchPageSize, new SymbolSearchResult(0, 0, [], null), args.Build, true, args.IncludeGenerated));
 }
