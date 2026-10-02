@@ -1,5 +1,7 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
+using S1Atlas.Mcp.Mapping;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -87,6 +89,29 @@ public sealed class EnvelopeTests
         Assert.Single(envelope.Candidates);
         Assert.Equal(12, envelope.TotalCandidateCount);
         Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public void FromFind_Ambiguous_ReportsExactTotal()
+    {
+        var authority = new InstalledBuildAuthority(
+            InstalledBuildAuthorityStatus.Resolved,
+            "requested",
+            "resolved",
+            "extraction",
+            "index",
+            IndexRun: null,
+            Message: null);
+        var results = new[]
+        {
+            new SymbolQueryResult("index", "ScheduleI", "Installed", "id-a", "Type", "A", "A", false),
+            new SymbolQueryResult("index", "ScheduleI", "Installed", "id-b", "Type", "B", "B", false),
+        };
+
+        var envelope = EnvelopeMapper.FromFind(authority, results);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Equal(2, envelope.TotalCandidateCount);
     }
 
     [Fact]

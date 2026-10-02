@@ -377,6 +377,7 @@ public static class EnvelopeMapper
             _ => ToolEnvelope<SymbolQueryResult>.Ambiguous(
                 build,
                 results.Cast<object>().ToArray(),
+                results.Count,
                 Derived(authority, "symbol-selection"))
         };
     }
