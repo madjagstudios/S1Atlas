@@ -1,3 +1,4 @@
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 
@@ -37,7 +38,7 @@ public sealed class SymbolResolver
             return KindMismatch(indexId, codebase, channel, byId);
         }
 
-        if (TryShortIdPrefix(selector, out var shortIdPrefix))
+        if (ShortId.TryParsePrefix(selector, out var shortIdPrefix))
         {
             var prefixed = await ResolveShortIdAsync(indexId, shortIdPrefix, codebase, channel, kindNames, cancellationToken);
             if (prefixed is not null)
@@ -156,21 +157,6 @@ public sealed class SymbolResolver
             .ThenBy(record => record.SymbolId, StringComparer.Ordinal)
             .First();
         return KindMismatch(indexId, codebase, channel, mismatch);
-    }
-
-    private static bool TryShortIdPrefix(string selector, out string prefix)
-    {
-        prefix = string.Empty;
-        if (selector.Length < 8 || selector.Length > 63)
-            return false;
-        foreach (var character in selector)
-        {
-            if (!Uri.IsHexDigit(character))
-                return false;
-        }
-
-        prefix = selector.ToLowerInvariant();
-        return true;
     }
 
     private async Task<SymbolResolutionResult?> ResolveShortIdAsync(

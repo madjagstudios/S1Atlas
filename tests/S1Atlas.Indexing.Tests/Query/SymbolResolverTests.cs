@@ -346,6 +346,23 @@ public sealed class SymbolResolverTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Sixty_three_char_prefix_resolves_at_upper_boundary()
+    {
+        var fixture = await SeedPrefixAsync(TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            fixture.SoloId[..63],
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal(fixture.SoloId, result.Symbol?.SymbolId);
+    }
+
+    [Fact]
     public async Task Seven_hex_chars_fall_through_to_textual_matching()
     {
         var fixture = await SeedPrefixAsync(TestContext.Current.CancellationToken);
