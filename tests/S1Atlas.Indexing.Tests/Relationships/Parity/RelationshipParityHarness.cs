@@ -182,8 +182,16 @@ public static class RelationshipParityHarness
     private static string TicketFor(string reason) =>
         ReasonTickets.TryGetValue(reason, out var ticket) ? ticket : "unowned";
 
-    private static string ReasonForExtra(string symbol) =>
-        symbol.StartsWith("0x", StringComparison.Ordinal) ? "unresolved token" : "unexpected edge";
+    private static string ReasonForExtra(string symbol)
+    {
+        if (symbol.StartsWith("unresolved:", StringComparison.Ordinal))
+        {
+            var parts = symbol.Split(':');
+            return parts.Length > 1 ? parts[1] : "unresolved";
+        }
+
+        return symbol.StartsWith("0x", StringComparison.Ordinal) ? "unresolved token" : "unexpected edge";
+    }
 
     private static async Task<Dictionary<string, HashSet<string>>> QueryTargetAsync(
         IndexQueryService service,
@@ -248,7 +256,9 @@ public static class RelationshipParityHarness
         var raw = edge.Target.RawText;
         if (raw is null)
             return null;
-        if (raw.StartsWith(FixtureNamespace, StringComparison.Ordinal) || raw.StartsWith("0x", StringComparison.Ordinal))
+        if (raw.StartsWith(FixtureNamespace, StringComparison.Ordinal)
+            || raw.StartsWith("0x", StringComparison.Ordinal)
+            || raw.StartsWith("unresolved:", StringComparison.Ordinal))
             return raw;
         return null;
     }

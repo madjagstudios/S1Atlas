@@ -130,8 +130,13 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal(2, snippet.Neighborhood.CalleeTotal);
         Assert.Empty(snippet.Neighborhood.References);
         Assert.Single(snippet.Neighborhood.Callees);
-        Assert.Equal(fixture.GameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
-        Assert.NotEqual(fixture.LatestGameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
+        // Neighborhood order follows relationship-ID hash order, which shifts whenever
+        // index IDs change (e.g. schema-version bumps); either pinned callee proves the binding.
+        var firstCallee = snippet.Neighborhood.Callees[0].Target.SymbolId;
+        Assert.True(
+            firstCallee == fixture.GameSymbolId || firstCallee == fixture.SecondGameSymbolId,
+            $"Unexpected pinned callee: {firstCallee}");
+        Assert.NotEqual(fixture.LatestGameSymbolId, firstCallee);
 
         var fullType = await service.SourceAsync(
             "qol/Qol.Mod::Run():System.Void",
@@ -177,8 +182,13 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
         Assert.Equal([RuntimeVerificationSignal.Physics], snippet.RuntimeVerification!.Signals);
         Assert.Equal(2, snippet.Neighborhood!.CalleeTotal);
         Assert.Single(snippet.Neighborhood.Callees);
-        Assert.Equal(fixture.GameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
-        Assert.NotEqual(fixture.LatestGameSymbolId, snippet.Neighborhood.Callees[0].Target.SymbolId);
+        // Neighborhood order follows relationship-ID hash order, which shifts whenever
+        // index IDs change (e.g. schema-version bumps); either pinned callee proves the binding.
+        var firstCallee = snippet.Neighborhood.Callees[0].Target.SymbolId;
+        Assert.True(
+            firstCallee == fixture.GameSymbolId || firstCallee == fixture.SecondGameSymbolId,
+            $"Unexpected pinned callee: {firstCallee}");
+        Assert.NotEqual(fixture.LatestGameSymbolId, firstCallee);
     }
 
     [Fact]

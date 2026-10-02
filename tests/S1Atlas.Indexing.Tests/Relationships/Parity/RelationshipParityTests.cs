@@ -84,6 +84,32 @@ public sealed class RelationshipParityTests
     }
 
     [Fact]
+    public async Task No_callers_or_callees_edge_carries_a_raw_token()
+    {
+        var root = FindRepositoryRoot();
+        var oracle = ParityOracle.Load(OraclePath(root));
+        await using var index = await RelationshipParityHarness.IndexFixtureAsync(TestContext.Current.CancellationToken);
+        var service = new IndexQueryService(index.Repository);
+        var symbolIds = await RelationshipParityHarness.MapKindsAndNamesToIdsAsync(
+            index.Repository, index.Run.IndexId, TestContext.Current.CancellationToken);
+
+        foreach (var target in oracle.Targets)
+        {
+            var id = symbolIds[(RelationshipParityHarness.KindFor(target.Target), target.Target)];
+            var callers = await service.CallersInIndexAsync(
+                index.Run, CodebaseKind.ScheduleI, CodeChannel.Installed, id, 10000, TestContext.Current.CancellationToken);
+            var callees = await service.CalleesInIndexAsync(
+                index.Run, CodebaseKind.ScheduleI, CodeChannel.Installed, id, 10000, TestContext.Current.CancellationToken);
+            foreach (var edge in callers.Relationships.Concat(callees.Relationships))
+            {
+                Assert.False(
+                    edge.Target.RawText?.StartsWith("0x") == true,
+                    $"Raw token target for {target.Target}: {edge.Target.RawText}");
+            }
+        }
+    }
+
+    [Fact]
     public async Task Report_matches_committed_baseline()
     {
         var root = FindRepositoryRoot();
