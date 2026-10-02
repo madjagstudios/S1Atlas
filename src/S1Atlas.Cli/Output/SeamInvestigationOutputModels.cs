@@ -61,7 +61,9 @@ internal sealed record SeamInvestigationOutput(
 internal sealed record SeamResolutionOutput(
     string Status,
     SymbolQueryResult? Symbol,
-    IReadOnlyList<SymbolQueryResult> Candidates)
+    IReadOnlyList<SymbolQueryResult> Candidates,
+    IReadOnlyList<SymbolQueryResult> Suggestions,
+    int? TotalCandidateCount)
 {
     public static SeamResolutionOutput FromResult(SymbolResolutionResult result)
     {
@@ -69,7 +71,9 @@ internal sealed record SeamResolutionOutput(
         return new SeamResolutionOutput(
             result.Status.ToString(),
             result.Symbol,
-            result.Candidates.ToArray());
+            result.Candidates.ToArray(),
+            result.Suggestions.ToArray(),
+            result.TotalCandidateCount);
     }
 }
 
