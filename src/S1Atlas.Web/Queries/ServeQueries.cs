@@ -13,7 +13,10 @@ public enum ServeRelationshipDirection
 {
     Callers,
     Callees,
-    References
+    References,
+    Overrides,
+    OverriddenBy,
+    Derived
 }
 
 public sealed record ServeIndex(
@@ -29,6 +32,7 @@ public sealed record ServeIndex(
 public sealed class ServeQueries
 {
     internal const int MemberSearchLimit = 500;
+    private const int HierarchyDepth = 10;
 
     private readonly AtlasReadOnlyServices _services;
     private readonly ApiIndexQueryService _api;
@@ -149,6 +153,9 @@ public sealed class ServeQueries
         int limit,
         CancellationToken ct)
     {
+        if (direction is ServeRelationshipDirection.Overrides or ServeRelationshipDirection.OverriddenBy or ServeRelationshipDirection.Derived)
+            return GetHierarchyAsync(index, symbolId, direction, limit, ct);
+
         if (index.ApiSelection is { } selection)
         {
             var apiDirection = direction switch
@@ -171,6 +178,47 @@ public sealed class ServeQueries
                     index.Run, index.Codebase, index.Channel, symbolId, limit, token),
                 _ => _services.IndexQueryService.RefsInIndexAsync(
                     index.Run, index.Codebase, index.Channel, symbolId, limit, token)
+            },
+            ct);
+    }
+
+    private Task<RelationshipQuerySetResult> GetHierarchyAsync(
+        ServeIndex index,
+        string symbolId,
+        ServeRelationshipDirection direction,
+        int limit,
+        CancellationToken ct)
+    {
+        if (index.ApiSelection is not null)
+        {
+            return Task.FromResult(new RelationshipQuerySetResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.Resolved, null, []),
+                [],
+                null,
+                false,
+                string.Empty,
+                0));
+        }
+
+        return WithStoreAsync(
+            async token =>
+            {
+                var hierarchy = direction switch
+                {
+                    ServeRelationshipDirection.Overrides => await _services.IndexQueryService.OverridesInIndexAsync(
+                        index.Run, index.Codebase, index.Channel, symbolId, limit, token),
+                    ServeRelationshipDirection.OverriddenBy => await _services.IndexQueryService.OverriddenByInIndexAsync(
+                        index.Run, index.Codebase, index.Channel, symbolId, limit, HierarchyDepth, token),
+                    _ => await _services.IndexQueryService.DerivedInIndexAsync(
+                        index.Run, index.Codebase, index.Channel, symbolId, limit, HierarchyDepth, 0, token)
+                };
+                return new RelationshipQuerySetResult(
+                    hierarchy.Resolution,
+                    hierarchy.Nodes.Select(node => node.Edge).ToArray(),
+                    null,
+                    false,
+                    string.Empty,
+                    hierarchy.TotalCount);
             },
             ct);
     }

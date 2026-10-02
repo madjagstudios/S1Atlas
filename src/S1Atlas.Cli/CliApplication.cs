@@ -427,6 +427,9 @@ public sealed class CliApplication
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallSitesCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(FieldRefsCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(OverridesCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(OverriddenByCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(DerivedCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallableCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScenesCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(SceneCommand.Create(sceneQueryService, repository, output, error, cancellationToken));

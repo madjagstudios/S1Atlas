@@ -27,6 +27,16 @@ public class DispatchHider : DispatchBase
     public new int Bar() => 4;
 }
 
+public class DispatchGrandchild : DispatchDerived
+{
+    public override int Foo() => 7;
+}
+
+public class DispatchNewVirtual : DispatchBase
+{
+    public new virtual int Foo() => 8;
+}
+
 public interface IDispatchContract
 {
     int Serve();
@@ -43,6 +53,59 @@ public class DispatchExplicit : IDispatchContract
 }
 
 public class DispatchInherited : DispatchImplicit
+{
+}
+
+public class GenericBase<T>
+{
+    public virtual string Describe() => "base";
+}
+
+public class GenericDerived : GenericBase<int>
+{
+    public override string Describe() => "derived";
+}
+
+public class ExternalToString
+{
+    public override string ToString() => "external";
+}
+
+public class PropBase
+{
+    public virtual string Label => "base";
+}
+
+public class PropDerived : PropBase
+{
+    public override string Label => "derived";
+}
+
+public class EventBase
+{
+    public virtual event EventHandler? Changed;
+
+    public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+}
+
+public class EventDerived : EventBase
+{
+    public override event EventHandler? Changed;
+
+    public new void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+}
+
+public interface IWorker
+{
+    int Work();
+}
+
+public class ImplBase
+{
+    public int Work() => 1;
+}
+
+public class ImplDerived : ImplBase, IWorker
 {
 }
 

@@ -86,7 +86,7 @@ public sealed class NavigationTests
 
         var body = await fixture.GetStringAsync("/search?q=Widget", cancellationToken);
 
-        Assert.Contains("DERIVED: showing 1&ndash;5 of 5 matches.", body);
+        Assert.Contains("DERIVED: showing 1&ndash;7 of 7 matches.", body);
     }
 
     [Fact]

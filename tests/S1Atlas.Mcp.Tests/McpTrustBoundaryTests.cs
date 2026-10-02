@@ -44,7 +44,10 @@ public sealed class McpTrustBoundaryTests
                 "find_call_sites",
                 "find_callees",
                 "find_callers",
+                "find_derived_types",
                 "find_field_references",
+                "find_overriders",
+                "find_overrides",
                 "find_references",
                 "find_related_types",
                 "get_api_source",
@@ -294,7 +297,7 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        Assert.Equal(32, schemas.Count);
+        Assert.Equal(35, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
         AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
@@ -305,7 +308,10 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_derived_types"], ["selector", "buildId", "limit", "depth", "offset", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_field_references"], ["selector", "buildId", "readers", "writers", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_overriders"], ["selector", "buildId", "limit", "depth", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_overrides"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_related_types"], ["selector", "buildId", "relationKinds", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
@@ -346,7 +352,10 @@ public sealed class McpTrustBoundaryTests
             ["find_call_sites"] = new Dictionary<string, object?> { ["selector"] = atlas.EngineCallSiteSelector },
             ["find_callees"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["find_callers"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_derived_types"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyBaseTypeSelector },
             ["find_field_references"] = new Dictionary<string, object?> { ["selector"] = atlas.GameFieldSelector },
+            ["find_overriders"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyBaseMethodSelector },
+            ["find_overrides"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyDerivedMethodSelector },
             ["find_references"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["find_related_types"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["get_api_source"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
@@ -966,6 +975,12 @@ internal static class McpTestHost
         await code.FindReferencesAsync(" ", null, 50, ct);
         await code.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
         await code.FindRelatedTypesAsync(" ", null, null, 50, ct);
+        await code.FindOverridesAsync(atlas.HierarchyDerivedMethodSelector, null, 50, ct);
+        await code.FindOverridesAsync(" ", null, 50, ct);
+        await code.FindOverridersAsync(atlas.HierarchyBaseMethodSelector, null, 50, 10, ct);
+        await code.FindOverridersAsync(" ", null, 50, 10, ct);
+        await code.FindDerivedTypesAsync(atlas.HierarchyBaseTypeSelector, null, 50, 10, 0, ct);
+        await code.FindDerivedTypesAsync(" ", null, 50, 10, 0, ct);
         await new ReferenceCollectionTools(services).ListReferenceCollectionsAsync(ct);
 
         await compare.CompareSymbolAsync(atlas.CompareSelector, atlas.BuildIdA, atlas.BuildIdB, ct);
@@ -1011,6 +1026,9 @@ internal static class McpTestHost
         var fieldReferences = await tools.FindFieldReferencesAsync(atlas.GameFieldSelector, null, false, false, 50, ct);
         var references = await tools.FindReferencesAsync(atlas.MethodSelector, null, 50, ct);
         var relatedTypes = await tools.FindRelatedTypesAsync(atlas.MethodSelector, null, null, 50, ct);
+        var overrides = await tools.FindOverridesAsync(atlas.HierarchyDerivedMethodSelector, null, 50, ct);
+        var overriders = await tools.FindOverridersAsync(atlas.HierarchyBaseMethodSelector, null, 50, 10, ct);
+        var derivedTypes = await tools.FindDerivedTypesAsync(atlas.HierarchyBaseTypeSelector, null, 50, 10, 0, ct);
         return
         [
             Observe(search, search.Data!.Results.Select(result => result.IndexId)),
@@ -1021,7 +1039,10 @@ internal static class McpTestHost
             Observe(callSites, [callSites.Build!.IndexId!]),
             Observe(fieldReferences, [fieldReferences.Data!.Resolution.Symbol!.IndexId]),
             Observe(references, [references.Data!.Resolution.Symbol!.IndexId]),
-            Observe(relatedTypes, [relatedTypes.Data!.Resolution.Symbol!.IndexId])
+            Observe(relatedTypes, [relatedTypes.Data!.Resolution.Symbol!.IndexId]),
+            Observe(overrides, [overrides.Data!.Resolution.Symbol!.IndexId]),
+            Observe(overriders, [overriders.Data!.Resolution.Symbol!.IndexId]),
+            Observe(derivedTypes, [derivedTypes.Data!.Resolution.Symbol!.IndexId])
         ];
     }
 

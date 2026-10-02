@@ -282,11 +282,17 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
         var fieldReader = Method("game-field-reader", snapshot.SnapshotId, "Demo.FieldReader.Read");
         var fieldWriter = Method("game-field-writer", snapshot.SnapshotId, "Demo.FieldWriter.Write");
         var field = Field("game-field", snapshot.SnapshotId, "Demo.State.Value");
+        var hierarchyBase = Method("game-hierarchy-base", snapshot.SnapshotId, "Demo.Hierarchy.Base.Run");
+        var hierarchyMid = Method("game-hierarchy-mid", snapshot.SnapshotId, "Demo.Hierarchy.Mid.Run");
+        var hierarchyLeaf = Method("game-hierarchy-leaf", snapshot.SnapshotId, "Demo.Hierarchy.Leaf.Run");
+        var hierarchyBaseType = Type("game-hierarchy-basetype", snapshot.SnapshotId, "Demo.Hierarchy.Base");
+        var hierarchyMidType = Type("game-hierarchy-midtype", snapshot.SnapshotId, "Demo.Hierarchy.Mid");
+        var hierarchyLeafType = Type("game-hierarchy-leaftype", snapshot.SnapshotId, "Demo.Hierarchy.Leaf");
 
         await _repository.CompleteIndexRunAsync(
             run.IndexId,
             new IndexWriteSet(
-                [callSourceA, callSourceB, fieldReader, fieldWriter, field],
+                [callSourceA, callSourceB, fieldReader, fieldWriter, field, hierarchyBase, hierarchyMid, hierarchyLeaf, hierarchyBaseType, hierarchyMidType, hierarchyLeafType],
                 [],
                 [],
                 [],
@@ -294,7 +300,11 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
                     new IndexRelationshipRecord("call-001-game", snapshot.SnapshotId, callSourceA.SymbolId, null, "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()", "Calls", "fixture:game"),
                     new IndexRelationshipRecord("call-003-game", snapshot.SnapshotId, callSourceB.SymbolId, null, "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()", "Calls", "fixture:game"),
                     new IndexRelationshipRecord("field-001-game-read", snapshot.SnapshotId, fieldReader.SymbolId, field.SymbolId, "Demo.State::Value", "ReadsField", "fixture:game"),
-                    new IndexRelationshipRecord("field-003-game-write", snapshot.SnapshotId, fieldWriter.SymbolId, field.SymbolId, "Demo.State::Value", "WritesField", "fixture:game")
+                    new IndexRelationshipRecord("field-003-game-write", snapshot.SnapshotId, fieldWriter.SymbolId, field.SymbolId, "Demo.State::Value", "WritesField", "fixture:game"),
+                    new IndexRelationshipRecord("hier-001-mid-overrides", snapshot.SnapshotId, hierarchyMid.SymbolId, hierarchyBase.SymbolId, "Demo.Hierarchy.Base::Run()", "Overrides", "Metadata"),
+                    new IndexRelationshipRecord("hier-002-leaf-overrides", snapshot.SnapshotId, hierarchyLeaf.SymbolId, hierarchyMid.SymbolId, "Demo.Hierarchy.Mid::Run()", "Overrides", "Metadata"),
+                    new IndexRelationshipRecord("hier-003-mid-inherits", snapshot.SnapshotId, hierarchyMidType.SymbolId, hierarchyBaseType.SymbolId, "Demo.Hierarchy.Base", "Inherits", "Metadata"),
+                    new IndexRelationshipRecord("hier-004-leaf-inherits", snapshot.SnapshotId, hierarchyLeafType.SymbolId, hierarchyMidType.SymbolId, "Demo.Hierarchy.Mid", "Inherits", "Metadata")
                 ]),
             BaseTime.AddMinutes(4).ToString("O"),
             CancellationToken.None);
@@ -317,7 +327,8 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
         var fieldReader = Method("reference-field-reader", snapshot.SnapshotId, "qol/Qol.FieldReader.Read");
         var fieldWriter = Method("reference-field-writer", snapshot.SnapshotId, "qol/Qol.FieldWriter.Write");
         var referenceField = Field("reference-field", snapshot.SnapshotId, "qol/Qol.Config.Setting");
-        var symbols = new[] { callSource, fieldReader, fieldWriter, referenceField };
+        var hierarchyMod = Method("reference-hierarchy-mod", snapshot.SnapshotId, "qol/Qol.Hierarchy.Mod.Run");
+        var symbols = new[] { callSource, fieldReader, fieldWriter, referenceField, hierarchyMod };
 
         await _repository.CompleteIndexRunAsync(
             run.IndexId,
@@ -329,7 +340,8 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
                 [
                     new IndexRelationshipRecord("call-002-reference", snapshot.SnapshotId, callSource.SymbolId, null, "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()", "Calls", "fixture:reference"),
                     new IndexRelationshipRecord("field-002-reference-read", snapshot.SnapshotId, fieldReader.SymbolId, "game-field", "Demo.State::Value", "ReadsField", "fixture:reference"),
-                    new IndexRelationshipRecord("field-004-reference-write", snapshot.SnapshotId, fieldWriter.SymbolId, referenceField.SymbolId, "qol/Qol.Config::Setting", "WritesField", "fixture:reference")
+                    new IndexRelationshipRecord("field-004-reference-write", snapshot.SnapshotId, fieldWriter.SymbolId, referenceField.SymbolId, "qol/Qol.Config::Setting", "WritesField", "fixture:reference"),
+                    new IndexRelationshipRecord("hier-005-mod-overrides", snapshot.SnapshotId, hierarchyMod.SymbolId, "game-hierarchy-base", "Demo.Hierarchy.Base::Run()", "Overrides", "Metadata")
                 ],
                 ReferenceIndexContext: new ReferenceIndexContextRecord(run.IndexId, gameIndexId, BuildId),
                 ReferenceMods:
@@ -471,6 +483,16 @@ internal sealed class TargetRelationshipCliAtlas : IAsyncDisposable
             "System.Int32 " + typeName + "::" + fieldName,
             false);
     }
+
+    private static IndexSymbolRecord Type(string id, string snapshotId, string qualifiedName) =>
+        new(
+            id,
+            snapshotId,
+            "Fixture:Installed:Type:" + qualifiedName,
+            "Type",
+            qualifiedName,
+            qualifiedName,
+            false);
 
     private static string CanonicalMember(string qualifiedName)
     {

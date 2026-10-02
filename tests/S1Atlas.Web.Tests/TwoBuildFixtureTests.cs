@@ -68,7 +68,7 @@ public sealed class TwoBuildFixtureTests
 
         Assert.NotNull(indexA);
         Assert.NotNull(indexB);
-        Assert.Equal(9, await repository.CountCompletedSymbolsAsync(SyntheticAtlas.GameIndexAValue, cancellationToken));
-        Assert.Equal(40, await repository.CountCompletedSymbolsAsync(SyntheticAtlas.GameIndexBValue, cancellationToken));
+        Assert.Equal(11, await repository.CountCompletedSymbolsAsync(SyntheticAtlas.GameIndexAValue, cancellationToken));
+        Assert.Equal(42, await repository.CountCompletedSymbolsAsync(SyntheticAtlas.GameIndexBValue, cancellationToken));
     }
 }

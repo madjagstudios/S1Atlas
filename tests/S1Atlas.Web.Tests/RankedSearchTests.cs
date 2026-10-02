@@ -27,7 +27,7 @@ public sealed class RankedSearchTests
 
         using var json = JsonDocument.Parse(body);
         var data = json.RootElement.GetProperty("data");
-        Assert.Equal(5, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(7, data.GetProperty("totalCount").GetInt32());
         var ids = data.GetProperty("results").EnumerateArray()
             .Select(result => result.GetProperty("symbolId").GetString())
             .ToArray();
@@ -44,7 +44,7 @@ public sealed class RankedSearchTests
         var body = await fixture.GetStringAsync("/search?q=idget", cancellationToken);
 
         Assert.Contains("Demo.Widget", body);
-        Assert.Contains("FACT: 5 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 7 matches in Schedule I (Installed).", body);
     }
 
     [Fact]
@@ -82,9 +82,11 @@ public sealed class RankedSearchTests
 
         var body = await fixture.GetStringAsync("/search?q=R", cancellationToken);
 
-        Assert.Contains("FACT: 2 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 4 matches in Schedule I (Installed).", body);
         Assert.Contains("Demo.Result", body);
         Assert.Contains("Demo.Widget.Run", body);
+        Assert.Contains("Demo.Widget.Render", body);
+        Assert.Contains("Demo.WidgetBase.Render", body);
     }
 
     [Fact]
@@ -98,7 +100,7 @@ public sealed class RankedSearchTests
 
         using var json = JsonDocument.Parse(body);
         var data = json.RootElement.GetProperty("data");
-        Assert.Equal(2, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(4, data.GetProperty("totalCount").GetInt32());
         Assert.All(
             data.GetProperty("results").EnumerateArray(),
             result => Assert.Equal("Method", result.GetProperty("kind").GetString()));

@@ -437,6 +437,63 @@ public static class EnvelopeMapper
         };
     }
 
+    public static ToolEnvelope<HierarchyQueryResult> FromHierarchy(
+        InstalledBuildAuthority authority,
+        HierarchyQueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<HierarchyQueryResult>.Ambiguous(
+                BuildFrom(authority),
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<HierarchyQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                Derived(authority, "symbol-selection")),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<HierarchyQueryResult>.NotFound(
+                BuildFrom(authority),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                Derived(authority, "symbol-selection")),
+            _ => ToolEnvelope<HierarchyQueryResult>.Resolved(
+                BuildFrom(authority),
+                result,
+                Fact(authority, "relationship-query"),
+                Derived(authority, "relationship-direction"))
+        };
+    }
+
+    public static ToolEnvelope<HierarchyQueryResult> FromScopedHierarchy(
+        InstalledBuildAuthority authority,
+        HierarchyQueryResult result,
+        string? collection) =>
+        AddReferenceProvenance(
+            FromHierarchy(authority, result),
+            authority,
+            collection,
+            (result.Resolution.Symbol is { } symbol ? new[] { symbol } : result.Resolution.Candidates)
+                .Concat(result.Nodes.SelectMany(node => new[] { node.Edge.Source, node.Edge.Target })
+                .Where(endpoint => endpoint.Origin == "reference")
+                .Select(endpoint => new SymbolQueryResult(
+                    string.Empty,
+                    "ReferenceMod",
+                    "Installed",
+                    endpoint.SymbolId ?? string.Empty,
+                    string.Empty,
+                    endpoint.QualifiedName ?? string.Empty,
+                    endpoint.Signature ?? string.Empty,
+                    false,
+                    endpoint.Origin,
+                    endpoint.Collection,
+                    endpoint.ReferenceModId,
+                    endpoint.DisplayName,
+                    endpoint.Version,
+                    endpoint.License,
+                    endpoint.RelativePath,
+                    endpoint.Sha256))));
+
     public static ToolEnvelope<RelationshipQuerySetResult> FromScopedRelationships(
         InstalledBuildAuthority authority,
         RelationshipQuerySetResult result,

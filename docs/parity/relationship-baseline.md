@@ -2,7 +2,9 @@
 
 Owner map: AT-65 owns virtual/interface dispatch gaps, AT-66 owns
 compiler-generated-body gaps, AT-67 owns delegate-creation and address-taken
-gaps. Entries marked `unowned` fit none of those tickets.
+gaps. Entries marked `unowned` fit none of those tickets. AT-65 part A
+(override/implementation graph and hierarchy queries) is done; the 12
+`AT-65` rows below are dispatch-aware callers, which are part B.
 
 Conventions: call and construct edges are pinned on both endpoints; field
 edges are pinned on the field only; delegate-creation edges (mislabeled as
@@ -38,10 +40,13 @@ later tickets update it in the same PR that fixes a gap.
 | field initializer | 2 | 2 | 0 | 0 | 0 |
 | field read | 4 | 4 | 0 | 0 | 0 |
 | field write | 3 | 3 | 0 | 0 | 0 |
+| implementation | 3 | 3 | 0 | 0 | 0 |
+| inherited implementation | 1 | 1 | 0 | 0 | 0 |
 | interface dispatch | 4 | 0 | 4 | 0 | 0 |
 | iterator body | 2 | 0 | 2 | 0 | 1 |
 | lambda body | 4 | 0 | 4 | 0 | 2 |
 | local function body | 4 | 0 | 4 | 0 | 2 |
+| override | 7 | 7 | 0 | 0 | 0 |
 | property accessor | 10 | 10 | 0 | 0 | 0 |
 | static constructor | 1 | 1 | 0 | 0 | 0 |
 | virtual dispatch | 8 | 0 | 8 | 0 | 0 |

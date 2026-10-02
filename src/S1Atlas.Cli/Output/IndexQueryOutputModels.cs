@@ -12,7 +12,8 @@ internal sealed record IndexQueryOutput(
     BodyRecoveryStatus? BodyRecoveryStatus = null,
     bool? CallerCompletenessBoundedByTargetResolution = null,
     string? CompletenessNotice = null,
-    CallableSurfaceResolutionResult? CallableSurface = null)
+    CallableSurfaceResolutionResult? CallableSurface = null,
+    IReadOnlyList<HierarchyNodeQueryResult>? HierarchyNodes = null)
 {
     public IReadOnlyList<SymbolQueryResult> Results => Symbols;
 }

@@ -14,8 +14,8 @@ public sealed class SearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Widget", cancellationToken);
 
-        Assert.Contains("FACT: 5 matches in Schedule I (Installed).", body);
-        Assert.Contains("DERIVED: showing 1&ndash;5 of 5 matches.", body);
+        Assert.Contains("FACT: 7 matches in Schedule I (Installed).", body);
+        Assert.Contains("DERIVED: showing 1&ndash;7 of 7 matches.", body);
         Assert.Contains("Demo.Widget.Run", body);
         Assert.Contains("/symbol/method-serve-run", body);
     }
@@ -28,10 +28,11 @@ public sealed class SearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Widget&kind=method", cancellationToken);
 
-        Assert.Contains("FACT: 2 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 4 matches in Schedule I (Installed).", body);
         Assert.Contains("Demo.Widget.Run", body);
         Assert.Contains("Demo.Widget.CheckPhysics", body);
-        Assert.DoesNotContain("Demo.WidgetBase", body);
+        Assert.Contains("Demo.Widget.Render", body);
+        Assert.DoesNotContain(">Demo.WidgetBase</a>", body);
     }
 
     [Fact]
@@ -124,8 +125,8 @@ public sealed class SearchTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal("resolved", json.RootElement.GetProperty("status").GetString());
         var data = json.RootElement.GetProperty("data");
-        Assert.Equal(5, data.GetProperty("totalCount").GetInt32());
-        Assert.Equal(5, data.GetProperty("returnedCount").GetInt32());
+        Assert.Equal(7, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(7, data.GetProperty("returnedCount").GetInt32());
         Assert.Equal("build-serve-1", json.RootElement.GetProperty("build").GetProperty("resolvedBuildId").GetString());
     }
 

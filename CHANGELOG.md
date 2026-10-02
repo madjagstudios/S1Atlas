@@ -8,6 +8,22 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Override/implementation graph with `overrides`, `overridden-by`, and
+  `derived` queries** (AT-65): indexing records `Overrides` (method to the
+  base-class slot it fills, immediate slot only) and `ImplementsMethod`
+  (method to the interface method it implements, implicit or explicit)
+  metadata edges, so `new`/newslot hides record nothing while virtual,
+  abstract, generic-base, and accessor overrides resolve to the open
+  definition. Three queries walk the graph: `overrides` lists the slots a
+  method fills up to the root, `overridden-by` lists transitive overriders
+  and implementations with a depth limit, and `derived` lists transitive
+  subclasses and implementers with paging and true totals. All three ship in
+  the CLI, as MCP tools (`find_overrides`, `find_overriders`,
+  `find_derived_types`), and as symbol-page sections in `serve`. The parity
+  harness now compares overriders and implementers against the oracle (all
+  found); dispatch-aware callers remain a follow-up. Indexes rebuild (schema
+  v11).
+
 - **Indexed, ranked search for `s1atlas serve` plus serve performance targets**
   (AT-88): schema migration v16 adds a trigram FTS5 index over symbol names
   and signatures (kept in sync by triggers, with a prefix index for 1-2

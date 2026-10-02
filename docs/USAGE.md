@@ -146,6 +146,9 @@ s1atlas callers "<TypeName.MethodName>"
 s1atlas callees "<TypeName.MethodName>"
 s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
 s1atlas fieldrefs "Demo.State.Value" --readers
+s1atlas overrides "<TypeName.MethodName>"
+s1atlas overridden-by "<TypeName.MethodName>" --depth 5
+s1atlas derived "<Namespace.TypeName>" --limit 20 --offset 20
 s1atlas callable "<TypeName.MethodName>"
 ```
 
@@ -210,6 +213,14 @@ ambiguity as a separate call-site result state; field-selector ambiguity remains
 explicit. They are static relationship evidence only:
 they do not prove runtime behavior, scene or geometry behavior, lifecycle
 ordering, or call order.
+
+`overrides` lists the base-class and interface slots one method fills, up to
+the root, marking the direct step. `overridden-by` lists the methods that
+override or implement one method, transitively, with `--depth` (default `10`)
+bounding the walk. `derived` lists the subclasses and implementers of one
+type, transitively, with `--depth` (default `10`) and `--offset` paging over
+true totals. All three are metadata facts, so they work from reconstructed
+assemblies without method bodies.
 
 ## Investigate seams
 
@@ -535,7 +546,8 @@ match simple-name prefixes only. Substring matching needs the search index built
 schema migration v16: on an older atlas the page says so and falls back to the
 slower unranked search until any `s1atlas` write command upgrades the database.
 `/symbol/<id>` shows one symbol's members, integrity-checked source,
-callers, callees, and references. `/builds` lists every known build newest
+callers, callees, and references, plus Overrides and Overridden by sections
+on methods and a Derived types section on types. `/builds` lists every known build newest
 first with human-readable status labels; `/builds/<id>` shows one build's
 facts, per-codebase symbol counts with links into search filtered to that
 build, adjacent diffs, and the environment when it is the current build.
@@ -581,7 +593,8 @@ s1atlas reference collections list --json
 
 Reference indexing is an explicit offline CLI operation. Query commands accept
 `--scope game|reference|all` and `--collection <name-or-id>` for `search`,
-`source`, `refs`, `callers`, `callees`, `callsites`, and `fieldrefs`:
+`source`, `refs`, `callers`, `callees`, `callsites`, `fieldrefs`,
+`overrides`, `overridden-by`, and `derived`:
 
 ```powershell
 s1atlas search "ModEntry" --scope reference --collection qol
@@ -698,16 +711,20 @@ local reference collections through these tools:
 
 `search_symbols`, `get_type`, `get_method`, `get_source`, `find_callers`,
 `find_callees`, `find_call_sites`, `find_field_references`,
-`find_references`, `find_related_types`, `compare_symbol`, `list_builds`,
+`find_references`, `find_related_types`, `find_overrides`, `find_overriders`,
+`find_derived_types`, `compare_symbol`, `list_builds`,
 `get_environment`, `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`,
 `get_component`, `get_scriptable_object`, and `list_reference_collections`.
 
 `search_symbols`, `get_source`, `find_callers`, `find_callees`,
-`find_call_sites`, `find_field_references`, `find_references`, and
-`find_related_types` accept optional `scope` and `collection` arguments.
+`find_call_sites`, `find_field_references`, `find_references`,
+`find_related_types`, `find_overrides`, `find_overriders`, and
+`find_derived_types` accept optional `scope` and `collection` arguments.
 `scope` defaults to `game`; `reference` and `all` require `collection`, while
 `game` rejects it. `find_field_references` also accepts `readers` and `writers`
-filters, which are mutually exclusive. `list_reference_collections` reports
+filters, which are mutually exclusive. `find_overriders` and
+`find_derived_types` accept `depth` (default `10`), and `find_derived_types`
+accepts `offset` (default `0`). `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
 the CLI and returns the same ordered candidate, warning, unknown-dimension, and

@@ -60,10 +60,27 @@ internal static class SymbolEndpoints
         var callers = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callers, QueryBinding.DefaultRelationshipLimit, ct);
         var callees = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callees, QueryBinding.DefaultRelationshipLimit, ct);
         var references = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.References, QueryBinding.DefaultRelationshipLimit, ct);
+        var overrides = symbol.Kind.Equals("Method", StringComparison.Ordinal)
+            ? await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Overrides, QueryBinding.DefaultRelationshipLimit, ct)
+            : EmptyRelationships();
+        var overriddenBy = symbol.Kind.Equals("Method", StringComparison.Ordinal)
+            ? await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.OverriddenBy, QueryBinding.DefaultRelationshipLimit, ct)
+            : EmptyRelationships();
+        var derived = symbol.Kind.Equals("Type", StringComparison.Ordinal)
+            ? await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Derived, QueryBinding.DefaultRelationshipLimit, ct)
+            : EmptyRelationships();
         var typeSymbolId = await ResolveDeclaringTypeAsync(queries, index, symbol, ct);
         return ServeHttp.Html(SymbolView.Render(new SymbolModel(
-            index, symbol, typeSymbolId, members, source.Snippet, callers, callees, references)));
+            index, symbol, typeSymbolId, members, source.Snippet, callers, callees, references, overrides, overriddenBy, derived)));
     }
+
+    private static RelationshipQuerySetResult EmptyRelationships() => new(
+        new SymbolResolutionResult(SymbolResolutionStatus.Resolved, null, []),
+        [],
+        null,
+        false,
+        string.Empty,
+        0);
 
     private static async Task<string?> ResolveDeclaringTypeAsync(
         ServeQueries queries,

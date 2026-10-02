@@ -12,7 +12,7 @@ Roots: src
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 2 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 48 |
+| src/S1Atlas.Cli/Commands/ | 52 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 15 |
 | src/S1Atlas.Cli/Performance/ | 1 |
@@ -55,9 +55,9 @@ Roots: src
 | src/S1Atlas.Indexing/NativeRecovery/ | 2 |
 | src/S1Atlas.Indexing/Paths/ | 2 |
 | src/S1Atlas.Indexing/Properties/ | 1 |
-| src/S1Atlas.Indexing/Query/ | 14 |
+| src/S1Atlas.Indexing/Query/ | 15 |
 | src/S1Atlas.Indexing/ReferenceMods/ | 3 |
-| src/S1Atlas.Indexing/Relationships/ | 2 |
+| src/S1Atlas.Indexing/Relationships/ | 3 |
 | src/S1Atlas.Indexing/Scene/ | 10 |
 | src/S1Atlas.Indexing/Source/ | 2 |
 | src/S1Atlas.Indexing/Upstream/ | 5 |

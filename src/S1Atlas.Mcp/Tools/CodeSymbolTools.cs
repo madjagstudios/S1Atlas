@@ -443,6 +443,186 @@ public sealed class CodeSymbolTools
             });
     }
 
+    [McpServerTool(Name = "find_overrides", Title = "Find overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the base and interface slots one method fills, up to the root.")]
+    public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridesAsync(
+        [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+    {
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(selector, authority, out ToolEnvelope<HierarchyQueryResult> selectorError))
+                {
+                    return selectorError;
+                }
+
+                if (!ToolArguments.TryBoundLimit(limit, authority, out var boundedLimit, out ToolEnvelope<HierarchyQueryResult> limitError))
+                {
+                    return limitError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError))
+                {
+                    return scopeError;
+                }
+                var pinned = await PinAuthorityAsync<HierarchyQueryResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.OverridesInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        selector,
+                        boundedLimit,
+                        ct)
+                    : await _services.FederatedIndexQueryService.OverridesAsync(
+                        selector,
+                        options,
+                        ct);
+
+                return EnvelopeMapper.FromScopedHierarchy(authority, result, options.ReferenceCollection);
+            });
+    }
+
+    [McpServerTool(Name = "find_overriders", Title = "Find overriders", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the methods that override or implement one method, transitively.")]
+    public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridersAsync(
+        [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+    {
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(selector, authority, out ToolEnvelope<HierarchyQueryResult> selectorError))
+                {
+                    return selectorError;
+                }
+
+                if (!ToolArguments.TryBoundLimit(limit, authority, out var boundedLimit, out ToolEnvelope<HierarchyQueryResult> limitError))
+                {
+                    return limitError;
+                }
+
+                if (!ToolArguments.TryBoundDepth(depth, authority, out var boundedDepth, out ToolEnvelope<HierarchyQueryResult> depthError))
+                {
+                    return depthError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError))
+                {
+                    return scopeError;
+                }
+                var pinned = await PinAuthorityAsync<HierarchyQueryResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.OverriddenByInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        selector,
+                        boundedLimit,
+                        boundedDepth,
+                        ct)
+                    : await _services.FederatedIndexQueryService.OverriddenByAsync(
+                        selector,
+                        options,
+                        boundedDepth,
+                        ct);
+
+                return EnvelopeMapper.FromScopedHierarchy(authority, result, options.ReferenceCollection);
+            });
+    }
+
+    [McpServerTool(Name = "find_derived_types", Title = "Find derived types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the subclasses and implementers of one type, transitively.")]
+    public async Task<ToolEnvelope<HierarchyQueryResult>> FindDerivedTypesAsync(
+        [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
+        [Description("Number of results to skip.")] int offset = 0,
+        CancellationToken ct = default,
+        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+    {
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(selector, authority, out ToolEnvelope<HierarchyQueryResult> selectorError))
+                {
+                    return selectorError;
+                }
+
+                if (!ToolArguments.TryBoundLimit(limit, authority, out var boundedLimit, out ToolEnvelope<HierarchyQueryResult> limitError))
+                {
+                    return limitError;
+                }
+
+                if (!ToolArguments.TryBoundDepth(depth, authority, out var boundedDepth, out ToolEnvelope<HierarchyQueryResult> depthError))
+                {
+                    return depthError;
+                }
+
+                if (!ToolArguments.TryBoundOffset(offset, authority, out var boundedOffset, out ToolEnvelope<HierarchyQueryResult> offsetError))
+                {
+                    return offsetError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError))
+                {
+                    return scopeError;
+                }
+                var pinned = await PinAuthorityAsync<HierarchyQueryResult>(authority, buildId, options, ct);
+                if (pinned.Error is not null)
+                    return pinned.Error;
+                authority = pinned.Authority;
+                options = options with { Limit = boundedLimit };
+
+                var result = options.Scope == IndexQueryScope.Game
+                    ? await _services.IndexQueryService.DerivedInIndexAsync(
+                        authority.IndexRun!,
+                        CodebaseKind.ScheduleI,
+                        CodeChannel.Installed,
+                        selector,
+                        boundedLimit,
+                        boundedDepth,
+                        boundedOffset,
+                        ct)
+                    : await _services.FederatedIndexQueryService.DerivedAsync(
+                        selector,
+                        options,
+                        boundedDepth,
+                        boundedOffset,
+                        ct);
+
+                return EnvelopeMapper.FromScopedHierarchy(authority, result, options.ReferenceCollection);
+            });
+    }
+
     private async Task<ToolEnvelope<SymbolQueryResult>> GetSymbolAsync(
         string selector,
         string? buildId,
@@ -675,6 +855,42 @@ public sealed class CodeSymbolTools
             }
 
             bounded = Math.Min(limit, 500);
+            error = null!;
+            return true;
+        }
+
+        public static bool TryBoundDepth<T>(
+            int depth,
+            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            out int bounded,
+            out ToolEnvelope<T> error) where T : class
+        {
+            if (depth <= 0)
+            {
+                bounded = default;
+                error = Invalid<T>(authority, "InvalidDepth", "The hierarchy depth must be positive.");
+                return false;
+            }
+
+            bounded = depth;
+            error = null!;
+            return true;
+        }
+
+        public static bool TryBoundOffset<T>(
+            int offset,
+            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            out int bounded,
+            out ToolEnvelope<T> error) where T : class
+        {
+            if (offset < 0)
+            {
+                bounded = default;
+                error = Invalid<T>(authority, "InvalidOffset", "The hierarchy offset must not be negative.");
+                return false;
+            }
+
+            bounded = offset;
             error = null!;
             return true;
         }
