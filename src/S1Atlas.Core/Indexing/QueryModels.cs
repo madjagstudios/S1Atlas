@@ -157,7 +157,9 @@ public sealed record RelationshipQueryResult(
     string Evidence,
     string Direction,
     RelationshipEndpointQueryResult Source,
-    RelationshipEndpointQueryResult Target)
+    RelationshipEndpointQueryResult Target,
+    bool IsDerived = false,
+    IReadOnlyList<string>? Routes = null)
 {
     public RelationshipQueryResult(
         string relationshipId,
@@ -219,7 +221,9 @@ public sealed record RelationshipQuerySetResult(
     BodyRecoveryStatus? BodyRecoveryStatus,
     bool CallerCompletenessBoundedByTargetResolution,
     string CompletenessNotice,
-    int? TotalCount = null);
+    int? TotalCount = null,
+    int? ExactCount = null,
+    int? DerivedCount = null);
 
 public sealed record HierarchyNodeQueryResult(
     RelationshipQueryResult Edge,
