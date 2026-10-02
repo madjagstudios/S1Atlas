@@ -547,7 +547,10 @@ schema migration v16: on an older atlas the page says so and falls back to the
 slower unranked search until any `s1atlas` write command upgrades the database.
 `/symbol/<id>` shows one symbol's members, integrity-checked source,
 callers, callees, and references, plus Overrides and Overridden by sections
-on methods and a Derived types section on types. `/builds` lists every known build newest
+on methods and a Derived types section on types. Symbol pages list exact and
+may-dispatch callers with the dispatch route and split totals; `?exact=1` on
+the page and on `/api/symbol/<id>/callers` restricts to statically bound
+callers. `/builds` lists every known build newest
 first with human-readable status labels; `/builds/<id>` shows one build's
 facts, per-codebase symbol counts with links into search filtered to that
 build, adjacent diffs, and the environment when it is the current build.
@@ -724,7 +727,12 @@ local reference collections through these tools:
 `game` rejects it. `find_field_references` also accepts `readers` and `writers`
 filters, which are mutually exclusive. `find_overriders` and
 `find_derived_types` accept `depth` (default `10`), and `find_derived_types`
-accepts `offset` (default `0`). `list_reference_collections` reports
+accepts `offset` (default `0`). `find_callers` and `find_api_callers` accept
+`exact` (default `false`): by default they also return may-dispatch callers
+(call sites targeting an overridden base slot or interface method the
+selected method fills), labeled `DERIVED` with the route taken plus
+exact/derived split totals, while `exact: true` returns only statically
+bound callers. `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
 the CLI and returns the same ordered candidate, warning, unknown-dimension, and
@@ -863,7 +871,7 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |
 | `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--full-type] [--related-limit <0-50>] [--limit <n>] [--json]` | Show focused, integrity-checked decompiled source and optional callable neighborhood for one resolved symbol |
 | `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed references to a resolved symbol |
-| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callers of a resolved method |
+| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--exact] [--json]` | List indexed callers of a resolved method, including may-dispatch callers via overrides and interface implementations (`--exact` for statically bound callers only) |
 | `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callees of a resolved method |
 | `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
 | `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL field readers and writers for one resolved field |
