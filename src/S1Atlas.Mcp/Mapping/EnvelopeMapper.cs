@@ -289,7 +289,12 @@ public static class EnvelopeMapper
                 build,
                 new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
                 provenance),
-            _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(build, result, provenance)
+            _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(
+                build,
+                result,
+                result.Relationships.Any(edge => edge.IsDerived)
+                    ? [.. provenance, ApiDerived(catalog, selection, "dispatch-expansion")]
+                    : provenance)
         };
     }
 
@@ -870,6 +875,17 @@ public static class EnvelopeMapper
             ProvenanceClassification.Fact,
             $"api-index:{selection.Codebase}:{selection.Channel}:source={selection.SourceIdentity ?? "unknown"}",
             selection.Channel == CodeChannel.Installed ? resolvedBuildId : null,
+            ExtractionId: null,
+            selection.IndexId);
+
+    private static ProvenanceEntry ApiDerived(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        string source) =>
+        new(
+            ProvenanceClassification.Derived,
+            source,
+            selection.Channel == CodeChannel.Installed ? catalog.ResolvedBuildId : null,
             ExtractionId: null,
             selection.IndexId);
 

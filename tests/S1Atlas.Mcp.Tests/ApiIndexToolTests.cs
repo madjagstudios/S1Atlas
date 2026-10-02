@@ -278,6 +278,9 @@ public sealed class ApiIndexToolTests
         var derived = expanded.Data.Relationships[1];
         Assert.True(derived.IsDerived);
         Assert.Equal(["via Demo.Dispatch.Base"], derived.Routes);
+        Assert.Contains(
+            expanded.Provenance,
+            entry => entry.Classification == ProvenanceClassification.Derived && entry.Source == "dispatch-expansion");
 
         var exact = await atlas.Tools.FindApiCallersAsync("s1api", "release", overrideMethod.QualifiedName, 10, cancellationToken, exact: true);
 
@@ -288,6 +291,7 @@ public sealed class ApiIndexToolTests
         var row = Assert.Single(exact.Data.Relationships);
         Assert.Equal("relationship-direct", row.RelationshipId);
         Assert.False(row.IsDerived);
+        Assert.DoesNotContain(exact.Provenance, entry => entry.Source == "dispatch-expansion");
     }
 
     [Fact]
