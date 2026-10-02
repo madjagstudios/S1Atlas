@@ -48,20 +48,20 @@ public static class AuthorityEnvelope
                 onResolved((build, fact)),
             InstalledBuildAuthorityStatus.NoCurrentBuild =>
                 ToolEnvelope<T>.Unavailable(
-                    new ToolError("NoCurrentBuild", authority.Message ?? "No current build."),
+                    new ToolError("NoCurrentBuild", authority.Message ?? "No current build.", authority.Hint),
                     build),
             InstalledBuildAuthorityStatus.BuildNotFound =>
                 ToolEnvelope<T>.Invalid(
-                    new ToolError("BuildNotFound", authority.Message ?? "The requested build is not indexed."),
+                    new ToolError("BuildNotFound", authority.Message ?? "The requested build is not indexed.", authority.Hint),
                     build),
             InstalledBuildAuthorityStatus.AmbiguousBuildPrefix =>
                 ToolEnvelope<T>.Invalid(
-                    new ToolError("AmbiguousBuildPrefix", authority.Message ?? "The build prefix matches multiple builds."),
+                    new ToolError("AmbiguousBuildPrefix", authority.Message ?? "The build prefix matches multiple builds.", authority.Hint),
                     build),
             InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction =>
                 ToolEnvelope<T>.NotFound(
                     build,
-                    new ToolError("NoPreferredVerifiedExtraction", authority.Message ?? "No preferred verified extraction exists for the build."),
+                    new ToolError("NoPreferredVerifiedExtraction", authority.Message ?? "No preferred verified extraction exists for the build.", authority.Hint),
                     new ProvenanceEntry(
                         ProvenanceClassification.Derived,
                         "installed-build-authority",
@@ -70,12 +70,12 @@ public static class AuthorityEnvelope
                         authority.IndexId)),
             InstalledBuildAuthorityStatus.ExtractionIntegrityFailure =>
                 ToolEnvelope<T>.Unavailable(
-                    new ToolError("ExtractionIntegrityFailure", authority.Message ?? "The preferred extraction failed integrity verification."),
+                    new ToolError("ExtractionIntegrityFailure", authority.Message ?? "The preferred extraction failed integrity verification.", authority.Hint),
                     build),
             InstalledBuildAuthorityStatus.NoCompletedIndex =>
                 ToolEnvelope<T>.NotFound(
                     build,
-                    new ToolError("NoCompletedIndex", authority.Message ?? "No completed Schedule I Installed index exists for the verified extraction."),
+                    new ToolError("NoCompletedIndex", authority.Message ?? "No completed Schedule I Installed index exists for the verified extraction.", authority.Hint),
                     new ProvenanceEntry(
                         ProvenanceClassification.Derived,
                         "installed-build-authority",
@@ -84,7 +84,7 @@ public static class AuthorityEnvelope
                         authority.IndexId)),
             InstalledBuildAuthorityStatus.IndexBuildMismatch =>
                 ToolEnvelope<T>.Invalid(
-                    new ToolError("IndexBuildMismatch", authority.Message ?? "The preferred extraction does not belong to the resolved build."),
+                    new ToolError("IndexBuildMismatch", authority.Message ?? "The preferred extraction does not belong to the resolved build.", authority.Hint),
                     build),
             _ => throw new ArgumentOutOfRangeException(nameof(authority))
         };

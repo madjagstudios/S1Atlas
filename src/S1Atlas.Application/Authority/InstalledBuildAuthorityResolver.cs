@@ -173,5 +173,13 @@ public sealed class InstalledBuildAuthorityResolver
         string? requestedBuildId,
         string? resolvedBuildId,
         string message) =>
-        new(status, requestedBuildId, resolvedBuildId, null, null, null, message);
+        new(
+            status,
+            requestedBuildId,
+            resolvedBuildId,
+            null,
+            null,
+            null,
+            message,
+            Readiness.ReadinessFixCommands.HintForAuthorityStatus(status));
 }

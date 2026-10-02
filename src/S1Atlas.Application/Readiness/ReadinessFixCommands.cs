@@ -30,6 +30,15 @@ public static class ReadinessFixCommands
         return $"s1atlas tools install {toolId}";
     }
 
+    public static string? HintForNoCompletedIndex(CodebaseKind codebase, CodeChannel? channel) =>
+        codebase switch
+        {
+            CodebaseKind.ScheduleI => Index,
+            CodebaseKind.S1Api or CodebaseKind.S1MApi when channel == CodeChannel.Installed =>
+                IndexApiInstalled(codebase),
+            _ => null
+        };
+
     public static string IndexApiInstalled(CodebaseKind codebase) =>
         $"s1atlas index --codebase {ApiCodebaseName(codebase)} --channel installed";
 
