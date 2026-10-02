@@ -141,8 +141,8 @@ internal static class ExtractCommand
                             "The extraction did not produce authoritative validated output " +
                             $"(validation outcome: {result.ValidationOutcome}). See the attempt's " +
                             "validation report for the recorded issues.",
-                            result.AttemptId,
-                            result.ValidationOutcome.ToString());
+                            attemptId: result.AttemptId,
+                            stage: result.ValidationOutcome.ToString());
                     }
 
                     var data = new ExtractionOutput(

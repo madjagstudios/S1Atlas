@@ -1,4 +1,5 @@
 using System.CommandLine;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
 using S1Atlas.Cli.Performance;
 using S1Atlas.Core.Environment;
@@ -92,7 +93,7 @@ internal static class IndexCommand
                     {
                         var sceneBuildId = requestedBuild ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
                         if (sceneBuildId is null)
-                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.");
+                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
                         SceneIndexWorkflowResult sceneResult;
                         try
                         {
@@ -124,7 +125,7 @@ internal static class IndexCommand
                     if (requestedCodebase is null && requestedChannel is null && requestedCommit is null)
                     {
                         if (snapshot is null)
-                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.");
+                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
                         result = workflow.RunScheduleOneAsync(
                             snapshot.Build.BuildId,
                             parseResult.GetValue(forceOption),
@@ -174,7 +175,7 @@ internal static class IndexCommand
                         else
                         {
                             if (snapshot is null)
-                                return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.");
+                                return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
                             var dependencyKind = apiCodebase == CodebaseKind.S1Api
                                 ? DependencyKind.S1Api
                                 : DependencyKind.S1Mapi;

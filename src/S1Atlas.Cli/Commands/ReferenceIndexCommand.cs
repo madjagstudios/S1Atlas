@@ -78,7 +78,8 @@ internal static class ReferenceIndexCommand
             return commandOutput.Failure(
                 1,
                 authority.Status.ToString(),
-                authority.Message ?? "The current Schedule I game index is unavailable.");
+                authority.Message ?? "The current Schedule I game index is unavailable.",
+                hint: authority.Hint);
         }
 
         var collection = manifest with

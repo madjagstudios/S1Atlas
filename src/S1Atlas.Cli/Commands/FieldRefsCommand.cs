@@ -88,7 +88,7 @@ internal static class FieldRefsCommand
                         parseResult.GetValue(buildOption),
                         cancellationToken);
                     if (authority.ErrorCode is not null)
-                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
+                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!, hint: authority.BuildAuthority?.Hint);
 
                     var filter = parseResult.GetValue(readersOption)
                         ? FieldReferenceFilter.Readers
@@ -124,7 +124,8 @@ internal static class FieldRefsCommand
                     return IndexQueryCommandFactory.Complete(
                         commandOutput,
                         IndexQueryCommandFactory.ToOutput(result),
-                        parseResult.GetValue(queryArgument)!);
+                        parseResult.GetValue(queryArgument)!,
+                        IndexQueryCommandFactory.ScopeIndexHint(options));
                 },
                 commandOutput,
                 cancellationToken);

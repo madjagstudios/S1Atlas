@@ -171,7 +171,7 @@ internal static class InvestigateSeamCommand
                 buildId,
                 cancellationToken);
             if (authority.ErrorCode is not null)
-                return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
+                return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!, hint: authority.BuildAuthority?.Hint);
 
             var request = new SeamInvestigationRequest(
                 question,
@@ -267,7 +267,8 @@ internal static class InvestigateSeamCommand
         var resolutionFailure = IndexQueryCommandFactory.FailureForResolution(
             commandOutput,
             result.Resolution,
-            selector);
+            selector,
+            IndexQueryCommandFactory.ScopeIndexHint(options));
         if (resolutionFailure is not null)
         {
             return resolutionFailure.Value;

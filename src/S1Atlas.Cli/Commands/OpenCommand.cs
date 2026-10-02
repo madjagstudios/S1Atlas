@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text.Json;
 using S1Atlas.Application.Authority;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
@@ -74,7 +75,8 @@ internal static class OpenCommand
             return commandOutput.Failure(
                 1,
                 authority.Status.ToString(),
-                authority.Message ?? "The requested Schedule I build is unavailable.");
+                authority.Message ?? "The requested Schedule I build is unavailable.",
+                hint: authority.Hint);
         }
 
         var resolution = service.ResolveInIndexAsync(
@@ -88,7 +90,8 @@ internal static class OpenCommand
             return IndexQueryCommandFactory.Complete(
                 commandOutput,
                 new IndexQueryOutput([], [], [], Resolution: resolution),
-                selector);
+                selector,
+                ReadinessFixCommands.Index);
         }
 
         var url = $"http://127.0.0.1:{port}/symbol/{Uri.EscapeDataString(resolution.Symbol.SymbolId)}";
