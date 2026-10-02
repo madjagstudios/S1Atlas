@@ -5,6 +5,9 @@ compiler-generated-body gaps, AT-67 owns delegate-creation and address-taken
 gaps. Entries marked `unowned` fit none of those tickets. AT-65 part A
 (override/implementation graph and hierarchy queries) and part B
 (dispatch-aware callers) are done; no `AT-65` rows remain below.
+Dispatch rows read FOUND because the harness cross-checks callee-side
+expectations against expanded callers; the `callees` query itself stays
+exact-only and returns no dispatch targets.
 
 Conventions: call and construct edges are pinned on both endpoints; field
 edges are pinned on the field only; delegate-creation edges (mislabeled as

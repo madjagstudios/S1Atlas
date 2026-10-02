@@ -732,7 +732,8 @@ accepts `offset` (default `0`). `find_callers` and `find_api_callers` accept
 (call sites targeting an overridden base slot or interface method the
 selected method fills), labeled `DERIVED` with the route taken plus
 exact/derived split totals, while `exact: true` returns only statically
-bound callers. `list_reference_collections` reports
+bound callers. Slots with no resolvable indexed symbol contribute no
+routes, so overrides of external framework methods add no derived rows. `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
 the CLI and returns the same ordered candidate, warning, unknown-dimension, and
