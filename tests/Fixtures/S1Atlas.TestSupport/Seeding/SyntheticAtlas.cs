@@ -545,6 +545,22 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                         "Overrides",
                         "fixture:overrides"),
                     new IndexRelationshipRecord(
+                        Sid("rel-serve-dispatch-virtual"),
+                        snapshotId,
+                        Sid(CallerMethodId),
+                        Sid(BaseRenderMethodId),
+                        null,
+                        "CallsVirtual",
+                        "fixture:dispatch-virtual"),
+                    new IndexRelationshipRecord(
+                        Sid("rel-serve-dispatch-direct"),
+                        snapshotId,
+                        Sid(ExecuteMethodId),
+                        Sid(RenderMethodId),
+                        null,
+                        "Calls",
+                        "fixture:dispatch-direct"),
+                    new IndexRelationshipRecord(
                         Sid("rel-serve-parameter"),
                         snapshotId,
                         Sid(RunMethodId),

@@ -185,6 +185,11 @@ internal static class SymbolView
         body.Append($"<section><h2>{title}</h2>");
         body.Append($"<p class=\"fact\">FACT: {total} {plural} in this index.</p>");
         body.Append($"<p class=\"derived\">DERIVED: showing {set.Relationships.Count} of {total} {plural}.</p>");
+        if (set.ExactCount is int exactCount && set.DerivedCount is int derivedCount)
+        {
+            body.Append($"<p class=\"fact\">FACT: {exactCount} exact, {derivedCount} may-dispatch {plural}.</p>");
+        }
+
         if (!string.IsNullOrWhiteSpace(set.CompletenessNotice))
         {
             body.Append($"<p class=\"fact\">FACT: {Html.Escape(set.CompletenessNotice)}</p>");
@@ -195,7 +200,14 @@ internal static class SymbolView
             body.Append("<ul>");
             foreach (var relationship in set.Relationships)
             {
-                body.Append($"<li>{OtherEnd(relationship, pageSymbolId)} &mdash; FACT: {Html.Escape(relationship.Kind)} ({Html.Escape(relationship.Evidence)}).</li>");
+                body.Append($"<li>{OtherEnd(relationship, pageSymbolId)} &mdash; FACT: {Html.Escape(relationship.Kind)} ({Html.Escape(relationship.Evidence)}).");
+                if (relationship.IsDerived)
+                {
+                    var routes = string.Join("; ", (relationship.Routes ?? []).Select(Html.Escape));
+                    body.Append($" DERIVED: may dispatch ({routes}).");
+                }
+
+                body.Append("</li>");
             }
 
             body.Append("</ul>");
@@ -206,9 +218,11 @@ internal static class SymbolView
 
     private static string OtherEnd(RelationshipQueryResult relationship, string pageSymbolId)
     {
-        var other = relationship.Target.SymbolId?.Equals(pageSymbolId, StringComparison.Ordinal) == true
-            ? relationship.Source
-            : relationship.Target;
+        // Derived caller rows point at the filled slot rather than this page,
+        // so the page symbol is excluded instead of the target being assumed.
+        var other = relationship.Source.SymbolId?.Equals(pageSymbolId, StringComparison.Ordinal) == true
+            ? relationship.Target
+            : relationship.Source;
         var label = other.QualifiedName ?? other.Signature ?? other.RawText ?? "(unresolved)";
         return string.IsNullOrEmpty(other.SymbolId)
             ? Html.Escape(label)

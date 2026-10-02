@@ -53,11 +53,21 @@ internal static class SymbolEndpoints
 
         var symbol = outcome.Symbol;
         var index = outcome.Index;
+        bool exact;
+        try
+        {
+            exact = QueryBinding.BindExact(context.Request.Query["exact"].ToString());
+        }
+        catch (ServeInvalidQueryException exception)
+        {
+            return ServeHttp.Html(BadQueryPage(exception.Message), StatusCodes.Status400BadRequest);
+        }
+
         var members = symbol.Kind.Equals("Type", StringComparison.Ordinal)
             ? await queries.GetMembersAsync(index, symbol, ct)
             : new MemberListResult([], 0, false);
         var source = await queries.GetSourceAsync(index, symbol.SymbolId, symbol.Kind.Equals("Type", StringComparison.Ordinal), ct);
-        var callers = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callers, QueryBinding.DefaultRelationshipLimit, ct);
+        var callers = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callers, QueryBinding.DefaultRelationshipLimit, ct, exact);
         var callees = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.Callees, QueryBinding.DefaultRelationshipLimit, ct);
         var references = await queries.GetRelationshipsAsync(index, symbol.SymbolId, ServeRelationshipDirection.References, QueryBinding.DefaultRelationshipLimit, ct);
         var overrides = symbol.Kind.Equals("Method", StringComparison.Ordinal)
@@ -134,9 +144,11 @@ internal static class SymbolEndpoints
         CancellationToken ct)
     {
         int limit;
+        bool exact;
         try
         {
             limit = QueryBinding.BindLimit(context.Request.Query["limit"].ToString(), QueryBinding.DefaultRelationshipLimit);
+            exact = QueryBinding.BindExact(context.Request.Query["exact"].ToString());
         }
         catch (ServeInvalidQueryException exception)
         {
@@ -159,7 +171,7 @@ internal static class SymbolEndpoints
             return ServeHttp.Envelope(MissingRelationshipsEnvelope(outcome));
         }
 
-        var result = await queries.GetRelationshipsAsync(outcome.Index, outcome.Symbol.SymbolId, direction, limit, ct);
+        var result = await queries.GetRelationshipsAsync(outcome.Index, outcome.Symbol.SymbolId, direction, limit, ct, exact);
         return ServeHttp.Envelope(outcome.Index.ApiSelection is { } selection
             ? ServeEnvelopes.FromApiRelationships(outcome.Catalog, selection, result)
             : ServeEnvelopes.FromRelationships(outcome.Authority, result));
@@ -220,6 +232,9 @@ internal static class SymbolEndpoints
         HasAnyIndex(outcome)
             ? Html.Layout("Unknown symbol", $"<h1>Unknown symbol</h1><p>No indexed symbol has ID '{Html.Escape(id)}'.</p>")
             : Html.Layout("No index", $"<h1>No index</h1><p>{Html.Escape(Html.AuthorityMessage(outcome.Authority))}</p>");
+
+    private static string BadQueryPage(string message) =>
+        Html.Layout("Invalid symbol query", $"<h1>Invalid symbol query</h1><p>{Html.Escape(message)}</p>");
 
     private static ToolEnvelope<SymbolQueryResult> MissingSymbolEnvelope(ResolvedSymbolOutcome outcome)
     {

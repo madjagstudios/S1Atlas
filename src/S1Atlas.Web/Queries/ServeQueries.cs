@@ -151,7 +151,8 @@ public sealed class ServeQueries
         string symbolId,
         ServeRelationshipDirection direction,
         int limit,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool exact = false)
     {
         if (direction is ServeRelationshipDirection.Overrides or ServeRelationshipDirection.OverriddenBy or ServeRelationshipDirection.Derived)
             return GetHierarchyAsync(index, symbolId, direction, limit, ct);
@@ -165,7 +166,7 @@ public sealed class ServeQueries
                 _ => ApiRelationshipDirection.References
             };
             return WithStoreAsync(
-                token => _api.RelationshipsSelectedAsync(selection, symbolId, limit, apiDirection, null, token),
+                token => _api.RelationshipsSelectedAsync(selection, symbolId, limit, apiDirection, null, token, exact),
                 ct);
         }
 
@@ -173,7 +174,7 @@ public sealed class ServeQueries
             token => direction switch
             {
                 ServeRelationshipDirection.Callers => _services.IndexQueryService.CallersInIndexAsync(
-                    index.Run, index.Codebase, index.Channel, symbolId, limit, token),
+                    index.Run, index.Codebase, index.Channel, symbolId, limit, token, exact),
                 ServeRelationshipDirection.Callees => _services.IndexQueryService.CalleesInIndexAsync(
                     index.Run, index.Codebase, index.Channel, symbolId, limit, token),
                 _ => _services.IndexQueryService.RefsInIndexAsync(
