@@ -2,7 +2,9 @@
 
 Owner map: AT-65 owns virtual/interface dispatch gaps, AT-66 owns
 compiler-generated-body gaps, AT-67 owns delegate-creation and address-taken
-gaps. Entries marked `unowned` fit none of those tickets.
+gaps. Entries marked `unowned` fit none of those tickets. AT-65 part A
+(override/implementation graph and hierarchy queries) is done; the 12
+`AT-65` rows below are dispatch-aware callers, which are part B.
 
 Conventions: call and construct edges are pinned on both endpoints; field
 edges are pinned on the field only; delegate-creation edges (mislabeled as
