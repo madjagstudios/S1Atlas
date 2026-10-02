@@ -8,6 +8,7 @@ Roots: tests
 |---|---|
 | tests/Fixtures/S1Atlas.InteropAssemblyFixture/ | 3 |
 | tests/Fixtures/S1Atlas.ManagedAssemblyFixture/ | 2 |
+| tests/Fixtures/S1Atlas.ParityFixture/ | 7 |
 | tests/Fixtures/S1Atlas.ScriptLayoutFixture/ | 3 |
 | tests/S1Atlas.Core.Tests/ | 2 |
 | tests/S1Atlas.Core.Tests/Builds/ | 1 |
@@ -44,6 +45,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Query/ | 13 |
 | tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 3 |
 | tests/S1Atlas.Indexing.Tests/Relationships/ | 2 |
+| tests/S1Atlas.Indexing.Tests/Relationships/Parity/ | 5 |
 | tests/S1Atlas.Indexing.Tests/Scene/ | 6 |
 | tests/S1Atlas.Indexing.Tests/Source/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Upstream/ | 4 |

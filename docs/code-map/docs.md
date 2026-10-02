@@ -9,6 +9,7 @@ Roots: docs
 | docs/ | 2 |
 | docs/dependencies/ | 3 |
 | docs/design/ | 11 |
+| docs/parity/ | 1 |
 | docs/performance/ | 2 |
 | docs/smoke-tests/ | 4 |
 
