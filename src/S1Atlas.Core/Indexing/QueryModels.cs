@@ -221,6 +221,40 @@ public sealed record RelationshipQuerySetResult(
     string CompletenessNotice,
     int? TotalCount = null);
 
+public sealed record HierarchyNodeQueryResult(
+    RelationshipQueryResult Edge,
+    int Depth,
+    bool IsDirect);
+
+public sealed record HierarchyQueryResult(
+    SymbolResolutionResult Resolution,
+    IReadOnlyList<HierarchyNodeQueryResult> Nodes,
+    int TotalCount,
+    int ReturnedCount)
+{
+    public SymbolResolutionResult Resolution { get; init; } = Resolution ?? throw new ArgumentNullException(nameof(Resolution));
+    public IReadOnlyList<HierarchyNodeQueryResult> Nodes { get; init; } = Nodes ?? throw new ArgumentNullException(nameof(Nodes));
+    public int TotalCount { get; init; } = RequireNonnegative(TotalCount, nameof(TotalCount));
+    public int ReturnedCount { get; init; } = RequireReturnedCount(TotalCount, ReturnedCount, Nodes);
+
+    private static int RequireNonnegative(int value, string parameterName)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value, parameterName);
+        return value;
+    }
+
+    private static int RequireReturnedCount(int totalCount, int returnedCount, IReadOnlyList<HierarchyNodeQueryResult> nodes)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(returnedCount, nameof(returnedCount));
+        if (returnedCount != nodes.Count)
+            throw new ArgumentException("ReturnedCount must equal Nodes.Count.", nameof(returnedCount));
+        if (returnedCount > totalCount)
+            throw new ArgumentException("ReturnedCount must not exceed TotalCount.", nameof(returnedCount));
+
+        return returnedCount;
+    }
+}
+
 public sealed record SourceQueryResult(
     string IndexId,
     string RelativePath,

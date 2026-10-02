@@ -472,6 +472,57 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken) =>
         RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken);
 
+    public Task<HierarchyQueryResult> OverridesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken) =>
+        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, 0, cancellationToken);
+
+    public Task<HierarchyQueryResult> OverriddenByAsync(
+        string selector,
+        IndexQueryOptions options,
+        int depth,
+        CancellationToken cancellationToken) =>
+        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.OverriddenBy, depth, 0, cancellationToken);
+
+    public Task<HierarchyQueryResult> DerivedAsync(
+        string selector,
+        IndexQueryOptions options,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken) =>
+        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.Derived, depth, offset, cancellationToken);
+
+    public Task<HierarchyQueryResult> OverridesInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        CancellationToken cancellationToken) =>
+        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, 0, cancellationToken);
+
+    public Task<HierarchyQueryResult> OverriddenByInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        int depth,
+        CancellationToken cancellationToken) =>
+        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.OverriddenBy, depth, 0, cancellationToken);
+
+    public Task<HierarchyQueryResult> DerivedInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken) =>
+        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.Derived, depth, offset, cancellationToken);
+
     public async Task<CallSiteQueryResult> CallSitesAsync(
         string selector,
         IndexQueryOptions options,
@@ -809,6 +860,83 @@ public sealed class IndexQueryService
             mode == RelationshipQueryMode.Callers,
             notice,
             selectedEdges.TotalCount);
+    }
+
+    private async Task<HierarchyQueryResult> HierarchyInRunAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        int limit,
+        HierarchyQueryMode mode,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateQueryLimit(limit, nameof(limit));
+        HierarchyTraversal.ValidateDepth(depth);
+        HierarchyTraversal.ValidateOffset(offset);
+
+        var selection = await ResolveInRunAsync(run, codebase, channel, selector, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new HierarchyQueryResult(selection.Resolution, [], 0, 0);
+
+        return await HierarchyFromSelectedAsync(selection.Selected.Value, limit, mode, depth, offset, cancellationToken);
+    }
+
+    private async Task<HierarchyQueryResult> HierarchyAcrossChannelsAsync(
+        string selector,
+        IndexQueryOptions options,
+        HierarchyQueryMode mode,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateQueryLimit(options.Limit, nameof(options));
+        HierarchyTraversal.ValidateDepth(depth);
+        HierarchyTraversal.ValidateOffset(offset);
+
+        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new HierarchyQueryResult(selection.Resolution, [], 0, 0);
+
+        return await HierarchyFromSelectedAsync(selection.Selected.Value, options.Limit, mode, depth, offset, cancellationToken);
+    }
+
+    private async Task<HierarchyQueryResult> HierarchyFromSelectedAsync(
+        SelectedSymbol selected,
+        int limit,
+        HierarchyQueryMode mode,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken)
+    {
+        var (kinds, incoming, direction) = HierarchyTraversal.Plan(mode);
+        var collected = await HierarchyTraversal.CollectAsync(
+            _repository,
+            selected.Run.IndexId,
+            selected.Symbol.SymbolId,
+            kinds,
+            incoming,
+            depth,
+            cancellationToken);
+        var mapped = await MapRelationshipEdgesAsync(
+            selected.Run,
+            collected.Select(item => (item.Edge, direction)).ToArray(),
+            selected.Symbol.Origin,
+            cancellationToken);
+        var ordered = HierarchyTraversal.Order(
+            mapped.Zip(collected, (edge, item) => new HierarchyNodeQueryResult(edge, item.Depth, item.Depth == 1)).ToArray(),
+            incoming);
+        var page = ordered.Skip(offset).Take(limit).ToArray();
+        return new HierarchyQueryResult(
+            new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
+            page,
+            ordered.Count,
+            page.Length);
     }
 
     private async Task<FieldReferenceQueryResult> FieldReferencesInRunAsync(

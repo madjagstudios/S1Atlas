@@ -252,6 +252,64 @@ public sealed class ReferenceModQueryService
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken);
 
+    internal async Task<HierarchyQueryResult> HierarchyAsync(
+        string selector,
+        IndexQueryOptions options,
+        HierarchyQueryMode mode,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateLimit(options.Limit);
+        HierarchyTraversal.ValidateDepth(depth);
+        HierarchyTraversal.ValidateOffset(offset);
+        var selection = await RequireSelectionAsync(options, referenceIndexId, cancellationToken);
+        if (selection is null)
+            return new HierarchyQueryResult(NoCompletedIndex(), [], 0, 0);
+
+        var resolution = await ResolveInIndexAsync(selection, selector, cancellationToken);
+        if (resolution.Status == SymbolResolutionStatus.NotFound && options.Scope == IndexQueryScope.All)
+        {
+            var gameRun = await _repository.GetCompletedIndexAsync(selection.Context.GameIndexId, cancellationToken);
+            if (gameRun is not null)
+            {
+                var game = await _symbolResolver.ResolveAsync(
+                    gameRun.IndexId,
+                    selector,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    cancellationToken);
+                if (game.Status == SymbolResolutionStatus.Resolved && game.Symbol is not null)
+                    resolution = DecorateGameResolution(game);
+            }
+        }
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return new HierarchyQueryResult(resolution, [], 0, 0);
+
+        var (kinds, incoming, direction) = HierarchyTraversal.Plan(mode);
+        var collected = await HierarchyTraversal.CollectAsync(
+            _repository,
+            selection.Run.IndexId,
+            resolution.Symbol.SymbolId,
+            kinds,
+            incoming,
+            depth,
+            cancellationToken);
+        var depths = collected.ToDictionary(item => item.Edge.RelationshipId, item => item.Depth, StringComparer.Ordinal);
+        var mapped = await MapRelationshipsAsync(
+            selection,
+            collected.Select(item => (item.Edge, direction)).ToArray(),
+            options.Scope == IndexQueryScope.All,
+            cancellationToken);
+        var ordered = HierarchyTraversal.Order(
+            mapped.Select(edge => new HierarchyNodeQueryResult(edge, depths[edge.RelationshipId], depths[edge.RelationshipId] == 1)).ToArray(),
+            incoming);
+        var page = ordered.Skip(offset).Take(options.Limit).ToArray();
+        return new HierarchyQueryResult(resolution, page, ordered.Count, page.Length);
+    }
+
     public async Task<IReadOnlyList<ReferenceModQueryResult>> GetModsAsync(
         IndexQueryOptions options,
         CancellationToken cancellationToken)

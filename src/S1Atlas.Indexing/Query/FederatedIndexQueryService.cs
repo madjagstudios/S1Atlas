@@ -145,6 +145,30 @@ public sealed class FederatedIndexQueryService
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken) =>
         RelationshipsAsync(selector, options, RelationshipKind.Callees, cancellationToken);
 
+    public Task<HierarchyQueryResult> OverridesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null) =>
+        HierarchyAsync(selector, options, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, 0, cancellationToken, referenceIndexId);
+
+    public Task<HierarchyQueryResult> OverriddenByAsync(
+        string selector,
+        IndexQueryOptions options,
+        int depth,
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null) =>
+        HierarchyAsync(selector, options, HierarchyQueryMode.OverriddenBy, depth, 0, cancellationToken, referenceIndexId);
+
+    public Task<HierarchyQueryResult> DerivedAsync(
+        string selector,
+        IndexQueryOptions options,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken,
+        string? referenceIndexId = null) =>
+        HierarchyAsync(selector, options, HierarchyQueryMode.Derived, depth, offset, cancellationToken, referenceIndexId);
+
     public async Task<CallSiteQueryResult> CallSitesAsync(
         string selector,
         IndexQueryOptions options,
@@ -266,6 +290,101 @@ public sealed class FederatedIndexQueryService
             return game;
         var reference = await ReferenceRelationshipsAsync(selector, options, kind, cancellationToken);
         return MergeRelationships(resolution, game, reference, kind, options.Limit);
+    }
+
+    private async Task<HierarchyQueryResult> HierarchyAsync(
+        string selector,
+        IndexQueryOptions options,
+        HierarchyQueryMode mode,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken,
+        string? referenceIndexId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateOptions(options);
+        ValidateLimit(options.Limit);
+        HierarchyTraversal.ValidateDepth(depth);
+        HierarchyTraversal.ValidateOffset(offset);
+
+        if (options.Scope == IndexQueryScope.Game)
+            return await GameHierarchyAsync(selector, options, mode, depth, offset, cancellationToken, null);
+
+        var selection = await _reference.GetSelectionForFederationAsync(options, referenceIndexId, cancellationToken);
+        if (selection is null)
+            return new HierarchyQueryResult(
+                new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
+                [],
+                0,
+                0);
+
+        if (options.Scope == IndexQueryScope.Reference)
+            return await _reference.HierarchyAsync(selector, options, mode, depth, offset, cancellationToken, referenceIndexId);
+
+        var resolution = await ResolveAsync(selector, options, cancellationToken, referenceIndexId);
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return new HierarchyQueryResult(resolution, [], 0, 0);
+
+        if (resolution.Symbol.Origin == "reference")
+            return await _reference.HierarchyAsync(selector, options, mode, depth, offset, cancellationToken, referenceIndexId);
+
+        var game = await GameHierarchyAsync(selector, options, mode, depth, 0, cancellationToken, selection.GameRun, int.MaxValue);
+        var reference = await _reference.HierarchyAsync(
+            selector,
+            options with { Limit = int.MaxValue },
+            mode,
+            depth,
+            0,
+            cancellationToken,
+            referenceIndexId);
+        return MergeHierarchies(resolution, game, reference, mode, options.Limit, offset);
+    }
+
+    private Task<HierarchyQueryResult> GameHierarchyAsync(
+        string selector,
+        IndexQueryOptions options,
+        HierarchyQueryMode mode,
+        int depth,
+        int offset,
+        CancellationToken cancellationToken,
+        IndexRunRecord? pinnedRun,
+        int? limitOverride = null)
+    {
+        if (pinnedRun is null)
+        {
+            var gameOptions = GameOptions(options, limitOverride ?? options.Limit);
+            return mode switch
+            {
+                HierarchyQueryMode.Overrides => _game.OverridesAsync(selector, gameOptions, cancellationToken),
+                HierarchyQueryMode.OverriddenBy => _game.OverriddenByAsync(selector, gameOptions, depth, cancellationToken),
+                _ => _game.DerivedAsync(selector, gameOptions, depth, offset, cancellationToken)
+            };
+        }
+
+        var limit = limitOverride ?? options.Limit;
+        return mode switch
+        {
+            HierarchyQueryMode.Overrides => _game.OverridesInIndexAsync(
+                pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, limit, cancellationToken),
+            HierarchyQueryMode.OverriddenBy => _game.OverriddenByInIndexAsync(
+                pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, limit, depth, cancellationToken),
+            _ => _game.DerivedInIndexAsync(
+                pinnedRun, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, limit, depth, offset, cancellationToken)
+        };
+    }
+
+    private static HierarchyQueryResult MergeHierarchies(
+        SymbolResolutionResult resolution,
+        HierarchyQueryResult game,
+        HierarchyQueryResult reference,
+        HierarchyQueryMode mode,
+        int limit,
+        int offset)
+    {
+        var (_, incoming, _) = HierarchyTraversal.Plan(mode);
+        var ordered = HierarchyTraversal.Order(game.Nodes.Concat(reference.Nodes).ToArray(), incoming);
+        var page = ordered.Skip(offset).Take(limit).ToArray();
+        return new HierarchyQueryResult(resolution, page, ordered.Count, page.Length);
     }
 
     private Task<RelationshipQuerySetResult> GameRelationshipsAsync(
