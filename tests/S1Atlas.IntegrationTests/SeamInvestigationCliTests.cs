@@ -426,6 +426,23 @@ public sealed class SeamInvestigationCliTests
     }
 
     [Fact]
+    public async Task Investigate_seam_renders_the_shared_candidate_table_for_ambiguous_selectors()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateAmbiguousAsync();
+
+        var result = atlas.Run(
+            "investigate_seam",
+            "Game.Seams.Ambiguous.Run",
+            "--question",
+            "Which seam owns the ambiguous path?");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Found 2 candidates; showing 2.", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("1 | Method | Game.Seams.Ambiguous.Run", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", result.StandardError, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Investigate_seam_returns_no_completed_index_when_the_selected_authority_has_not_been_indexed()
     {
         await using var atlas = await SeamInvestigationCliAtlas.CreateNoCompletedIndexAsync();
@@ -686,6 +703,8 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
     public string DataRoot { get; }
     public string TargetSymbolId { get; private set; } = string.Empty;
     public string ExpectedExtractionId { get; private set; } = string.Empty;
+    public string FirstPrefixSymbolId { get; private set; } = string.Empty;
+    public string SecondPrefixSymbolId { get; private set; } = string.Empty;
 
     public static async Task<SeamInvestigationCliAtlas> CreateOc32Async()
     {
@@ -717,6 +736,22 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
     {
         var atlas = await CreateEmptyAsync("no-index");
         await atlas.SeedValidatedExtractionOnlyAsync("build-no-index");
+        return atlas;
+    }
+
+    public static async Task<SeamInvestigationCliAtlas> CreateSymbolPrefixAsync()
+    {
+        var atlas = await CreateEmptyAsync("symbol-prefix");
+        var (first, second) = await atlas.SeedSymbolPrefixFixtureAsync();
+        atlas.FirstPrefixSymbolId = first;
+        atlas.SecondPrefixSymbolId = second;
+        return atlas;
+    }
+
+    public static async Task<SeamInvestigationCliAtlas> CreateRoutingAsync()
+    {
+        var atlas = await CreateEmptyAsync("routing");
+        await atlas.SeedRoutingFixtureAsync();
         return atlas;
     }
 
@@ -827,6 +862,55 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
             "snapshot-ambiguous",
             targetA,
             [targetB],
+            [],
+            includeCallableSurface: false);
+    }
+
+    private async Task<(string First, string Second)> SeedSymbolPrefixFixtureAsync()
+    {
+        const string buildId = "build-symbol-prefix";
+        const string snapshotId = "snapshot-symbol-prefix";
+        await SeedValidatedExtractionOnlyAsync(buildId);
+
+        var first = Method(
+            "abcdef12" + new string('0', 56),
+            snapshotId,
+            "Game.Prefix.First",
+            BodyRecoveryStatus.Recovered);
+        var second = Method(
+            "abcdef12" + new string('1', 56),
+            snapshotId,
+            "Game.Prefix.Second",
+            BodyRecoveryStatus.Recovered);
+        await CompleteGameRunAsync(
+            buildId,
+            "index-symbol-prefix",
+            snapshotId,
+            first,
+            [second],
+            [],
+            includeCallableSurface: false);
+        return (first.SymbolId, second.SymbolId);
+    }
+
+    private async Task SeedRoutingFixtureAsync()
+    {
+        const string buildId = "build-routing";
+        const string snapshotId = "snapshot-routing";
+        await SeedValidatedExtractionOnlyAsync(buildId);
+
+        var dupA = Method("dup-a", snapshotId, "Game.Routing.Alpha.Dup", BodyRecoveryStatus.Recovered);
+        var dupB = Method("dup-b", snapshotId, "Game.Routing.Beta.Dup", BodyRecoveryStatus.Recovered);
+        var widget = Method("widget-1", snapshotId, "Game.Routing.Widget", BodyRecoveryStatus.Recovered);
+        var gadget = Type("gadget-1", snapshotId, "Game.Routing.Gadget");
+        var valueA = Field("value-a", snapshotId, "Game.Routing.Alpha.Value");
+        var valueB = Field("value-b", snapshotId, "Game.Routing.Beta.Value");
+        await CompleteGameRunAsync(
+            buildId,
+            "index-routing",
+            snapshotId,
+            dupA,
+            [dupB, widget, gadget, valueA, valueB],
             [],
             includeCallableSurface: false);
     }
@@ -1139,6 +1223,19 @@ internal sealed class SeamInvestigationCliAtlas : IAsyncDisposable
             snapshotId,
             "ScheduleI:Installed:Type:" + qualifiedName,
             "Type",
+            qualifiedName,
+            qualifiedName,
+            false);
+
+    private static IndexSymbolRecord Field(
+        string id,
+        string snapshotId,
+        string qualifiedName) =>
+        new(
+            id,
+            snapshotId,
+            "ScheduleI:Installed:Field:" + qualifiedName,
+            "Field",
             qualifiedName,
             qualifiedName,
             false);

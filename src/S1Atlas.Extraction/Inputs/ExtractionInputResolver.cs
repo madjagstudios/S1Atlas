@@ -1,3 +1,4 @@
+using S1Atlas.Core;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Hashing;
@@ -47,6 +48,10 @@ internal sealed class ExtractionInputResolver
             build = await _extractionRepository.GetBuildAsync(
                 requestedBuildId,
                 cancellationToken);
+            if (build is null)
+            {
+                build = await TryResolveBuildPrefixAsync(requestedBuildId, cancellationToken);
+            }
         }
 
         if (build is null)
@@ -206,6 +211,44 @@ internal sealed class ExtractionInputResolver
             ExtractionFailureStage.InputResolution,
             ExtractionFailureCode.LiveInputNotFound,
             "No matching local or archived game input was found. Run 's1atlas scan' to refresh installation observations.");
+    }
+
+    /// <summary>
+    /// Resolves a unique short-ID build prefix after the exact lookup misses. An
+    /// ambiguous prefix throws listing the matches; anything else returns null so
+    /// the caller keeps its existing not-found behavior.
+    /// </summary>
+    private async Task<GameBuild?> TryResolveBuildPrefixAsync(
+        string requestedBuildId,
+        CancellationToken cancellationToken)
+    {
+        var builds = await _atlasRepository.ListBuildsAsync(cancellationToken);
+        var match = ShortId.MatchPrefix(
+            builds.Select(candidate => candidate.BuildId),
+            requestedBuildId);
+        if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
+        {
+            return builds.First(candidate => string.Equals(
+                candidate.BuildId, match.Id, StringComparison.Ordinal));
+        }
+
+        if (match.Kind == ShortIdMatchKind.Ambiguous)
+        {
+            throw new ExtractionOperationException(
+                ExtractionFailureStage.InputResolution,
+                ExtractionFailureCode.AmbiguousBuildPrefix,
+                $"Atlas build prefix '{requestedBuildId}' matches {match.TotalCount} builds; " +
+                $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
+        }
+
+        string DescribeBuild(string buildId)
+        {
+            var build = builds.First(candidate => string.Equals(
+                candidate.BuildId, buildId, StringComparison.Ordinal));
+            return $"{ShortId.Display(buildId)} (first seen {build.FirstSeenAtUtc:O})";
+        }
+
+        return null;
     }
 
     /// <summary>

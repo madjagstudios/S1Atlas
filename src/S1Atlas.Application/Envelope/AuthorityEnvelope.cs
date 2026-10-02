@@ -54,6 +54,10 @@ public static class AuthorityEnvelope
                 ToolEnvelope<T>.Invalid(
                     new ToolError("BuildNotFound", authority.Message ?? "The requested build is not indexed."),
                     build),
+            InstalledBuildAuthorityStatus.AmbiguousBuildPrefix =>
+                ToolEnvelope<T>.Invalid(
+                    new ToolError("AmbiguousBuildPrefix", authority.Message ?? "The build prefix matches multiple builds."),
+                    build),
             InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction =>
                 ToolEnvelope<T>.NotFound(
                     build,

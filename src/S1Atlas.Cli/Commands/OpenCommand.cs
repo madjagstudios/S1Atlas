@@ -22,7 +22,7 @@ internal static class OpenCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var selectorArgument = new Argument<string>("selector") { Description = "A symbol selector." };
+        var selectorArgument = new Argument<string>("selector") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var portOption = new Option<int>("--port")
         {
             Description = $"The loopback port serve is listening on. [default: {ServeOptions.DefaultPort}]",
@@ -87,7 +87,8 @@ internal static class OpenCommand
         {
             return IndexQueryCommandFactory.Complete(
                 commandOutput,
-                new IndexQueryOutput([], [], [], Resolution: resolution));
+                new IndexQueryOutput([], [], [], Resolution: resolution),
+                selector);
         }
 
         var url = $"http://127.0.0.1:{port}/symbol/{Uri.EscapeDataString(resolution.Symbol.SymbolId)}";

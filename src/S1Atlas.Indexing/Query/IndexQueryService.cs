@@ -1406,6 +1406,8 @@ public sealed class IndexQueryService
     {
         var resolved = new List<SelectedSymbol>();
         var ambiguous = new List<SymbolQueryResult>();
+        var suggestions = new List<SymbolQueryResult>();
+        var sides = new List<(SymbolResolutionResult Result, int Contributed)>();
         var completedIndexCount = 0;
         foreach (var channel in Channels(options))
         {
@@ -1415,13 +1417,22 @@ public sealed class IndexQueryService
 
             var selection = await ResolveInRunAsync(run, options.Codebase, channel, selector, cancellationToken);
             var resolution = selection.Resolution;
+            suggestions.AddRange(resolution.Suggestions);
             if (resolution.Status == SymbolResolutionStatus.Ambiguous)
             {
                 ambiguous.AddRange(resolution.Candidates);
+                sides.Add((resolution, resolution.Candidates.Count));
                 continue;
             }
             if (resolution.Status == SymbolResolutionStatus.Resolved && selection.Selected is not null)
+            {
                 resolved.Add(selection.Selected.Value);
+                sides.Add((resolution, 1));
+            }
+            else
+            {
+                sides.Add((resolution, 0));
+            }
         }
 
         if (ambiguous.Count > 0 || resolved.Count > 1)
@@ -1436,7 +1447,11 @@ public sealed class IndexQueryService
                 .ThenBy(candidate => candidate.SymbolId, StringComparer.Ordinal)
                 .ToArray();
             return new ChannelSelection(
-                new SymbolResolutionResult(SymbolResolutionStatus.Ambiguous, null, candidates),
+                new SymbolResolutionResult(
+                    SymbolResolutionStatus.Ambiguous,
+                    null,
+                    candidates,
+                    TotalCandidateCount: ResolutionMerge.CombineTotals(sides.ToArray())),
                 null);
         }
 
@@ -1447,7 +1462,11 @@ public sealed class IndexQueryService
 
         if (resolved.Count == 0)
             return new ChannelSelection(
-                new SymbolResolutionResult(SymbolResolutionStatus.NotFound, null, []),
+                new SymbolResolutionResult(
+                    SymbolResolutionStatus.NotFound,
+                    null,
+                    [],
+                    suggestions.Take(ResolutionMerge.MaxSuggestions).ToArray()),
                 null);
 
         return new ChannelSelection(

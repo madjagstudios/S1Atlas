@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
@@ -323,6 +324,65 @@ public sealed partial class SqliteAtlasRepository
         return await reader.ReadAsync(cancellationToken) ? ReadSymbol(reader) : null;
     }
 
+    public async Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdPrefixAsync(
+        string indexId,
+        string prefix,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The symbol prefix lookup limit must be positive.");
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status, symbol.is_public, symbol.is_generated
+            FROM symbols AS symbol
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND symbol.symbol_id GLOB $prefix
+            ORDER BY symbol.symbol_id COLLATE BINARY
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$prefix", EscapeGlobPattern(prefix) + "*");
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var result = new List<IndexSymbolRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadSymbol(reader));
+        return result;
+    }
+
+    public async Task<int> CountCompletedSymbolsByIdPrefixAsync(
+        string indexId,
+        string prefix,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*)
+            FROM symbols AS symbol
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId
+              AND run.status = 'Completed'
+              AND symbol.symbol_id GLOB $prefix;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$prefix", EscapeGlobPattern(prefix) + "*");
+        return Convert.ToInt32(
+            await command.ExecuteScalarAsync(cancellationToken),
+            System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     public async Task<int> CountCompletedSymbolMatchesAsync(
         string indexId,
         string query,
@@ -628,6 +688,24 @@ public sealed partial class SqliteAtlasRepository
         value.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("%", "\\%", StringComparison.Ordinal)
             .Replace("_", "\\_", StringComparison.Ordinal);
+
+    private static string EscapeGlobPattern(string value)
+    {
+        var pattern = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            switch (character)
+            {
+                case '*': pattern.Append("[*]"); break;
+                case '?': pattern.Append("[?]"); break;
+                case '[': pattern.Append("[[]"); break;
+                case ']': pattern.Append("[]]"); break;
+                default: pattern.Append(character); break;
+            }
+        }
+
+        return pattern.ToString();
+    }
 
     private static string ToFtsPhrase(string value) =>
         "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";

@@ -17,7 +17,7 @@ Roots: src
 | src/S1Atlas.Cli/Output/ | 15 |
 | src/S1Atlas.Cli/Performance/ | 1 |
 | src/S1Atlas.Cli/Properties/ | 1 |
-| src/S1Atlas.Core/ | 1 |
+| src/S1Atlas.Core/ | 2 |
 | src/S1Atlas.Core/Builds/ | 2 |
 | src/S1Atlas.Core/Discovery/ | 4 |
 | src/S1Atlas.Core/Environment/ | 4 |
@@ -55,7 +55,7 @@ Roots: src
 | src/S1Atlas.Indexing/NativeRecovery/ | 2 |
 | src/S1Atlas.Indexing/Paths/ | 2 |
 | src/S1Atlas.Indexing/Properties/ | 1 |
-| src/S1Atlas.Indexing/Query/ | 15 |
+| src/S1Atlas.Indexing/Query/ | 16 |
 | src/S1Atlas.Indexing/ReferenceMods/ | 3 |
 | src/S1Atlas.Indexing/Relationships/ | 3 |
 | src/S1Atlas.Indexing/Scene/ | 10 |

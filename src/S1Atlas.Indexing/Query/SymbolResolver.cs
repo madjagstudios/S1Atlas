@@ -1,3 +1,4 @@
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 
@@ -6,6 +7,9 @@ namespace S1Atlas.Indexing.Query;
 public sealed class SymbolResolver
 {
     private const int CandidateLimit = 50;
+    private const int MaxSuggestionDistance = 2;
+    private const int LadderMinimumLength = 3;
+    private const int LadderMaximumRungs = 10;
     private readonly IIndexRepository _repository;
 
     public SymbolResolver(IIndexRepository repository)
@@ -34,13 +38,20 @@ public sealed class SymbolResolver
             return KindMismatch(indexId, codebase, channel, byId);
         }
 
+        if (ShortId.TryParsePrefix(selector, out var shortIdPrefix))
+        {
+            var prefixed = await ResolveShortIdAsync(indexId, shortIdPrefix, codebase, channel, kindNames, cancellationToken);
+            if (prefixed is not null)
+                return prefixed;
+        }
+
         if (kindNames is not null && IsCanonicalSelector(selector, codebase, channel))
             return await ResolveCanonicalKeyAsync(indexId, selector, codebase, channel, kindNames, cancellationToken);
 
         var searchQuery = SearchQueryForSelector(selector, codebase, channel);
-        var records = await SearchKindsAsync(indexId, searchQuery, kindNames, cancellationToken);
+        var records = await SearchKindsAsync(indexId, searchQuery, kindNames, cancellationToken, includeGenerated: true, limit: CandidateLimit + 1);
         if (records.Count == 0)
-            return NotFound();
+            return NotFound(await SuggestAsync(indexId, codebase, channel, searchQuery, kindNames, cancellationToken));
 
         var exactCanonical = records
             .Where(record => string.Equals(record.CanonicalKey, selector, StringComparison.Ordinal))
@@ -48,7 +59,7 @@ public sealed class SymbolResolver
         if (exactCanonical.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactCanonical[0], OriginFor(codebase)));
         if (exactCanonical.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactCanonical);
+            return Ambiguous(indexId, codebase, channel, exactCanonical, TotalUnlessTruncated(records.Count, exactCanonical.Length));
 
         var exactSignature = records
             .Where(record => string.Equals(record.Signature, selector, StringComparison.OrdinalIgnoreCase))
@@ -56,7 +67,7 @@ public sealed class SymbolResolver
         if (exactSignature.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactSignature[0], OriginFor(codebase)));
         if (exactSignature.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactSignature);
+            return Ambiguous(indexId, codebase, channel, exactSignature, TotalUnlessTruncated(records.Count, exactSignature.Length));
 
         var exactQualifiedName = records
             .Where(record => string.Equals(record.QualifiedName, selector, StringComparison.OrdinalIgnoreCase))
@@ -64,31 +75,34 @@ public sealed class SymbolResolver
         if (exactQualifiedName.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactQualifiedName[0], OriginFor(codebase)));
         if (exactQualifiedName.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactQualifiedName);
+            return Ambiguous(indexId, codebase, channel, exactQualifiedName, TotalUnlessTruncated(records.Count, exactQualifiedName.Length));
 
         var bestRank = Rank(records[0], searchQuery);
         var best = records
             .TakeWhile(record => Rank(record, searchQuery) == bestRank)
             .ToArray();
-        return best.Length == 1
-            ? Resolved(ToQueryResult(indexId, codebase, channel, best[0], OriginFor(codebase)))
-            : Ambiguous(indexId, codebase, channel, best);
+        if (best.Length == 1)
+            return Resolved(ToQueryResult(indexId, codebase, channel, best[0], OriginFor(codebase)));
+        var shown = best.Length > CandidateLimit ? best.Take(CandidateLimit).ToArray() : best;
+        return Ambiguous(indexId, codebase, channel, shown, TotalUnlessTruncated(records.Count, best.Length));
     }
 
     private async Task<IReadOnlyList<IndexSymbolRecord>> SearchKindsAsync(
         string indexId,
         string query,
         HashSet<string>? kindNames,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated,
+        int limit)
     {
         if (kindNames is null)
         {
             return await _repository.SearchCompletedSymbolsAsync(
                 indexId,
                 query,
-                CandidateLimit,
+                limit,
                 cancellationToken,
-                includeGenerated: true);
+                includeGenerated: includeGenerated);
         }
 
         var merged = new List<IndexSymbolRecord>();
@@ -98,10 +112,10 @@ public sealed class SymbolResolver
             var records = await _repository.SearchCompletedSymbolsAsync(
                 indexId,
                 query,
-                CandidateLimit,
+                limit,
                 cancellationToken,
                 kindName,
-                includeGenerated: true);
+                includeGenerated: includeGenerated);
             foreach (var record in records)
             {
                 if (seen.Add(record.SymbolId))
@@ -135,14 +149,120 @@ public sealed class SymbolResolver
         if (kinded.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, kinded[0], OriginFor(codebase)));
         if (kinded.Length > 1)
-            return Ambiguous(indexId, codebase, channel, kinded);
+            return Ambiguous(indexId, codebase, channel, kinded, kinded.Length);
         if (records.Count == 0)
-            return NotFound();
+            return NotFound(await SuggestAsync(indexId, codebase, channel, SearchQueryForSelector(selector, codebase, channel), kindNames, cancellationToken));
         var mismatch = records
             .OrderBy(record => record.Kind, StringComparer.Ordinal)
             .ThenBy(record => record.SymbolId, StringComparer.Ordinal)
             .First();
         return KindMismatch(indexId, codebase, channel, mismatch);
+    }
+
+    private async Task<SymbolResolutionResult?> ResolveShortIdAsync(
+        string indexId,
+        string prefix,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        HashSet<string>? kindNames,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _repository.GetCompletedSymbolsByIdPrefixAsync(indexId, prefix, CandidateLimit + 1, cancellationToken);
+        if (rows.Count == 0)
+            return null;
+        var kinded = kindNames is null
+            ? rows
+            : rows.Where(record => kindNames.Contains(record.Kind)).ToArray();
+        if (kinded.Count == 1)
+            return Resolved(ToQueryResult(indexId, codebase, channel, kinded[0], OriginFor(codebase)));
+        if (kinded.Count > 1)
+        {
+            var shown = kinded.Count > CandidateLimit ? kinded.Take(CandidateLimit).ToArray() : kinded;
+            int? total = rows.Count <= CandidateLimit
+                ? kinded.Count
+                : kindNames is null
+                    ? await _repository.CountCompletedSymbolsByIdPrefixAsync(indexId, prefix, cancellationToken)
+                    : null;
+            return Ambiguous(indexId, codebase, channel, shown, total);
+        }
+
+        var mismatch = rows
+            .OrderBy(record => record.Kind, StringComparer.Ordinal)
+            .ThenBy(record => record.SymbolId, StringComparer.Ordinal)
+            .First();
+        return KindMismatch(indexId, codebase, channel, mismatch);
+    }
+
+    private async Task<IReadOnlyList<SymbolQueryResult>> SuggestAsync(
+        string indexId,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string searchQuery,
+        HashSet<string>? kindNames,
+        CancellationToken cancellationToken)
+    {
+        var segment = SymbolNames.SimpleName(searchQuery);
+        var loweredSegment = segment.ToLowerInvariant();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var scored = new List<(IndexSymbolRecord Record, int Distance, int Order)>();
+        var order = 0;
+        foreach (var rung in LadderRungs(segment, searchQuery))
+        {
+            var pool = await SearchKindsAsync(indexId, rung, kindNames, cancellationToken, includeGenerated: false, limit: CandidateLimit);
+            foreach (var record in pool)
+            {
+                if (!seen.Add(record.SymbolId))
+                    continue;
+                var distance = EditDistance(SymbolNames.SimpleName(record.QualifiedName).ToLowerInvariant(), loweredSegment);
+                if (distance <= MaxSuggestionDistance)
+                    scored.Add((record, distance, order++));
+            }
+        }
+
+        return scored
+            .OrderBy(scored => scored.Distance)
+            .ThenBy(scored => scored.Order)
+            .Take(ResolutionMerge.MaxSuggestions)
+            .Select(scored => ToQueryResult(indexId, codebase, channel, scored.Record, OriginFor(codebase)))
+            .ToArray();
+    }
+
+    private static IEnumerable<string> LadderRungs(string segment, string searchQuery)
+    {
+        var yielded = 0;
+        for (var length = segment.Length; length >= LadderMinimumLength && yielded < LadderMaximumRungs; length--)
+        {
+            var rung = segment[..length];
+            if (string.Equals(rung, searchQuery, StringComparison.Ordinal))
+                continue;
+            yielded++;
+            yield return rung;
+        }
+    }
+
+    private static int EditDistance(string left, string right)
+    {
+        if (left.Length == 0)
+            return right.Length;
+        if (right.Length == 0)
+            return left.Length;
+        var previous = new int[right.Length + 1];
+        var current = new int[right.Length + 1];
+        for (var column = 0; column <= right.Length; column++)
+            previous[column] = column;
+        for (var row = 1; row <= left.Length; row++)
+        {
+            current[0] = row;
+            for (var column = 1; column <= right.Length; column++)
+            {
+                var substitution = previous[column - 1] + (left[row - 1] == right[column - 1] ? 0 : 1);
+                current[column] = Math.Min(Math.Min(previous[column] + 1, current[column - 1] + 1), substitution);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[right.Length];
     }
 
     private static bool IsCanonicalSelector(string selector, CodebaseKind codebase, CodeChannel channel) =>
@@ -179,11 +299,14 @@ public sealed class SymbolResolver
             : selector;
     }
 
+    private static int? TotalUnlessTruncated(int fetched, int matches) =>
+        fetched > CandidateLimit ? null : matches;
+
     private static SymbolResolutionResult Resolved(SymbolQueryResult symbol) =>
         new(SymbolResolutionStatus.Resolved, symbol, []);
 
-    private static SymbolResolutionResult NotFound() =>
-        new(SymbolResolutionStatus.NotFound, null, []);
+    private static SymbolResolutionResult NotFound(IReadOnlyList<SymbolQueryResult> suggestions) =>
+        new(SymbolResolutionStatus.NotFound, null, [], suggestions);
 
     private static KindedSymbolResolutionResult KindMismatch(
         string indexId,
@@ -200,7 +323,8 @@ public sealed class SymbolResolver
         string indexId,
         CodebaseKind codebase,
         CodeChannel channel,
-        IReadOnlyList<IndexSymbolRecord> records) =>
+        IReadOnlyList<IndexSymbolRecord> records,
+        int? totalCandidateCount) =>
         new(
             SymbolResolutionStatus.Ambiguous,
             null,
@@ -209,7 +333,8 @@ public sealed class SymbolResolver
                 .OrderBy(result => result.QualifiedName, StringComparer.Ordinal)
                 .ThenBy(result => result.Signature, StringComparer.Ordinal)
                 .ThenBy(result => result.SymbolId, StringComparer.Ordinal)
-                .ToArray());
+                .ToArray(),
+            TotalCandidateCount: totalCandidateCount);
 
     internal static SymbolQueryResult ToQueryResult(
         string indexId,
@@ -240,8 +365,10 @@ public sealed class SymbolResolver
             version,
             license,
             relativePath,
-            sha256);
+            sha256,
+            record.SymbolId.Length >= 12 ? record.SymbolId[..12] : record.SymbolId);
 
     internal static string? OriginFor(CodebaseKind codebase) =>
         codebase == CodebaseKind.ScheduleI ? "game" : null;
+
 }

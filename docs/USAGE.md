@@ -291,8 +291,9 @@ s1atlas recover-native-body --symbol-id <symbol-id> --traversal-budget 100
 ```
 
 It accepts one or more repeated `--symbol-id` values (at least one is
-required), `--traversal-budget` from `1` to `500` (default `100`), an optional
-`--build-id`, and `--json`. It resolves the current (or selected) build
+required; full IDs or unique short-ID prefixes), `--traversal-budget` from
+`1` to `500` (default `100`), an optional `--build-id` (full ID or unique
+short-ID prefix), and `--json`. It resolves the current (or selected) build
 authority, locates the Schedule I installation, and requires a completed
 Schedule I `Installed` index; it fails with a precise error rather than a
 partial result if authority resolution, the installation, or the execution
@@ -769,10 +770,11 @@ neighborhood omitted and a source-level notice; cancellation still cancels the
 request.
 
 Queries use the current environment when `buildId` is omitted and honor an
-explicit build ID exactly. The selected build must have a preferred,
-integrity-verified extraction and a completed matching Installed index. Responses
-include status, build and index context, provenance, data, candidates where
-applicable, and structured errors. `compare_symbol` requires two explicit build
+explicit build ID or unique short-ID prefix. The selected build must have a
+preferred, integrity-verified extraction and a completed matching Installed
+index. Responses include status, build and index context, provenance, data,
+candidates with exact totals on ambiguity, near-match suggestions on unknown
+selectors, and structured errors. `compare_symbol` requires two explicit build
 IDs; `get_environment` reports only the current snapshot and returns
 `NoMatchingEnvironmentSnapshot` for a historical request. Facts are labeled
 `FACT`, while deterministic selections and counts are labeled `DERIVED`.
@@ -916,6 +918,47 @@ Included delegate rows are labeled `delegate created (not called)`.
 kinds. `ldtoken` of a method or field records a metadata reference, never a
 call or read; `constrained.` + `callvirt` stays a virtual call; `calli`
 records nothing.
+
+## Symbol selectors
+
+Every symbol-taking command (`callers`, `callees`, `refs`, `fieldrefs`,
+`callsites`, `overrides`, `overridden-by`, `derived`, `callable`, `source`,
+`open`, `investigate_seam`, plus the MCP `get_*` and `find_*` tools) accepts
+the same selector forms, resolved in this order:
+
+1. Full 64-character symbol ID (lowercase).
+2. Unique short-ID prefix: 8 to 63 hex characters of either case.
+3. Canonical key (`ScheduleI:Installed:Method:...`).
+4. Exact signature.
+5. Qualified name.
+6. Fuzzy text, ranked; compiler-generated members stay hidden unless asked
+   for with `--include-generated` / `includeGenerated`.
+
+A prefix shared by several symbols fails listing the matches instead of
+guessing; a prefix that matches nothing falls through to the text forms.
+Short IDs display as 12 characters in human output (`search` rows and every
+candidate table); `--json` keeps full IDs and adds a `shortId` field.
+
+An ambiguous selector exits 1 with `AmbiguousSymbol` and a numbered candidate
+table (number, kind, qualified name, signature, short ID, codebase) capped at
+10 human rows with the exact total (`Found 12 candidates; showing 10.`), or
+`Found at least N candidates; showing 10.` when the pool truncates past 50,
+plus the narrowest working hint: the exact signature when signatures differ,
+otherwise a short ID from the table. An unknown selector exits 1 with
+`SymbolNotFound`: human output prints `Found 0 matches.`, plus up to 5
+`Nearest matches` rows and a spelling/`search` hint when close names exist.
+MCP `not_found` envelopes carry the same near matches in `suggestions`;
+`ambiguous` envelopes carry candidates with `totalCandidateCount`.
+
+Build, extraction, and attempt IDs accept unique short-ID prefixes anywhere
+they are accepted: `--build`/`--build-id`, `diff` build arguments,
+`extractions show`, and `recover-native-body --symbol-id`. Ambiguous prefixes
+fail listing labeled short IDs (builds show their first-seen time, history
+entries their kind and creation time, symbols their signature) that can be
+re-run directly. Prefixes accept either hex case everywhere, and full-length
+build IDs do too; full symbol and extraction IDs must be lowercase. Scene,
+GameObject, component, and asset ambiguity renders numbered candidate rows
+with counts and exact-ID hints.
 
 ## Command reference
 

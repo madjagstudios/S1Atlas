@@ -25,7 +25,7 @@ internal static class ExtractCommand
 
         var buildOption = new Option<string?>("--build")
         {
-            Description = "Select a known 64-character Atlas build ID."
+            Description = "Select a known Atlas build ID or unique short-ID prefix."
         };
         var gamePathOption = new Option<string?>("--game-path")
         {

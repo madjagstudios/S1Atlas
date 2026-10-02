@@ -114,6 +114,43 @@ public sealed class CodeSymbolToolTests
 
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Null(envelope.Data);
+        Assert.Empty(envelope.Suggestions);
+        Assert.Null(envelope.TotalCandidateCount);
+    }
+
+    [Fact]
+    public async Task GetType_TypoSelector_ReturnsNotFoundWithSuggestions()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetTypeAsync(
+            "Widjet",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Null(envelope.Data);
+        var suggestion = Assert.Single(envelope.Suggestions);
+        Assert.Equal("Demo.Widget", ((SymbolQueryResult)suggestion).QualifiedName);
+    }
+
+    [Fact]
+    public async Task GetMethod_MethodTypoSelector_ReturnsNotFoundWithMethodSuggestion()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetMethodAsync(
+            "Demo.Widget::Rendor",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Null(envelope.Data);
+        Assert.Contains(
+            envelope.Suggestions,
+            suggestion => ((SymbolQueryResult)suggestion).QualifiedName == "Demo.Widget.Render");
     }
 
     [Fact]
@@ -129,6 +166,8 @@ public sealed class CodeSymbolToolTests
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
     }
 
     [Fact]
@@ -145,6 +184,7 @@ public sealed class CodeSymbolToolTests
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.Single(envelope.Candidates);
+        Assert.True(envelope.TotalCandidateCount >= 2);
     }
 
     [Fact]
@@ -162,6 +202,7 @@ public sealed class CodeSymbolToolTests
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.Single(envelope.Candidates);
         Assert.Equal(atlas.BuildIdValue, envelope.Build!.ResolvedBuildId);
+        Assert.True(envelope.TotalCandidateCount >= 2);
     }
 
     [Fact]
@@ -504,8 +545,10 @@ public sealed class CodeSymbolToolTests
 
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Null(envelope.Data);
+        Assert.Empty(envelope.Suggestions);
         Assert.Equal(ToolStatus.NotFound, exact.Status);
         Assert.Null(exact.Data);
+        Assert.Empty(exact.Suggestions);
     }
 
     [Fact]
@@ -521,6 +564,57 @@ public sealed class CodeSymbolToolTests
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task FindCallees_AmbiguousSelector_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindCalleesAsync(
+            "worker",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task FindReferences_AmbiguousSelector_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindReferencesAsync(
+            "worker",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task FindRelatedTypes_TypoSelector_ReturnsNotFoundWithSuggestions()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.FindRelatedTypesAsync(
+            "Widjet",
+            buildId: null,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.NotEmpty(envelope.Suggestions);
     }
 
     [Fact]
@@ -699,7 +793,61 @@ public sealed class CodeSymbolToolTests
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.Equal(2, envelope.Candidates.Count);
+        Assert.Equal(2, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
         Assert.Null(envelope.Data);
+    }
+
+    [Fact]
+    public async Task GetSource_AmbiguousSelector_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            "worker",
+            buildId: null,
+            context: 0,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task GetSource_TypoSelector_ReturnsNotFoundWithSuggestions()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetSourceAsync(
+            "Widjet",
+            buildId: null,
+            context: 0,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Null(envelope.Data);
+        Assert.NotEmpty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public async Task GetCallableSurface_AmbiguousSelector_ReturnsCandidatesWithTotal()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.GetCallableSurfaceAsync(
+            "worker",
+            buildId: null,
+            CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.True(envelope.Candidates.Count >= 2);
+        Assert.Equal(envelope.Candidates.Count, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
     }
 
     [Fact]

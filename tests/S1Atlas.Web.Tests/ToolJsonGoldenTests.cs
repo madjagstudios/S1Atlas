@@ -31,7 +31,28 @@ public sealed class ToolJsonGoldenTests
             "\"build\":{\"resolvedBuildId\":\"build-1\",\"indexId\":\"index-1\",\"codebase\":\"ScheduleI\",\"channel\":\"Installed\",\"integrityVerified\":true}," +
             "\"candidates\":[]," +
             "\"provenance\":[{\"classification\":\"FACT\",\"source\":\"index-search\",\"buildId\":\"build-1\",\"indexId\":\"index-1\"}]," +
-            "\"error\":{\"code\":\"SymbolNotFound\",\"message\":\"Bad \\u003Ctag\\u003E \\u0026 \\u0022quoted\\u0022 \\u0027apostrophe\\u0027 h\\u00E9llo \\u2192\"}}",
+            "\"error\":{\"code\":\"SymbolNotFound\",\"message\":\"Bad \\u003Ctag\\u003E \\u0026 \\u0022quoted\\u0022 \\u0027apostrophe\\u0027 h\\u00E9llo \\u2192\"}," +
+            "\"suggestions\":[]}",
+            json);
+    }
+
+    [Fact]
+    public void AmbiguousEnvelopeReportsSuggestionsAndTotal()
+    {
+        var envelope = ToolEnvelope<object>.Ambiguous(
+            build: null,
+            new object[] { "shown" },
+            12,
+            new ProvenanceEntry(ProvenanceClassification.Derived, "installed-index", null, null, null));
+
+        var json = JsonSerializer.Serialize(envelope, ToolJsonOptions.Create());
+
+        Assert.Equal(
+            "{\"status\":\"ambiguous\"," +
+            "\"candidates\":[\"shown\"]," +
+            "\"provenance\":[{\"classification\":\"DERIVED\",\"source\":\"installed-index\"}]," +
+            "\"totalCandidateCount\":12," +
+            "\"suggestions\":[]}",
             json);
     }
 }

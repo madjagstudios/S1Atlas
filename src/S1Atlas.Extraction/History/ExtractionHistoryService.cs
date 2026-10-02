@@ -1,3 +1,4 @@
+using S1Atlas.Core;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
@@ -160,12 +161,16 @@ internal sealed class ExtractionHistoryService
     /// Resolves a single history entry. A 64 lower-hex ID is a validated extraction and
     /// triggers a full integrity verification (a mismatch throws an operational failure);
     /// a 32 lower-hex ID is an attempt and returns lifecycle/validation/result facts.
-    /// Returns <see langword="null"/> for an unknown or malformed ID.
+    /// A unique 8-to-63 hex prefix of either case resolves across both namespaces; an
+    /// ambiguous prefix throws listing the matches. Returns <see langword="null"/> for
+    /// an unknown or malformed ID.
     /// </summary>
     public async Task<ExtractionHistoryDetail?> ShowAsync(string id, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        if (IsLowerHex(id, 64))
+        // Full-length routing accepts either hex case by shape, but the lookups below
+        // stay case-sensitive, so an uppercase full ID still resolves to null.
+        if (ShortId.TryParseFullId(id, 64, out _))
         {
             var extraction = await _validatedRepository.GetValidatedExtractionAsync(id, cancellationToken);
             if (extraction is null)
@@ -192,14 +197,17 @@ internal sealed class ExtractionHistoryService
                 AttemptToolTrustLevel: null);
         }
 
-        if (IsLowerHex(id, 32))
+        if (ShortId.TryParseFullId(id, 32, out _))
         {
             var attempts = await _validatedRepository.ListAttemptsAsync(null, cancellationToken);
             var attempt = attempts.FirstOrDefault(
                 candidate => string.Equals(candidate.AttemptId, id, StringComparison.Ordinal));
             if (attempt is null)
             {
-                return null;
+                // A 32-char hex string is also a valid prefix: probe both
+                // namespaces before giving up so extraction prefixes and
+                // either-case attempt IDs resolve.
+                return await ShowByPrefixAsync(id, id.ToLowerInvariant(), cancellationToken);
             }
 
             return new ExtractionHistoryDetail(
@@ -211,7 +219,66 @@ internal sealed class ExtractionHistoryService
                 await ResolveAttemptTrustAsync(attempt.ToolInstanceId, cancellationToken));
         }
 
+        if (ShortId.TryParsePrefix(id, out var prefix))
+        {
+            return await ShowByPrefixAsync(id, prefix, cancellationToken);
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// Resolves a hex prefix across validated-extraction and attempt IDs. A unique
+    /// match re-enters the exact path above; an ambiguous prefix throws listing the
+    /// matches; no match returns null.
+    /// </summary>
+    private async Task<ExtractionHistoryDetail?> ShowByPrefixAsync(
+        string id,
+        string prefix,
+        CancellationToken cancellationToken)
+    {
+        var extractions = await _validatedRepository.ListValidatedExtractionsAsync(null, cancellationToken);
+        var attempts = await _validatedRepository.ListAttemptsAsync(null, cancellationToken);
+        var extractionMatch = ShortId.MatchPrefix(
+            extractions.Select(extraction => extraction.ExtractionId), prefix);
+        var attemptMatch = ShortId.MatchPrefix(
+            attempts.Select(attempt => attempt.AttemptId), prefix);
+        var total = extractionMatch.TotalCount + attemptMatch.TotalCount;
+        if (total == 0)
+        {
+            return null;
+        }
+
+        var shown = extractionMatch.Shown
+            .Concat(attemptMatch.Shown)
+            .Order(StringComparer.Ordinal)
+            .Take(ShortId.MaxShownMatches)
+            .ToArray();
+        if (total == 1)
+        {
+            return await ShowAsync(shown[0], cancellationToken);
+        }
+
+        var combined = new ShortIdMatch(ShortIdMatchKind.Ambiguous, null, shown, total);
+        throw new ExtractionOperationException(
+            ExtractionFailureStage.Recovery,
+            ExtractionFailureCode.AmbiguousHistoryEntry,
+            $"The history ID prefix '{id}' matches {total} entries; " +
+            $"re-run with a full extraction or attempt ID, or one of these short IDs: {ShortId.FormatMatchList(combined, DescribeEntry)}.");
+
+        string DescribeEntry(string candidateId)
+        {
+            var extraction = extractions.FirstOrDefault(entry => string.Equals(
+                entry.ExtractionId, candidateId, StringComparison.Ordinal));
+            if (extraction is not null)
+            {
+                return $"{ShortId.Display(candidateId)} (Extraction, created {extraction.CreatedAtUtc:O})";
+            }
+
+            var attempt = attempts.First(entry => string.Equals(
+                entry.AttemptId, candidateId, StringComparison.Ordinal));
+            return $"{ShortId.Display(candidateId)} (Attempt {attempt.Status}, created {attempt.CreatedAtUtc:O})";
+        }
     }
 
     /// <summary>

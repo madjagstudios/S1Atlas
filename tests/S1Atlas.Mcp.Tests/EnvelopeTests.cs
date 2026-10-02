@@ -1,5 +1,7 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
+using S1Atlas.Mcp.Mapping;
 using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
@@ -56,6 +58,101 @@ public sealed class EnvelopeTests
     }
 
     [Fact]
+    public void NotFound_CarriesSuggestions()
+    {
+        var build = new BuildContext(null, "b", "e", "i", "ScheduleI", "Installed", true);
+        var suggestions = new object[] { "near-first", "near-second" };
+
+        var envelope = ToolEnvelope<string>.NotFound(
+            build,
+            new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+            suggestions,
+            new ProvenanceEntry(ProvenanceClassification.Derived, "installed-index", "b", "e", "i"));
+
+        Assert.Equal(ToolStatus.NotFound, envelope.Status);
+        Assert.Same(suggestions, envelope.Suggestions);
+        Assert.Empty(envelope.Candidates);
+    }
+
+    [Fact]
+    public void Ambiguous_CarriesTotalCandidateCount()
+    {
+        var build = new BuildContext(null, "b", "e", "i", "ScheduleI", "Installed", true);
+
+        var envelope = ToolEnvelope<string>.Ambiguous(
+            build,
+            ["shown"],
+            12,
+            new ProvenanceEntry(ProvenanceClassification.Derived, "installed-index", "b", "e", "i"));
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Single(envelope.Candidates);
+        Assert.Equal(12, envelope.TotalCandidateCount);
+        Assert.Empty(envelope.Suggestions);
+    }
+
+    [Fact]
+    public void FromFind_Ambiguous_ReportsExactTotal()
+    {
+        var authority = new InstalledBuildAuthority(
+            InstalledBuildAuthorityStatus.Resolved,
+            "requested",
+            "resolved",
+            "extraction",
+            "index",
+            IndexRun: null,
+            Message: null);
+        var results = new[]
+        {
+            new SymbolQueryResult("index", "ScheduleI", "Installed", "id-a", "Type", "A", "A", false),
+            new SymbolQueryResult("index", "ScheduleI", "Installed", "id-b", "Type", "B", "B", false),
+        };
+
+        var envelope = EnvelopeMapper.FromFind(authority, results);
+
+        Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
+        Assert.Equal(2, envelope.TotalCandidateCount);
+    }
+
+    [Fact]
+    public void Factories_DefaultToEmptySuggestionsAndNullTotal()
+    {
+        var build = new BuildContext(null, "b", "e", "i", "ScheduleI", "Installed", true);
+        var provenance = new ProvenanceEntry(ProvenanceClassification.Derived, "installed-index", "b", "e", "i");
+
+        Assert.Empty(ToolEnvelope<string>.Resolved(build, "data", provenance).Suggestions);
+        Assert.Null(ToolEnvelope<string>.Resolved(build, "data", provenance).TotalCandidateCount);
+        Assert.Empty(ToolEnvelope<string>.NotFound(build, provenance).Suggestions);
+        Assert.Null(ToolEnvelope<string>.NotFound(build, provenance).TotalCandidateCount);
+        Assert.Empty(ToolEnvelope<string>.Ambiguous(build, ["a"], provenance).Suggestions);
+        Assert.Null(ToolEnvelope<string>.Ambiguous(build, ["a"], provenance).TotalCandidateCount);
+        Assert.Empty(ToolEnvelope<string>.Invalid(new ToolError("Bad", "Bad."), build).Suggestions);
+        Assert.Null(ToolEnvelope<string>.Invalid(new ToolError("Bad", "Bad."), build).TotalCandidateCount);
+        Assert.Empty(ToolEnvelope<string>.Unavailable(new ToolError("Down", "Down."), build).Suggestions);
+        Assert.Null(ToolEnvelope<string>.Unavailable(new ToolError("Down", "Down."), build).TotalCandidateCount);
+    }
+
+    [Fact]
+    public void StatusArrayInvariant_HoldsAcrossFactories()
+    {
+        var build = new BuildContext(null, "b", "e", "i", "ScheduleI", "Installed", true);
+        var provenance = new ProvenanceEntry(ProvenanceClassification.Derived, "installed-index", "b", "e", "i");
+
+        var ambiguous = ToolEnvelope<string>.Ambiguous(build, ["a", "b"], 2, provenance);
+        var notFound = ToolEnvelope<string>.NotFound(
+            build, new ToolError("SymbolNotFound", "None."), ["near"], provenance);
+        var resolved = ToolEnvelope<string>.Resolved(build, "data", provenance);
+
+        Assert.NotEmpty(ambiguous.Candidates);
+        Assert.Empty(ambiguous.Suggestions);
+        Assert.Empty(notFound.Candidates);
+        Assert.NotEmpty(notFound.Suggestions);
+        Assert.Empty(resolved.Candidates);
+        Assert.Empty(resolved.Suggestions);
+        Assert.Null(resolved.TotalCandidateCount);
+    }
+
+    [Fact]
     public void AuthorityEnvelope_MapsResolvedAuthorityToResolvedStatus()
     {
         var authority = new InstalledBuildAuthority(
@@ -106,6 +203,7 @@ public sealed class EnvelopeTests
     {
         { InstalledBuildAuthorityStatus.NoCurrentBuild, ToolStatus.Unavailable, "NoCurrentBuild" },
         { InstalledBuildAuthorityStatus.BuildNotFound, ToolStatus.Invalid, "BuildNotFound" },
+        { InstalledBuildAuthorityStatus.AmbiguousBuildPrefix, ToolStatus.Invalid, "AmbiguousBuildPrefix" },
         { InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction, ToolStatus.NotFound, "NoPreferredVerifiedExtraction" },
         { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, ToolStatus.Unavailable, "ExtractionIntegrityFailure" },
         { InstalledBuildAuthorityStatus.NoCompletedIndex, ToolStatus.NotFound, "NoCompletedIndex" },

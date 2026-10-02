@@ -1,3 +1,4 @@
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Authority;
@@ -50,17 +51,46 @@ public sealed class InstalledBuildAuthorityResolver
         else
         {
             var builds = await _atlas.ListBuildsAsync(ct);
-            if (!builds.Any(build =>
+            if (builds.Any(build =>
                     string.Equals(build.BuildId, requestedBuildId, StringComparison.Ordinal)))
             {
-                return Fail(
-                    InstalledBuildAuthorityStatus.BuildNotFound,
-                    requestedBuildId,
-                    null,
-                    "The requested build is not indexed.");
+                resolvedBuildId = requestedBuildId;
             }
+            else
+            {
+                var match = ShortId.MatchPrefix(
+                    builds.Select(build => build.BuildId),
+                    requestedBuildId);
 
-            resolvedBuildId = requestedBuildId;
+                string DescribeBuild(string buildId)
+                {
+                    var build = builds.First(candidate => string.Equals(
+                        candidate.BuildId, buildId, StringComparison.Ordinal));
+                    return $"{ShortId.Display(buildId)} (first seen {build.FirstSeenAtUtc:O})";
+                }
+
+                if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
+                {
+                    resolvedBuildId = match.Id;
+                }
+                else if (match.Kind == ShortIdMatchKind.Ambiguous)
+                {
+                    return Fail(
+                        InstalledBuildAuthorityStatus.AmbiguousBuildPrefix,
+                        requestedBuildId,
+                        null,
+                        $"The build prefix '{requestedBuildId}' matches {match.TotalCount} builds; " +
+                        $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
+                }
+                else
+                {
+                    return Fail(
+                        InstalledBuildAuthorityStatus.BuildNotFound,
+                        requestedBuildId,
+                        null,
+                        "The requested build is not indexed.");
+                }
+            }
         }
 
         var preferred = await _preferredResolver.ResolveAsync(resolvedBuildId, ct);

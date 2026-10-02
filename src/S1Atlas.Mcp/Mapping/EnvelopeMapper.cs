@@ -84,14 +84,17 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<SymbolQueryResult>.Ambiguous(
                 build,
                 resolution.Candidates.Cast<object>().ToArray(),
+                resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound when resolution is KindedSymbolResolutionResult kinded => ToolEnvelope<SymbolQueryResult>.NotFound(
                 build,
                 new ToolError("SymbolKindMismatch", KindMismatchMessage(kinded.KindMismatch, kinds)),
+                resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<SymbolQueryResult>.NotFound(
                 build,
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SymbolQueryResult>.NotFound(
                 build,
@@ -234,10 +237,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<SourceSnippetQueryResult>.Ambiguous(
                 build,
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 provenance),
             SymbolResolutionStatus.NotFound => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 build,
                 new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 build,
@@ -280,10 +285,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<RelationshipQuerySetResult>.Ambiguous(
                 build,
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 provenance),
             SymbolResolutionStatus.NotFound => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 build,
                 new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 build,
@@ -320,10 +327,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<FieldReferenceQueryResult>.Ambiguous(
                 build,
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 provenance),
             SymbolResolutionStatus.NotFound => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
                 build,
                 new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
                 build,
@@ -368,6 +377,7 @@ public static class EnvelopeMapper
             _ => ToolEnvelope<SymbolQueryResult>.Ambiguous(
                 build,
                 results.Cast<object>().ToArray(),
+                results.Count,
                 Derived(authority, "symbol-selection"))
         };
     }
@@ -383,10 +393,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<SourceSnippetQueryResult>.Ambiguous(
                 BuildFrom(authority),
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 BuildFrom(authority),
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 BuildFrom(authority),
@@ -425,10 +437,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<RelationshipQuerySetResult>.Ambiguous(
                 BuildFrom(authority),
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 BuildFrom(authority),
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 BuildFrom(authority),
@@ -453,10 +467,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<HierarchyQueryResult>.Ambiguous(
                 BuildFrom(authority),
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<HierarchyQueryResult>.NotFound(
                 BuildFrom(authority),
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<HierarchyQueryResult>.NotFound(
                 BuildFrom(authority),
@@ -568,10 +584,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<FieldReferenceQueryResult>.Ambiguous(
                 BuildFrom(authority),
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
                 BuildFrom(authority),
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
                 BuildFrom(authority),
@@ -607,10 +625,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<CallableSurfaceQueryResult>.Ambiguous(
                 BuildFrom(authority),
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
                 BuildFrom(authority),
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
                 BuildFrom(authority),
@@ -639,10 +659,12 @@ public static class EnvelopeMapper
             SymbolResolutionStatus.Ambiguous => ToolEnvelope<SeamInvestigationResult>.Ambiguous(
                 BuildFrom(authority),
                 result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NotFound => ToolEnvelope<SeamInvestigationResult>.NotFound(
                 BuildFrom(authority),
                 new ToolError("SymbolNotFound", "No indexed symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SeamInvestigationResult>.NotFound(
                 BuildFrom(authority),

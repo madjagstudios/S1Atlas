@@ -271,6 +271,52 @@ public sealed class SceneCliTests : IAsyncDisposable
         Assert.Contains("scene-a", human.ToString(), StringComparison.Ordinal); Assert.Contains("scene-b", human.ToString(), StringComparison.Ordinal);
         Assert.Contains("Schedule I_Data/level0", human.ToString(), StringComparison.Ordinal); Assert.Contains(new string('b', 64), json.ToString(), StringComparison.Ordinal);
         Assert.Contains("AmbiguousScene", humanError.ToString(), StringComparison.Ordinal); Assert.Contains("AmbiguousScene", json.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Found 2 candidates.", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("1 | Arena | scene-a", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("2 | Arena | scene-b", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Hint: re-run with an exact scene ID.", human.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Scene_candidate_helper_numbers_rows_with_totals_and_hint()
+    {
+        using var writer = new StringWriter();
+
+        SceneCommandSupport.WriteCandidates(writer, ["Arena|scene-a", "Arena|scene-b"], candidate => candidate, "scene");
+
+        Assert.Equal(
+            "Found 2 candidates." + Environment.NewLine +
+            "1 | Arena|scene-a" + Environment.NewLine +
+            "2 | Arena|scene-b" + Environment.NewLine +
+            "Hint: re-run with an exact scene ID." + Environment.NewLine,
+            writer.ToString());
+    }
+
+    [Fact]
+    public void Scene_candidate_helper_writes_nothing_without_candidates()
+    {
+        using var writer = new StringWriter();
+
+        SceneCommandSupport.WriteCandidates<string>(writer, [], candidate => candidate, "scene");
+
+        Assert.Equal(string.Empty, writer.ToString());
+    }
+
+    [Fact]
+    public async Task Ambiguous_game_object_renders_numbered_candidate_table()
+    {
+        await SeedPublishedSceneAsync();
+        await InsertAsync("INSERT INTO game_objects(game_object_id,scene_id,scene_snapshot_id,container_id,local_file_id,name,active,layer,tag,recovery_status) VALUES ('object-b','scene-a','snapshot-a','container-a',12,'Root',1,0,'Untagged','FullyRecovered');");
+        var application = new CliApplication(_dataDirectory, "0.1.0-test"); using var human = new StringWriter(); using var humanError = new StringWriter();
+
+        var exit = application.Invoke(["gameobject", "scene-a/Root"], human, humanError, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exit);
+        Assert.Contains("Found 2 candidates.", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("1 | Root | object-a", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("2 | Root | object-b", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Hint: re-run with an exact game object ID.", human.ToString(), StringComparison.Ordinal);
+        Assert.Contains("AmbiguousGameObject", humanError.ToString(), StringComparison.Ordinal);
     }
 
     private async Task SeedPublishedSceneAsync()

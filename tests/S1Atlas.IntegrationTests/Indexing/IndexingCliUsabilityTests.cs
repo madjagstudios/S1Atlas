@@ -598,6 +598,352 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         Assert.Contains(candidates.EnumerateArray(), item => item.GetProperty("symbolId").GetString() == "service-b");
     }
 
+    [Fact]
+    public async Task Ambiguous_human_output_renders_numbered_candidate_table_with_total_and_hint()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "service", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Found 2 candidates; showing 2.", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "1 | Type | Alpha.Service | Alpha.Service | service-a | ScheduleI",
+            text,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "2 | Type | Beta.Service | Beta.Service | service-b | ScheduleI",
+            text,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Hint: re-run with the exact signature or a short ID from the table.",
+            text,
+            StringComparison.Ordinal);
+        var stderr = error.ToString();
+        Assert.Contains("Re-run with a full symbol ID or a unique short-ID prefix.", stderr, StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ambiguous_json_carries_short_ids_suggestions_and_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "service", "--channel", "all", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        using var document = JsonDocument.Parse(output.ToString());
+        var data = document.RootElement.GetProperty("data");
+        var candidates = data.GetProperty("candidates");
+        Assert.Equal(2, candidates.GetArrayLength());
+        Assert.All(
+            candidates.EnumerateArray(),
+            item => Assert.Equal(
+                item.GetProperty("symbolId").GetString(),
+                item.GetProperty("shortId").GetString()));
+        Assert.Equal(0, data.GetProperty("suggestions").GetArrayLength());
+        Assert.Equal(2, data.GetProperty("totalCandidateCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task Ambiguous_prefix_overflow_truncates_human_table_with_exact_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixCrowdIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "abcdef00", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Found 12 candidates; showing 10.", text, StringComparison.Ordinal);
+        Assert.Contains("10 | Method |", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("11 | Method |", text, StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ambiguous_prefix_overflow_json_keeps_all_candidates_with_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixCrowdIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "abcdef00", "--channel", "all", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        using var document = JsonDocument.Parse(output.ToString());
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(12, data.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(12, data.GetProperty("totalCandidateCount").GetInt32());
+        Assert.Equal(
+            "abcdef0000ff",
+            data.GetProperty("candidates")[0].GetProperty("shortId").GetString());
+    }
+
+    [Fact]
+    public async Task Truncated_exact_signature_human_output_reports_at_least_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedDuplicateSignatureIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "System.Void Dup::Clone()", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Found at least 51 candidates; showing 10.", text, StringComparison.Ordinal);
+        Assert.Contains("10 | Method |", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("11 | Method |", text, StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Truncated_exact_signature_json_reports_null_total()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedDuplicateSignatureIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "System.Void Dup::Clone()", "--channel", "all", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        using var document = JsonDocument.Parse(output.ToString());
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal(51, data.GetProperty("candidates").GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("totalCandidateCount").ValueKind);
+    }
+
+    [Fact]
+    public async Task NotFound_human_output_lists_nearest_matches_with_search_hint()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "Compote", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Found 0 matches.", text, StringComparison.Ordinal);
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains("Demo.Probe.Compute", text, StringComparison.Ordinal);
+        Assert.Contains("Demo.Probe.Compare", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Hint: no symbol matched 'Compote'; check the spelling or run 's1atlas search \"Compote\"'.",
+            text,
+            StringComparison.Ordinal);
+        var stderr = error.ToString();
+        Assert.Contains("No indexed symbol matched the selector.", stderr, StringComparison.Ordinal);
+        Assert.Contains("Code:    SymbolNotFound", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MethodTypo_double_colon_form_suggests_method()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedMethodSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "Demo.Methods.Calculator::ComputeTotl", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MethodTypo_dot_form_suggests_method()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedMethodSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "Demo.Methods.Calculator.ComputeTotl", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MethodTypo_bare_form_suggests_method()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedMethodSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "ComputeTotl", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        var text = output.ToString();
+        Assert.Contains("Nearest matches:", text, StringComparison.Ordinal);
+        Assert.Contains(
+            "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+            text,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NotFound_json_carries_suggestions()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedSuggestionIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "Compote", "--channel", "all", "--json"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        using var document = JsonDocument.Parse(output.ToString());
+        var root = document.RootElement;
+        Assert.Equal("SymbolNotFound", root.GetProperty("error").GetProperty("code").GetString());
+        var suggestions = root.GetProperty("data").GetProperty("suggestions");
+        Assert.Equal(2, suggestions.GetArrayLength());
+        Assert.Equal("Demo.Probe.Compute", suggestions[0].GetProperty("qualifiedName").GetString());
+        Assert.Equal("Demo.Probe.Compare", suggestions[1].GetProperty("qualifiedName").GetString());
+    }
+
+    [Fact]
+    public async Task NotFound_without_suggestions_prints_only_the_zero_line()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["refs", "zzz-no-such-symbol", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal("Found 0 matches." + Environment.NewLine, output.ToString());
+        Assert.Contains("Code:    SymbolNotFound", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Search_human_rows_show_short_ids()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedShortIdSearchIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["search", "Widget", "--channel", "all", "--limit", "10"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(0, exitCode);
+        var fullId = "abcdef123456" + new string('7', 52);
+        Assert.Contains("abcdef123456", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(fullId, output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Source_ambiguous_selector_renders_candidate_table()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedRelationshipIndexAsync(cancellationToken);
+        var application = new CliApplication(_dataRoot, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["source", "service", "--channel", "all"],
+            output,
+            error,
+            cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("Found 2 candidates; showing 2.", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("1 | Type | Alpha.Service", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", error.ToString(), StringComparison.Ordinal);
+    }
+
     private async Task SeedSearchIndexAsync(CancellationToken cancellationToken)
     {
         var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
@@ -772,6 +1118,200 @@ public sealed class IndexingCliUsabilityTests : IAsyncDisposable
         await repository.CompleteIndexRunAsync(
             indexId,
             new IndexWriteSet(symbols, [], [], [], relationships),
+            "2026-08-14T18:23:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedPrefixCrowdIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-prefix-crowd";
+        const string indexId = "index-cli-prefix-crowd";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-prefix-crowd",
+            "2026-08-14T18:22:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = Enumerable.Range(0, 12)
+            .Select(index =>
+            {
+                var suffix = index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+                return new IndexSymbolRecord(
+                    "abcdef00" + index.ToString("x2") + "ff" + new string('0', 52),
+                    snapshotId,
+                    $"ScheduleI:Installed:Method:PrefixProbe.Crowd{suffix}::Run()",
+                    "Method",
+                    "PrefixProbe.Crowd" + suffix,
+                    $"System.Void PrefixProbe.Crowd{suffix}::Run()",
+                    false);
+            })
+            .ToArray();
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T18:23:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedDuplicateSignatureIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-dup-signature";
+        const string indexId = "index-cli-dup-signature";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-dup-signature",
+            "2026-08-14T18:24:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = Enumerable.Range(0, 55)
+            .Select(index =>
+            {
+                var suffix = index.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+                return new IndexSymbolRecord(
+                    "dup" + index.ToString("x4") + new string('0', 57),
+                    snapshotId,
+                    $"ScheduleI:Installed:Method:Dup.Clone{suffix}::Run()",
+                    "Method",
+                    "Dup.Clone" + suffix,
+                    "System.Void Dup::Clone()",
+                    false);
+            })
+            .ToArray();
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T18:25:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedSuggestionIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-suggest";
+        const string indexId = "index-cli-suggest";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-suggest",
+            "2026-08-14T18:22:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        IndexSymbolRecord Symbol(char idFill, string key, string kind, string name) =>
+            new(
+                new string(idFill, 64),
+                snapshotId,
+                key,
+                kind,
+                name,
+                "System.Void Demo.Probe::Run()",
+                false);
+        var symbols = new[]
+        {
+            Symbol('a', "ScheduleI:Installed:Method:Demo.Probe.Compute::Run()", "Method", "Demo.Probe.Compute"),
+            Symbol('b', "ScheduleI:Installed:Method:Demo.Probe.Compare::Run()", "Method", "Demo.Probe.Compare"),
+            Symbol('c', "ScheduleI:Installed:Method:Demo.Probe.Alpha::Run()", "Method", "Demo.Probe.Alpha"),
+            Symbol('d', "ScheduleI:Installed:Type:Demo.Probe.Widget", "Type", "Demo.Probe.Widget"),
+        };
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T18:23:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedMethodSuggestionIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-method-suggest";
+        const string indexId = "index-cli-method-suggest";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-method-suggest",
+            "2026-08-14T18:26:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = new[]
+        {
+            new IndexSymbolRecord(
+                new string('e', 64),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Methods.Calculator::ComputeTotal(System.Int32)",
+                "Method",
+                "Demo.Methods.Calculator::ComputeTotal(System.Int32):System.Int32",
+                "System.Int32 Demo.Methods.Calculator::ComputeTotal(System.Int32)",
+                false),
+        };
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
+            "2026-08-14T18:27:00Z",
+            cancellationToken);
+    }
+
+    private async Task SeedShortIdSearchIndexAsync(CancellationToken cancellationToken)
+    {
+        var repository = new SqliteAtlasRepository(new AtlasPaths(_dataRoot).DatabasePath);
+        await repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-cli-shortid-search";
+        const string indexId = "index-cli-shortid-search";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "cli-shortid-search",
+            "2026-08-14T18:22:00Z");
+        await repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        var symbols = new[]
+        {
+            new IndexSymbolRecord(
+                "abcdef123456" + new string('7', 52),
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Shop.Widget::Run()",
+                "Method",
+                "Demo.Shop.Widget",
+                "System.Void Demo.Shop.Widget::Run()",
+                false),
+            new IndexSymbolRecord(
+                "gadget-1",
+                snapshotId,
+                "ScheduleI:Installed:Method:Demo.Shop.Gadget::Run()",
+                "Method",
+                "Demo.Shop.Gadget",
+                "System.Void Demo.Shop.Gadget::Run()",
+                false),
+        };
+        await repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(symbols, [], [], [], []),
             "2026-08-14T18:23:00Z",
             cancellationToken);
     }

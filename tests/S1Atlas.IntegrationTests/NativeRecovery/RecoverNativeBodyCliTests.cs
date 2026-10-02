@@ -64,6 +64,35 @@ public sealed class RecoverNativeBodyCliTests
         AssertJsonErrorCode(result.StandardOutput, "NoCurrentBuild");
     }
 
+    [Fact]
+    public async Task Recover_native_body_lists_matches_for_an_ambiguous_symbol_id_prefix()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateSymbolPrefixAsync();
+
+        var result = atlas.Run(
+            "recover-native-body",
+            "--symbol-id",
+            "ABCDEF12",
+            "--traversal-budget",
+            "100",
+            "--json");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        AssertJsonErrorCode(result.StandardOutput, "AmbiguousSymbol");
+        Assert.Contains("matches 2 symbols", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains(
+            "abcdef120000 (System.Void Game.Prefix::First())",
+            result.StandardOutput,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "abcdef121111 (System.Void Game.Prefix::Second())",
+            result.StandardOutput,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(atlas.FirstPrefixSymbolId, result.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain(atlas.SecondPrefixSymbolId, result.StandardOutput, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Task 3.2 acceptance gate: drives the real <c>recover-native-body</c> CLI command against the
     /// locally-installed Schedule I build and whatever real, completed Schedule I / Installed index

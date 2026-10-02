@@ -59,6 +59,65 @@ public sealed class ExtractionInputResolverTests
     }
 
     [Fact]
+    public async Task SelectBuildAsync_UniqueBuildPrefix_ReturnsStoredBuild()
+    {
+        using var fixture = InputTestFixture.Create();
+        var stored = fixture.Build with { BuildId = "abcdef12" + new string('0', 56) };
+        var repository = new FakeRepository
+        {
+            CurrentBuild = fixture.Build,
+            Builds = { [stored.BuildId] = stored }
+        };
+        var resolver = CreateResolver(repository, []);
+
+        var selected = await resolver.SelectBuildAsync("ABCDEF12", Ct);
+
+        Assert.Equal(stored, selected);
+    }
+
+    [Fact]
+    public async Task SelectBuildAsync_AmbiguousBuildPrefix_ListsMatchesAndFails()
+    {
+        using var fixture = InputTestFixture.Create();
+        var first = fixture.Build with { BuildId = "abcdef12" + new string('0', 56) };
+        var second = fixture.Build with { BuildId = "abcdef12" + new string('1', 56) };
+        var repository = new FakeRepository
+        {
+            CurrentBuild = fixture.Build,
+            Builds = { [first.BuildId] = first, [second.BuildId] = second }
+        };
+        var resolver = CreateResolver(repository, []);
+
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
+            () => resolver.SelectBuildAsync("abcdef12", Ct));
+
+        Assert.Equal(ExtractionFailureCode.AmbiguousBuildPrefix, exception.Code);
+        Assert.Contains("2 builds", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("abcdef120000 (first seen", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("abcdef121111 (first seen", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(first.BuildId, exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(second.BuildId, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SelectBuildAsync_UnknownBuildPrefix_ReportsBuildNotFound()
+    {
+        using var fixture = InputTestFixture.Create();
+        var stored = fixture.Build with { BuildId = "abcdef12" + new string('0', 56) };
+        var repository = new FakeRepository
+        {
+            CurrentBuild = fixture.Build,
+            Builds = { [stored.BuildId] = stored }
+        };
+        var resolver = CreateResolver(repository, []);
+
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(
+            () => resolver.SelectBuildAsync("12345678", Ct));
+
+        Assert.Equal(ExtractionFailureCode.BuildNotFound, exception.Code);
+    }
+
+    [Fact]
     public async Task SelectBuildAsync_WhenNoCurrentSnapshot_ReportsBuildNotFound()
     {
         var resolver = CreateResolver(new FakeRepository(), []);

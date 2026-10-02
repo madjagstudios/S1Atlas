@@ -7,6 +7,7 @@ public enum InstalledBuildAuthorityStatus
     Resolved,
     NoCurrentBuild,
     BuildNotFound,
+    AmbiguousBuildPrefix,
     NoPreferredVerifiedExtraction,
     ExtractionIntegrityFailure,
     NoCompletedIndex,

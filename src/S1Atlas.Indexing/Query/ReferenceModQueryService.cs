@@ -532,10 +532,12 @@ public sealed class ReferenceModQueryService
     private async Task<SymbolResolutionResult> ResolveInIndexAsync(IndexSelection selection, string selector, CancellationToken cancellationToken)
     {
         var result = await _symbolResolver.ResolveAsync(selection.Run.IndexId, selector, CodebaseKind.ReferenceMod, CodeChannel.Installed, cancellationToken);
-        return new SymbolResolutionResult(
-            result.Status,
-            result.Symbol is null ? null : DecorateReferenceQuerySymbol(selection, result.Symbol),
-            result.Candidates.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray());
+        return result with
+        {
+            Symbol = result.Symbol is null ? null : DecorateReferenceQuerySymbol(selection, result.Symbol),
+            Candidates = result.Candidates.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray(),
+            Suggestions = result.Suggestions.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray(),
+        };
     }
 
     private async Task<IReadOnlyList<RelationshipQueryResult>> MapRelationshipsAsync(
@@ -773,10 +775,12 @@ public sealed class ReferenceModQueryService
     }
 
     private static SymbolResolutionResult DecorateGameResolution(SymbolResolutionResult result) =>
-        new(
-            result.Status,
-            result.Symbol is null ? null : result.Symbol with { Origin = "game", Collection = null },
-            result.Candidates.Select(candidate => candidate with { Origin = "game", Collection = null }).ToArray());
+        result with
+        {
+            Symbol = result.Symbol is null ? null : result.Symbol with { Origin = "game", Collection = null },
+            Candidates = result.Candidates.Select(candidate => candidate with { Origin = "game", Collection = null }).ToArray(),
+            Suggestions = result.Suggestions.Select(candidate => candidate with { Origin = "game", Collection = null }).ToArray(),
+        };
 
     private static SymbolResolutionResult NoCompletedIndex() => new(SymbolResolutionStatus.NoCompletedIndex, null, []);
 

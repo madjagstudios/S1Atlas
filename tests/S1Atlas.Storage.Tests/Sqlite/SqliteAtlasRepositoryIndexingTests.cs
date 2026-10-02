@@ -398,6 +398,173 @@ public sealed class SqliteAtlasRepositoryIndexingTests : IAsyncDisposable
         return exact;
     }
 
+    [Fact]
+    public async Task Completed_symbol_prefix_lookup_returns_binary_ordered_matches_honoring_limit()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixIndexAsync(cancellationToken);
+
+        var matches = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "abc", 10, cancellationToken);
+
+        Assert.Equal(["abc001", "abc002"], matches.Select(symbol => symbol.SymbolId));
+
+        var limited = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "abc", 1, cancellationToken);
+
+        Assert.Equal(["abc001"], limited.Select(symbol => symbol.SymbolId));
+    }
+
+    [Fact]
+    public async Task Completed_symbol_prefix_lookup_is_scoped_to_completed_indexes()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixIndexAsync(cancellationToken);
+
+        Assert.Empty(await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix-failed", "abc", 10, cancellationToken));
+        Assert.Empty(await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "zzz", 10, cancellationToken));
+
+        var other = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix-other", "abc", 10, cancellationToken);
+
+        Assert.Equal(["abc888"], other.Select(symbol => symbol.SymbolId));
+    }
+
+    [Fact]
+    public async Task Completed_symbol_prefix_lookup_matches_metacharacters_literally()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixIndexAsync(cancellationToken);
+
+        var percent = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab%", 10, cancellationToken);
+        var underscore = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab_", 10, cancellationToken);
+        var backslash = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab\\", 10, cancellationToken);
+        var bracket = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab[", 10, cancellationToken);
+        var star = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab*", 10, cancellationToken);
+        var question = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab?", 10, cancellationToken);
+        var closeBracket = await _repository.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab]", 10, cancellationToken);
+
+        Assert.Equal(["ab%001"], percent.Select(symbol => symbol.SymbolId));
+        Assert.Equal(["ab_002"], underscore.Select(symbol => symbol.SymbolId));
+        Assert.Equal(["ab\\001"], backslash.Select(symbol => symbol.SymbolId));
+        Assert.Equal(["ab[003"], bracket.Select(symbol => symbol.SymbolId));
+        Assert.Equal(["ab*004"], star.Select(symbol => symbol.SymbolId));
+        Assert.Equal(["ab?005"], question.Select(symbol => symbol.SymbolId));
+        Assert.Equal(["ab]006"], closeBracket.Select(symbol => symbol.SymbolId));
+    }
+
+    [Fact]
+    public async Task Completed_symbol_prefix_lookup_rejects_empty_prefix_and_nonpositive_limits()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixIndexAsync(cancellationToken);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            _repository.GetCompletedSymbolsByIdPrefixAsync(
+                "index-prefix", string.Empty, 10, cancellationToken));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _repository.GetCompletedSymbolsByIdPrefixAsync(
+                "index-prefix", "abc", 0, cancellationToken));
+    }
+
+    [Fact]
+    public async Task Completed_symbol_prefix_count_matches_listed_rows()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixIndexAsync(cancellationToken);
+
+        Assert.Equal(2, await _repository.CountCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "abc", cancellationToken));
+        Assert.Equal(10, await _repository.CountCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab", cancellationToken));
+        Assert.Equal(0, await _repository.CountCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "zzz", cancellationToken));
+        Assert.Equal(0, await _repository.CountCompletedSymbolsByIdPrefixAsync(
+            "index-prefix-failed", "ab", cancellationToken));
+    }
+
+    [Fact]
+    public async Task Completed_symbol_prefix_lookup_matches_between_read_write_and_read_only_repositories()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedPrefixIndexAsync(cancellationToken);
+        var readOnly = new ReadOnlySqliteAtlasRepository(
+            new ReadOnlySqliteConnectionFactory(Path.Combine(_root, "atlas.db")));
+
+        var rows = await readOnly.GetCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "abc", 10, cancellationToken);
+        var count = await readOnly.CountCompletedSymbolsByIdPrefixAsync(
+            "index-prefix", "ab", cancellationToken);
+
+        Assert.Equal(["abc001", "abc002"], rows.Select(symbol => symbol.SymbolId));
+        Assert.Equal(10, count);
+    }
+
+    private async Task SeedPrefixIndexAsync(CancellationToken cancellationToken)
+    {
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord(
+            "snapshot-prefix",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "extraction-prefix",
+            "2026-08-14T02:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-prefix", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        IndexSymbolRecord Symbol(string id) =>
+            new(
+                id,
+                snapshot.SnapshotId,
+                "ScheduleI:Installed:Type:Prefix." + id.Replace("%", "Percent", StringComparison.Ordinal).Replace("_", "Under", StringComparison.Ordinal).Replace("\\", "Back", StringComparison.Ordinal).Replace("[", "Open", StringComparison.Ordinal).Replace("*", "Star", StringComparison.Ordinal).Replace("?", "Q", StringComparison.Ordinal).Replace("]", "Close", StringComparison.Ordinal),
+                "Type",
+                "Prefix." + id,
+                "Prefix." + id,
+                false);
+
+        await _repository.CompleteIndexRunAsync(
+            "index-prefix",
+            new IndexWriteSet(
+                [Symbol("abc001"), Symbol("abc002"), Symbol("abd001"), Symbol("ABC999"), Symbol("ab%001"), Symbol("ab_002"), Symbol("ab\\001"), Symbol("ab[003"), Symbol("ab*004"), Symbol("ab?005"), Symbol("ab]006"), Symbol("xyz001")],
+                [], [], [], []),
+            "2026-08-14T02:01:00Z",
+            cancellationToken);
+
+        var otherSnapshot = new CodeSnapshotRecord(
+            "snapshot-prefix-other",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "extraction-prefix-other",
+            "2026-08-14T02:02:00Z");
+        await _repository.CreateCodeSnapshotAsync(otherSnapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-prefix-other", otherSnapshot.SnapshotId, IndexRunStatus.Running, otherSnapshot.CreatedAtUtc),
+            cancellationToken);
+        await _repository.CompleteIndexRunAsync(
+            "index-prefix-other",
+            new IndexWriteSet(
+                [new IndexSymbolRecord("abc888", otherSnapshot.SnapshotId, "ScheduleI:Installed:Type:Prefix.Other", "Type", "Prefix.Other", "Prefix.Other", false)],
+                [], [], [], []),
+            "2026-08-14T02:03:00Z",
+            cancellationToken);
+
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-prefix-failed", snapshot.SnapshotId, IndexRunStatus.Running, "2026-08-14T02:04:00Z"),
+            cancellationToken);
+        await _repository.FailIndexRunAsync("index-prefix-failed", "prefix test cleanup", "2026-08-14T02:05:00Z", cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await TestDirectory.DeleteTreeAsync(_root);

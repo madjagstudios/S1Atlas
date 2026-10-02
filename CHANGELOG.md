@@ -8,6 +8,23 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Selector UX: candidate tables, near matches, short IDs** (AT-78): every
+  symbol-taking command and MCP tool resolves the same selector forms (full
+  ID, unique 8-63 hex short-ID prefix of either case, canonical key,
+  signature, qualified name, ranked fuzzy text). Ambiguous selectors render a
+  numbered candidate table capped at 10 human rows with the exact total and
+  the narrowest working hint, and fail with `AmbiguousSymbol`; unknown
+  selectors print `Found 0 matches.` with up to 5 `Nearest matches` rows and
+  a spelling/`search` hint, and fail with `SymbolNotFound`. Human tables show
+  12-character short IDs while `--json` keeps full IDs and adds `shortId`.
+  Build, extraction, attempt, and native symbol IDs accept unique short-ID
+  prefixes on `--build`/`--build-id`, `diff`, `extractions show`, and
+  `recover-native-body --symbol-id`, with ambiguous prefixes failing over
+  labeled short IDs. MCP `not_found` envelopes carry `suggestions` and
+  `ambiguous` envelopes carry `totalCandidateCount`. Scene, GameObject,
+  component, and asset ambiguity renders numbered candidate rows, and all
+  symbol query arguments share one help text naming the accepted forms.
+
 - **Delegate-creation and address-taken relationships** (AT-67): indexing
   now distinguishes the `ldftn`/`ldvirtftn` opcodes as a new
   `ReferencesMethod` edge kind and `ldflda`/`ldsflda` as a new

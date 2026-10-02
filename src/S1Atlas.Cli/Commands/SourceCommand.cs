@@ -22,10 +22,10 @@ internal static class SourceCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var queryArgument = new Argument<string>("query") { Description = "A symbol selector." };
+        var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of resolution candidates to consider.",
@@ -203,30 +203,15 @@ internal static class SourceCommand
             return commandOutput.Failure(1, "InvalidCodebaseChannel", exception.Message);
         }
 
-        if (resolution.Resolution.Status == SymbolResolutionStatus.Ambiguous)
+        var resolutionFailure = IndexQueryCommandFactory.FailureForResolution(
+            commandOutput,
+            resolution.Resolution,
+            query);
+        if (resolutionFailure is not null)
         {
-            return commandOutput.Failure(
-                1,
-                "AmbiguousSymbol",
-                "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
-                new IndexQueryFailureData(resolution.Resolution.Candidates));
+            return resolutionFailure.Value;
         }
-        if (resolution.Resolution.Status == SymbolResolutionStatus.NoCompletedIndex)
-        {
-            return commandOutput.Failure(
-                1,
-                "NoCompletedIndex",
-                "No completed index exists for the requested codebase and channel.",
-                new IndexQueryFailureData([]));
-        }
-        if (resolution.Resolution.Status == SymbolResolutionStatus.NotFound)
-        {
-            return commandOutput.Failure(
-                1,
-                "SymbolNotFound",
-                "No indexed symbol matched the selector.",
-                new IndexQueryFailureData([]));
-        }
+
         if (resolution.Snippet is null)
             return commandOutput.Failure(1, "SourceUnavailable", "The selected symbol has no indexed source location.");
 

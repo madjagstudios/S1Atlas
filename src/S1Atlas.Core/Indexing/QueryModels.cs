@@ -101,7 +101,8 @@ public sealed record SymbolQueryResult(
     string? Version = null,
     string? License = null,
     string? RelativePath = null,
-    string? Sha256 = null);
+    string? Sha256 = null,
+    string? ShortId = null);
 
 public enum SymbolResolutionStatus
 {
@@ -114,14 +115,21 @@ public enum SymbolResolutionStatus
 public record SymbolResolutionResult(
     SymbolResolutionStatus Status,
     SymbolQueryResult? Symbol,
-    IReadOnlyList<SymbolQueryResult> Candidates);
+    IReadOnlyList<SymbolQueryResult> Candidates,
+    IReadOnlyList<SymbolQueryResult>? Suggestions = null,
+    int? TotalCandidateCount = null)
+{
+    public IReadOnlyList<SymbolQueryResult> Suggestions { get; init; } = Suggestions ?? [];
+}
 
 public sealed record KindedSymbolResolutionResult(
     SymbolResolutionStatus Status,
     SymbolQueryResult? Symbol,
     IReadOnlyList<SymbolQueryResult> Candidates,
-    SymbolQueryResult KindMismatch)
-    : SymbolResolutionResult(Status, Symbol, Candidates);
+    SymbolQueryResult KindMismatch,
+    IReadOnlyList<SymbolQueryResult>? Suggestions = null,
+    int? TotalCandidateCount = null)
+    : SymbolResolutionResult(Status, Symbol, Candidates, Suggestions, TotalCandidateCount);
 
 public sealed record SymbolSearchResult(
     int TotalCount,

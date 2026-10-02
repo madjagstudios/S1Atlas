@@ -1,6 +1,7 @@
 using System.CommandLine;
 using S1Atlas.Application.Authority;
 using S1Atlas.Cli.Output;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Query;
@@ -9,6 +10,11 @@ namespace S1Atlas.Cli.Commands;
 
 internal static class IndexQueryCommandFactory
 {
+    internal const string QueryArgumentDescription =
+        "A symbol selector: full symbol ID, unique short-ID prefix, canonical key, signature, qualified name, or fuzzy text.";
+    internal const string BuildOptionDescription =
+        "Select a Schedule I Installed build ID or unique short-ID prefix.";
+
     public static Command Create(
         string name,
         IndexQueryService service,
@@ -36,10 +42,10 @@ internal static class IndexQueryCommandFactory
                 "Provide either execute/executeInIndex, executeWithGenerated/executeInIndexWithGenerated, or executeWithGeneratedAndDelegates/executeInIndexWithGeneratedAndDelegates.",
                 nameof(execute));
 
-        var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
+        var queryArgument = new Argument<string>("query") { Description = QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
+        var buildOption = new Option<string?>("--build") { Description = BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",
@@ -144,7 +150,7 @@ internal static class IndexQueryCommandFactory
                                 ? executeWithReferenceIndex(query, options, authority.ReferenceIndexId, cancellationToken).GetAwaiter().GetResult()
                                 : execute!(query, options, cancellationToken).GetAwaiter().GetResult();
                     }
-                    return Complete(commandOutput, data);
+                    return Complete(commandOutput, data, parseResult.GetValue(queryArgument)!);
                 },
                 commandOutput,
                 cancellationToken);
@@ -152,36 +158,137 @@ internal static class IndexQueryCommandFactory
         return command;
     }
 
-    internal static int Complete(CommandOutput commandOutput, IndexQueryOutput data)
+    internal static int Complete(CommandOutput commandOutput, IndexQueryOutput data, string selector)
     {
-        if (data.Resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
+        var failure = FailureForResolution(commandOutput, data.Resolution, selector);
+        if (failure is not null)
         {
-            return commandOutput.Failure(
-                1,
-                "AmbiguousSymbol",
-                "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
-                new IndexQueryFailureData(ambiguous.Candidates));
+            return failure.Value;
         }
 
-        if (data.Resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
+        return commandOutput.Success(data, writer => WriteHuman(data, writer));
+    }
+
+    /// <summary>
+    /// Shared selector-failure presenter for every symbol-taking command. Ambiguous
+    /// resolutions render the numbered candidate table (stdout) with the exact total,
+    /// or an at-least count when the candidate pool was truncated, plus the narrowest
+    /// disambiguation hint; unknown selectors render up to 5 near-match suggestions
+    /// with a search hint. Returns null when the resolution carries no failure so
+    /// callers continue on their success path.
+    /// </summary>
+    internal static int? FailureForResolution(
+        CommandOutput commandOutput,
+        SymbolResolutionResult? resolution,
+        string selector)
+    {
+        if (resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
+        {
+            return commandOutput.FailureWithData(
+                "AmbiguousSymbol",
+                "The symbol selector matched multiple candidates. Re-run with a full symbol ID or a unique short-ID prefix.",
+                new IndexQueryFailureData(
+                    ambiguous.Candidates,
+                    ambiguous.Suggestions,
+                    ambiguous.TotalCandidateCount),
+                writer => WriteCandidates(writer, ambiguous.Candidates, ambiguous.TotalCandidateCount));
+        }
+
+        if (resolution is { Status: SymbolResolutionStatus.NoCompletedIndex })
         {
             return commandOutput.Failure(
                 1,
                 "NoCompletedIndex",
                 "No completed index exists for the requested codebase and channel.",
-                new IndexQueryFailureData([]));
+                new IndexQueryFailureData([], [], null));
         }
 
-        if (data.Resolution is { Status: SymbolResolutionStatus.NotFound })
+        if (resolution is { Status: SymbolResolutionStatus.NotFound } notFound)
         {
-            return commandOutput.Failure(
-                1,
+            return commandOutput.FailureWithData(
                 "SymbolNotFound",
                 "No indexed symbol matched the selector.",
-                new IndexQueryFailureData([]));
+                new IndexQueryFailureData([], notFound.Suggestions, null),
+                writer => WriteSuggestions(writer, notFound.Suggestions, selector));
         }
 
-        return commandOutput.Success(data, writer => WriteHuman(data, writer));
+        return null;
+    }
+
+    internal const int MaxHumanCandidates = 10;
+
+    internal static void WriteCandidates(
+        TextWriter writer,
+        IReadOnlyList<SymbolQueryResult> candidates,
+        int? total)
+    {
+        var shown = candidates.Take(MaxHumanCandidates).ToArray();
+        writer.WriteLine(total is null
+            ? $"Found at least {candidates.Count} candidates; showing {shown.Length}."
+            : $"Found {total} candidates; showing {shown.Length}.");
+        for (var i = 0; i < shown.Length; i++)
+        {
+            WriteCandidateRow(writer, i + 1, shown[i]);
+        }
+
+        writer.WriteLine(NarrowestHint(candidates));
+    }
+
+    internal static void WriteSuggestions(
+        TextWriter writer,
+        IReadOnlyList<SymbolQueryResult> suggestions,
+        string selector)
+    {
+        writer.WriteLine("Found 0 matches.");
+        if (suggestions.Count == 0)
+        {
+            return;
+        }
+
+        writer.WriteLine("Nearest matches:");
+        for (var i = 0; i < suggestions.Count; i++)
+        {
+            WriteCandidateRow(writer, i + 1, suggestions[i]);
+        }
+
+        var display = DisplaySelector(selector);
+        writer.WriteLine(
+            $"Hint: no symbol matched '{display}'; check the spelling or run 's1atlas search \"{display}\"'.");
+    }
+
+    internal static void WriteCandidateRow(TextWriter writer, int number, SymbolQueryResult candidate) =>
+        writer.WriteLine(
+            $"{number} | {candidate.Kind} | {candidate.QualifiedName} | {candidate.Signature} | " +
+            $"{candidate.ShortId ?? ShortId.Display(candidate.SymbolId)} | {candidate.Codebase}");
+
+    /// <summary>
+    /// Narrowest working disambiguation: a shared signature leaves the short ID as
+    /// the only distinguisher, otherwise the exact signature works. No symbol-taking
+    /// command accepts a --kind filter, so kinds never appear here.
+    /// </summary>
+    internal static string NarrowestHint(IReadOnlyList<SymbolQueryResult> candidates) =>
+        candidates.Select(candidate => candidate.Signature).Distinct(StringComparer.Ordinal).Count() <= 1
+            ? "Hint: re-run with a short ID from the table."
+            : "Hint: re-run with the exact signature or a short ID from the table.";
+
+    /// <summary>
+    /// Sanitizes a selector echoed into hints: first line only, trimmed, capped at
+    /// 80 characters, double quotes folded so the search hint stays runnable.
+    /// </summary>
+    internal static string DisplaySelector(string selector)
+    {
+        var line = selector.Split('\n', '\r')[0].Trim();
+        if (line.Length == 0)
+        {
+            return "(blank)";
+        }
+
+        if (line.Length > 80)
+        {
+            line = line[..80] + "...";
+        }
+
+        return line.Replace('"', '\'');
     }
 
     internal static IndexQueryOutput ToOutput(RelationshipQuerySetResult result) => new(
@@ -250,7 +357,7 @@ internal static class IndexQueryCommandFactory
             writer.WriteLine($"Exact {exactCount}. Derived {derivedCount}.");
 
         foreach (var symbol in data.Symbols)
-            writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.SymbolId}");
+            writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.ShortId ?? ShortId.Display(symbol.SymbolId)}");
 
         if (data.HierarchyNodes is { } hierarchyNodes)
         {

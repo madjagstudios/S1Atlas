@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Cli.Output;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Diff;
@@ -18,8 +19,8 @@ internal static class DiffCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var idAArgument = new Argument<string>("id-a") { Description = "Build ID for the baseline (before)." };
-        var idBArgument = new Argument<string>("id-b") { Description = "Build ID for the target (after)." };
+        var idAArgument = new Argument<string>("id-a") { Description = "Build ID or unique short-ID prefix for the baseline (before)." };
+        var idBArgument = new Argument<string>("id-b") { Description = "Build ID or unique short-ID prefix for the target (after)." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed (default). Release and preview are not supported." };
         var kindOption = new Option<string>("--kind") { Description = "Filter by symbol kind: type, method, constructor, field, property, event." };
@@ -66,9 +67,9 @@ internal static class DiffCommand
                     atlasRepository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
 
                     var indexIdA = ResolveIndexId(
-                        idA, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, cancellationToken);
+                        idA, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, atlasRepository, cancellationToken);
                     var indexIdB = ResolveIndexId(
-                        idB, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, cancellationToken);
+                        idB, codebase, channel, indexRepository, extractionRepository, validatedExtractionRepository, atlasRepository, cancellationToken);
 
                     if (string.Equals(indexIdA, indexIdB, StringComparison.Ordinal))
                         return commandOutput.Failure(1, "SameIndex",
@@ -115,11 +116,39 @@ internal static class DiffCommand
         IIndexRepository indexRepository,
         IExtractionRepository extractionRepository,
         IValidatedExtractionRepository validatedExtractionRepository,
+        IAtlasRepository atlasRepository,
         CancellationToken ct)
     {
         var build = extractionRepository.GetBuildAsync(buildId, ct).GetAwaiter().GetResult();
         if (build is null)
-            throw new InvalidOperationException($"Build '{Truncate(buildId)}' not found.");
+        {
+            var builds = atlasRepository.ListBuildsAsync(ct).GetAwaiter().GetResult();
+            var match = ShortId.MatchPrefix(builds.Select(candidate => candidate.BuildId), buildId);
+
+            string DescribeBuild(string candidateId)
+            {
+                var candidate = builds.First(entry => string.Equals(
+                    entry.BuildId, candidateId, StringComparison.Ordinal));
+                return $"{ShortId.Display(candidateId)} (first seen {candidate.FirstSeenAtUtc:O})";
+            }
+
+            if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
+            {
+                buildId = match.Id;
+                build = builds.First(candidate => string.Equals(
+                    candidate.BuildId, match.Id, StringComparison.Ordinal));
+            }
+            else if (match.Kind == ShortIdMatchKind.Ambiguous)
+            {
+                throw new InvalidOperationException(
+                    $"Build prefix '{buildId}' matches {match.TotalCount} builds; " +
+                    $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
+            }
+            else
+            {
+                throw new InvalidOperationException($"Build '{Truncate(buildId)}' not found.");
+            }
+        }
 
         IndexRunRecord? index;
         if (codebase == CodebaseKind.ScheduleI)
