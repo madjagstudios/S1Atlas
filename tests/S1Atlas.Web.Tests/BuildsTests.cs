@@ -160,5 +160,8 @@ public sealed class BuildsTests
         Assert.Equal(
             "BuildNotFound",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(
+            "s1atlas builds",
+            json.RootElement.GetProperty("error").GetProperty("hint").GetString());
     }
 }

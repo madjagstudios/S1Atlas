@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Web.Api;
@@ -170,7 +171,7 @@ internal static class DiffEndpoints
                     StatusCodes.Status404NotFound,
                     ToolEnvelope<ServeDiffResult>.NotFound(
                         new BuildContext(buildId, null, null, null, "ScheduleI", "Installed", false),
-                        new ToolError("BuildNotFound", "The requested build was not found."),
+                        new ToolError("BuildNotFound", "The requested build was not found.", ReadinessFixCommands.Builds),
                         new ProvenanceEntry(
                             ProvenanceClassification.Derived, "build-selection", buildId, null, null)));
             }

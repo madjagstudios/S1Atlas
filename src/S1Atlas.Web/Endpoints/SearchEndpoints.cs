@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Web.Envelopes;
@@ -181,7 +182,7 @@ internal static class SearchEndpoints
             {
                 return ToolEnvelope<SymbolSearchResult>.NotFound(
                     ServeEnvelopes.BuildFrom(authority),
-                    new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."));
+                    new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index));
             }
 
             var result = await queries.SearchGameAsync(authority.IndexRun, args.Query, args.Kind, limit, ct, args.IncludeGenerated);

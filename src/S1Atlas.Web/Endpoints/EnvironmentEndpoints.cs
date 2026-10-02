@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Display;
 using S1Atlas.Core.Environment;
 using S1Atlas.Web.Api;
@@ -61,7 +62,7 @@ internal static class EnvironmentEndpoints
             if (snapshot is null)
             {
                 return ServeHttp.Envelope(ToolEnvelope<ServeEnvironmentResult>.Unavailable(
-                    new ToolError("NoCurrentBuild", "No current environment snapshot is available.")));
+                    new ToolError("NoCurrentBuild", "No current environment snapshot is available.", ReadinessFixCommands.Scan)));
             }
 
             var authority = await queries.ResolveAuthorityAsync(ct, snapshot.Build.BuildId);
