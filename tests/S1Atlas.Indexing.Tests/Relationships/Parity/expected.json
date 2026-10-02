@@ -273,7 +273,6 @@
         { "symbol": "S1Atlas.ParityFixture.GenericBox`1::get_Item():!0", "reason": "property accessor" }
       ],
       "writers": [
-        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "field initializer" },
         { "symbol": "S1Atlas.ParityFixture.GenericBox`1::set_Item(!0):System.Void", "reason": "property accessor" }
       ]
     },
@@ -303,8 +302,7 @@
         { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32", "reason": "field read" }
       ],
       "writers": [
-        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32", "reason": "field write" },
-        { "symbol": "S1Atlas.ParityFixture.GenericBox`1::.ctor():System.Void", "reason": "field initializer" }
+        { "symbol": "S1Atlas.ParityFixture.GenericDrivers::UseStoredField():System.Int32", "reason": "field write" }
       ]
     },
     {

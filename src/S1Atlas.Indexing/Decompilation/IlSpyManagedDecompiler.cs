@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
@@ -330,14 +331,16 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 HandleKind.FieldDefinition => GetFieldIdentity(metadata, (FieldDefinitionHandle)handle, typeProvider),
                 HandleKind.MemberReference => GetMemberReferenceIdentity(metadata, (MemberReferenceHandle)handle, typeProvider),
                 HandleKind.MethodSpecification => GetMemberIdentity(metadata, MetadataTokens.GetToken(metadata.GetMethodSpecification((MethodSpecificationHandle)handle).Method), typeProvider),
-                _ => $"0x{token:X8}"
+                _ => UnresolvedMarker("unknown handle kind", $"token-0x{token:X8}")
             };
         }
         catch (ArgumentException)
         {
-            return $"0x{token:X8}";
+            return UnresolvedMarker("unknown handle kind", $"token-0x{token:X8}");
         }
     }
+
+    private static string UnresolvedMarker(string reason, string detail) => $"unresolved:{reason}:{detail}";
 
     private static string GetMethodIdentity(MetadataReader metadata, MethodDefinitionHandle handle, MetadataTypeNameProvider typeProvider)
     {
@@ -361,8 +364,11 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
     private static string GetMemberReferenceIdentity(MetadataReader metadata, MemberReferenceHandle handle, MetadataTypeNameProvider typeProvider)
     {
         var member = metadata.GetMemberReference(handle);
-        var containingType = GetTypeName(metadata, member.Parent);
         var name = metadata.GetString(member.Name);
+        if (member.Parent.Kind == HandleKind.MethodDefinition)
+            return GetMethodIdentity(metadata, (MethodDefinitionHandle)member.Parent, typeProvider);
+        if (!TryGetMemberParentName(metadata, member.Parent, out var containingType, out var reason))
+            return UnresolvedMarker(reason, name);
         if (member.GetKind() == MemberReferenceKind.Method)
         {
             var signature = member.DecodeMethodSignature(typeProvider, null);
@@ -370,6 +376,126 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         }
 
         return containingType + "::" + CanonicalSignatureRenderer.RenderType(member.DecodeFieldSignature(typeProvider, null)) + " " + name;
+    }
+
+    private static bool TryGetMemberParentName(
+        MetadataReader metadata,
+        EntityHandle parent,
+        [NotNullWhen(true)] out string? name,
+        [NotNullWhen(false)] out string? reason)
+    {
+        switch (parent.Kind)
+        {
+            case HandleKind.TypeDefinition:
+                name = GetTypeName(metadata, (TypeDefinitionHandle)parent);
+                reason = null;
+                return true;
+            case HandleKind.TypeReference:
+                name = GetTypeName(metadata, (TypeReferenceHandle)parent);
+                reason = null;
+                return true;
+            case HandleKind.TypeSpecification:
+                return TryResolveTypeSpecificationParent(metadata, (TypeSpecificationHandle)parent, out name, out reason);
+            case HandleKind.MethodDefinition:
+                name = null;
+                reason = "vararg method";
+                return false;
+            case HandleKind.ModuleReference:
+                name = null;
+                reason = "module member";
+                return false;
+            case HandleKind.GenericParameter:
+                name = null;
+                reason = "generic parameter";
+                return false;
+            default:
+                name = null;
+                reason = "unknown parent kind";
+                return false;
+        }
+    }
+
+    private static bool TryResolveTypeSpecificationParent(
+        MetadataReader metadata,
+        TypeSpecificationHandle handle,
+        [NotNullWhen(true)] out string? name,
+        [NotNullWhen(false)] out string? reason)
+    {
+        var shape = metadata.GetTypeSpecification(handle).DecodeSignature(new TypeSpecificationInspector(), null);
+        if (shape.Kind == SpecificationParentKind.Definition)
+        {
+            name = GetTypeName(metadata, shape.Handle);
+            reason = null;
+            return true;
+        }
+
+        name = null;
+        reason = shape.Kind switch
+        {
+            SpecificationParentKind.Array => "array accessor",
+            SpecificationParentKind.Pointer => "pointer",
+            SpecificationParentKind.FunctionPointer => "function pointer",
+            SpecificationParentKind.GenericParameter => "generic parameter",
+            _ => "unknown parent kind"
+        };
+        return false;
+    }
+
+    private enum SpecificationParentKind
+    {
+        Definition,
+        Array,
+        Pointer,
+        FunctionPointer,
+        GenericParameter,
+        Other
+    }
+
+    private readonly record struct SpecificationProbe(SpecificationParentKind Kind, EntityHandle Handle);
+
+    private sealed class TypeSpecificationInspector : ISignatureTypeProvider<SpecificationProbe, object?>
+    {
+        public SpecificationProbe GetArrayType(SpecificationProbe elementType, ArrayShape shape) =>
+            new(SpecificationParentKind.Array, default);
+
+        public SpecificationProbe GetByReferenceType(SpecificationProbe elementType) =>
+            new(SpecificationParentKind.Other, default);
+
+        public SpecificationProbe GetFunctionPointerType(MethodSignature<SpecificationProbe> signature) =>
+            new(SpecificationParentKind.FunctionPointer, default);
+
+        public SpecificationProbe GetGenericInstantiation(SpecificationProbe genericType, ImmutableArray<SpecificationProbe> typeArguments) =>
+            genericType;
+
+        public SpecificationProbe GetGenericMethodParameter(object? genericContext, int index) =>
+            new(SpecificationParentKind.GenericParameter, default);
+
+        public SpecificationProbe GetGenericTypeParameter(object? genericContext, int index) =>
+            new(SpecificationParentKind.GenericParameter, default);
+
+        public SpecificationProbe GetModifiedType(SpecificationProbe modifier, SpecificationProbe unmodifiedType, bool isRequired) =>
+            new(SpecificationParentKind.Other, default);
+
+        public SpecificationProbe GetPinnedType(SpecificationProbe elementType) =>
+            new(SpecificationParentKind.Other, default);
+
+        public SpecificationProbe GetPointerType(SpecificationProbe elementType) =>
+            new(SpecificationParentKind.Pointer, default);
+
+        public SpecificationProbe GetPrimitiveType(PrimitiveTypeCode typeCode) =>
+            new(SpecificationParentKind.Other, default);
+
+        public SpecificationProbe GetSZArrayType(SpecificationProbe elementType) =>
+            new(SpecificationParentKind.Array, default);
+
+        public SpecificationProbe GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
+            new(SpecificationParentKind.Definition, handle);
+
+        public SpecificationProbe GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
+            new(SpecificationParentKind.Definition, handle);
+
+        public SpecificationProbe GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
     }
 
     private sealed class MetadataTypeNameProvider : ISignatureTypeProvider<string, object?>
@@ -432,6 +558,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         {
             HandleKind.TypeDefinition => GetTypeName(metadata, (TypeDefinitionHandle)handle),
             HandleKind.TypeReference => GetTypeName(metadata, (TypeReferenceHandle)handle),
+            HandleKind.TypeSpecification => metadata.GetTypeSpecification((TypeSpecificationHandle)handle).DecodeSignature(new MetadataTypeNameProvider(), null),
             _ => $"0x{MetadataTokens.GetToken(handle):X8}"
         };
 

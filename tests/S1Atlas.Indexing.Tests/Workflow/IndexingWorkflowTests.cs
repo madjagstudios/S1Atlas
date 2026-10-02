@@ -26,7 +26,7 @@ public sealed class IndexingWorkflowTests
         Assert.Equal(first, second);
         Assert.Equal(64, first.Length);
         Assert.DoesNotContain(first, char.IsUpper);
-        Assert.Equal(9, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
+        Assert.Equal(10, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
     }
 
     [Fact]

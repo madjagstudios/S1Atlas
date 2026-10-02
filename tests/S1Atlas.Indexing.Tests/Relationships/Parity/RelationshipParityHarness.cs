@@ -256,7 +256,9 @@ public static class RelationshipParityHarness
         var raw = edge.Target.RawText;
         if (raw is null)
             return null;
-        if (raw.StartsWith(FixtureNamespace, StringComparison.Ordinal) || raw.StartsWith("0x", StringComparison.Ordinal))
+        if (raw.StartsWith(FixtureNamespace, StringComparison.Ordinal)
+            || raw.StartsWith("0x", StringComparison.Ordinal)
+            || raw.StartsWith("unresolved:", StringComparison.Ordinal))
             return raw;
         return null;
     }
