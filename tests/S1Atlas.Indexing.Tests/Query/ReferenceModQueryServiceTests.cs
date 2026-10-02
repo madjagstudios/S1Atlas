@@ -970,9 +970,9 @@ public sealed class ReferenceModQueryServiceTests : IAsyncDisposable
             Task.FromResult<IndexSymbolRecord?>(indexId == "game-index" && symbolId == _gameSymbol.SymbolId ? _gameSymbol : indexId == "reference-index" && symbolId == _referenceSymbol.SymbolId ? _referenceSymbol : null);
         public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<IndexSymbolRecord>>(GetCompletedSymbolsAsync(indexId, cancellationToken).Result.Where(symbol => symbolIds.Contains(symbol.SymbolId, StringComparer.Ordinal)).ToArray());
-        public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null) =>
+        public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
             Task.FromResult(indexId == "game-index" ? 2 : 1);
-        public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null) =>
+        public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
             Task.FromResult<IReadOnlyList<IndexSymbolRecord>>(indexId == "game-index" ? [_gameSymbol, _gameSymbol] : [_referenceSymbol]);
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexRelationshipRecord>>([]);
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsBySourceSymbolIdAsync(string indexId, string symbolId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<IndexRelationshipRecord>>([]);

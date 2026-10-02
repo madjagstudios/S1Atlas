@@ -87,7 +87,8 @@ public sealed class SymbolResolver
                 indexId,
                 query,
                 CandidateLimit,
-                cancellationToken);
+                cancellationToken,
+                includeGenerated: true);
         }
 
         var merged = new List<IndexSymbolRecord>();
@@ -99,7 +100,8 @@ public sealed class SymbolResolver
                 query,
                 CandidateLimit,
                 cancellationToken,
-                kindName);
+                kindName,
+                includeGenerated: true);
             foreach (var record in records)
             {
                 if (seen.Add(record.SymbolId))

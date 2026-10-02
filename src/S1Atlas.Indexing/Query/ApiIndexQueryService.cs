@@ -59,7 +59,8 @@ public sealed class ApiIndexQueryService
         CodeChannel channel,
         string selector,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ValidateApiScope(codebase, channel);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -71,14 +72,16 @@ public sealed class ApiIndexQueryService
             selection.Selection,
             selector,
             limit,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
     }
 
     public async Task<SymbolSearchResult> SearchSelectedAsync(
         ApiIndexSelection selection,
         string selector,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -102,14 +105,16 @@ public sealed class ApiIndexQueryService
             selector,
             limit,
             kind: null,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
     }
 
     public async Task<SymbolSearchResult> SearchRankedSelectedAsync(
         ApiIndexSelection selection,
         string selector,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -133,7 +138,8 @@ public sealed class ApiIndexQueryService
             selector,
             limit,
             kind: null,
-            cancellationToken);
+            cancellationToken,
+            includeGenerated);
     }
 
     public async Task<SourceSnippetResolutionResult> SourceAsync(

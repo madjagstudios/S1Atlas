@@ -281,11 +281,11 @@ public sealed class SeamTools
         public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken) =>
             _inner.GetCompletedSymbolsByIdsAsync(indexId, symbolIds, cancellationToken);
 
-        public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null) =>
-            _inner.CountCompletedSymbolMatchesAsync(indexId, query, cancellationToken, kind);
+        public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
+            _inner.CountCompletedSymbolMatchesAsync(indexId, query, cancellationToken, kind, includeGenerated);
 
-        public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null) =>
-            _inner.SearchCompletedSymbolsAsync(indexId, query, limit, cancellationToken, kind);
+        public Task<IReadOnlyList<IndexSymbolRecord>> SearchCompletedSymbolsAsync(string indexId, string query, int limit, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
+            _inner.SearchCompletedSymbolsAsync(indexId, query, limit, cancellationToken, kind, includeGenerated);
 
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsAsync(string indexId, CancellationToken cancellationToken) =>
             _inner.GetCompletedRelationshipsAsync(indexId, cancellationToken);

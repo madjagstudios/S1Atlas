@@ -18,6 +18,8 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
     private const string GameLeaf2 = "Demo.Leaf2::Help():System.Int32";
     private const string GameOther = "Demo.Other::M():System.Void";
     private const string GameStray = "Demo.Multi+<>c::<Foo>b__0_0():System.Void";
+    private const string GameGenField = "Demo.Widget+<>c__DisplayClass0_0::x";
+    private const string GameUserField = "Demo.Widget::count";
     private const string RefFoo = "Demo.RefFoo::Run():System.Void";
     private const string RefLambda = "Demo.RefFoo+<>c::<Run>b__0_0():System.Void";
     private const string RefLeaf = "Demo.RefLeaf::Help():System.Int32";
@@ -156,6 +158,178 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
         Assert.Null(rawRow.GeneratedDetail);
     }
 
+    [Fact]
+    public async Task GameScope_SearchHidesGeneratedWithNotice()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+
+        var result = await service.SearchAsync(
+            "Foo",
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Game),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(GameFoo, Assert.Single(result.Results).QualifiedName);
+        Assert.Equal(
+            "2 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            result.SearchNotice);
+    }
+
+    [Fact]
+    public async Task GameScope_SearchIncludeGeneratedShowsAll()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+
+        var result = await service.SearchAsync(
+            "Foo",
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Game),
+            TestContext.Current.CancellationToken,
+            includeGenerated: true);
+
+        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(
+            [GameLambda, GameFoo, GameStray],
+            result.Results.Select(row => row.QualifiedName).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.Null(result.SearchNotice);
+    }
+
+    [Fact]
+    public async Task ReferenceScope_SearchHidesGeneratedWithNotice()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+
+        var result = await service.SearchAsync(
+            "RefFoo",
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Reference, Collection),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(RefFoo, Assert.Single(result.Results).QualifiedName);
+        Assert.Equal(
+            "1 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            result.SearchNotice);
+    }
+
+    [Fact]
+    public async Task AllScope_SearchMergesHiddenCounts()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+
+        var result = await service.SearchAsync(
+            "Foo",
+            new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.All, Collection),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(
+            [GameFoo, RefFoo],
+            result.Results.Select(row => row.QualifiedName).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+        Assert.Equal(
+            "3 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            result.SearchNotice);
+    }
+
+    [Fact]
+    public async Task ApiSearchSelected_HidesGeneratedWithNotice()
+    {
+        var repository = await SeedRepositoryAsync(TestContext.Current.CancellationToken);
+        var service = new ApiIndexQueryService(repository, new IndexQueryService(repository));
+        var selection = new ApiIndexSelection(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            ApiIndexAvailability.Current,
+            "index-credit-api",
+            "snapshot-credit-api",
+            "api-source",
+            null,
+            "current");
+
+        var hidden = await service.SearchSelectedAsync(
+            selection, "ApiFoo", 50, TestContext.Current.CancellationToken);
+        Assert.Equal(1, hidden.TotalCount);
+        Assert.Equal(ApiFoo, Assert.Single(hidden.Results).QualifiedName);
+        Assert.Equal(
+            "1 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            hidden.SearchNotice);
+
+        var raw = await service.SearchSelectedAsync(
+            selection, "ApiFoo", 50, TestContext.Current.CancellationToken, includeGenerated: true);
+        Assert.Equal(2, raw.TotalCount);
+        Assert.Null(raw.SearchNotice);
+    }
+
+    [Fact]
+    public async Task GameScope_RankedSearchHidesGeneratedWithNotice()
+    {
+        var repository = await SeedRepositoryAsync(TestContext.Current.CancellationToken);
+        var run = await repository.GetLatestCompletedIndexAsync(
+            CodebaseKind.ScheduleI, CodeChannel.Installed, null, TestContext.Current.CancellationToken);
+        var service = new IndexQueryService(repository);
+
+        var hidden = await service.SearchRankedInIndexAsync(
+            run!,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "Foo",
+            50,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(1, hidden.TotalCount);
+        Assert.Equal(GameFoo, Assert.Single(hidden.Results).QualifiedName);
+        Assert.Equal(
+            "2 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            hidden.SearchNotice);
+
+        var raw = await service.SearchRankedInIndexAsync(
+            run!,
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "Foo",
+            50,
+            null,
+            TestContext.Current.CancellationToken,
+            includeGenerated: true);
+        Assert.Equal(3, raw.TotalCount);
+        Assert.Null(raw.SearchNotice);
+    }
+
+    [Fact]
+    public async Task GameScope_FieldReferencesOfGeneratedFieldEmptyByDefault()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+        var options = new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Game);
+
+        var hidden = await service.FieldReferencesAsync(
+            GameGenField, options, FieldReferenceFilter.All, TestContext.Current.CancellationToken);
+        Assert.Equal(SymbolResolutionStatus.Resolved, hidden.Resolution.Status);
+        Assert.Equal(0, hidden.TotalCount);
+        Assert.Empty(hidden.Page.Relationships);
+
+        var raw = await service.FieldReferencesAsync(
+            GameGenField, options, FieldReferenceFilter.All, TestContext.Current.CancellationToken, includeGenerated: true);
+        var row = Assert.Single(raw.Page.Relationships);
+        Assert.Equal(GameFoo, row.Source.QualifiedName);
+    }
+
+    [Fact]
+    public async Task GameScope_FieldReferencesCreditLambdaReaders()
+    {
+        var service = await SeedAsync(TestContext.Current.CancellationToken);
+        var options = new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Game);
+
+        var credited = await service.FieldReferencesAsync(
+            GameUserField, options, FieldReferenceFilter.Readers, TestContext.Current.CancellationToken);
+        var creditedRow = Assert.Single(credited.Page.Relationships);
+        Assert.Equal(GameFoo, creditedRow.Source.QualifiedName);
+        Assert.Equal("in lambda", creditedRow.GeneratedDetail);
+
+        var raw = await service.FieldReferencesAsync(
+            GameUserField, options, FieldReferenceFilter.Readers, TestContext.Current.CancellationToken, includeGenerated: true);
+        var rawRow = Assert.Single(raw.Page.Relationships);
+        Assert.Equal(GameLambda, rawRow.Source.QualifiedName);
+        Assert.Null(rawRow.GeneratedDetail);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Directory.Exists(_root))
@@ -203,10 +377,12 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
         var leaf2 = Method("symbol-leaf2", snapshot.SnapshotId, GameLeaf2);
         var other = Method("symbol-other", snapshot.SnapshotId, GameOther);
         var stray = Method("symbol-stray", snapshot.SnapshotId, GameStray, isGenerated: true);
+        var genField = Field("symbol-widget-capture", snapshot.SnapshotId, GameGenField, isGenerated: true);
+        var userField = Field("symbol-widget-count", snapshot.SnapshotId, GameUserField);
         await repository.CompleteIndexRunAsync(
             run.IndexId,
             new IndexWriteSet(
-                [foo, lambda, leaf, leaf2, other, stray],
+                [foo, lambda, leaf, leaf2, other, stray, genField, userField],
                 [],
                 [],
                 [],
@@ -224,7 +400,14 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
                         GeneratedDetail: "unmapped: ambiguous overloads sharing 'Foo'"),
                     new IndexRelationshipRecord(
                         "rel-foo-direct", snapshot.SnapshotId, foo.SymbolId, leaf2.SymbolId,
-                        leaf2.QualifiedName, "Calls", "Body")
+                        leaf2.QualifiedName, "Calls", "Body"),
+                    new IndexRelationshipRecord(
+                        "rel-widget-read", snapshot.SnapshotId, foo.SymbolId, genField.SymbolId,
+                        genField.QualifiedName, "ReadsField", "Body"),
+                    new IndexRelationshipRecord(
+                        "rel-count-read", snapshot.SnapshotId, foo.SymbolId, userField.SymbolId,
+                        userField.QualifiedName, "ReadsField", "Body",
+                        GeneratedSourceSymbolId: lambda.SymbolId, GeneratedDetail: "in lambda")
                 ]),
             "2026-09-01T12:00:00Z",
             cancellationToken);
@@ -318,6 +501,22 @@ public sealed class GeneratedCreditQueryTests : IAsyncDisposable
             "Method",
             qualifiedName,
             "System.Void " + qualifiedName,
+            false,
+            BodyRecoveryStatus.Recovered,
+            IsGenerated: isGenerated);
+
+    private static IndexSymbolRecord Field(
+        string id,
+        string snapshotId,
+        string qualifiedName,
+        bool isGenerated = false) =>
+        new(
+            id,
+            snapshotId,
+            CodebaseKind.ScheduleI + ":" + CodeChannel.Installed + ":Field:" + qualifiedName,
+            "Field",
+            qualifiedName,
+            "System.Int32 " + qualifiedName,
             false,
             BodyRecoveryStatus.Recovered,
             IsGenerated: isGenerated);

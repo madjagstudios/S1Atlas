@@ -327,7 +327,8 @@ public sealed partial class SqliteAtlasRepository
         string indexId,
         string query,
         CancellationToken cancellationToken,
-        string? kind = null)
+        string? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -340,6 +341,7 @@ public sealed partial class SqliteAtlasRepository
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
               AND ($kind IS NULL OR symbol.kind = $kind)
+              AND (symbol.is_generated = 0 OR $includeGenerated)
               AND (
                   symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
                   OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
@@ -347,6 +349,7 @@ public sealed partial class SqliteAtlasRepository
             """;
         command.Parameters.AddWithValue("$indexId", indexId);
         command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
         command.Parameters.AddWithValue("$contains", "%" + EscapeLikePattern(query) + "%");
         return Convert.ToInt32(
             await command.ExecuteScalarAsync(cancellationToken),
@@ -358,7 +361,8 @@ public sealed partial class SqliteAtlasRepository
         string query,
         int limit,
         CancellationToken cancellationToken,
-        string? kind = null)
+        string? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -377,6 +381,7 @@ public sealed partial class SqliteAtlasRepository
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
               AND ($kind IS NULL OR symbol.kind = $kind)
+              AND (symbol.is_generated = 0 OR $includeGenerated)
               AND (
                   symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE
                   OR symbol.signature LIKE $contains ESCAPE '\' COLLATE NOCASE
@@ -397,6 +402,7 @@ public sealed partial class SqliteAtlasRepository
             """;
         command.Parameters.AddWithValue("$indexId", indexId);
         command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
         command.Parameters.AddWithValue("$query", query);
         command.Parameters.AddWithValue("$terminal", "%." + escaped);
         command.Parameters.AddWithValue("$prefix", escaped + "%");
@@ -424,7 +430,8 @@ public sealed partial class SqliteAtlasRepository
         string indexId,
         string query,
         CancellationToken cancellationToken,
-        string? kind = null)
+        string? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -442,6 +449,7 @@ public sealed partial class SqliteAtlasRepository
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND (symbol.is_generated = 0 OR $includeGenerated)
                   AND symbol.simple_name LIKE $prefix ESCAPE '\';
                 """;
             command.Parameters.AddWithValue("$prefix", EscapeLikePattern(query) + "%");
@@ -459,6 +467,7 @@ public sealed partial class SqliteAtlasRepository
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND (symbol.is_generated = 0 OR $includeGenerated)
                   AND symbols_fts MATCH $match;
                 """;
             command.Parameters.AddWithValue("$match", ToFtsPhrase(query));
@@ -466,6 +475,7 @@ public sealed partial class SqliteAtlasRepository
 
         command.Parameters.AddWithValue("$indexId", indexId);
         command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
         return Convert.ToInt32(
             await command.ExecuteScalarAsync(cancellationToken),
             System.Globalization.CultureInfo.InvariantCulture);
@@ -476,7 +486,8 @@ public sealed partial class SqliteAtlasRepository
         string query,
         int limit,
         CancellationToken cancellationToken,
-        string? kind = null)
+        string? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
@@ -497,6 +508,7 @@ public sealed partial class SqliteAtlasRepository
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND (symbol.is_generated = 0 OR $includeGenerated)
                   AND symbol.simple_name LIKE $prefix ESCAPE '\'
                 ORDER BY
                     CASE
@@ -520,6 +532,7 @@ public sealed partial class SqliteAtlasRepository
                 WHERE run.index_id = $indexId
                   AND run.status = 'Completed'
                   AND ($kind IS NULL OR symbol.kind = $kind)
+                  AND (symbol.is_generated = 0 OR $includeGenerated)
                   AND symbols_fts MATCH $match
                 ORDER BY
                     CASE
@@ -538,6 +551,7 @@ public sealed partial class SqliteAtlasRepository
 
         command.Parameters.AddWithValue("$indexId", indexId);
         command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value);
+        command.Parameters.AddWithValue("$includeGenerated", includeGenerated ? 1 : 0);
         command.Parameters.AddWithValue("$query", query);
         command.Parameters.AddWithValue("$terminal", "%." + escaped);
         command.Parameters.AddWithValue("$prefix", escaped + "%");

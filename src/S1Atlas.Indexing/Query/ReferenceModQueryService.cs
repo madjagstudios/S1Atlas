@@ -42,7 +42,8 @@ public sealed class ReferenceModQueryService
         string query,
         IndexQueryOptions options,
         CancellationToken cancellationToken,
-        SymbolKind? kind = null)
+        SymbolKind? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ValidateLimit(options.Limit);
@@ -51,10 +52,15 @@ public sealed class ReferenceModQueryService
             return new SymbolSearchResult(0, 0, [], SymbolResolutionStatus.NoCompletedIndex);
 
         var kindName = kind?.ToString();
-        var total = await _repository.CountCompletedSymbolMatchesAsync(selection.Run.IndexId, query, cancellationToken, kindName);
+        var total = await _repository.CountCompletedSymbolMatchesAsync(selection.Run.IndexId, query, cancellationToken, kindName, includeGenerated);
+        var notice = await GeneratedSearchNotice.ForHiddenAsync(
+            () => _repository.CountCompletedSymbolMatchesAsync(
+                selection.Run.IndexId, query, cancellationToken, kindName, includeGenerated: true),
+            total,
+            includeGenerated);
         IReadOnlyList<IndexSymbolRecord> symbols = total == 0
             ? []
-            : await _repository.SearchCompletedSymbolsAsync(selection.Run.IndexId, query, options.Limit, cancellationToken, kindName);
+            : await _repository.SearchCompletedSymbolsAsync(selection.Run.IndexId, query, options.Limit, cancellationToken, kindName, includeGenerated);
         var results = symbols
             .Select(symbol => DecorateReferenceSymbol(selection, symbol))
             .OrderBy(result => Rank(result, query))
@@ -68,7 +74,8 @@ public sealed class ReferenceModQueryService
             total,
             results.Length,
             results,
-            total == 0 ? SymbolResolutionStatus.NotFound : SymbolResolutionStatus.Resolved);
+            total == 0 ? SymbolResolutionStatus.NotFound : SymbolResolutionStatus.Resolved,
+            notice);
     }
 
     public async Task<SourceSnippetResolutionResult> SourceAsync(

@@ -281,6 +281,15 @@ public static class RelationshipParityHarness
         var fieldRefs = await service.FieldReferencesInIndexAsync(
             run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit,
             FieldReferenceFilter.All, cancellationToken);
+        if (fieldRefs.TotalCount == 0)
+        {
+            // Parity compares extractor ground truth: generated targets
+            // (auto-property backing fields) hide by default, so fall back
+            // to raw rows. Normal targets keep credited sources.
+            fieldRefs = await service.FieldReferencesInIndexAsync(
+                run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit,
+                FieldReferenceFilter.All, cancellationToken, includeGenerated: true);
+        }
         foreach (var edge in fieldRefs.Relationships)
         {
             var symbol = IncomingSymbol(edge);

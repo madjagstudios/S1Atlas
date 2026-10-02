@@ -25,15 +25,16 @@ public sealed class FederatedIndexQueryService
         string query,
         IndexQueryOptions options,
         CancellationToken cancellationToken,
-        SymbolKind? kind = null)
+        SymbolKind? kind = null,
+        bool includeGenerated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ValidateOptions(options);
         if (options.Limit <= 0) throw new ArgumentOutOfRangeException(nameof(options));
         if (options.Scope == IndexQueryScope.Game)
-            return await _game.SearchAsync(query, options with { Scope = IndexQueryScope.Game }, cancellationToken, kind);
+            return await _game.SearchAsync(query, options with { Scope = IndexQueryScope.Game }, cancellationToken, kind, includeGenerated);
         if (options.Scope == IndexQueryScope.Reference)
-            return await _reference.SearchAsync(query, options with { Scope = IndexQueryScope.Reference }, cancellationToken, kind);
+            return await _reference.SearchAsync(query, options with { Scope = IndexQueryScope.Reference }, cancellationToken, kind, includeGenerated);
 
         var selection = await _reference.GetSelectionForFederationAsync(options, cancellationToken);
         if (selection is null)
@@ -46,15 +47,26 @@ public sealed class FederatedIndexQueryService
             query,
             int.MaxValue,
             kind,
-            cancellationToken);
-        var reference = await _reference.SearchAsync(query, options with { Scope = IndexQueryScope.Reference, Limit = int.MaxValue }, cancellationToken, kind);
+            cancellationToken,
+            includeGenerated);
+        var reference = await _reference.SearchAsync(query, options with { Scope = IndexQueryScope.Reference, Limit = int.MaxValue }, cancellationToken, kind, includeGenerated);
         var results = MergeSymbols(game.Results.Concat(reference.Results), query, options.Limit);
         SymbolResolutionStatus? status = results.Length > 0
             ? null
             : game.ResolutionStatus == SymbolResolutionStatus.NoCompletedIndex && reference.ResolutionStatus == SymbolResolutionStatus.NoCompletedIndex
                 ? SymbolResolutionStatus.NoCompletedIndex
                 : SymbolResolutionStatus.NotFound;
-        return new SymbolSearchResult(game.TotalCount + reference.TotalCount, results.Length, results, status);
+        var hiddenCount = 0;
+        if (GeneratedSearchNotice.TryParseHiddenCount(game.SearchNotice, out var gameHidden))
+            hiddenCount += gameHidden;
+        if (GeneratedSearchNotice.TryParseHiddenCount(reference.SearchNotice, out var referenceHidden))
+            hiddenCount += referenceHidden;
+        return new SymbolSearchResult(
+            game.TotalCount + reference.TotalCount,
+            results.Length,
+            results,
+            status,
+            GeneratedSearchNotice.ForHidden(hiddenCount));
     }
 
     public async Task<SymbolResolutionResult> ResolveAsync(
@@ -503,6 +515,16 @@ public sealed class FederatedIndexQueryService
         CancellationToken cancellationToken,
         bool includeGenerated = false)
     {
+        if (!includeGenerated)
+        {
+            var target = await Repository.GetCompletedSymbolByIdAsync(
+                selection.Run.IndexId,
+                targetSymbolId,
+                cancellationToken);
+            if (target is not null && target.IsGenerated)
+                return new RelationshipQueryPageResult(0, 0, []);
+        }
+
         var totalCount = 0;
         var edges = new List<IndexRelationshipRecord>();
         foreach (var kind in FieldRelationshipKinds(filter))
