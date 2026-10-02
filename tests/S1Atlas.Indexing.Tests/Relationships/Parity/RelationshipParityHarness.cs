@@ -53,7 +53,7 @@ public static class RelationshipParityHarness
 
         foreach (var target in oracle.Targets)
         {
-            var (found, derived, details) = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
+            var (found, derived, details, kinds, labels) = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
             var overriddenBy = await OverriddenByEdgesAsync(target, index.Repository, index.Run.IndexId, symbolIds, namesById, cancellationToken);
             foreach (var relation in new[] { "callers", "callees", "readers", "writers", "overridden-by" })
             {
@@ -72,6 +72,14 @@ public static class RelationshipParityHarness
                         matched = details.TryGetValue(relation, out var perRelation)
                             && perRelation.TryGetValue(edge.Symbol, out var observed)
                             && observed.Contains(edge.Detail);
+                    if (matched && edge.Kind is not null)
+                        matched = kinds.TryGetValue(relation, out var perKindRelation)
+                            && perKindRelation.TryGetValue(edge.Symbol, out var observedKinds)
+                            && observedKinds.Contains(edge.Kind);
+                    if (matched && edge.Label is not null)
+                        matched = labels.TryGetValue(relation, out var perLabelRelation)
+                            && perLabelRelation.TryGetValue(edge.Symbol, out var observedLabels)
+                            && observedLabels.Contains(edge.Label);
                     if (matched)
                     {
                         differences.Add(new ParityDifference(
@@ -241,7 +249,7 @@ public static class RelationshipParityHarness
         return callers;
     }
 
-    private static async Task<(Dictionary<string, HashSet<string>> Found, Dictionary<string, HashSet<string>> Derived, Dictionary<string, Dictionary<string, HashSet<string>>> Details)> QueryTargetAsync(
+    private static async Task<(Dictionary<string, HashSet<string>> Found, Dictionary<string, HashSet<string>> Derived, Dictionary<string, Dictionary<string, HashSet<string>>> Details, Dictionary<string, Dictionary<string, HashSet<string>>> Kinds, Dictionary<string, Dictionary<string, HashSet<string>>> Labels)> QueryTargetAsync(
         IndexQueryService service,
         IndexRunRecord run,
         string selector,
@@ -271,9 +279,25 @@ public static class RelationshipParityHarness
             ["writers"] = new(StringComparer.Ordinal),
             ["overridden-by"] = new(StringComparer.Ordinal)
         };
+        var kinds = new Dictionary<string, Dictionary<string, HashSet<string>>>(StringComparer.Ordinal)
+        {
+            ["callers"] = new(StringComparer.Ordinal),
+            ["callees"] = new(StringComparer.Ordinal),
+            ["readers"] = new(StringComparer.Ordinal),
+            ["writers"] = new(StringComparer.Ordinal),
+            ["overridden-by"] = new(StringComparer.Ordinal)
+        };
+        var labels = new Dictionary<string, Dictionary<string, HashSet<string>>>(StringComparer.Ordinal)
+        {
+            ["callers"] = new(StringComparer.Ordinal),
+            ["callees"] = new(StringComparer.Ordinal),
+            ["readers"] = new(StringComparer.Ordinal),
+            ["writers"] = new(StringComparer.Ordinal),
+            ["overridden-by"] = new(StringComparer.Ordinal)
+        };
 
         var callers = await service.CallersInIndexAsync(
-            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, cancellationToken);
+            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, cancellationToken, includeDelegates: true);
         foreach (var edge in callers.Relationships)
         {
             var symbol = IncomingSymbol(edge);
@@ -281,11 +305,13 @@ public static class RelationshipParityHarness
             {
                 (edge.IsDerived ? derived : found)["callers"].Add(symbol);
                 RecordDetail(details["callers"], symbol, edge.GeneratedDetail);
+                RecordKind(kinds["callers"], symbol, edge.Kind);
+                RecordLabel(labels["callers"], symbol, edge.Label);
             }
         }
 
         var callees = await service.CalleesInIndexAsync(
-            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, cancellationToken);
+            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, cancellationToken, includeDelegates: true);
         foreach (var edge in callees.Relationships)
         {
             var symbol = OutgoingSymbol(edge);
@@ -293,12 +319,15 @@ public static class RelationshipParityHarness
             {
                 found["callees"].Add(symbol);
                 RecordDetail(details["callees"], symbol, edge.GeneratedDetail);
+                RecordKind(kinds["callees"], symbol, edge.Kind);
+                RecordLabel(labels["callees"], symbol, edge.Label);
             }
         }
 
         var fieldRefs = await service.FieldReferencesInIndexAsync(
             run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit,
             FieldReferenceFilter.All, cancellationToken);
+        var includeGeneratedFields = false;
         if (fieldRefs.TotalCount == 0)
         {
             // Parity compares extractor ground truth: generated targets
@@ -307,22 +336,50 @@ public static class RelationshipParityHarness
             fieldRefs = await service.FieldReferencesInIndexAsync(
                 run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit,
                 FieldReferenceFilter.All, cancellationToken, includeGenerated: true);
+            includeGeneratedFields = true;
         }
         foreach (var edge in fieldRefs.Relationships)
         {
             var symbol = IncomingSymbol(edge);
             if (symbol is null)
                 continue;
-            if (edge.Kind == "ReadsField")
+            if (edge.Kind == "ReadsField" || edge.Kind == "TakesFieldAddress")
             {
                 found["readers"].Add(symbol);
                 RecordDetail(details["readers"], symbol, edge.GeneratedDetail);
+                RecordKind(kinds["readers"], symbol, edge.Kind);
             }
-            else if (edge.Kind == "WritesField")
+
+            if (edge.Kind == "WritesField" || edge.Kind == "TakesFieldAddress")
             {
                 found["writers"].Add(symbol);
                 RecordDetail(details["writers"], symbol, edge.GeneratedDetail);
+                RecordKind(kinds["writers"], symbol, edge.Kind);
             }
+        }
+
+        // Address-taken labels are view-dependent ("possible read" in the
+        // Readers view, "possible write" everywhere else), so each bucket
+        // records labels from its own view. Symbols and kinds keep coming
+        // from the single All query above.
+        var readerRefs = await service.FieldReferencesInIndexAsync(
+            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit,
+            FieldReferenceFilter.Readers, cancellationToken, includeGeneratedFields);
+        foreach (var edge in readerRefs.Relationships)
+        {
+            var symbol = IncomingSymbol(edge);
+            if (symbol is not null)
+                RecordLabel(labels["readers"], symbol, edge.Label);
+        }
+
+        var writerRefs = await service.FieldReferencesInIndexAsync(
+            run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit,
+            FieldReferenceFilter.Writers, cancellationToken, includeGeneratedFields);
+        foreach (var edge in writerRefs.Relationships)
+        {
+            var symbol = IncomingSymbol(edge);
+            if (symbol is not null)
+                RecordLabel(labels["writers"], symbol, edge.Label);
         }
 
         var overriddenBy = await service.OverriddenByInIndexAsync(
@@ -334,7 +391,7 @@ public static class RelationshipParityHarness
                 found["overridden-by"].Add(symbol);
         }
 
-        return (found, derived, details);
+        return (found, derived, details, kinds, labels);
     }
 
     private static void RecordDetail(
@@ -349,6 +406,34 @@ public static class RelationshipParityHarness
         }
 
         observed.Add(detail ?? string.Empty);
+    }
+
+    private static void RecordKind(
+        Dictionary<string, HashSet<string>> perRelation,
+        string symbol,
+        string kind)
+    {
+        if (!perRelation.TryGetValue(symbol, out var observed))
+        {
+            observed = new HashSet<string>(StringComparer.Ordinal);
+            perRelation[symbol] = observed;
+        }
+
+        observed.Add(kind);
+    }
+
+    private static void RecordLabel(
+        Dictionary<string, HashSet<string>> perRelation,
+        string symbol,
+        string? label)
+    {
+        if (!perRelation.TryGetValue(symbol, out var observed))
+        {
+            observed = new HashSet<string>(StringComparer.Ordinal);
+            perRelation[symbol] = observed;
+        }
+
+        observed.Add(label ?? string.Empty);
     }
 
     private const string InheritedSuffix = " (inherited)";
@@ -461,25 +546,26 @@ public static class RelationshipParityHarness
         };
         foreach (var edge in refs.Relationships)
         {
-            if (edge.Direction == "Incoming" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs"))
+            if (edge.Direction == "Incoming" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs" || edge.Kind == "ReferencesMethod"))
             {
                 var symbol = IncomingSymbol(edge);
                 if (symbol is not null)
                     fromRefs["callers"].Add(symbol);
             }
-            else if (edge.Direction == "Outgoing" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs"))
+            else if (edge.Direction == "Outgoing" && (edge.Kind == "Calls" || edge.Kind == "CallsVirtual" || edge.Kind == "Constructs" || edge.Kind == "ReferencesMethod"))
             {
                 var symbol = OutgoingSymbol(edge);
                 if (symbol is not null)
                     fromRefs["callees"].Add(symbol);
             }
-            else if (edge.Direction == "Incoming" && edge.Kind == "ReadsField")
+            else if (edge.Direction == "Incoming" && (edge.Kind == "ReadsField" || edge.Kind == "TakesFieldAddress"))
             {
                 var symbol = IncomingSymbol(edge);
                 if (symbol is not null)
                     fromRefs["readers"].Add(symbol);
             }
-            else if (edge.Direction == "Incoming" && edge.Kind == "WritesField")
+
+            if (edge.Direction == "Incoming" && (edge.Kind == "WritesField" || edge.Kind == "TakesFieldAddress"))
             {
                 var symbol = IncomingSymbol(edge);
                 if (symbol is not null)

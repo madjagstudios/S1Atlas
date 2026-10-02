@@ -6,5 +6,5 @@ public static unsafe class CalliCases
 
     public static int InvokeViaPointer(delegate*<int, int> pointer, int value) => pointer(value);
 
-    public static delegate*<int, int> PointerToStatic() => &StaticTarget;
+    public static void* PointerToStatic() => (void*)(delegate*<int, int>)&StaticTarget;
 }

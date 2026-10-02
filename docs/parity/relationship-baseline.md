@@ -34,14 +34,15 @@ later tickets update it in the same PR that fixes a gap.
 
 | Reason | Expected | Found | Missing | Extra | Mislabeled |
 |---|---|---|---|---|---|
-| address taken | 8 | 0 | 8 | 0 | 0 |
+| address taken | 14 | 14 | 0 | 0 | 0 |
 | array accessor | 0 | 0 | 0 | 3 | 0 |
 | async body | 2 | 2 | 0 | 0 | 0 |
 | base call | 3 | 3 | 0 | 0 | 0 |
 | constructed generic | 8 | 8 | 0 | 0 | 0 |
 | constructs | 12 | 12 | 0 | 0 | 0 |
+| delegate creation | 24 | 24 | 0 | 0 | 0 |
 | direct call | 23 | 23 | 0 | 0 | 0 |
-| event accessor | 7 | 7 | 0 | 0 | 0 |
+| event accessor | 10 | 10 | 0 | 0 | 0 |
 | field initializer | 2 | 2 | 0 | 0 | 0 |
 | field read | 4 | 4 | 0 | 0 | 0 |
 | field write | 3 | 3 | 0 | 0 | 0 |
@@ -60,36 +61,13 @@ later tickets update it in the same PR that fixes a gap.
 
 | Target | Relation | Symbol | Classification | Reason | Ticket |
 |---|---|---|---|---|---|
-| S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged | writers | S1Atlas.ParityFixture.DelegateCases::add_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void | MISSING | address taken | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::System.Func`2<System.Int32,System.Int32> Pinged | writers | S1Atlas.ParityFixture.DelegateCases::remove_Pinged(System.Func`2<System.Int32,System.Int32>):System.Void | MISSING | address taken | AT-67 |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:.ctor | EXTRA | array accessor | unowned |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:Get | EXTRA | array accessor | unowned |
 | S1Atlas.ParityFixture.GenericDrivers::UseMultiDimArray():System.Int32 | callees | unresolved:array accessor:Set | EXTRA | array accessor | unowned |
-| S1Atlas.ParityFixture.MemberCases::System.Action Changed | writers | S1Atlas.ParityFixture.MemberCases::add_Changed(System.Action):System.Void | MISSING | address taken | AT-67 |
-| S1Atlas.ParityFixture.MemberCases::System.Action Changed | writers | S1Atlas.ParityFixture.MemberCases::remove_Changed(System.Action):System.Void | MISSING | address taken | AT-67 |
-| S1Atlas.ParityFixture.MutablePoint::System.Int32 X | writers | S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void | MISSING | address taken | AT-67 |
-| S1Atlas.ParityFixture.RefFieldCases::S1Atlas.ParityFixture.MutablePoint Point | writers | S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void | MISSING | address taken | AT-67 |
-| S1Atlas.ParityFixture.RefFieldCases::System.Int32 Counter | writers | S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void | MISSING | address taken | AT-67 |
-| S1Atlas.ParityFixture.RefFieldCases::System.Int32 Shared | writers | S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void | MISSING | address taken | AT-67 |
 
 ## Unmatched known gaps
 
-| Target | Relation | Symbol | Reason | Ticket |
-|---|---|---|---|---|
-| S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::<Capturing>b__0(System.Int32):System.Int32 | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases+<>c::<NonCapturing>b__0_0(System.Int32):System.Int32 | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32> | callees | S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32 | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func`2<System.Int32,System.Int32> | callees | S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32> | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func`2<System.Int32,System.Int32> | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateCases::SubscribeSelf():System.Void | callees | S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32 | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.DelegateHolder::.ctor():System.Void | callees | S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.MutablePoint::System.Int32 X | readers | S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void | address taken | AT-67 |
-| S1Atlas.ParityFixture.RefFieldCases::S1Atlas.ParityFixture.MutablePoint Point | readers | S1Atlas.ParityFixture.RefFieldCases::MovePoint(System.Int32):System.Void | address taken | AT-67 |
-| S1Atlas.ParityFixture.RefFieldCases::System.Int32 Counter | readers | S1Atlas.ParityFixture.RefFieldCases::BumpViaRef():System.Void | address taken | AT-67 |
-| S1Atlas.ParityFixture.RefFieldCases::System.Int32 Shared | readers | S1Atlas.ParityFixture.RefFieldCases::BumpSharedViaInterlocked():System.Void | address taken | AT-67 |
+None.
 
 ## Refs consistency
 
