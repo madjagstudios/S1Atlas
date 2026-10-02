@@ -244,10 +244,12 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
             INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
+              AND (symbol.is_generated = 0 OR $includeGenerated)
               AND symbol.simple_name LIKE $prefix ESCAPE '\'
             LIMIT 20;
             """;
         plan.Parameters.AddWithValue("$indexId", "index-plan");
+        plan.Parameters.AddWithValue("$includeGenerated", 0);
         plan.Parameters.AddWithValue("$prefix", "QJ%");
         var details = new List<string>();
         await using var reader = await plan.ExecuteReaderAsync(cancellationToken);
@@ -279,10 +281,12 @@ public sealed class RankedSymbolSearchTests : IAsyncDisposable
             CROSS JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
             WHERE run.index_id = $indexId
               AND run.status = 'Completed'
+              AND (symbol.is_generated = 0 OR $includeGenerated)
               AND symbols_fts MATCH $match
             LIMIT 20;
             """;
         plan.Parameters.AddWithValue("$indexId", "index-ranked");
+        plan.Parameters.AddWithValue("$includeGenerated", 0);
         plan.Parameters.AddWithValue("$match", "\"Widget\"");
         var details = new List<string>();
         await using var reader = await plan.ExecuteReaderAsync(cancellationToken);
