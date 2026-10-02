@@ -22,10 +22,10 @@ internal static class SourceCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var queryArgument = new Argument<string>("query") { Description = "A symbol selector." };
+        var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of resolution candidates to consider.",

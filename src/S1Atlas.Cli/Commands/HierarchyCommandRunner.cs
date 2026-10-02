@@ -26,10 +26,10 @@ internal static class HierarchyCommandRunner
         Func<IndexQueryService, string, IndexQueryOptions, int, int, CancellationToken, Task<HierarchyQueryResult>> execute,
         Func<FederatedIndexQueryService, string, IndexQueryOptions, int, int, CancellationToken, string?, Task<HierarchyQueryResult>> executeFederated)
     {
-        var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
+        var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",

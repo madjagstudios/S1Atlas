@@ -10,6 +10,11 @@ namespace S1Atlas.Cli.Commands;
 
 internal static class IndexQueryCommandFactory
 {
+    internal const string QueryArgumentDescription =
+        "A symbol selector: full symbol ID, unique short-ID prefix, canonical key, signature, qualified name, or fuzzy text.";
+    internal const string BuildOptionDescription =
+        "Select a Schedule I Installed build ID or unique short-ID prefix.";
+
     public static Command Create(
         string name,
         IndexQueryService service,
@@ -37,10 +42,10 @@ internal static class IndexQueryCommandFactory
                 "Provide either execute/executeInIndex, executeWithGenerated/executeInIndexWithGenerated, or executeWithGeneratedAndDelegates/executeInIndexWithGeneratedAndDelegates.",
                 nameof(execute));
 
-        var queryArgument = new Argument<string>("query") { Description = "A symbol, method, or type query." };
+        var queryArgument = new Argument<string>("query") { Description = QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
+        var buildOption = new Option<string?>("--build") { Description = BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",

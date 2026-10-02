@@ -20,7 +20,7 @@ internal static class InvestigateSeamCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var selectorArgument = new Argument<string>("selector") { Description = "A symbol selector for the seam under investigation." };
+        var selectorArgument = new Argument<string>("selector") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var questionOption = new Option<string>("--question")
         {
             Description = "The behavioral question that frames the seam investigation.",
@@ -28,7 +28,7 @@ internal static class InvestigateSeamCommand
         };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
         var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
         var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
         var relationshipLimitOption = new Option<int>("--relationship-limit")

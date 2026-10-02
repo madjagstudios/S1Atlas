@@ -19,8 +19,8 @@ internal static class DiffCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var idAArgument = new Argument<string>("id-a") { Description = "Build ID for the baseline (before)." };
-        var idBArgument = new Argument<string>("id-b") { Description = "Build ID for the target (after)." };
+        var idAArgument = new Argument<string>("id-a") { Description = "Build ID or unique short-ID prefix for the baseline (before)." };
+        var idBArgument = new Argument<string>("id-b") { Description = "Build ID or unique short-ID prefix for the target (after)." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed (default). Release and preview are not supported." };
         var kindOption = new Option<string>("--kind") { Description = "Filter by symbol kind: type, method, constructor, field, property, event." };

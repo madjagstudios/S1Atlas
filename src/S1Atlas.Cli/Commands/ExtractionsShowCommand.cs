@@ -17,7 +17,7 @@ internal static class ExtractionsShowCommand
     {
         var idArgument = new Argument<string>("id")
         {
-            Description = "A 64-character extraction ID or a 32-character attempt ID."
+            Description = "A 64-character extraction ID, 32-character attempt ID, or unique short-ID prefix."
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 

@@ -24,7 +24,7 @@ internal static class RecoverNativeBodyCommand
     {
         var symbolIdOption = new Option<string[]>("--symbol-id")
         {
-            Description = "A native symbol ID to recover; repeat for multiple IDs."
+            Description = "A native symbol ID or unique short-ID prefix to recover; repeat for multiple IDs."
         };
         var traversalBudgetOption = new Option<int>("--traversal-budget")
         {
@@ -33,7 +33,7 @@ internal static class RecoverNativeBodyCommand
         };
         var buildOption = new Option<string?>("--build-id")
         {
-            Description = "Select a Schedule I Installed build ID; defaults to the current installed build."
+            Description = "Select a Schedule I Installed build ID or unique short-ID prefix; defaults to the current installed build."
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 

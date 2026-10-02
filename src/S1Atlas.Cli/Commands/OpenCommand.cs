@@ -22,7 +22,7 @@ internal static class OpenCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        var selectorArgument = new Argument<string>("selector") { Description = "A symbol selector." };
+        var selectorArgument = new Argument<string>("selector") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var portOption = new Option<int>("--port")
         {
             Description = $"The loopback port serve is listening on. [default: {ServeOptions.DefaultPort}]",
