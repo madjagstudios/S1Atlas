@@ -144,16 +144,16 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection"], ["query"]);
+        AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query"]);
         AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
-        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit"], ["codebase", "channel", "query"]);
+        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit", "includeGenerated"], ["codebase", "channel", "query"]);
         AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit", "exact"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit", "exact", "includeGenerated"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["find_api_related_types"], ["codebase", "channel", "selector", "relationKinds", "limit"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
         AssertSchema(
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
@@ -239,14 +239,14 @@ public sealed class McpTrustBoundaryTests
                 apiOutcome.IsError ?? false);
         }
 
-        AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection", "exact"], ["selector"]);
-        AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection", "exact", "includeGenerated"], ["selector"]);
+        AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(
             schemas["find_field_references"],
-            ["selector", "buildId", "readers", "writers", "limit", "scope", "collection"],
+            ["selector", "buildId", "readers", "writers", "limit", "scope", "collection", "includeGenerated"],
             ["selector"]);
-        AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(
             schemas["find_related_types"],
             ["selector", "buildId", "relationKinds", "limit", "scope", "collection"],
@@ -300,19 +300,19 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(35, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
         AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit", "exact"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit", "exact", "includeGenerated"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
+        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["find_api_related_types"], ["codebase", "channel", "selector", "relationKinds", "limit"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
-        AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
-        AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection", "exact"], ["selector"]);
+        AssertSchema(schemas["find_callees"], ["selector", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector"]);
+        AssertSchema(schemas["find_callers"], ["selector", "buildId", "limit", "scope", "collection", "exact", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_derived_types"], ["selector", "buildId", "limit", "depth", "offset", "scope", "collection"], ["selector"]);
-        AssertSchema(schemas["find_field_references"], ["selector", "buildId", "readers", "writers", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_field_references"], ["selector", "buildId", "readers", "writers", "limit", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_overriders"], ["selector", "buildId", "limit", "depth", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_overrides"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
-        AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_references"], ["selector", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_related_types"], ["selector", "buildId", "relationKinds", "limit", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
@@ -337,8 +337,8 @@ public sealed class McpTrustBoundaryTests
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
-        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit"], ["codebase", "channel", "query"]);
-        AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection"], ["query"]);
+        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit", "includeGenerated"], ["codebase", "channel", "query"]);
+        AssertSchema(schemas["search_symbols"], ["query", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query"]);
 
         Dictionary<string, IReadOnlyDictionary<string, object?>> minimalCalls = new()
         {

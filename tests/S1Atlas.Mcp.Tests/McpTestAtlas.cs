@@ -72,6 +72,9 @@ public sealed class McpTestAtlas : IAsyncDisposable
     public string EngineCallSiteSelector => "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink";
     public string EngineCallSiteTargetText => "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()";
     public string GameFieldSelector => "Demo.Widget._state";
+    public string CreditFooSelector => "Demo.Credit.Foo";
+    public string CreditLeafSelector => "Demo.Credit.Leaf";
+    public string CreditCaptureSelector => "Demo.Capture.Widget+<>c__DisplayClass0_0::x";
     public string ReferenceFieldSelector => "qol/Qol.Config.Setting";
     public string AmbiguousFieldSelector => "SharedValue";
     public string CompareSelector => CompareSymbolCanonicalKey;
@@ -325,7 +328,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
 
     public static async Task<McpTestAtlas> SeedHealthyInstalledBuildAsync(
         string buildId = BuildIdASeed,
-        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)
+        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
+        bool includeGeneratedCredit = false)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -339,7 +343,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             recipeId: RecipeIdA,
             indexId: null,
             compareBodyFingerprint: "compare-body-same",
-            methodBodyStatus);
+            methodBodyStatus,
+            includeGeneratedCredit);
         atlas.IndexId = seeded.IndexId;
         atlas.IndexIdA = seeded.IndexId;
         atlas.ExtractionIdA = seeded.ExtractionId;
@@ -585,7 +590,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string recipeId,
         string? indexId,
         string compareBodyFingerprint,
-        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)
+        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
+        bool includeGeneratedCredit = false)
     {
         await SeedCurrentBuildAsync(buildId);
         var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
@@ -612,7 +618,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             buildId,
             resolvedIndexId,
             compareBodyFingerprint,
-            methodBodyStatus);
+            methodBodyStatus,
+            includeGeneratedCredit);
 
         return new HealthySeed(buildId, seeded.Extraction.ExtractionId, seeded.InputSnapshot.InputSnapshotId, resolvedIndexId);
     }
@@ -748,7 +755,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string buildId,
         string indexId,
         string compareBodyFingerprint,
-        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown)
+        BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
+        bool includeGeneratedCredit = false)
     {
         var ct = CancellationToken.None;
         string Id(string value) => extractionId == NonAuthoritativeExtractionId
@@ -811,9 +819,83 @@ public sealed class McpTestAtlas : IAsyncDisposable
             sourceText,
             new UTF8Encoding(false),
             ct);
+        List<IndexSymbolRecord> WithCreditSymbols(List<IndexSymbolRecord> symbols)
+        {
+            if (includeGeneratedCredit)
+                symbols.AddRange(
+                [
+                    new IndexSymbolRecord(
+                        Id("method-credit-foo"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Credit::Foo()",
+                        "Method",
+                        "Demo.Credit.Foo",
+                        "System.Void Demo.Credit::Foo()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        Id("method-credit-lambda"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Credit::Foo+<>c::<Foo>b__0_0()",
+                        "Method",
+                        "Demo.Credit.Foo+<>c::<Foo>b__0_0",
+                        "System.Void Demo.Credit::Foo+<>c::<Foo>b__0_0()",
+                        false,
+                        BodyRecoveryStatus.Recovered,
+                        IsGenerated: true),
+                    new IndexSymbolRecord(
+                        Id("method-credit-leaf"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Credit::Leaf()",
+                        "Method",
+                        "Demo.Credit.Leaf",
+                        "System.Void Demo.Credit::Leaf()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        Id("field-credit-capture"),
+                        snapshotId,
+                        "ScheduleI:Installed:Field:Demo.Capture::System.Int32 Widget+<>c__DisplayClass0_0::x",
+                        "Field",
+                        "Demo.Capture.Widget+<>c__DisplayClass0_0::x",
+                        "System.Int32 Demo.Capture::Widget+<>c__DisplayClass0_0::x",
+                        false,
+                        IsGenerated: true)
+                ]);
+            return symbols;
+        }
+
+        List<IndexRelationshipRecord> WithCreditEdges(List<IndexRelationshipRecord> edges)
+        {
+            if (includeGeneratedCredit)
+                edges.AddRange(
+                [
+                    new IndexRelationshipRecord(
+                        Id("call-credit"),
+                        snapshotId,
+                        Id("method-credit-foo"),
+                        Id("method-credit-leaf"),
+                        null,
+                        "Calls",
+                        "Body",
+                        GeneratedSourceSymbolId: Id("method-credit-lambda"),
+                        GeneratedDetail: "in lambda"),
+                    new IndexRelationshipRecord(
+                        Id("reads-credit-capture"),
+                        snapshotId,
+                        Id("method-credit-foo"),
+                        Id("field-credit-capture"),
+                        null,
+                        "ReadsField",
+                        "Body")
+                ]);
+            return edges;
+        }
+
         await _repository.CompleteIndexRunAsync(
             indexId,
             new IndexWriteSet(
+                WithCreditSymbols(
                 [
                     new IndexSymbolRecord(
                         Id("symbol-" + extractionId),
@@ -985,7 +1067,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "Beta.State.SharedValue",
                         "System.Int32 Beta.State::SharedValue",
                         false)
-                ],
+                ]),
                 [sourceFile],
                 [sourceLocation, typeSourceLocation, runtimeSourceLocation],
                 [
@@ -998,6 +1080,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "method-body",
                         compareBodyFingerprint)
                 ],
+                WithCreditEdges(
                 [
                     new IndexRelationshipRecord(
                         Id("incoming-call"),
@@ -1103,7 +1186,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink(System.Boolean)",
                         "Calls",
                         "fixture:callsite-overload")
-                ],
+                ]),
                 [new IndexCallableSurfaceRecord(
                     Id("callable-method"),
                     indexId,

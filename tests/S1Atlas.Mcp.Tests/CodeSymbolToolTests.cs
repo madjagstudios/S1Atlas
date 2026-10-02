@@ -777,6 +777,174 @@ public sealed class CodeSymbolToolTests
         Assert.Equal(atlas.IndexId, envelope.Build?.IndexId);
     }
 
+    [Fact]
+    public async Task FindCallers_CreditedDetailByDefaultAndRawWithFlag()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeGeneratedCredit: true);
+        var tools = CreateTools(atlas);
+
+        var credited = await tools.FindCallersAsync(
+            atlas.CreditLeafSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None);
+        var raw = await tools.FindCallersAsync(
+            atlas.CreditLeafSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, credited.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        var creditedRow = Assert.Single(credited.Data!.Relationships);
+        var rawRow = Assert.Single(raw.Data!.Relationships);
+        Assert.Equal(atlas.CreditFooSelector, creditedRow.Source.QualifiedName);
+        Assert.Equal("in lambda", creditedRow.GeneratedDetail);
+        Assert.Equal("Demo.Credit.Foo+<>c::<Foo>b__0_0", rawRow.Source.QualifiedName);
+        Assert.Null(rawRow.GeneratedDetail);
+        Assert.Equal(creditedRow.RelationshipId, rawRow.RelationshipId);
+    }
+
+    [Fact]
+    public async Task FindCallees_IncludesBodyCallsWithDetails()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeGeneratedCredit: true);
+        var tools = CreateTools(atlas);
+
+        var credited = await tools.FindCalleesAsync(
+            atlas.CreditFooSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None);
+        var raw = await tools.FindCalleesAsync(
+            atlas.CreditFooSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, credited.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        var creditedRow = Assert.Single(credited.Data!.Relationships);
+        var rawRow = Assert.Single(raw.Data!.Relationships);
+        Assert.Equal(atlas.CreditLeafSelector, creditedRow.Target.QualifiedName);
+        Assert.Equal("in lambda", creditedRow.GeneratedDetail);
+        Assert.Equal(atlas.CreditLeafSelector, rawRow.Target.QualifiedName);
+        Assert.Null(rawRow.GeneratedDetail);
+    }
+
+    [Fact]
+    public async Task FindReferences_CreditedDetailByDefaultAndRawWithFlag()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeGeneratedCredit: true);
+        var tools = CreateTools(atlas);
+
+        var credited = await tools.FindReferencesAsync(
+            atlas.CreditLeafSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None);
+        var raw = await tools.FindReferencesAsync(
+            atlas.CreditLeafSelector,
+            buildId: null,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, credited.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        var creditedRow = Assert.Single(credited.Data!.Relationships);
+        var rawRow = Assert.Single(raw.Data!.Relationships);
+        Assert.Equal(atlas.CreditFooSelector, creditedRow.Source.QualifiedName);
+        Assert.Equal("in lambda", creditedRow.GeneratedDetail);
+        Assert.Equal("Demo.Credit.Foo+<>c::<Foo>b__0_0", rawRow.Source.QualifiedName);
+        Assert.Null(rawRow.GeneratedDetail);
+    }
+
+    [Fact]
+    public async Task SearchSymbols_HidesGeneratedWithNotice()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeGeneratedCredit: true);
+        var tools = CreateTools(atlas);
+
+        var hidden = await tools.SearchSymbolsAsync(
+            "Foo",
+            buildId: null,
+            kind: null,
+            limit: 50,
+            CancellationToken.None);
+        var raw = await tools.SearchSymbolsAsync(
+            "Foo",
+            buildId: null,
+            kind: null,
+            limit: 50,
+            CancellationToken.None,
+            includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        Assert.Equal(1, hidden.Data!.TotalCount);
+        Assert.Equal(atlas.CreditFooSelector, Assert.Single(hidden.Data.Results).QualifiedName);
+        Assert.Equal(
+            "1 generated result(s) hidden. Re-run with includeGenerated to include them.",
+            hidden.Data.SearchNotice);
+        Assert.Equal(2, raw.Data!.TotalCount);
+        Assert.Null(raw.Data.SearchNotice);
+    }
+
+    [Fact]
+    public async Task FindFieldReferences_GeneratedFieldEmptyByDefault()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeGeneratedCredit: true);
+        var tools = CreateTools(atlas);
+
+        var hidden = await tools.FindFieldReferencesAsync(
+            atlas.CreditCaptureSelector,
+            buildId: null,
+            readers: false,
+            writers: false,
+            limit: 50,
+            ct: CancellationToken.None);
+        var raw = await tools.FindFieldReferencesAsync(
+            atlas.CreditCaptureSelector,
+            buildId: null,
+            readers: false,
+            writers: false,
+            limit: 50,
+            ct: CancellationToken.None,
+            includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Resolved, hidden.Status);
+        Assert.Equal(ToolStatus.Resolved, raw.Status);
+        Assert.Equal(0, hidden.Data!.TotalCount);
+        Assert.Empty(hidden.Data.Page.Relationships);
+        var row = Assert.Single(raw.Data!.Page.Relationships);
+        Assert.Equal(atlas.CreditFooSelector, row.Source.QualifiedName);
+    }
+
+    [Fact]
+    public async Task IncludeGenerated_AcceptedOnAmbiguousAndNotFound()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeGeneratedCredit: true);
+        var tools = CreateTools(atlas);
+
+        var ambiguous = await tools.FindCallersAsync(
+            "worker",
+            buildId: null,
+            ct: CancellationToken.None,
+            includeGenerated: true);
+        var missing = await tools.FindCallersAsync(
+            "Demo.DoesNotExist",
+            buildId: null,
+            ct: CancellationToken.None,
+            includeGenerated: true);
+
+        Assert.Equal(ToolStatus.Ambiguous, ambiguous.Status);
+        Assert.True(ambiguous.Candidates.Count >= 2);
+        Assert.Equal(ToolStatus.NotFound, missing.Status);
+    }
+
     private static CodeSymbolTools CreateTools(McpTestAtlas atlas)
     {
         var services = McpServerComposition.BuildReadOnlyServices(atlas.DataRoot);
