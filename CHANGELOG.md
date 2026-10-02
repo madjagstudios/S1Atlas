@@ -8,6 +8,22 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Delegate-creation and address-taken relationships** (AT-67): indexing
+  now distinguishes the `ldftn`/`ldvirtftn` opcodes as a new
+  `ReferencesMethod` edge kind and `ldflda`/`ldsflda` as a new
+  `TakesFieldAddress` edge kind, so `callers`/`callees` no longer mislabel
+  delegate creation as calls and `fieldrefs` shows address-taken sites in
+  both readers and writers. `callers` and `callees` exclude delegate
+  references by default; `--include-delegates` (CLI), `includeDelegates`
+  (MCP caller and callee tools), and `?delegates=1` (serve page and
+  callers/callees APIs) include them labeled `delegate created (not
+  called)`. Address-taken sites are labeled `possible write (address
+  taken)` in writers and `possible read (address taken)` in readers.
+  `ldtoken` of a method or field records a metadata reference, never a
+  call or read; `constrained.` + `callvirt` stays a virtual call; `calli`
+  records nothing. Compiler-generated-body credit and virtual-dispatch
+  expansion are unchanged. Indexes rebuild (schema v14).
+
 - **Compiler-generated bodies credited to declaring methods** (AT-66):
   calls and field accesses inside lambdas, async/iterator state machines,
   and local functions are now credited to the method that declares them,
