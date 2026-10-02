@@ -66,6 +66,9 @@ public sealed class McpTestAtlas : IAsyncDisposable
     public string MethodSymbolId => "method-run";
     public string RuntimeMethodSelector => "System.Void Demo.Widget::CheckPhysics()";
     public string TypeSelector => "Demo.Widget";
+    public string HierarchyBaseMethodSelector => "Demo.WidgetBase.Render";
+    public string HierarchyDerivedMethodSelector => "Demo.Widget.Render";
+    public string HierarchyBaseTypeSelector => "Demo.WidgetBase";
     public string EngineCallSiteSelector => "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink";
     public string EngineCallSiteTargetText => "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()";
     public string GameFieldSelector => "Demo.Widget._state";
@@ -908,6 +911,24 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         false,
                         BodyRecoveryStatus.Recovered),
                     new IndexSymbolRecord(
+                        Id("method-widgetbase-render"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.WidgetBase::Render()",
+                        "Method",
+                        "Demo.WidgetBase.Render",
+                        "System.Void Demo.WidgetBase::Render()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
+                        Id("method-widget-render"),
+                        snapshotId,
+                        "ScheduleI:Installed:Method:Demo.Widget::Render()",
+                        "Method",
+                        "Demo.Widget.Render",
+                        "System.Void Demo.Widget::Render()",
+                        false,
+                        BodyRecoveryStatus.Recovered),
+                    new IndexSymbolRecord(
                         Id("type-base-widget"),
                         snapshotId,
                         "ScheduleI:Installed:Type:Demo.WidgetBase",
@@ -1002,6 +1023,14 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         null,
                         "Inherits",
                         "fixture:inherits"),
+                    new IndexRelationshipRecord(
+                        Id("overrides-widget-render"),
+                        snapshotId,
+                        Id("method-widget-render"),
+                        Id("method-widgetbase-render"),
+                        null,
+                        "Overrides",
+                        "fixture:overrides"),
                     new IndexRelationshipRecord(
                         Id("parameter-type-payload"),
                         snapshotId,
