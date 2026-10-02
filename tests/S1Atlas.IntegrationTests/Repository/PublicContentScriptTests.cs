@@ -5,9 +5,10 @@ using Xunit;
 namespace S1Atlas.IntegrationTests.Repository;
 
 // Gate-test fixtures: the violation patterns below (AI tool names, machine
-// paths, ticket keys, workflow phrases, tracker URLs) are intentional
-// synthetic inputs proving the public-content gate fires. This file is
-// exempt from the gate's own content rules for exactly that reason.
+// paths, ticket keys, workflow phrases, tracker URLs, plan-step references)
+// are intentional synthetic inputs proving the public-content gate fires.
+// This file is exempt from the gate's own content rules for exactly that
+// reason.
 public sealed class PublicContentScriptTests
 {
     private const string CleanMessage = "Add a CI gate for public-repo content (AT-102)";
@@ -69,6 +70,47 @@ public sealed class PublicContentScriptTests
             CleanBranch);
 
         Assert.Equal(1, exitCode);
+    }
+
+    [Theory]
+    [InlineData("AT-66: include Task 4 changes")]
+    [InlineData("Apply step 2 of the migration")]
+    [InlineData("Add a feature (AT-102)\n\nCompletes Phase 1.")]
+    public void Script_PlanStepReferenceInMessage_FailsWithNonZeroExit(string message)
+    {
+        var exitCode = RunGate(
+            message,
+            DiffFor("src/S1Atlas.Mcp/Program.cs", "var ok = true;"),
+            CleanBranch);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Theory]
+    [InlineData("AT-66: credit tasks")]
+    [InlineData("AT-66: Phase-out the old flag")]
+    public void Script_PlanStepLookalikeInMessage_PassesWithZeroExit(string message)
+    {
+        var exitCode = RunGate(
+            message,
+            DiffFor("src/S1Atlas.Mcp/Program.cs", "var ok = true;"),
+            CleanBranch);
+
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public void Script_NumberedStepsInAddedLine_PassWithZeroExit()
+    {
+        var exitCode = RunGate(
+            CleanMessage,
+            DiffFor(
+                "docs/USAGE.md",
+                "1. Run step 1 first.",
+                "2. Then finish task 3 and phase 4."),
+            CleanBranch);
+
+        Assert.Equal(0, exitCode);
     }
 
     [Theory]

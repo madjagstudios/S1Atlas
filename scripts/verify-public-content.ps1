@@ -6,8 +6,11 @@
     Checks commit messages in 'BaseRef..HEAD' and added lines in
     'git diff BaseRef...HEAD' for AI attribution, machine-specific paths,
     non-AT ticket keys, agent-workflow phrases, tracker URLs, and AI tool or
-    vendor names. Removed and context lines are never checked, so existing
-    history and untouched product docs cannot trip the gate.
+    vendor names. Commit messages are additionally checked for plan-step
+    references ('Task 4', 'step 2'); added lines are not, so numbered
+    instructions in docs cannot trip the gate. Removed and context lines are
+    never checked, so existing history and untouched product docs cannot trip
+    the gate.
 
     Run from the repository root. Pass -CommitMessagesFile (NUL-separated
     messages), -DiffFile (unified diff), or -BranchName to check explicit
@@ -32,6 +35,7 @@ $aiToolPattern = '\b(Claude|Codex|Copilot|ChatGPT|Anthropic|OpenAI|Gemini|GPT-?\
 $ticketPattern = '\b[A-Z]{2,}-\d+\b'
 $machinePathPattern = '[A-Za-z]:\\Users\\|/Users/[^/\s]+/|/home/[^/\s]+/'
 $trackerPattern = 'atlassian\.net'
+$planStepPattern = '\b(Task|Step|Phase)\s+\d+\b'
 $workflowPhrases = @(
     'For agentic workers',
     'REQUIRED SUB-SKILL',
@@ -99,6 +103,15 @@ function Get-TrackerMatch([string]$text) {
     return $null
 }
 
+function Get-PlanStepMatch([string]$text) {
+    $match = [regex]::Match(
+        $text,
+        $script:planStepPattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($match.Success) { return $match.Value }
+    return $null
+}
+
 function Get-WorkflowPhraseMatch([string]$text) {
     foreach ($phrase in $script:workflowPhrases) {
         if ($text.IndexOf($phrase, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
@@ -160,6 +173,11 @@ function Add-CommitViolations([string]$label, [string]$message) {
     $aiTool = Get-AiToolMatch $message
     if ($aiTool) {
         $script:violations.Add("$label (AI tool name): '$aiTool'")
+    }
+
+    $planStep = Get-PlanStepMatch $message
+    if ($planStep) {
+        $script:violations.Add("$label (plan-step reference): '$planStep'")
     }
 }
 
