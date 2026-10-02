@@ -216,7 +216,8 @@ public sealed class ApiIndexQueryService
         IReadOnlySet<string>? relationshipKinds,
         CancellationToken cancellationToken,
         bool exact = false,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        bool includeDelegates = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -246,9 +247,9 @@ public sealed class ApiIndexQueryService
                     relationshipKinds,
                     cancellationToken),
             ApiRelationshipDirection.Callers => await _indexQueryService.CallersInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, exact, includeGenerated),
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, exact, includeGenerated, includeDelegates),
             ApiRelationshipDirection.Callees => await _indexQueryService.CalleesInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated),
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated, includeDelegates),
             _ => await _indexQueryService.RefsInIndexAsync(
                 run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated)
         };

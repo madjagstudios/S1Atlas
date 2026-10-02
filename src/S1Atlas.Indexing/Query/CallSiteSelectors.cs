@@ -13,9 +13,9 @@ internal static class CallSiteSelectors
 {
     internal static IReadOnlyList<string> FieldRelationshipKinds(FieldReferenceFilter filter) => filter switch
     {
-        FieldReferenceFilter.All => ["ReadsField", "WritesField"],
-        FieldReferenceFilter.Readers => ["ReadsField"],
-        FieldReferenceFilter.Writers => ["WritesField"],
+        FieldReferenceFilter.All => ["ReadsField", "WritesField", "TakesFieldAddress"],
+        FieldReferenceFilter.Readers => ["ReadsField", "TakesFieldAddress"],
+        FieldReferenceFilter.Writers => ["WritesField", "TakesFieldAddress"],
         _ => throw new ArgumentOutOfRangeException(nameof(filter))
     };
 

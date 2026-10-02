@@ -253,11 +253,11 @@ public sealed class ReferenceModQueryService
     public Task<RelationshipQuerySetResult> RefsAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false) =>
         RelationshipAsync(selector, options, RelationshipMode.Refs, cancellationToken, includeGenerated: includeGenerated);
 
-    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false, bool includeGenerated = false) =>
-        RelationshipAsync(selector, options, RelationshipMode.Callers, cancellationToken, exact, includeGenerated);
+    public Task<RelationshipQuerySetResult> CallersAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool exact = false, bool includeGenerated = false, bool includeDelegates = false) =>
+        RelationshipAsync(selector, options, RelationshipMode.Callers, cancellationToken, exact, includeGenerated, includeDelegates);
 
-    public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false) =>
-        RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken, includeGenerated: includeGenerated);
+    public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false, bool includeDelegates = false) =>
+        RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
 
     internal async Task<HierarchyQueryResult> HierarchyAsync(
         string selector,
@@ -404,7 +404,8 @@ public sealed class ReferenceModQueryService
         RelationshipMode mode,
         CancellationToken cancellationToken,
         bool exact = false,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        bool includeDelegates = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         var selection = await RequireSelectionAsync(options, cancellationToken);
@@ -440,6 +441,7 @@ public sealed class ReferenceModQueryService
             edges = [];
         else if (mode == RelationshipMode.Callers || (mode == RelationshipMode.Refs && selectedIsGame))
             edges = (await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(selection.Run.IndexId, id, cancellationToken))
+                .Where(edge => IsVisibleCallerCallee(edge, mode, includeDelegates))
                 .Select(edge => (edge, "Incoming"))
                 .ToArray();
         else if (mode == RelationshipMode.Refs)
@@ -451,6 +453,7 @@ public sealed class ReferenceModQueryService
                 .ToArray();
         else
             edges = (await _repository.GetCompletedRelationshipsBySourceSymbolIdAsync(selection.Run.IndexId, id, cancellationToken))
+                .Where(edge => IsVisibleCallerCallee(edge, mode, includeDelegates))
                 .Select(edge => (edge, "Outgoing"))
                 .ToArray();
 
@@ -461,8 +464,8 @@ public sealed class ReferenceModQueryService
             ? selectedRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         if (mode == RelationshipMode.Callers && !exact)
-            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated);
-        var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated);
+            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated, includeDelegates);
+        var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated, LabelContextFor(mode));
         return new RelationshipQuerySetResult(
             resolution,
             relationships,
@@ -482,16 +485,20 @@ public sealed class ReferenceModQueryService
         BodyRecoveryStatus? bodyStatus,
         bool includeGameEndpoints,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        bool includeDelegates = false)
     {
         var exactRecords = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
             selection.Run.IndexId, id, cancellationToken);
         var exact = await MapRelationshipsAsync(
             selection,
-            exactRecords.Select(edge => (edge, "Incoming")).ToArray(),
+            exactRecords
+                .Where(edge => IsVisibleCallerCallee(edge, RelationshipMode.Callers, includeDelegates))
+                .Select(edge => (edge, "Incoming")).ToArray(),
             includeGameEndpoints,
             cancellationToken,
-            includeGenerated);
+            includeGenerated,
+            RelationshipLabelContext.Callers);
         // A game-resolved selector fills slots declared in the game index, so
         // the walk runs there while incoming edges are collected here.
         var walkIndexId = selectedIsGame ? selection.Context.GameIndexId : selection.Run.IndexId;
@@ -536,7 +543,8 @@ public sealed class ReferenceModQueryService
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> edges,
         bool includeGameEndpoints,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        RelationshipLabelContext labelContext = RelationshipLabelContext.Refs)
     {
         var ids = edges.SelectMany(item => new[] { item.Edge.SourceSymbolId, item.Edge.TargetSymbolId, item.Edge.GeneratedSourceSymbolId })
             .Where(id => id is not null)
@@ -565,7 +573,8 @@ public sealed class ReferenceModQueryService
                     gameById,
                     selection),
                 MapEndpoint(item.Edge.TargetSymbolId, item.Edge.TargetText, referenceById, gameById, selection),
-                GeneratedDetail: GeneratedBodyResolver.VisibleDetail(item.Edge.GeneratedDetail, includeGenerated)))
+                GeneratedDetail: GeneratedBodyResolver.VisibleDetail(item.Edge.GeneratedDetail, includeGenerated),
+                Label: RelationshipLabels.ForRelationship(item.Edge.Kind, item.Edge.Evidence, labelContext)))
             .ToArray();
     }
 
@@ -818,6 +827,18 @@ public sealed class ReferenceModQueryService
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
         string.Equals(kind, "CallsVirtual", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
+
+    private static bool IsVisibleCallerCallee(IndexRelationshipRecord edge, RelationshipMode mode, bool includeDelegates) =>
+        mode == RelationshipMode.Refs ||
+        !string.Equals(edge.Kind, nameof(RelationshipKind.ReferencesMethod), StringComparison.Ordinal) ||
+        (includeDelegates && !string.Equals(edge.Evidence, nameof(RelationshipEvidence.Metadata), StringComparison.Ordinal));
+
+    private static RelationshipLabelContext LabelContextFor(RelationshipMode mode) => mode switch
+    {
+        RelationshipMode.Callers => RelationshipLabelContext.Callers,
+        RelationshipMode.Callees => RelationshipLabelContext.Callees,
+        _ => RelationshipLabelContext.Refs
+    };
 
     private static bool IsCallable(string kind) => kind is "Method" or "Constructor";
 
