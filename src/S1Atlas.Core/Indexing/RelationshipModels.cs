@@ -12,7 +12,9 @@ public enum RelationshipKind
     Calls,
     Constructs,
     ReadsField,
-    WritesField
+    WritesField,
+    Overrides,
+    ImplementsMethod
 }
 
 public enum RelationshipEvidence

@@ -71,6 +71,7 @@ public sealed class RelationshipExtractor
                 }
             }
         }
+        result.AddRange(new OverrideGraphResolver().Resolve(decompilation.Types, codebase, channel, knownMembers));
         return result;
     }
 
