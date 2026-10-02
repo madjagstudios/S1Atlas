@@ -550,7 +550,9 @@ callers, callees, and references, plus Overrides and Overridden by sections
 on methods and a Derived types section on types. Symbol pages list exact and
 may-dispatch callers with the dispatch route and split totals; `?exact=1` on
 the page and on `/api/symbol/<id>/callers` restricts to statically bound
-callers. `/builds` lists every known build newest
+callers. Relationship rows credit compiler-generated bodies to the declaring
+method with an `in ...` detail; `?generated=1` shows the raw generated rows
+instead. `/builds` lists every known build newest
 first with human-readable status labels; `/builds/<id>` shows one build's
 facts, per-codebase symbol counts with links into search filtered to that
 build, adjacent diffs, and the environment when it is the current build.
@@ -732,7 +734,10 @@ accepts `offset` (default `0`). `find_callers` and `find_api_callers` accept
 (call sites targeting an overridden base slot or interface method the
 selected method fills), labeled `DERIVED` with the route taken plus
 exact/derived split totals, while `exact: true` returns only statically
-bound callers. Slots with no resolvable indexed symbol contribute no
+bound callers. The relationship and search tools also accept
+`includeGenerated` (default `false`): by default generated bodies are
+credited to the declaring method with an `in ...` detail, while `true`
+shows the raw generated rows. Slots with no resolvable indexed symbol contribute no
 routes, so overrides of external framework methods add no derived rows. `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
@@ -851,6 +856,38 @@ Remove-Item Env:\S1ATLAS_RUN_LOCAL_GAME_TESTS
 
 Without the local file the file-backed tests skip; the value-free structural invariants (resolver round-trips, recovery-edge hygiene) run regardless. After each game update, re-run the suite: changed values mean the local file needs refreshing, while failures against an unchanged file mean a product bug. Never commit the local file — the repository-hygiene gate blocks its name.
 
+## Compiler-generated bodies
+
+Calls and field accesses inside lambdas, `async`/iterator state machines,
+and local functions are credited to the method that declares them. Credited
+rows carry an `in ...` detail naming the body the call was found in:
+
+- `in lambda`
+- `in async state machine`
+- `in iterator state machine`
+- `in local function {Name}`
+
+Nested generated bodies join details outermost-first (`in lambda, in local
+function Scale`). A generated body that cannot be mapped stays on the
+generated member with an `unmapped: {reason}` detail instead of a guess:
+either the declaring method is not indexed, or the declaring overload is
+ambiguous. Attribute-mapped `async` and iterator overloads resolve through
+their state-machine attributes; `<>c` lambda bodies over ambiguous overloads
+stay unmapped with a reason.
+
+Every relationship surface can show the raw generated rows instead:
+
+- CLI: `--include-generated` on `callers`, `callees`, `refs`, `fieldrefs`,
+  and `search`. Relationship IDs are unchanged: the same edge keeps its ID
+  whether it renders credited or raw.
+- MCP: `includeGenerated` on the relationship and search tools.
+- Serve: `?generated=1` on symbol and search pages and on the
+  relationship/search APIs.
+
+Symbol search hides compiler-generated members by default and reports `<n>
+generated result(s) hidden` with the switch that reveals them. `fieldrefs`
+likewise excludes compiler-captured fields unless asked.
+
 ## Command reference
 
 | Command | Purpose |
@@ -867,15 +904,15 @@ Without the local file the file-backed tests skip; the value-free structural inv
 | `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
 | `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
 | `index [--codebase <id>] [--channel <id>] [--commit <sha>] [--force] [--performance] [--json]` | Build the installed Schedule I code index (no options) or an S1API/S1MAPI code index |
-| `search <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Query the normalized code index across symbols, types, and methods |
+| `search <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | Query the normalized code index across symbols, types, and methods (generated members hidden unless asked) |
 | `type <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed type definitions |
 | `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |
 | `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--full-type] [--related-limit <0-50>] [--limit <n>] [--json]` | Show focused, integrity-checked decompiled source and optional callable neighborhood for one resolved symbol |
-| `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed references to a resolved symbol |
-| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--exact] [--json]` | List indexed callers of a resolved method, including may-dispatch callers via overrides and interface implementations (`--exact` for statically bound callers only) |
-| `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | List indexed callees of a resolved method |
+| `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | List indexed references to a resolved symbol |
+| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--exact] [--include-generated] [--json]` | List indexed callers of a resolved method, including may-dispatch callers via overrides and interface implementations (`--exact` for statically bound callers only) |
+| `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | List indexed callees of a resolved method, including calls made from compiler-generated bodies |
 | `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
-| `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL field readers and writers for one resolved field |
+| `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--include-generated] [--json]` | Find static recovered-IL field readers and writers for one resolved field (compiler-captured fields excluded unless asked) |
 | `investigate_seam <selector> --question <text> [--codebase <id>] [--channel <id>] [--build <id>] [--scope game\|reference\|all] [--collection <name-or-id>] [--relationship-limit <1-50>] [--owner-limit <1-50>] [--context <n>] [--native-symbol-id <id>] [--native-traversal-budget <0-500>] [--details] [--json]` | Investigate a supportable ownership seam with deterministic candidate ordering, coverage warnings, unknown dimensions, and bounded next actions |
 | `recover-native-body --symbol-id <id> [--symbol-id <id> ...] [--traversal-budget <1-500>] [--build-id <id>] [--json]` | Map a stubbed managed method to its native `GameAssembly.dll` address, decode bounded direct-call and field-access evidence, and persist the provenance-stamped, idempotent result (does not modify the game) |
 | `upstream status [--codebase <s1api\|s1mapi>] [--json]` | Show cached upstream API status without network access |
