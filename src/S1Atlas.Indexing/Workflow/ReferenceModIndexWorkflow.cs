@@ -209,7 +209,7 @@ public sealed class ReferenceModIndexWorkflow
         {
             var prefixedName = modId + "/" + qualifiedName;
             var key = SymbolIdentity.Create(CodebaseKind.ReferenceMod, CodeChannel.Installed, kind, prefixedName).CanonicalKey;
-            symbols.Add(new IndexSymbolRecord(IndexingWorkflow.HashId(snapshotId + "\n" + key), snapshotId, key, kind.ToString(), prefixedName, signature, false, recovery, isPublic));
+            symbols.Add(new IndexSymbolRecord(IndexingWorkflow.HashId(snapshotId + "\n" + key), snapshotId, key, kind.ToString(), prefixedName, signature, false, recovery, isPublic, GeneratedBodyResolver.IsGeneratedSymbol(qualifiedName)));
         }
     }
 

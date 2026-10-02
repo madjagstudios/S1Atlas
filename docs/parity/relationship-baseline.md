@@ -33,7 +33,7 @@ later tickets update it in the same PR that fixes a gap.
 |---|---|---|---|---|---|
 | address taken | 8 | 0 | 8 | 0 | 4 |
 | array accessor | 0 | 0 | 0 | 3 | 0 |
-| async body | 2 | 0 | 2 | 0 | 1 |
+| async body | 2 | 2 | 0 | 0 | 0 |
 | base call | 3 | 3 | 0 | 0 | 0 |
 | constructed generic | 8 | 8 | 0 | 0 | 0 |
 | constructs | 12 | 12 | 0 | 0 | 0 |
@@ -46,9 +46,9 @@ later tickets update it in the same PR that fixes a gap.
 | implementation | 3 | 3 | 0 | 0 | 0 |
 | inherited implementation | 1 | 1 | 0 | 0 | 0 |
 | interface dispatch | 4 | 4 | 0 | 0 | 0 |
-| iterator body | 2 | 0 | 2 | 0 | 1 |
-| lambda body | 4 | 0 | 4 | 0 | 2 |
-| local function body | 4 | 0 | 4 | 0 | 2 |
+| iterator body | 3 | 3 | 0 | 0 | 0 |
+| lambda body | 4 | 4 | 0 | 0 | 0 |
+| local function body | 4 | 4 | 0 | 0 | 0 |
 | override | 7 | 7 | 0 | 0 | 0 |
 | property accessor | 10 | 10 | 0 | 0 | 0 |
 | static constructor | 1 | 1 | 0 | 0 | 0 |
@@ -58,26 +58,8 @@ later tickets update it in the same PR that fixes a gap.
 
 | Target | Relation | Symbol | Classification | Reason | Ticket |
 |---|---|---|---|---|---|
-| S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task`1<System.Int32> | callees | S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | MISSING | async body | AT-66 |
 | S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::<Capturing>b__0(System.Int32):System.Int32 | MISLABELED | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | MISSING | lambda body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | MISSING | local function body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases+<>c::<NonCapturing>b__0_0(System.Int32):System.Int32 | MISLABELED | lambda body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::<Capturing>b__0(System.Int32):System.Int32 | MISLABELED | lambda body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases+<AsyncWork>d__3::MoveNext():System.Void | MISLABELED | async body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases+<Iterator>d__2::MoveNext():System.Boolean | MISLABELED | iterator body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::<CapturingLocal>g__Scale|5_0(System.Int32,S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass5_0&):System.Int32 | MISLABELED | local function body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::<StaticLocal>g__Triple|4_0(System.Int32):System.Int32 | MISLABELED | local function body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task`1<System.Int32> | MISSING | async body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32 | MISSING | lambda body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32 | MISSING | local function body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable`1<System.Int32> | MISSING | iterator body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32 | MISSING | lambda body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32 | MISSING | local function body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable`1<System.Int32> | callees | S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | MISSING | iterator body | AT-66 |
 | S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases+<>c::<NonCapturing>b__0_0(System.Int32):System.Int32 | MISLABELED | delegate creation | AT-67 |
-| S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | MISSING | lambda body | AT-66 |
-| S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32 | callees | S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32 | MISSING | local function body | AT-66 |
 | S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32> | callees | S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32 | MISLABELED | delegate creation | AT-67 |
 | S1Atlas.ParityFixture.DelegateCases::BuildStaticFunc():System.Func`2<System.Int32,System.Int32> | callees | S1Atlas.ParityFixture.DelegateCases::StaticTarget(System.Int32):System.Int32 | MISLABELED | delegate creation | AT-67 |
 | S1Atlas.ParityFixture.DelegateCases::InstanceTarget(System.Int32):System.Int32 | callers | S1Atlas.ParityFixture.DelegateCases::BuildInstanceFunc():System.Func`2<System.Int32,System.Int32> | MISLABELED | delegate creation | AT-67 |

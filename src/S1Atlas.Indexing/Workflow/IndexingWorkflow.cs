@@ -299,7 +299,7 @@ public sealed class IndexingWorkflow
         foreach (var type in decompilation.Types)
         {
             var typeKey = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Type, type.FullName).CanonicalKey;
-            symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + typeKey), snapshotId, typeKey, "Type", type.FullName, type.FullName, false));
+            symbols.Add(new IndexSymbolRecord(HashId(snapshotId + "\n" + typeKey), snapshotId, typeKey, "Type", type.FullName, type.FullName, false, IsGenerated: GeneratedBodyResolver.IsGeneratedSymbol(type.FullName)));
             foreach (var member in type.Members)
             {
                 var memberName = ManagedMemberIdentity.Render(type.FullName, member);
@@ -317,7 +317,8 @@ public sealed class IndexingWorkflow
                     member.Signature,
                     false,
                     bodyRecoveryStatus,
-                    member.IsPublic));
+                    member.IsPublic,
+                    GeneratedBodyResolver.IsGeneratedSymbol(memberName)));
             }
         }
         return symbols
@@ -411,13 +412,15 @@ public sealed class IndexingWorkflow
         return facts
             .Where(fact => symbolIds.ContainsKey(fact.SourceKey))
             .Select(fact => new IndexRelationshipRecord(
-                HashId(snapshotId + "\n" + fact.SourceKey + "\n" + fact.Kind + "\n" + fact.TargetText),
+                HashId(snapshotId + "\n" + (fact.GeneratedSourceKey ?? fact.SourceKey) + "\n" + fact.Kind + "\n" + fact.TargetText),
                 snapshotId,
                 symbolIds[fact.SourceKey],
                 fact.TargetKey is not null && symbolIds.TryGetValue(fact.TargetKey, out var targetSymbolId) ? targetSymbolId : null,
                 fact.TargetText,
                 fact.Kind.ToString(),
-                fact.Evidence.ToString()))
+                fact.Evidence.ToString(),
+                fact.GeneratedSourceKey is not null ? symbolIds[fact.GeneratedSourceKey] : null,
+                fact.GeneratedDetail))
             .GroupBy(relationship => relationship.RelationshipId, StringComparer.Ordinal)
             .Select(group => group.First())
             .OrderBy(relationship => relationship.RelationshipId, StringComparer.Ordinal)
