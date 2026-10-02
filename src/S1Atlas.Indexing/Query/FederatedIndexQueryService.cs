@@ -100,15 +100,25 @@ public sealed class FederatedIndexQueryService
             int.MaxValue);
         var hasAmbiguity = game.Status == SymbolResolutionStatus.Ambiguous || reference.Status == SymbolResolutionStatus.Ambiguous || candidates.Length > 1;
         if (hasAmbiguity)
-            return new SymbolResolutionResult(SymbolResolutionStatus.Ambiguous, null, candidates);
+            return new SymbolResolutionResult(
+                SymbolResolutionStatus.Ambiguous,
+                null,
+                candidates,
+                TotalCandidateCount: ResolutionMerge.CombineTotals(
+                    (game, game.Status == SymbolResolutionStatus.Ambiguous ? game.Candidates.Count : game.Symbol is null ? 0 : 1),
+                    (reference, reference.Status == SymbolResolutionStatus.Ambiguous ? reference.Candidates.Count : reference.Symbol is null ? 0 : 1)));
         if (candidates.Length == 1)
             return new SymbolResolutionResult(SymbolResolutionStatus.Resolved, candidates[0], []);
+        var mergedStatus = game.Status == SymbolResolutionStatus.NoCompletedIndex && reference.Status == SymbolResolutionStatus.NoCompletedIndex
+            ? SymbolResolutionStatus.NoCompletedIndex
+            : SymbolResolutionStatus.NotFound;
         return new SymbolResolutionResult(
-            game.Status == SymbolResolutionStatus.NoCompletedIndex && reference.Status == SymbolResolutionStatus.NoCompletedIndex
-                ? SymbolResolutionStatus.NoCompletedIndex
-                : SymbolResolutionStatus.NotFound,
+            mergedStatus,
             null,
-            []);
+            [],
+            mergedStatus == SymbolResolutionStatus.NotFound
+                ? game.Suggestions.Concat(reference.Suggestions).Take(ResolutionMerge.MaxSuggestions).ToArray()
+                : []);
     }
 
     public async Task<SourceSnippetResolutionResult> SourceAsync(
@@ -753,10 +763,12 @@ public sealed class FederatedIndexQueryService
             CodebaseKind.ReferenceMod,
             CodeChannel.Installed,
             cancellationToken);
-        return new SymbolResolutionResult(
-            result.Status,
-            result.Symbol is null ? null : DecorateReferenceQuerySymbol(selection, result.Symbol),
-            result.Candidates.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray());
+        return result with
+        {
+            Symbol = result.Symbol is null ? null : DecorateReferenceQuerySymbol(selection, result.Symbol),
+            Candidates = result.Candidates.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray(),
+            Suggestions = result.Suggestions.Select(candidate => DecorateReferenceQuerySymbol(selection, candidate)).ToArray(),
+        };
     }
 
     private Task<CallSiteTargetQuery> ResolveCallSiteTargetQueryAsync(
