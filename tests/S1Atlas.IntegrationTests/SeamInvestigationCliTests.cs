@@ -426,6 +426,23 @@ public sealed class SeamInvestigationCliTests
     }
 
     [Fact]
+    public async Task Investigate_seam_renders_the_shared_candidate_table_for_ambiguous_selectors()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateAmbiguousAsync();
+
+        var result = atlas.Run(
+            "investigate_seam",
+            "Game.Seams.Ambiguous.Run",
+            "--question",
+            "Which seam owns the ambiguous path?");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Found 2 candidates; showing 2.", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("1 | Method | Game.Seams.Ambiguous.Run", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("Code:    AmbiguousSymbol", result.StandardError, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Investigate_seam_returns_no_completed_index_when_the_selected_authority_has_not_been_indexed()
     {
         await using var atlas = await SeamInvestigationCliAtlas.CreateNoCompletedIndexAsync();

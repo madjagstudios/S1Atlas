@@ -114,7 +114,8 @@ internal static class CallersCommand
                                 includeDelegates: includeDelegates).GetAwaiter().GetResult();
                     return IndexQueryCommandFactory.Complete(
                         commandOutput,
-                        IndexQueryCommandFactory.ToOutput(result));
+                        IndexQueryCommandFactory.ToOutput(result),
+                        parseResult.GetValue(queryArgument)!);
                 },
                 commandOutput,
                 cancellationToken);

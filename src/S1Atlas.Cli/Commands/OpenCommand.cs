@@ -87,7 +87,8 @@ internal static class OpenCommand
         {
             return IndexQueryCommandFactory.Complete(
                 commandOutput,
-                new IndexQueryOutput([], [], [], Resolution: resolution));
+                new IndexQueryOutput([], [], [], Resolution: resolution),
+                selector);
         }
 
         var url = $"http://127.0.0.1:{port}/symbol/{Uri.EscapeDataString(resolution.Symbol.SymbolId)}";

@@ -123,7 +123,8 @@ internal static class FieldRefsCommand
                                 includeGenerated: includeGenerated).GetAwaiter().GetResult();
                     return IndexQueryCommandFactory.Complete(
                         commandOutput,
-                        IndexQueryCommandFactory.ToOutput(result));
+                        IndexQueryCommandFactory.ToOutput(result),
+                        parseResult.GetValue(queryArgument)!);
                 },
                 commandOutput,
                 cancellationToken);

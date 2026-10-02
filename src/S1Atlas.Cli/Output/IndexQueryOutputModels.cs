@@ -22,4 +22,6 @@ internal sealed record IndexQueryOutput(
 }
 
 internal sealed record IndexQueryFailureData(
-    IReadOnlyList<SymbolQueryResult> Candidates);
+    IReadOnlyList<SymbolQueryResult> Candidates,
+    IReadOnlyList<SymbolQueryResult> Suggestions,
+    int? TotalCandidateCount);

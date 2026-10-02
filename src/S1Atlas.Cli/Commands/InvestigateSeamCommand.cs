@@ -210,7 +210,7 @@ internal static class InvestigateSeamCommand
             return commandOutput.Failure(1, "InvalidCodebaseChannel", exception.Message);
         }
 
-        return Complete(commandOutput, result, includeDetails, authority, options);
+        return Complete(commandOutput, result, selector, includeDetails, authority, options);
     }
 
     private static SeamInvestigationResult EnrichPinnedProvenance(
@@ -259,27 +259,22 @@ internal static class InvestigateSeamCommand
     private static int Complete(
         CommandOutput commandOutput,
         SeamInvestigationResult result,
+        string selector,
         bool includeDetails,
         IndexQueryCommandFactory.ExecutionAuthority authority,
         IndexQueryOptions options)
     {
+        var resolutionFailure = IndexQueryCommandFactory.FailureForResolution(
+            commandOutput,
+            result.Resolution,
+            selector);
+        if (resolutionFailure is not null)
+        {
+            return resolutionFailure.Value;
+        }
+
         return result.Resolution.Status switch
         {
-            SymbolResolutionStatus.Ambiguous => commandOutput.Failure(
-                1,
-                "AmbiguousSymbol",
-                "The symbol selector matched multiple candidates. Use an exact symbol ID or signature.",
-                new IndexQueryFailureData(result.Resolution.Candidates)),
-            SymbolResolutionStatus.NoCompletedIndex => commandOutput.Failure(
-                1,
-                "NoCompletedIndex",
-                "No completed index exists for the requested codebase and channel.",
-                new IndexQueryFailureData([])),
-            SymbolResolutionStatus.NotFound => commandOutput.Failure(
-                1,
-                "SymbolNotFound",
-                "No indexed symbol matched the selector.",
-                new IndexQueryFailureData([])),
             SymbolResolutionStatus.Resolved when !HasRequiredGateRecords(result) =>
                 commandOutput.Failure(
                     1,

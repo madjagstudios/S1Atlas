@@ -118,7 +118,7 @@ internal static class HierarchyCommandRunner
                         result = executeFederated(federatedService, query, options, depth, offset, cancellationToken, authority.ReferenceIndexId).GetAwaiter().GetResult();
                     }
 
-                    return IndexQueryCommandFactory.Complete(commandOutput, IndexQueryCommandFactory.ToOutput(result));
+                    return IndexQueryCommandFactory.Complete(commandOutput, IndexQueryCommandFactory.ToOutput(result), query);
                 },
                 commandOutput,
                 cancellationToken);
