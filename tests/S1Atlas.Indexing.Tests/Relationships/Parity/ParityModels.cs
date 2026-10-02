@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace S1Atlas.Indexing.Tests.Relationships.Parity;
 
-public sealed record ParityEdge(string Symbol, string Reason);
+public sealed record ParityEdge(string Symbol, string Reason, string? Detail = null);
 
 public sealed record ParityKnownGap(string Symbol, string Relation, string Reason, string Ticket);
 
@@ -46,7 +46,8 @@ public sealed record ParityOracle(IReadOnlyList<ParityTarget> Targets)
         return array.EnumerateArray()
             .Select(edge => new ParityEdge(
                 edge.GetProperty("symbol").GetString()!,
-                edge.GetProperty("reason").GetString()!))
+                edge.GetProperty("reason").GetString()!,
+                edge.TryGetProperty("detail", out var detail) ? detail.GetString() : null))
             .ToList();
     }
 

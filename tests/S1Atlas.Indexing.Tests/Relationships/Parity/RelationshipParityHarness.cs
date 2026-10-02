@@ -53,7 +53,7 @@ public static class RelationshipParityHarness
 
         foreach (var target in oracle.Targets)
         {
-            var (found, derived) = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
+            var (found, derived, details) = await QueryTargetAsync(service, index.Run, symbolIds[(KindFor(target.Target), target.Target)], cancellationToken);
             var overriddenBy = await OverriddenByEdgesAsync(target, index.Repository, index.Run.IndexId, symbolIds, namesById, cancellationToken);
             foreach (var relation in new[] { "callers", "callees", "readers", "writers", "overridden-by" })
             {
@@ -68,6 +68,10 @@ public static class RelationshipParityHarness
                             service, index.Run, symbolIds, derivedCallersCache, edge.Symbol, cancellationToken)).Contains(target.Target),
                         _ => actual.Contains(edge.Symbol)
                     };
+                    if (matched && edge.Detail is not null)
+                        matched = details.TryGetValue(relation, out var perRelation)
+                            && perRelation.TryGetValue(edge.Symbol, out var observed)
+                            && observed.Contains(edge.Detail);
                     if (matched)
                     {
                         differences.Add(new ParityDifference(
@@ -237,7 +241,7 @@ public static class RelationshipParityHarness
         return callers;
     }
 
-    private static async Task<(Dictionary<string, HashSet<string>> Found, Dictionary<string, HashSet<string>> Derived)> QueryTargetAsync(
+    private static async Task<(Dictionary<string, HashSet<string>> Found, Dictionary<string, HashSet<string>> Derived, Dictionary<string, Dictionary<string, HashSet<string>>> Details)> QueryTargetAsync(
         IndexQueryService service,
         IndexRunRecord run,
         string selector,
@@ -259,6 +263,14 @@ public static class RelationshipParityHarness
             ["writers"] = [],
             ["overridden-by"] = []
         };
+        var details = new Dictionary<string, Dictionary<string, HashSet<string>>>(StringComparer.Ordinal)
+        {
+            ["callers"] = new(StringComparer.Ordinal),
+            ["callees"] = new(StringComparer.Ordinal),
+            ["readers"] = new(StringComparer.Ordinal),
+            ["writers"] = new(StringComparer.Ordinal),
+            ["overridden-by"] = new(StringComparer.Ordinal)
+        };
 
         var callers = await service.CallersInIndexAsync(
             run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, QueryLimit, cancellationToken);
@@ -266,7 +278,10 @@ public static class RelationshipParityHarness
         {
             var symbol = IncomingSymbol(edge);
             if (symbol is not null)
+            {
                 (edge.IsDerived ? derived : found)["callers"].Add(symbol);
+                RecordDetail(details["callers"], symbol, edge.GeneratedDetail);
+            }
         }
 
         var callees = await service.CalleesInIndexAsync(
@@ -275,7 +290,10 @@ public static class RelationshipParityHarness
         {
             var symbol = OutgoingSymbol(edge);
             if (symbol is not null)
+            {
                 found["callees"].Add(symbol);
+                RecordDetail(details["callees"], symbol, edge.GeneratedDetail);
+            }
         }
 
         var fieldRefs = await service.FieldReferencesInIndexAsync(
@@ -296,9 +314,15 @@ public static class RelationshipParityHarness
             if (symbol is null)
                 continue;
             if (edge.Kind == "ReadsField")
+            {
                 found["readers"].Add(symbol);
+                RecordDetail(details["readers"], symbol, edge.GeneratedDetail);
+            }
             else if (edge.Kind == "WritesField")
+            {
                 found["writers"].Add(symbol);
+                RecordDetail(details["writers"], symbol, edge.GeneratedDetail);
+            }
         }
 
         var overriddenBy = await service.OverriddenByInIndexAsync(
@@ -310,7 +334,21 @@ public static class RelationshipParityHarness
                 found["overridden-by"].Add(symbol);
         }
 
-        return (found, derived);
+        return (found, derived, details);
+    }
+
+    private static void RecordDetail(
+        Dictionary<string, HashSet<string>> perRelation,
+        string symbol,
+        string? detail)
+    {
+        if (!perRelation.TryGetValue(symbol, out var observed))
+        {
+            observed = new HashSet<string>(StringComparer.Ordinal);
+            perRelation[symbol] = observed;
+        }
+
+        observed.Add(detail ?? string.Empty);
     }
 
     private const string InheritedSuffix = " (inherited)";

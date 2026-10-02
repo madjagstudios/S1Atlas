@@ -3,14 +3,14 @@
     {
       "target": "S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task`1<System.Int32>",
       "callees": [
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "async body" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "async body", "detail": "in async state machine" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32",
       "callees": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::.ctor():System.Void", "reason": "constructs" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" }
       ],
       "knownGaps": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass1_0::<Capturing>b__0(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
@@ -20,32 +20,32 @@
       "target": "S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32",
       "callees": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases::<CapturingLocal>g__Scale|5_0(System.Int32,S1Atlas.ParityFixture.ClosureCases+<>c__DisplayClass5_0&):System.Int32", "reason": "direct call" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "local function body" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "local function body", "detail": "in local function Scale" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32",
       "callers": [
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32", "reason": "lambda body" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32", "reason": "lambda body" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable`1<System.Int32>", "reason": "iterator body" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task`1<System.Int32>", "reason": "async body" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32", "reason": "local function body" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32", "reason": "local function body" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32", "reason": "lambda body", "detail": "in lambda" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::Capturing(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable`1<System.Int32>", "reason": "iterator body", "detail": "in iterator state machine" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::AsyncWork(System.Int32):System.Threading.Tasks.Task`1<System.Int32>", "reason": "async body", "detail": "in async state machine" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32", "reason": "local function body", "detail": "in local function Triple" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::CapturingLocal(System.Int32):System.Int32", "reason": "local function body", "detail": "in local function Scale" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.ClosureCases::Iterator(System.Int32):System.Collections.Generic.IEnumerable`1<System.Int32>",
       "callees": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases+<Iterator>d__2::.ctor(System.Int32):System.Void", "reason": "constructs" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "iterator body" },
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "iterator body", "detail": "in iterator state machine" },
         { "symbol": "S1Atlas.ParityFixture.ClosureCases+<Iterator>d__2::System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator():System.Collections.Generic.IEnumerator`1<System.Int32>", "reason": "iterator body" }
       ]
     },
     {
       "target": "S1Atlas.ParityFixture.ClosureCases::NonCapturing():System.Int32",
       "callees": [
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "lambda body", "detail": "in lambda" }
       ],
       "knownGaps": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases+<>c::<NonCapturing>b__0_0(System.Int32):System.Int32", "relation": "callees", "reason": "delegate creation", "ticket": "AT-67" }
@@ -55,7 +55,7 @@
       "target": "S1Atlas.ParityFixture.ClosureCases::StaticLocal(System.Int32):System.Int32",
       "callees": [
         { "symbol": "S1Atlas.ParityFixture.ClosureCases::<StaticLocal>g__Triple|4_0(System.Int32):System.Int32", "reason": "direct call" },
-        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "local function body" }
+        { "symbol": "S1Atlas.ParityFixture.ClosureCases::HelperTarget(System.Int32):System.Int32", "reason": "local function body", "detail": "in local function Triple" }
       ]
     },
     {
