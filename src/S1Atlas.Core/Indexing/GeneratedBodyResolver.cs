@@ -39,7 +39,9 @@ public static class GeneratedBodyResolver
                     qualifiedName,
                     type.FullName,
                     member.Name,
-                    member.References));
+                    member.References,
+                    member.StateMachineTypeName,
+                    member.IsAsyncStateMachine));
             }
         }
 
@@ -65,7 +67,9 @@ public static class GeneratedBodyResolver
                 symbol.QualifiedName,
                 symbol.QualifiedName[..separator],
                 StripArity(SimpleMemberName(symbol.QualifiedName[(separator + 2)..])),
-                []));
+                [],
+                null,
+                false));
         }
 
         return ResolveEntries(entries);
@@ -76,7 +80,9 @@ public static class GeneratedBodyResolver
         string QualifiedName,
         string ContainingType,
         string MemberName,
-        IReadOnlyList<ManagedReferenceFact> References);
+        IReadOnlyList<ManagedReferenceFact> References,
+        string? StateMachineTypeName,
+        bool IsAsyncStateMachine);
 
     private sealed record ParsedMember(string Anchor, string Step, bool HasAnchor);
 
@@ -84,6 +90,7 @@ public static class GeneratedBodyResolver
     {
         var users = new Dictionary<(string UserType, string Name), List<Entry>>();
         var locals = new Dictionary<(string UserType, string Local), Entry>();
+        var owners = new Dictionary<string, List<Entry>>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
             if (IsGeneratedSymbol(entry.QualifiedName))
@@ -96,6 +103,16 @@ public static class GeneratedBodyResolver
             }
 
             list.Add(entry);
+            if (entry.StateMachineTypeName is not null)
+            {
+                if (!owners.TryGetValue(entry.StateMachineTypeName, out var owned))
+                {
+                    owned = [];
+                    owners[entry.StateMachineTypeName] = owned;
+                }
+
+                owned.Add(entry);
+            }
         }
 
         foreach (var entry in entries)
@@ -111,7 +128,7 @@ public static class GeneratedBodyResolver
         {
             if (!IsGeneratedSymbol(entry.QualifiedName))
                 continue;
-            ResolveEntry(entry, users, locals, output, []);
+            ResolveEntry(entry, users, locals, owners, output, []);
         }
 
         return output;
@@ -121,6 +138,7 @@ public static class GeneratedBodyResolver
         Entry entry,
         Dictionary<(string UserType, string Name), List<Entry>> users,
         Dictionary<(string UserType, string Local), Entry> locals,
+        Dictionary<string, List<Entry>> owners,
         Dictionary<string, GeneratedBodyMapping> output,
         HashSet<string> visited)
     {
@@ -133,23 +151,52 @@ public static class GeneratedBodyResolver
         if (!parsed.HasAnchor)
             return Unmapped(entry.Key, output, $"declaring method '{entry.MemberName}' is not indexed");
 
+        if (parsed.Step.Length == 0
+            && owners.TryGetValue(entry.ContainingType, out var attributed)
+            && attributed.Count == 1)
+        {
+            return Mapped(
+                entry.Key,
+                output,
+                attributed[0].Key,
+                attributed[0].IsAsyncStateMachine ? "in async state machine" : "in iterator state machine",
+                true);
+        }
+
         var userType = UserTypeOf(entry.ContainingType);
         if (users.TryGetValue((userType, parsed.Anchor), out var candidates))
         {
             if (candidates.Count == 1)
                 return Mapped(entry.Key, output, candidates[0].Key, StepFor(parsed, candidates[0].QualifiedName));
+            var confirmed = candidates.Where(candidate => Confirms(candidate, entry)).ToArray();
+            if (confirmed.Length == 1)
+                return Mapped(entry.Key, output, confirmed[0].Key, StepFor(parsed, confirmed[0].QualifiedName));
             return Unmapped(entry.Key, output, $"ambiguous overloads sharing '{parsed.Anchor}'");
         }
 
         if (locals.TryGetValue((userType, parsed.Anchor), out var local))
         {
-            var parent = ResolveEntry(local, users, locals, output, visited);
+            var parent = ResolveEntry(local, users, locals, owners, output, visited);
             if (parent.DeclaringKey is null)
                 return Unmapped(entry.Key, output, parent.Detail);
             return Mapped(entry.Key, output, parent.DeclaringKey, parent.Detail + ", " + StepFor(parsed, local.QualifiedName));
         }
 
         return Unmapped(entry.Key, output, $"declaring method '{parsed.Anchor}' is not indexed");
+    }
+
+    private static bool Confirms(Entry candidate, Entry generated)
+    {
+        foreach (var reference in candidate.References)
+        {
+            if (reference.Kind is not (ManagedReferenceKind.Constructs or ManagedReferenceKind.Calls or ManagedReferenceKind.CallsVirtual))
+                continue;
+            if (string.Equals(reference.Target, generated.QualifiedName, StringComparison.Ordinal)
+                || reference.Target.StartsWith(generated.ContainingType + "::", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private static ParsedMember ParseMember(Entry entry)
@@ -179,9 +226,13 @@ public static class GeneratedBodyResolver
     }
 
     private static GeneratedBodyMapping Mapped(
-        string key, Dictionary<string, GeneratedBodyMapping> output, string declaringKey, string detail)
+        string key,
+        Dictionary<string, GeneratedBodyMapping> output,
+        string declaringKey,
+        string detail,
+        bool isAttributeBased = false)
     {
-        var mapping = new GeneratedBodyMapping(declaringKey, detail, false);
+        var mapping = new GeneratedBodyMapping(declaringKey, detail, isAttributeBased);
         output[key] = mapping;
         return mapping;
     }

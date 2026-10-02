@@ -203,8 +203,162 @@ public sealed class GeneratedBodyResolverTests
         Assert.Equal("unmapped: declaring method 'Bar' is not indexed", unmapped.Detail);
     }
 
+    [Fact]
+    public void ResolveAll_OverloadedStateMachines_MapViaAttributes()
+    {
+        var first = Method(
+            "Foo", "System.Threading.Tasks.Task`1<System.Int32>", ["System.Int32"], null,
+            "A.B.C+<Foo>d__1", true);
+        var second = Method(
+            "Foo", "System.Threading.Tasks.Task`1<System.String>", ["System.String"], null,
+            "A.B.C+<Foo>d__2", true);
+        var firstMove = Method("MoveNext", "System.Void");
+        var secondMove = Method("MoveNext", "System.Void");
+        var decompilation = new ManagedDecompilation(
+            "test.dll",
+            string.Empty,
+            [
+                Type("A.B.C", first, second),
+                Type("A.B.C+<Foo>d__1", firstMove),
+                Type("A.B.C+<Foo>d__2", secondMove)
+            ]);
+
+        var mappings = GeneratedBodyResolver.ResolveAll(decompilation, CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        var firstMapping = mappings[Key("A.B.C+<Foo>d__1", firstMove, SymbolKind.Method)];
+        Assert.Equal(Key("A.B.C", first, SymbolKind.Method), firstMapping.DeclaringKey);
+        Assert.Equal("in async state machine", firstMapping.Detail);
+        Assert.True(firstMapping.IsAttributeBased);
+        var secondMapping = mappings[Key("A.B.C+<Foo>d__2", secondMove, SymbolKind.Method)];
+        Assert.Equal(Key("A.B.C", second, SymbolKind.Method), secondMapping.DeclaringKey);
+        Assert.True(secondMapping.IsAttributeBased);
+    }
+
+    [Fact]
+    public void ResolveAll_AsyncVoidStateMachine_UsesAttributeKind()
+    {
+        var foo = Method("Foo", "System.Void", ["System.Int32"], null, "A.B.C+<Foo>d__0", true);
+        var moveNext = Method("MoveNext", "System.Void");
+        var decompilation = new ManagedDecompilation(
+            "test.dll",
+            string.Empty,
+            [Type("A.B.C", foo), Type("A.B.C+<Foo>d__0", moveNext)]);
+
+        var mappings = GeneratedBodyResolver.ResolveAll(decompilation, CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        var mapping = mappings[Key("A.B.C+<Foo>d__0", moveNext, SymbolKind.Method)];
+        Assert.Equal("in async state machine", mapping.Detail);
+        Assert.True(mapping.IsAttributeBased);
+    }
+
+    [Fact]
+    public void ResolveAll_OverloadedDisplayLambdas_MapViaNewobjConfirmation()
+    {
+        var first = Method(
+            "Foo", "System.Int32", ["System.Int32"],
+            [new ManagedReferenceFact(ManagedReferenceKind.Constructs, "A.B.C+<>c__DisplayClass0_0::.ctor():System.Void")],
+            null, false);
+        var second = Method(
+            "Foo", "System.String", ["System.String"],
+            [new ManagedReferenceFact(ManagedReferenceKind.Constructs, "A.B.C+<>c__DisplayClass1_0::.ctor():System.Void")],
+            null, false);
+        var firstLambda = Method("<Foo>b__0", "System.Int32", "System.Int32");
+        var secondLambda = Method("<Foo>b__0", "System.String", "System.String");
+        var decompilation = new ManagedDecompilation(
+            "test.dll",
+            string.Empty,
+            [
+                Type("A.B.C", first, second),
+                Type("A.B.C+<>c__DisplayClass0_0", firstLambda),
+                Type("A.B.C+<>c__DisplayClass1_0", secondLambda)
+            ]);
+
+        var mappings = GeneratedBodyResolver.ResolveAll(decompilation, CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        Assert.Equal(
+            Key("A.B.C", first, SymbolKind.Method),
+            mappings[Key("A.B.C+<>c__DisplayClass0_0", firstLambda, SymbolKind.Method)].DeclaringKey);
+        Assert.Equal(
+            Key("A.B.C", second, SymbolKind.Method),
+            mappings[Key("A.B.C+<>c__DisplayClass1_0", secondLambda, SymbolKind.Method)].DeclaringKey);
+    }
+
+    [Fact]
+    public void ResolveAll_OverloadedCachedLambdas_StayUnmappedWithoutConfirmation()
+    {
+        var first = Method("Foo", "System.Int32", "System.Int32");
+        var second = Method("Foo", "System.String", "System.String");
+        var lambda = Method("<Foo>b__0_0", "System.Int32", "System.Int32");
+        var decompilation = new ManagedDecompilation(
+            "test.dll",
+            string.Empty,
+            [Type("A.B.C", first, second), Type("A.B.C+<>c", lambda)]);
+
+        var mappings = GeneratedBodyResolver.ResolveAll(decompilation, CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        var mapping = mappings[Key("A.B.C+<>c", lambda, SymbolKind.Method)];
+        Assert.Null(mapping.DeclaringKey);
+        Assert.Equal("unmapped: ambiguous overloads sharing 'Foo'", mapping.Detail);
+    }
+
+    [Fact]
+    public void ResolveAll_IteratorInGenericMethod_MapsWithIteratorDetail()
+    {
+        var each = Method("Each", "System.Collections.Generic.IEnumerable`1<T>", "T[]");
+        var moveNext = Method("MoveNext", "System.Boolean");
+        var decompilation = new ManagedDecompilation(
+            "test.dll",
+            string.Empty,
+            [Type("A.B.Box`1", each), Type("A.B.Box`1+<Each>d__0", moveNext)]);
+
+        var mappings = GeneratedBodyResolver.ResolveAll(decompilation, CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        var mapping = mappings[Key("A.B.Box`1+<Each>d__0", moveNext, SymbolKind.Method)];
+        Assert.Equal(Key("A.B.Box`1", each, SymbolKind.Method), mapping.DeclaringKey);
+        Assert.Equal("in iterator state machine", mapping.Detail);
+    }
+
+    [Fact]
+    public void MapSymbols_AttributeOnlyOverloads_StayUnmapped()
+    {
+        var first = new IndexSymbolRecord(
+            "id-first", "snap", "key-first", "Method",
+            "A.B.C::Foo(System.Int32):System.Threading.Tasks.Task`1<System.Int32>", "sig", false);
+        var second = new IndexSymbolRecord(
+            "id-second", "snap", "key-second", "Method",
+            "A.B.C::Foo(System.String):System.Threading.Tasks.Task`1<System.String>", "sig", false);
+        var moveNext = new IndexSymbolRecord(
+            "id-move", "snap", "key-move", "Method",
+            "A.B.C+<Foo>d__1::MoveNext():System.Void", "sig", false);
+
+        var mappings = GeneratedBodyResolver.MapSymbols(
+            [first, second, moveNext], CodebaseKind.ScheduleI, CodeChannel.Installed);
+
+        var mapping = mappings["key-move"];
+        Assert.Null(mapping.DeclaringKey);
+        Assert.Equal("unmapped: ambiguous overloads sharing 'Foo'", mapping.Detail);
+    }
+
     private static ManagedMemberFacts Method(string name, string returnType, params string[] parameterTypes) =>
-        new(name, ManagedMemberKind.Method, "sig", true, [], parameterTypes, returnType);
+        Method(name, returnType, parameterTypes, null, null, false);
+
+    private static ManagedMemberFacts Method(
+        string name,
+        string returnType,
+        string[]? parameterTypes,
+        IReadOnlyList<ManagedReferenceFact>? references,
+        string? stateMachineTypeName,
+        bool isAsyncStateMachine) =>
+        new(
+            name,
+            ManagedMemberKind.Method,
+            "sig",
+            true,
+            references ?? [],
+            parameterTypes,
+            returnType,
+            StateMachineTypeName: stateMachineTypeName,
+            IsAsyncStateMachine: isAsyncStateMachine);
 
     private static ManagedMemberFacts Field(string name, string valueType) =>
         new(name, ManagedMemberKind.Field, valueType + " " + name, false, [], ValueType: valueType);
