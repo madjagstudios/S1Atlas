@@ -167,6 +167,15 @@ jobs:
           name: test-results-${{ matrix.name }}
           path: TestResults
           retention-days: 14
+      - name: Upload relationship parity report
+        if: always() && matrix.name == 'S1Atlas.Indexing.Tests' && hashFiles('TestResults/relationship-parity.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: relationship-parity-report
+          path: |
+            TestResults/relationship-parity.md
+            TestResults/relationship-parity.json
+          retention-days: 14
 
   build-test:
     runs-on: ubuntu-latest
