@@ -1048,6 +1048,27 @@ build IDs do too; full symbol and extraction IDs must be lowercase. Scene,
 GameObject, component, and asset ambiguity renders numbered candidate rows
 with counts and exact-ID hints.
 
+## Shell completion
+
+`s1atlas completion <pwsh|bash|zsh>` prints a completion script for the named
+shell. The script calls back into `s1atlas` itself, so completion needs no
+extra tooling once `s1atlas` is on your `PATH`:
+
+```powershell
+# PowerShell: append once, then restart the shell (or run `. $PROFILE`).
+s1atlas completion pwsh >> $PROFILE
+```
+
+```bash
+# bash: evaluate from ~/.bashrc.
+eval "$(s1atlas completion bash)"
+```
+
+```zsh
+# zsh: evaluate from ~/.zshrc, after compinit.
+eval "$(s1atlas completion zsh)"
+```
+
 ## Command reference
 
 | Command | Purpose |

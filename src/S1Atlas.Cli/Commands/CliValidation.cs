@@ -24,6 +24,9 @@ internal static class CliValidation
     public static bool JsonRequested(IReadOnlyList<string> args) =>
         Scan(args, static token => token == "--json");
 
+    public static bool SuggestRequested(IReadOnlyList<string> args) =>
+        args.Count > 0 && args[0].StartsWith("[suggest", StringComparison.Ordinal);
+
     private static bool Scan(IReadOnlyList<string> args, Func<string, bool> match)
     {
         foreach (var token in args)

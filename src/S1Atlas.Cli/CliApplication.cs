@@ -527,6 +527,7 @@ public sealed class CliApplication
             output,
             error,
             cancellationToken));
+        root.Subcommands.Add(CompletionCommand.Create(output, error, cancellationToken));
 
         _lastBuiltRoot = root;
         var invocation = new InvocationConfiguration
@@ -534,6 +535,13 @@ public sealed class CliApplication
             Output = output,
             Error = error
         };
+        if (CliValidation.SuggestRequested(args))
+        {
+            // Completion parses possibly-invalid partial lines inside Invoke,
+            // where a validator throw would escape as an unhandled exception
+            // instead of reaching the catch below. Completion never validates.
+            CliValidation.ClearValidators(root);
+        }
         try
         {
             return root.Parse(args).Invoke(invocation);
