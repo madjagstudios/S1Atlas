@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Paths;
@@ -258,6 +259,64 @@ public sealed class ReferenceModQueryService
 
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false, bool includeDelegates = false) =>
         RelationshipAsync(selector, options, RelationshipMode.Callees, cancellationToken, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
+
+    public async Task<RelationshipQuerySetResult> PatchedByAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        var selection = await RequireSelectionAsync(options, cancellationToken);
+        if (selection is null)
+            return new RelationshipQuerySetResult(NoCompletedIndex(), [], null, false, "no completed reference collection");
+
+        var resolution = await ResolveInIndexAsync(selection, selector, cancellationToken);
+        if (resolution.Status == SymbolResolutionStatus.NotFound)
+        {
+            var gameRun = await _repository.GetCompletedIndexAsync(selection.Context.GameIndexId, cancellationToken);
+            if (gameRun is not null)
+            {
+                var game = await _symbolResolver.ResolveAsync(
+                    gameRun.IndexId,
+                    selector,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    cancellationToken);
+                if (game.Status == SymbolResolutionStatus.Resolved && game.Symbol is not null)
+                    resolution = DecorateGameResolution(game);
+            }
+        }
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return new RelationshipQuerySetResult(resolution, [], null, false, string.Empty);
+
+        var id = resolution.Symbol.SymbolId;
+        var selectedRecord = string.Equals(resolution.Symbol.Origin, "game", StringComparison.Ordinal)
+            ? await _repository.GetCompletedSymbolByIdAsync(selection.Context.GameIndexId, id, cancellationToken)
+            : await _repository.GetCompletedSymbolByIdAsync(selection.Run.IndexId, id, cancellationToken);
+        BodyRecoveryStatus? bodyStatus = selectedRecord is not null && IsCallable(selectedRecord.Kind)
+            ? selectedRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
+            : null;
+
+        var kind = nameof(RelationshipKind.Patches);
+        var patches = await _repository.GetCompletedRelationshipsByKindAsync(
+            selection.Run.IndexId, kind, int.MaxValue, cancellationToken);
+        var edges = patches
+            .Where(edge => string.Equals(edge.TargetSymbolId, id, StringComparison.Ordinal) ||
+                (edge.TargetSymbolId is null && PatchTextMatchesMethod(edge.TargetText, selectedRecord?.Signature)))
+            .Select(edge => (edge, "Incoming"))
+            .ToArray();
+        var relationships = await MapRelationshipsAsync(selection, edges, true, cancellationToken, includeGenerated, RelationshipLabelContext.Patches);
+        var (rows, hasMore) = IndexPaging.TakePage(relationships, options.Offset, options.Limit);
+        return new RelationshipQuerySetResult(
+            resolution,
+            rows,
+            bodyStatus,
+            false,
+            "Patch relationships are limited to persisted patch declarations.",
+            relationships.Count,
+            HasMore: hasMore);
+    }
 
     internal async Task<HierarchyQueryResult> HierarchyAsync(
         string selector,
@@ -841,6 +900,34 @@ public sealed class ReferenceModQueryService
         string.Equals(kind, "Calls", StringComparison.Ordinal) ||
         string.Equals(kind, "CallsVirtual", StringComparison.Ordinal) ||
         string.Equals(kind, "Constructs", StringComparison.Ordinal);
+
+    private static bool PatchTextMatchesMethod(string? targetText, string? selectedSignature)
+    {
+        if (targetText is null || selectedSignature is null)
+            return false;
+        if (!targetText.StartsWith(HarmonyPatchReasons.Marker, StringComparison.Ordinal))
+            return false;
+        var rest = targetText[HarmonyPatchReasons.Marker.Length..];
+        var reasonEnd = rest.IndexOf(':');
+        if (reasonEnd < 0)
+            return false;
+        var text = rest[(reasonEnd + 1)..];
+        if (!SymbolNames.TrySplitMember(text, out var textType, out var textTail) ||
+            !SymbolNames.TrySplitMember(selectedSignature, out var selectedType, out var selectedTail))
+        {
+            return false;
+        }
+
+        if (!string.Equals(InteropTypeNames.Normalize(textType), InteropTypeNames.Normalize(selectedType), StringComparison.Ordinal))
+            return false;
+        return string.Equals(MemberNameOf(textTail), MemberNameOf(selectedTail), StringComparison.Ordinal);
+    }
+
+    private static string MemberNameOf(string memberTail)
+    {
+        var end = memberTail.IndexOf('(');
+        return end < 0 ? memberTail : memberTail[..end];
+    }
 
     private static bool IsVisibleCallerCallee(IndexRelationshipRecord edge, RelationshipMode mode, bool includeDelegates) =>
         mode == RelationshipMode.Refs ||

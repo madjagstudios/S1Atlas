@@ -95,7 +95,9 @@ public static class HarmonyPatchReasons
     public const string NonConstantTarget = "non-constant-target";
     public const string UnrecognizedManualShape = "unrecognized-manual-shape";
 
-    public static string Qualify(string reason, string text) => $"unresolved:{reason}:{text}";
+    public const string Marker = "unresolved:";
+
+    public static string Qualify(string reason, string text) => $"{Marker}{reason}:{text}";
 }
 
 /// <summary>

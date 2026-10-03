@@ -546,6 +546,9 @@ internal static class InvestigateSeamCommand
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, string relationshipKind, int limit, CancellationToken cancellationToken) =>
             _inner.GetCompletedRelationshipsByTargetSymbolIdAsync(indexId, symbolId, relationshipKind, limit, cancellationToken);
 
+        public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByKindAsync(string indexId, string relationshipKind, int limit, CancellationToken cancellationToken) =>
+            _inner.GetCompletedRelationshipsByKindAsync(indexId, relationshipKind, limit, cancellationToken);
+
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) =>
             _inner.GetCompletedSourceFilesAsync(indexId, cancellationToken);
 

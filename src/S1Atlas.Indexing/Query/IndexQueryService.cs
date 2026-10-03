@@ -513,6 +513,24 @@ public sealed class IndexQueryService
         int offset = 0) =>
         RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken, includeGenerated: includeGenerated, includeDelegates: includeDelegates, offset: offset);
 
+    public async Task<RelationshipQuerySetResult> PatchesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        var selection = await ResolveAcrossChannelsAsync(selector, options, cancellationToken);
+        if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
+            return new RelationshipQuerySetResult(selection.Resolution, [], null, false, string.Empty);
+        return new RelationshipQuerySetResult(
+            selection.Resolution,
+            [],
+            null,
+            false,
+            "Patches are reference-mod evidence; query with --scope reference --collection <id>.",
+            0);
+    }
+
     public Task<HierarchyQueryResult> OverridesAsync(
         string selector,
         IndexQueryOptions options,

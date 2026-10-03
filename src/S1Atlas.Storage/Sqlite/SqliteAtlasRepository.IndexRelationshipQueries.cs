@@ -150,6 +150,28 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByKindAsync(
+        string indexId,
+        string relationshipKind,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        RelationshipQuerySql.ValidateKind(indexId, relationshipKind);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = RelationshipQuerySql.SelectByKind;
+        RelationshipQuerySql.AddKindParameters(command, indexId, relationshipKind);
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var result = new List<IndexRelationshipRecord>(Math.Min(limit, 256));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadRelationshipQueryRecord(reader));
+        return result;
+    }
+
     private async Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByEndpointAsync(
         string indexId,
         string symbolId,

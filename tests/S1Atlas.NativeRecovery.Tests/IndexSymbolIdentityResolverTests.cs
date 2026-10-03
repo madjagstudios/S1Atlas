@@ -157,6 +157,9 @@ public class IndexSymbolIdentityResolverTests
         public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByTargetSymbolIdAsync(string indexId, string symbolId, string relationshipKind, int limit, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
 
+        public Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByKindAsync(string indexId, string relationshipKind, int limit, CancellationToken cancellationToken) =>
+            throw new NotImplementedException();
+
         public Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken) =>
             throw new NotImplementedException();
 
