@@ -18,10 +18,10 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   `recover-native-body --traversal-budget` to `--native-traversal-budget`,
   `source --limit` to `--candidate-limit` (it caps resolution candidates,
   not result rows), and the `upstream sync <codebase>` positional to the
-  `--codebase` option both upstream subcommands share. An invalid upstream
-  `--codebase` now fails with `InvalidCodebase` on `upstream status` and
-  `upstream sync` instead of the `OperationalFailure` crash shape. All other
-  `--json` error codes are unchanged. Every command and option has a
+  `--codebase` option both upstream subcommands share. An invalid
+  `--codebase` now fails with `InvalidCodebase` on `upstream status`,
+  `upstream sync`, and `diff` instead of the `OperationalFailure` crash
+  shape. All other `--json` error codes are unchanged. Every command and option has a
   description, every leaf `--help` shows an example, and required/dependent
   option rules are enforced at parse time with the same human/`--json`
   triples.

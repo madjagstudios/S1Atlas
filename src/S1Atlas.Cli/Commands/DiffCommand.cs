@@ -48,9 +48,7 @@ internal static class DiffCommand
                 }
                 catch (ArgumentException exception)
                 {
-                    // The action never caught this; CommandExecution reported it
-                    // as OperationalFailure. Preserved byte-identically.
-                    throw new CliValidationException("diff", "OperationalFailure", "S1Atlas failed: " + exception.Message);
+                    throw new CliValidationException("diff", "InvalidCodebase", exception.Message);
                 }
                 var channelRaw = (CliValidation.GetValue(result, channelOption) ?? "installed").ToLowerInvariant();
                 if (channelRaw is "release" or "preview")

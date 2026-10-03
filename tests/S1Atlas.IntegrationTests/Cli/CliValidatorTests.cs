@@ -158,7 +158,7 @@ public sealed class CliValidatorTests
     [InlineData("diff", "diff a b --limit 0 --json", "InvalidLimit", "--limit must be greater than zero.", true)]
     [InlineData("diff", "diff a b --channel release --json", "UnsupportedChannel", "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.", true)]
     [InlineData("diff", "diff a b --channel bogus --json", "InvalidChannel", "Channel must be installed. Release and preview are not supported for diffing.", true)]
-    [InlineData("diff", "diff a b --codebase bogus --json", "OperationalFailure", "S1Atlas failed: Codebase must be schedule-i, s1api, or s1mapi.", false)]
+    [InlineData("diff", "diff a b --codebase bogus --json", "InvalidCodebase", "Codebase must be schedule-i, s1api, or s1mapi.", false)]
     public async Task Operational_option_rules_fail_with_the_stable_json_triple(
         string expectedCommand,
         string joinedArgs,
@@ -182,6 +182,19 @@ public sealed class CliValidatorTests
             Assert.Equal(expectedMessage, message);
         else
             Assert.Contains(expectedMessage, message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Diff_rejects_an_invalid_codebase_on_stderr()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("diff", "a", "b", "--codebase", "bogus");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardOutput);
+        Assert.Contains("Codebase must be schedule-i, s1api, or s1mapi.", result.StandardError, StringComparison.Ordinal);
+        Assert.Contains("Code:    InvalidCodebase", result.StandardError, StringComparison.Ordinal);
     }
 
     [Fact]
