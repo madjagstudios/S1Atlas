@@ -86,7 +86,7 @@ public sealed class NavigationTests
 
         var body = await fixture.GetStringAsync("/search?q=Widget", cancellationToken);
 
-        Assert.Contains("DERIVED: showing 1&ndash;7 of 7 matches.", body);
+        Assert.Contains("DERIVED: showing 1&ndash;13 of 13 matches.", body);
     }
 
     [Fact]
@@ -129,8 +129,8 @@ public sealed class NavigationTests
             $"/diff?from={SyntheticAtlas.BuildIdAValue}&to={SyntheticAtlas.BuildIdBValue}",
             cancellationToken);
 
-        Assert.Contains("System.Void Demo.Widget::CheckPhysics()", body);
-        Assert.Contains("System.Void Demo.Widget::Turbo()", body);
+        Assert.Contains("Demo.Widget::CheckPhysics():System.Void", body);
+        Assert.Contains("Demo.Widget::Turbo():System.Void", body);
         Assert.Contains("— → —", body);
     }
 

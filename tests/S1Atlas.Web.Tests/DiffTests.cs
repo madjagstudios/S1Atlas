@@ -61,7 +61,7 @@ public sealed class DiffTests
             cancellationToken);
 
         Assert.Contains(SyntheticAtlas.TurboQualifiedName, body);
-        Assert.Contains("Demo.Widget.Run", body);
+        Assert.Contains(SyntheticAtlas.RunSelector, body);
         Assert.DoesNotContain("Paged.PagedType01", body);
     }
 
@@ -143,7 +143,7 @@ public sealed class DiffTests
         Assert.Equal("Removed", turbo.GetProperty("classification").GetString());
         Assert.False(turbo.TryGetProperty("symbolId", out _));
         var run = changes.Single(change =>
-            change.GetProperty("qualifiedName").GetString() == "Demo.Widget.Run");
+            change.GetProperty("qualifiedName").GetString() == SyntheticAtlas.RunSelector);
         Assert.Equal(SyntheticAtlas.RunMethodId, run.GetProperty("symbolId").GetString());
     }
 
