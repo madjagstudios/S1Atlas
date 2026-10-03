@@ -772,17 +772,20 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                // The kind filter applies after the fetch, so the fetch must
+                // cover every edge: a capped window would silently drop rows
+                // past the cap and under-report the total.
                 var result = options.Scope == IndexQueryScope.Game
                     ? await _services.IndexQueryService.RefsInIndexAsync(
                         authority.IndexRun!,
                         CodebaseKind.ScheduleI,
                         CodeChannel.Installed,
                         selector,
-                        500,
+                        int.MaxValue,
                         ct)
                     : await _services.FederatedIndexQueryService.RefsAsync(
                         selector,
-                        options with { Limit = 500, Offset = 0 },
+                        options with { Limit = int.MaxValue, Offset = 0 },
                         ct);
                 if (result.Resolution.Status == SymbolResolutionStatus.Resolved)
                 {

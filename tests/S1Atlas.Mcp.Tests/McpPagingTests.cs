@@ -311,6 +311,25 @@ public sealed class McpPagingTests : IClassFixture<SharedHealthyServerFixture>
     }
 
     [Fact]
+    public async Task FindRelatedTypes_LargeWindow_ReportsExactTotalsAcrossPages()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync(includeRelatedTypesWindow: true);
+        var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
+        var cancellationToken = CancellationToken.None;
+
+        var first = await tools.FindRelatedTypesAsync(
+            atlas.TypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 500, cancellationToken, null);
+        Assert.Equal(ToolStatus.Resolved, first.Status);
+        Assert.Equal(502, first.Data!.TotalCount);
+        Assert.Equal(500, first.Data.Relationships.Count);
+        Assert.NotNull(first.Data.NextCursor);
+
+        await WalkAsync(
+            cursor => tools.FindRelatedTypesAsync(atlas.TypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 500, cancellationToken, cursor),
+            data => (data.Relationships.Select(edge => edge.RelationshipId).ToArray(), data.TotalCount, data.NextCursor));
+    }
+
+    [Fact]
     public async Task SingleRowHierarchies_ForgedSecondPage_ReturnsEmptyResolved()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
