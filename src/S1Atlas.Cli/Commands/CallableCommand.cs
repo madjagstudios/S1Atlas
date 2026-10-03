@@ -18,6 +18,7 @@ internal static class CallableCommand
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
             "callable",
+            "Show the callable surface of a resolved symbol.",
             service,
             authorityResolver,
             repository,

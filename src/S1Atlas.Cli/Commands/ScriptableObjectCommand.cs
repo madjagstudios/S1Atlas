@@ -9,7 +9,7 @@ internal static class ScriptableObjectCommand
 {
     public static Command Create(SceneQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var selector = new Argument<string>("asset-id|exact-name|namespace.class"); var json = CommandOutput.CreateJsonOption();
+        var selector = new Argument<string>("asset-id|exact-name|namespace.class") { Description = "Asset ID, exact asset name (m_Name), or exact Namespace.Class." }; var json = CommandOutput.CreateJsonOption();
         var command = new Command("scriptable-object", "Query one indexed scriptable asset (ScriptableObject) and its decoded fields."); command.Arguments.Add(selector); command.Options.Add(json);
         command.SetAction(result => SceneCommandSupport.Run("scriptable-object", result.GetValue(json), output, error, cancellationToken, repository, () =>
         {

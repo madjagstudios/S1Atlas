@@ -19,6 +19,7 @@ internal static class CallSitesCommand
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
             "call-sites",
+            "Find static call-site edges for a resolved target symbol or raw target text.",
             service,
             authorityResolver,
             repository,

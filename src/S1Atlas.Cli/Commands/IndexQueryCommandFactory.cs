@@ -18,6 +18,7 @@ internal static class IndexQueryCommandFactory
 
     public static Command Create(
         string name,
+        string description,
         IndexQueryService service,
         InstalledBuildAuthorityResolver authorityResolver,
         IAtlasRepository repository,
@@ -57,7 +58,7 @@ internal static class IndexQueryCommandFactory
         var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
         var includeGeneratedOption = CreateIncludeGeneratedOption();
         var includeDelegatesOption = CreateIncludeDelegatesOption();
-        var command = new Command(name, "Query the normalized code index.");
+        var command = new Command(name, description);
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);

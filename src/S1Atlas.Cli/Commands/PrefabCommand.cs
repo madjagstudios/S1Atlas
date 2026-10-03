@@ -9,7 +9,7 @@ internal static class PrefabCommand
 {
     public static Command Create(SceneQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var selector = new Argument<string>("prefab-id|exact-name"); var objects = new Option<bool>("--objects"); var components = new Option<bool>("--components"); var refs = new Option<bool>("--refs"); var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
+        var selector = new Argument<string>("prefab-id|exact-name") { Description = "Prefab ID or exact prefab name." }; var objects = new Option<bool>("--objects") { Description = "Include the prefab's root game objects." }; var components = new Option<bool>("--components") { Description = "Include components." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
         var command = new Command("prefab", "Query one proven prefab document."); command.Arguments.Add(selector); command.Options.Add(objects); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(json);
         command.SetAction(result => SceneCommandSupport.Run("prefab", result.GetValue(json), output, error, cancellationToken, repository, () =>
         {

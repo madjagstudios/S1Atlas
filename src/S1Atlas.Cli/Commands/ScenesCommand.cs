@@ -10,7 +10,7 @@ internal static class ScenesCommand
 {
     public static Command Create(SceneQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var build = new Option<string?>("--build"); var snapshot = new Option<string?>("--snapshot"); var kind = new Option<string?>("--kind"); var query = new Option<string?>("--query");
+        var build = new Option<string?>("--build") { Description = "Build ID; omit for current." }; var snapshot = new Option<string?>("--snapshot") { Description = "Optional completed scene snapshot ID for the selected build." }; var kind = new Option<string?>("--kind") { Description = "Optional document kind filter: scene or prefab." }; var query = new Option<string?>("--query") { Description = "Optional case-insensitive name fragment." };
         var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
         var command = new Command("scenes", "List indexed scene and proven prefab documents.");
         command.Options.Add(build); command.Options.Add(snapshot); command.Options.Add(kind); command.Options.Add(query); command.Options.Add(limit); command.Options.Add(json);

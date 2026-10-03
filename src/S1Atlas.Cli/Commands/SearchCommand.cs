@@ -10,7 +10,7 @@ namespace S1Atlas.Cli.Commands;
 internal static class SearchCommand
 {
     public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
-        IndexQueryCommandFactory.Create("search", service, authorityResolver, repository, output, error, cancellationToken,
+        IndexQueryCommandFactory.Create("search", "Query the normalized code index across symbols, types, and methods.", service, authorityResolver, repository, output, error, cancellationToken,
         executeWithGenerated: async (query, options, ct, includeGenerated) =>
         {
             var result = options.Scope == IndexQueryScope.Game
