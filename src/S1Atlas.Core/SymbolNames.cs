@@ -6,6 +6,27 @@ namespace S1Atlas.Core;
 public static class SymbolNames
 {
     /// <summary>
+    /// Splits a member name of the form "Type::Member..." into its declaring type
+    /// and member tail. Returns false when the name carries no declaring type.
+    /// </summary>
+    public static bool TrySplitMember(string qualifiedName, out string typeName, out string memberTail)
+    {
+        ArgumentNullException.ThrowIfNull(qualifiedName);
+
+        var separator = qualifiedName.IndexOf("::", StringComparison.Ordinal);
+        if (separator < 1)
+        {
+            typeName = string.Empty;
+            memberTail = string.Empty;
+            return false;
+        }
+
+        typeName = qualifiedName[..separator];
+        memberTail = qualifiedName[(separator + 2)..];
+        return true;
+    }
+
+    /// <summary>
     /// Returns the type or member identifier from a qualified name. Members take
     /// the text after the last "::" cut at the first '(' or ':'; typed field,
     /// property, and event shapes carry "Type Name" there, so the name after the

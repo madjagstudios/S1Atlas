@@ -17,7 +17,8 @@ public enum RelationshipKind
     Overrides,
     ImplementsMethod,
     ReferencesMethod,
-    TakesFieldAddress
+    TakesFieldAddress,
+    Patches
 }
 
 public enum RelationshipEvidence

@@ -298,6 +298,12 @@ only those two evidence arrays are populated. The CLI reports resolved research
 as `success: true` with exit code `0`; MCP reports the same packet with
 `status: resolved`.
 
+With a reference collection in scope, the detailed packet also carries a
+`Patches` evidence section counting the reference-mod Harmony patches that
+target the resolved symbol, plus a prior-art claim when at least one patch
+exists. Game scope reports an empty section since patches live in reference
+collections.
+
 CLI JSON has one intentional adapter-specific field: CLI-only
 `referenceCollectionBaseProvenance`. It is `null` for game-only results. For a
 reference result it records the installed Schedule I build, extraction, and
@@ -638,7 +644,7 @@ s1atlas reference collections list --json
 Reference indexing is an explicit offline CLI operation. Query commands accept
 `--scope game|reference|all` and `--collection <name-or-id>` for `search`,
 `source`, `refs`, `callers`, `callees`, `call-sites`, `field-refs`,
-`overrides`, `overridden-by`, and `derived`:
+`overrides`, `overridden-by`, `derived`, and `patched-by`:
 
 ```powershell
 s1atlas search "ModEntry" --scope reference --collection qol
@@ -648,6 +654,7 @@ s1atlas callees "ModEntry.Run" --scope reference --collection qol
 s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
 s1atlas field-refs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
 s1atlas refs "ModEntry.Run" --scope reference --collection qol
+s1atlas patched-by "Game.Target.Run" --scope reference --collection qol
 ```
 
 The default scope is `game`, preserving the Schedule I behavior. `reference`
@@ -661,6 +668,20 @@ use that recorded base index; an explicit `buildId` that differs from the
 collection base is rejected deterministically.
 Source and indexed document content remain bounded and are returned only after
 the recorded content hash is checked.
+
+`patched-by` answers which reference mods patch one game method. Each row is a
+patch edge from a patch method to the game method: `generatedDetail` names the
+patch kind (`Prefix`, `Postfix`, `Transpiler`, or `Finalizer`), `attribute`
+labels declared `[HarmonyPatch]` patches, and `DERIVED` labels constant manual
+`harmony.Patch(AccessTools.Method(...))` calls. Unlike the other reference
+queries, `patched-by` falls back to the recorded game index when the selector
+matches no reference symbol, since patch targets are game methods by
+definition. Resolved rows carry the game target; unresolved rows carry the
+`unresolved:<reason>:` target text instead, and rows whose text names the
+queried method are included. Patch targets written against the `Il2Cpp`
+interop view resolve to the same game symbols. Reference collections indexed
+before this version have no patch edges; re-run
+`s1atlas reference index <manifest>` to rebuild with patches.
 
 Body recovery, callable-surface evidence, and reference evidence are orthogonal.
 Body recovery describes whether decompiled text is
@@ -757,15 +778,16 @@ tools:
 | Area | Tools |
 |---|---|
 | Symbol search | `search_symbols`, `get_type`, `get_method`, `get_source`, `get_callable_surface` |
-| Relationships | `find_callers`, `find_callees`, `find_call_sites`, `find_field_references`, `find_references`, `find_related_types` |
+| Relationships | `find_callers`, `find_callees`, `find_call_sites`, `find_field_references`, `find_patches`, `find_references`, `find_related_types` |
 | Hierarchy | `find_overrides`, `find_overriders`, `find_derived_types` |
 | Scenes | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
 | Builds and collections | `list_builds`, `get_environment`, `list_api_indexes`, `list_reference_collections` |
 | Analysis | `compare_symbol`, `investigate_seam`, `plan_runtime_proof` |
 
-Thirteen code tools take an optional `codebase` (`scheduleI`, `s1api`, or
+Fourteen code tools take an optional `codebase` (`scheduleI`, `s1api`, or
 `s1mapi`; default `scheduleI`) and an optional `channel` (default
-`Installed`); Schedule I has only the Installed channel.
+`Installed`); Schedule I has only the Installed channel. `find_patches`
+rejects `s1api` and `s1mapi` since patches only target the game index.
 `get_callable_surface` is game-only and takes neither. Fixed vocabularies
 are advertised as schema enums: `codebase`,
 `channel`, `scope` (`Game`, `Reference`, `All`), and the symbol-kind and
@@ -773,7 +795,7 @@ scene-kind filters. Binding is case-insensitive, and an invalid enum value
 fails with a readable error naming the parameter and the allowed values.
 
 `search_symbols`, `get_source`, `find_callers`, `find_callees`,
-`find_call_sites`, `find_field_references`, `find_references`,
+`find_call_sites`, `find_field_references`, `find_patches`, `find_references`,
 `find_related_types`, `find_overrides`, `find_overriders`, and
 `find_derived_types` accept optional `scope` and `collection` arguments.
 `scope` defaults to `Game`; `Reference` and `All` require `collection`, while
@@ -787,7 +809,8 @@ exact/derived split totals, while `exact: true` returns only statically
 bound callers. The relationship and search tools also accept
 `includeGenerated` (default `false`): by default generated bodies are
 credited to the declaring method with an `in ...` detail, while `true`
-shows the raw generated rows. `find_callers` and `find_callees` accept
+shows the raw generated rows. `find_patches` takes no `includeGenerated`
+since patch rows carry no generated sources. `find_callers` and `find_callees` accept
 `includeDelegates` (default `false`): by default delegate creation is
 excluded from callers/callees, while `true` includes it labeled `delegate
 created (not called)`. Slots with no resolvable indexed symbol contribute no
@@ -797,12 +820,13 @@ metadata. `investigate_seam` accepts the same selector/question/limit options as
 the CLI and returns the same ordered candidate, warning, unknown-dimension, and
 next-action payload fields.
 
-The nine `find_*` tools and the four `list_*` tools page with an opaque
+The ten `find_*` tools and the four `list_*` tools page with an opaque
 `cursor`. Responses carry `nextCursor` only when more rows remain; pass it
 back with otherwise identical arguments to fetch the next page. Cursors are
 bound to the tool, the effective arguments, the limit, and the resolved
 build/index, so reuse with different arguments or after a re-index fails
-with `invalid_cursor`. `search_symbols` stays limit-only and takes no
+with `invalid_cursor`. `find_patches` cursors additionally bind the resolved
+reference index. `search_symbols` stays limit-only and takes no
 cursor. Merged `all`-scope totals are exact when both sides fit the page
 window and null when truncated.
 
@@ -1098,6 +1122,7 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas open <selector> [--port]` | Open one resolved symbol in the local serve web app. |
 | `s1atlas overridden-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--json]` | Show the methods that override or implement a method, transitively. |
 | `s1atlas overrides <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Show the base and interface slots a method fills, up to the root. |
+| `s1atlas patched-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Find reference-mod Harmony patches targeting one game method, including unresolved patches that name the method. |
 | `s1atlas prefab <prefab-id|exact-name> [--objects] [--components] [--refs] [--limit] [--json]` | Query one proven prefab document. |
 | `s1atlas recover-native-body [--symbol-id] [--native-traversal-budget] [--build] [--json]` | Recover native method bodies for the selected symbols and persist the result. |
 | `s1atlas reference collections list [--json]` | List completed local reference-mod collections. |

@@ -58,6 +58,28 @@ public sealed class ReferenceRelationshipResolverTests
     }
 
     [Fact]
+    public void Unparsable_patch_targets_are_reported_not_dropped()
+    {
+        var snapshotId = "reference-snapshot";
+        var modSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
+        var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        {
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = modSymbol
+        };
+        var decompilation = new ManagedDecompilation("qol.dll", "", [new ManagedTypeFacts(
+            "Mods.Entry", "Mods", "Entry", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [], [], "System.Void", Patches: [new ManagedPatchFact(HarmonyPatchKind.Prefix, "NoSeparatorHere", null, RelationshipEvidence.Metadata)])])]);
+
+        var relationships = new ReferenceRelationshipResolver().Resolve([new ReferenceModDecompilation("qol", decompilation)], lookup);
+
+        var edge = Assert.Single(relationships, relationship => relationship.Kind == "Patches");
+        Assert.Equal(modSymbol.SymbolId, edge.SourceSymbolId);
+        Assert.Null(edge.TargetSymbolId);
+        Assert.Equal("unresolved:unparsable-target:NoSeparatorHere", edge.TargetText);
+    }
+
+    [Fact]
     public void Reference_resolver_maps_new_kinds()
     {
         var snapshotId = "reference-snapshot";

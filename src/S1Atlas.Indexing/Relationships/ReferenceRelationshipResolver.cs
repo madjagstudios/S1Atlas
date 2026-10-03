@@ -14,6 +14,21 @@ public sealed class ReferenceRelationshipResolver
         return (origin, identity.Type, identity.Name, identity.Arity, identity.Signature);
     }
 
+    private static void AddMemberCandidate<TKey>(
+        Dictionary<TKey, List<IndexSymbolRecord>> lookup,
+        TKey key,
+        IndexSymbolRecord symbol)
+        where TKey : notnull
+    {
+        if (!lookup.TryGetValue(key, out var candidates))
+        {
+            candidates = [];
+            lookup[key] = candidates;
+        }
+
+        candidates.Add(symbol);
+    }
+
     private static string SourceKeyFor(ManagedMemberKind kind, string signature)
     {
         var symbolKind = kind switch
@@ -64,6 +79,9 @@ public sealed class ReferenceRelationshipResolver
         ArgumentNullException.ThrowIfNull(mods);
         ArgumentNullException.ThrowIfNull(symbols);
         var targetLookup = new Dictionary<(string Type, string Name, int Arity, string Signature), List<IndexSymbolRecord>>();
+        var gameMembers = new Dictionary<(string Type, string Name), List<IndexSymbolRecord>>();
+        var gameTypes = new HashSet<string>(StringComparer.Ordinal);
+        var modMembers = new Dictionary<(string Origin, string Type, string Name), List<IndexSymbolRecord>>();
         foreach (var pair in symbols)
         {
             var targetKey = (pair.Key.Type, pair.Key.Name, pair.Key.Arity, pair.Key.Signature);
@@ -74,6 +92,15 @@ public sealed class ReferenceRelationshipResolver
             }
 
             candidates.Add(pair.Value);
+            if (string.Equals(pair.Key.Origin, PatchTargetResolver.GameOrigin, StringComparison.Ordinal))
+            {
+                AddMemberCandidate(gameMembers, (InteropTypeNames.Normalize(pair.Key.Type), pair.Key.Name), pair.Value);
+                gameTypes.Add(InteropTypeNames.Normalize(pair.Key.Type));
+            }
+            else
+            {
+                AddMemberCandidate(modMembers, (pair.Key.Origin, pair.Key.Type, pair.Key.Name), pair.Value);
+            }
         }
 
         var result = new List<IndexRelationshipRecord>();
@@ -99,6 +126,13 @@ public sealed class ReferenceRelationshipResolver
                     }
 
                     var detail = rawSourceId is not null || mapping?.DeclaringKey is null ? mapping?.Detail : null;
+
+                    foreach (var patch in member.PatchesOrEmpty)
+                    {
+                        var patchEdge = PatchTargetResolver.ResolvePatchEdge(patch, source, mod.ModId, gameMembers, gameTypes, modMembers);
+                        if (patchEdge is not null)
+                            result.Add(patchEdge);
+                    }
 
                     foreach (var reference in member.References)
                     {

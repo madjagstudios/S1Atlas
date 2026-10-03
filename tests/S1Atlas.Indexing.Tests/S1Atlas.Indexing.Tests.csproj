@@ -36,4 +36,17 @@
   <Target Name="CopyParityFixture" AfterTargets="Build">
     <Copy SourceFiles="@(ParityFixtureAssembly)" DestinationFolder="$(OutDir)parity-fixture" SkipUnchangedFiles="true" />
   </Target>
+  <!-- The harmony fixtures are indexed from their own subfolder and never loaded. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Fixtures\S1Atlas.HarmonyGameFixture\S1Atlas.HarmonyGameFixture.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="HarmonyGameFixtureAssembly" />
+    <ProjectReference Include="..\Fixtures\S1Atlas.HarmonyModFixture\S1Atlas.HarmonyModFixture.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="HarmonyModFixtureAssembly" />
+  </ItemGroup>
+  <Target Name="CopyHarmonyFixtures" AfterTargets="Build">
+    <Copy SourceFiles="@(HarmonyGameFixtureAssembly)" DestinationFolder="$(OutDir)harmony-fixture" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(HarmonyModFixtureAssembly)" DestinationFolder="$(OutDir)harmony-fixture" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

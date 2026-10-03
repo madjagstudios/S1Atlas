@@ -195,6 +195,11 @@ public interface IIndexRepository
         string relationshipKind,
         int limit,
         CancellationToken cancellationToken);
+    Task<IReadOnlyList<IndexRelationshipRecord>> GetCompletedRelationshipsByKindAsync(
+        string indexId,
+        string relationshipKind,
+        int limit,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSourceFileRecord>> GetCompletedSourceFilesAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSourceLocationRecord>> GetCompletedSourceLocationsAsync(string indexId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexFingerprintRecord>> GetCompletedFingerprintsAsync(string indexId, CancellationToken cancellationToken);
