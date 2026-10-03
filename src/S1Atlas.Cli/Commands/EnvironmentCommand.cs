@@ -15,7 +15,7 @@ internal static class EnvironmentCommand
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(
             "env",
-            "Show the current game and modding dependency environment.");
+            CliExamples.With("Show the current game and modding dependency environment.", "s1atlas env --json"));
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

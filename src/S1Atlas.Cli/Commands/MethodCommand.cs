@@ -10,7 +10,7 @@ namespace S1Atlas.Cli.Commands;
 internal static class MethodCommand
 {
     public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
-        IndexQueryCommandFactory.Create("method", "Resolve and inspect indexed method definitions.", service, authorityResolver, repository, output, error, cancellationToken,
+        IndexQueryCommandFactory.Create("method", CliExamples.With("Resolve and inspect indexed method definitions.", "s1atlas method \"Demo.Widget::Run()\" --json"), service, authorityResolver, repository, output, error, cancellationToken,
         executeWithGenerated: async (query, options, ct, includeGenerated) =>
         {
             if (options.Scope == IndexQueryScope.Game)

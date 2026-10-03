@@ -23,7 +23,7 @@ internal static class ExtractionsShowCommand
 
         var command = new Command(
             "show",
-            "Show a validated extraction (full integrity) or an attempt's facts.");
+            CliExamples.With("Show a validated extraction (full integrity) or an attempt's facts.", "s1atlas extractions show <extraction-id>"));
         command.Arguments.Add(idArgument);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>

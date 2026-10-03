@@ -22,7 +22,7 @@ internal static class ExtractionsPromoteCommand
 
         var command = new Command(
             "promote",
-            "Explicitly make a validated extraction the preferred output for its build.");
+            CliExamples.With("Explicitly make a validated extraction the preferred output for its build.", "s1atlas extractions promote <extraction-id>"));
         command.Arguments.Add(idArgument);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>

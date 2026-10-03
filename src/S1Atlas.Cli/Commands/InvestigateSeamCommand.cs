@@ -61,7 +61,7 @@ internal static class InvestigateSeamCommand
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("investigate-seam", "Investigate whether a resolved symbol is a supportable ownership seam.");
+        var command = new Command("investigate-seam", CliExamples.With("Investigate whether a resolved symbol is a supportable ownership seam.", "s1atlas investigate-seam \"Demo.Widget\" --question \"Who owns it?\""));
         command.Arguments.Add(selectorArgument);
         command.Options.Add(questionOption);
         command.Options.Add(codebaseOption);

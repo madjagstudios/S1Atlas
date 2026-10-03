@@ -29,7 +29,7 @@ internal static class OpenCommand
             Description = "The loopback port serve is listening on.",
             DefaultValueFactory = _ => ServeOptions.DefaultPort
         };
-        var command = new Command("open", "Open one resolved symbol in the local serve web app.");
+        var command = new Command("open", CliExamples.With("Open one resolved symbol in the local serve web app.", "s1atlas open \"Demo.Widget\""));
         command.Arguments.Add(selectorArgument);
         command.Options.Add(portOption);
         command.SetAction(parseResult =>

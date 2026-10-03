@@ -11,7 +11,7 @@ internal static class UpstreamSyncCommand
         var codebaseOption = new Option<string?>("--codebase") { Description = "s1api or s1mapi; defaults to s1api." };
         var commitOption = new Option<string>("--commit") { Description = "The exact 40-character commit SHA to cache." };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("sync", "Fetch and cache one exact upstream commit.");
+        var command = new Command("sync", CliExamples.With("Fetch and cache one exact upstream commit.", "s1atlas upstream sync --codebase s1api --commit <sha>"));
         command.Options.Add(codebaseOption); command.Options.Add(commitOption); command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

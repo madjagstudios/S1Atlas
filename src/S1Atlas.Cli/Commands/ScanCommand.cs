@@ -29,7 +29,7 @@ internal static class ScanCommand
 
         var command = new Command(
             "scan",
-            "Discover the local Schedule I environment and save a build snapshot.");
+            CliExamples.With("Discover the local Schedule I environment and save a build snapshot.", "s1atlas scan"));
         command.Options.Add(gamePathOption);
         command.Options.Add(performanceOption);
         command.SetAction(parseResult =>

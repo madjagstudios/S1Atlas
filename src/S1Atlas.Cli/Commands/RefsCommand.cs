@@ -10,7 +10,7 @@ namespace S1Atlas.Cli.Commands;
 internal static class RefsCommand
 {
     public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
-        IndexQueryCommandFactory.Create("refs", "List indexed references to a resolved symbol.", service, authorityResolver, repository, output, error, cancellationToken,
+        IndexQueryCommandFactory.Create("refs", CliExamples.With("List indexed references to a resolved symbol.", "s1atlas refs \"Demo.Widget::count\" --json"), service, authorityResolver, repository, output, error, cancellationToken,
         executeWithGenerated: async (query, options, ct, includeGenerated) =>
         {
             var result = options.Scope == IndexQueryScope.Game

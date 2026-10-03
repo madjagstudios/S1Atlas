@@ -15,7 +15,7 @@ internal static class BuildsCommand
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(
             "builds",
-            "List all indexed Schedule I builds.");
+            CliExamples.With("List all indexed Schedule I builds.", "s1atlas builds --json"));
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

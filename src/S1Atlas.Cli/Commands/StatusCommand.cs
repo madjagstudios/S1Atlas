@@ -17,7 +17,7 @@ internal static class StatusCommand
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(
             "status",
-            "Show the current Atlas build status.");
+            CliExamples.With("Show the current Atlas build status.", "s1atlas status --json"));
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

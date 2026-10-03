@@ -19,7 +19,7 @@ internal static class CallSitesCommand
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
             "call-sites",
-            "Find static call-site edges for a resolved target symbol or raw target text.",
+            CliExamples.With("Find static call-site edges for a resolved target symbol or raw target text.", "s1atlas call-sites \"Demo.Widget::Run()\" --limit 10"),
             service,
             authorityResolver,
             repository,

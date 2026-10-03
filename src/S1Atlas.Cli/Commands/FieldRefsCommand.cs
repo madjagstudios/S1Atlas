@@ -35,7 +35,7 @@ internal static class FieldRefsCommand
         var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("field-refs", "Find field read/write relationships for one resolved symbol.");
+        var command = new Command("field-refs", CliExamples.With("Find field read/write relationships for one resolved symbol.", "s1atlas field-refs \"Demo.Widget::count\" --writers"));
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);

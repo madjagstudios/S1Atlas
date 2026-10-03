@@ -21,7 +21,7 @@ internal static class ServeCommand
         {
             Description = "Open the default browser to the server URL once it is listening."
         };
-        var command = new Command("serve", "Start the local read-only web app on loopback.");
+        var command = new Command("serve", CliExamples.With("Start the local read-only web app on loopback.", "s1atlas serve --port 5217"));
         command.Options.Add(portOption);
         command.Options.Add(openOption);
         command.SetAction(parseResult => ServeRunner.RunAsync(

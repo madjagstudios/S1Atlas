@@ -26,7 +26,7 @@ internal static class ExtractionsListCommand
 
         var command = new Command(
             "list",
-            "List validated extractions newest first, optionally with failed attempts.");
+            CliExamples.With("List validated extractions newest first, optionally with failed attempts.", "s1atlas extractions list --include-failed"));
         command.Options.Add(buildOption);
         command.Options.Add(includeFailedOption);
         command.Options.Add(jsonOption);

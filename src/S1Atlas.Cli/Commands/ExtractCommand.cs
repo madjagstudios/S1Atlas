@@ -66,7 +66,7 @@ internal static class ExtractCommand
 
         var command = new Command(
             "extract",
-            "Extract, validate, and promote an authoritative reconstructed assembly set.");
+            CliExamples.With("Extract, validate, and promote an authoritative reconstructed assembly set.", "s1atlas extract --retry"));
         command.Options.Add(buildOption);
         command.Options.Add(gamePathOption);
         command.Options.Add(cpp2IlPathOption);

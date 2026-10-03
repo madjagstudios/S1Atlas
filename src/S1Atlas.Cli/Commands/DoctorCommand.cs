@@ -14,7 +14,7 @@ internal static class DoctorCommand
         CancellationToken cancellationToken)
     {
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("doctor", "Check atlas pipeline readiness.");
+        var command = new Command("doctor", CliExamples.With("Check atlas pipeline readiness.", "s1atlas doctor"));
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

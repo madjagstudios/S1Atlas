@@ -36,7 +36,7 @@ internal static class CallersCommand
 
         var command = new Command(
             "callers",
-            "Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations.");
+            CliExamples.With("Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations.", "s1atlas callers \"Demo.Widget::Run()\" --exact"));
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);

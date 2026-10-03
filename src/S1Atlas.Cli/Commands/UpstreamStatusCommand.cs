@@ -11,7 +11,7 @@ internal static class UpstreamStatusCommand
     {
         var codebaseOption = new Option<string>("--codebase") { Description = "s1api or s1mapi." };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("status", "Show cached upstream status without network access.");
+        var command = new Command("status", CliExamples.With("Show cached upstream status without network access.", "s1atlas upstream status --codebase s1api"));
         command.Options.Add(codebaseOption); command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

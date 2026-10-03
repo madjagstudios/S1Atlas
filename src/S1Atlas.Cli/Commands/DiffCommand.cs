@@ -27,7 +27,7 @@ internal static class DiffCommand
         var limitOption = new Option<int>("--limit") { Description = "Maximum changed symbols to list.", DefaultValueFactory = _ => 50 };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("diff", "Compare two indexed builds and report per-symbol changes.");
+        var command = new Command("diff", CliExamples.With("Compare two indexed builds and report per-symbol changes.", "s1atlas diff <id-a> <id-b> --json"));
         command.Arguments.Add(idAArgument);
         command.Arguments.Add(idBArgument);
         command.Options.Add(codebaseOption);

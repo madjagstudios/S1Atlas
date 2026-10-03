@@ -55,7 +55,7 @@ internal static class SourceCommand
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("source", "Show integrity-checked source for one resolved symbol.");
+        var command = new Command("source", CliExamples.With("Show integrity-checked source for one resolved symbol.", "s1atlas source \"Demo.Widget::Run()\" --context 3"));
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);

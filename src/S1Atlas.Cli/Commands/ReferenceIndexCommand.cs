@@ -24,7 +24,7 @@ internal static class ReferenceIndexCommand
         var manifestArgument = new Argument<string>("manifest") { Description = "A local reference-mod collection manifest." };
         var forceOption = new Option<bool>("--force") { Description = "Rebuild a completed reference index as a new candidate." };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("index", "Build a local reference-mod index.");
+        var command = new Command("index", CliExamples.With("Build a local reference-mod index.", "s1atlas reference index <manifest-path>"));
         command.Arguments.Add(manifestArgument);
         command.Options.Add(forceOption);
         command.Options.Add(jsonOption);

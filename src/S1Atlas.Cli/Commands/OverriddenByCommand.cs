@@ -19,7 +19,7 @@ internal static class OverriddenByCommand
         CancellationToken cancellationToken) =>
         HierarchyCommandRunner.Create(
             "overridden-by",
-            "Show the methods that override or implement a method, transitively.",
+            CliExamples.With("Show the methods that override or implement a method, transitively.", "s1atlas overridden-by \"Demo.Widget::Run()\" --json"),
             true,
             false,
             service,

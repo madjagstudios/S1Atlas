@@ -30,8 +30,7 @@ internal static class ExtractionsCleanupCommand
 
         var command = new Command(
             "cleanup",
-            "Preview or delete only proven Atlas-owned, age-eligible failure and " +
-            "staging data. Preview is the default.");
+            CliExamples.With("Preview or delete only proven Atlas-owned, age-eligible failure and staging data. Preview is the default.", "s1atlas extractions cleanup --older-than 7d"));
         command.Options.Add(olderThanOption);
         command.Options.Add(applyOption);
         command.Options.Add(jsonOption);

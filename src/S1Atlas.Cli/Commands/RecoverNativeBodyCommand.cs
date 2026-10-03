@@ -39,7 +39,7 @@ internal static class RecoverNativeBodyCommand
 
         var command = new Command(
             "recover-native-body",
-            "Recover native method bodies for the selected symbols and persist the result.");
+            CliExamples.With("Recover native method bodies for the selected symbols and persist the result.", "s1atlas recover-native-body --symbol-id <id>"));
         command.Options.Add(symbolIdOption);
         command.Options.Add(traversalBudgetOption);
         command.Options.Add(buildOption);

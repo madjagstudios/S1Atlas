@@ -35,7 +35,7 @@ internal static class IndexCommand
             Description = "Write performance diagnostics JSON to standard error."
         };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("index", "Build the installed Schedule I source and symbol index.");
+        var command = new Command("index", CliExamples.With("Build the installed Schedule I source and symbol index.", "s1atlas index --force"));
         command.Options.Add(forceOption);
         command.Options.Add(sceneOption);
         command.Options.Add(buildOption);

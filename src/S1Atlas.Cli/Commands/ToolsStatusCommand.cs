@@ -23,7 +23,7 @@ internal static class ToolsStatusCommand
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(
             "status",
-            "Inspect managed tool installations without network access.");
+            CliExamples.With("Inspect managed tool installations without network access.", "s1atlas tools status cpp2il"));
         command.Arguments.Add(toolIdArgument);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>

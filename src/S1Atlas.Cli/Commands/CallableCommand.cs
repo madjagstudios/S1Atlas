@@ -18,7 +18,7 @@ internal static class CallableCommand
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
             "callable",
-            "Show the callable surface of a resolved symbol.",
+            CliExamples.With("Show the callable surface of a resolved symbol.", "s1atlas callable \"Demo.Widget\" --json"),
             service,
             authorityResolver,
             repository,

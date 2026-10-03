@@ -12,7 +12,7 @@ internal static class ComponentCommand
     public static Command Create(SceneQueryService service, IndexQueryService indexQueries, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
         var selector = new Argument<string>("component-id|exact-type-selector") { Description = "Component ID or exact component type." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var code = new Option<bool>("--code") { Description = "Include the exact resolved code symbol for the component type." }; var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
-        var command = new Command("component", "Query one indexed component."); command.Arguments.Add(selector); command.Options.Add(refs); command.Options.Add(code); command.Options.Add(limit); command.Options.Add(json);
+        var command = new Command("component", CliExamples.With("Query one indexed component.", "s1atlas component <id> --code")); command.Arguments.Add(selector); command.Options.Add(refs); command.Options.Add(code); command.Options.Add(limit); command.Options.Add(json);
         command.SetAction(result => SceneCommandSupport.Run("component", result.GetValue(json), output, error, cancellationToken, repository, () =>
         {
             if (result.GetValue(limit) <= 0) return new CommandOutput("component", result.GetValue(json), output, error).Failure(1, "InvalidLimit", "--limit must be greater than zero.");
