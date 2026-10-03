@@ -90,176 +90,176 @@ internal static class IndexCommand
         return CommandExecution.Run(
             () =>
             {
-                    using (performance?.Measure("repository.initialize"))
-                    {
-                        repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    }
+                using (performance?.Measure("repository.initialize"))
+                {
+                    repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
+                }
 
-                    using var workflowPhase = performance?.Measure("index.workflow");
-                    var sceneIndexRequested = options.Scene;
-                    var requestedBuild = options.Build;
-                    var requestedCodebase = options.Codebase;
-                    var requestedChannel = options.Channel;
-                    var requestedCommit = options.Commit;
-                    var requestedInteropPath = options.InteropPath;
-                    if (requestedInteropPath is not null &&
-                        (sceneIndexRequested || requestedBuild is not null || requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidOptionCombination",
-                            "--interop-path is valid only for the default installed Schedule I code index.");
-                    }
-                    if (sceneIndexRequested && (requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidOptionCombination",
-                            "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.");
-                    }
-                    if (!sceneIndexRequested && requestedBuild is not null)
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidOptionCombination",
-                            "--build is valid only with --scene.");
-                    }
+                using var workflowPhase = performance?.Measure("index.workflow");
+                var sceneIndexRequested = options.Scene;
+                var requestedBuild = options.Build;
+                var requestedCodebase = options.Codebase;
+                var requestedChannel = options.Channel;
+                var requestedCommit = options.Commit;
+                var requestedInteropPath = options.InteropPath;
+                if (requestedInteropPath is not null &&
+                    (sceneIndexRequested || requestedBuild is not null || requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
+                {
+                    return commandOutput.Failure(
+                        1,
+                        "InvalidOptionCombination",
+                        "--interop-path is valid only for the default installed Schedule I code index.");
+                }
+                if (sceneIndexRequested && (requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
+                {
+                    return commandOutput.Failure(
+                        1,
+                        "InvalidOptionCombination",
+                        "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.");
+                }
+                if (!sceneIndexRequested && requestedBuild is not null)
+                {
+                    return commandOutput.Failure(
+                        1,
+                        "InvalidOptionCombination",
+                        "--build is valid only with --scene.");
+                }
 
-                    if (sceneIndexRequested)
+                if (sceneIndexRequested)
+                {
+                    var sceneBuildId = requestedBuild ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
+                    if (sceneBuildId is null)
+                        return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
+                    SceneIndexWorkflowResult sceneResult;
+                    try
                     {
-                        var sceneBuildId = requestedBuild ?? repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
-                        if (sceneBuildId is null)
-                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
-                        SceneIndexWorkflowResult sceneResult;
+                        sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, options.Force, cancellationToken).GetAwaiter().GetResult();
+                    }
+                    catch (InvalidDataException exception)
+                    {
+                        return commandOutput.Failure(1, "SceneInputIntegrityFailure", exception.Message);
+                    }
+                    catch (SceneIndexFailureException exception)
+                    {
+                        return commandOutput.Failure(1, exception.Status.ToString(), exception.Message);
+                    }
+                    if (performance is not null)
+                    {
+                        performance.SetCounter("scene.containers", sceneResult.ContainerCount);
+                        performance.SetCounter("scene.documents", sceneResult.SceneCount);
+                        performance.SetCounter("scene.gameObjects", sceneResult.GameObjectCount);
+                        performance.SetCounter("scene.components", sceneResult.ComponentCount);
+                        performance.SetCounter("scene.references", sceneResult.ReferenceCount);
+                        performance.SetCounter("index.reused", sceneResult.Reused ? 1 : 0);
+                    }
+                    return WriteSceneResult(commandOutput, sceneResult);
+                }
+                var snapshot = repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult();
+                IndexingWorkflowResult result;
+                string codebase;
+                string channel;
+                if (requestedCodebase is null && requestedChannel is null && requestedCommit is null)
+                {
+                    if (snapshot is null)
+                        return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
+                    result = workflow.RunScheduleOneAsync(
+                        snapshot.Build.BuildId,
+                        options.Force,
+                        cancellationToken,
+                        requestedInteropPath).GetAwaiter().GetResult();
+                    codebase = "ScheduleI";
+                    channel = "Installed";
+                }
+                else
+                {
+                    if (!TryParseApiCodebase(requestedCodebase, out var apiCodebase) ||
+                        !TryParseApiChannel(requestedChannel, out var apiChannel))
+                    {
+                        return commandOutput.Failure(
+                            1,
+                            "InvalidCodebaseChannel",
+                            "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.");
+                    }
+                    if (apiChannel is CodeChannel.Release or CodeChannel.Preview)
+                    {
+                        if (requestedCommit is null)
+                            return commandOutput.Failure(1, "InvalidCommit", "Release and Preview indexing require --commit <40-character cached SHA>.");
                         try
                         {
-                            sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, options.Force, cancellationToken).GetAwaiter().GetResult();
+                            result = apiWorkflow.RunCachedSourceAsync(
+                                apiCodebase,
+                                apiChannel,
+                                requestedCommit,
+                                options.Force,
+                                cancellationToken).GetAwaiter().GetResult();
+                        }
+                        catch (ArgumentException exception)
+                        {
+                            return commandOutput.Failure(1, "InvalidCommit", exception.Message);
+                        }
+                        catch (FileNotFoundException exception)
+                        {
+                            return commandOutput.Failure(1, "UpstreamUnavailable", exception.Message);
                         }
                         catch (InvalidDataException exception)
                         {
-                            return commandOutput.Failure(1, "SceneInputIntegrityFailure", exception.Message);
+                            return commandOutput.Failure(1, "UpstreamUnavailable", exception.Message);
                         }
-                        catch (SceneIndexFailureException exception)
-                        {
-                            return commandOutput.Failure(1, exception.Status.ToString(), exception.Message);
-                        }
-                        if (performance is not null)
-                        {
-                            performance.SetCounter("scene.containers", sceneResult.ContainerCount);
-                            performance.SetCounter("scene.documents", sceneResult.SceneCount);
-                            performance.SetCounter("scene.gameObjects", sceneResult.GameObjectCount);
-                            performance.SetCounter("scene.components", sceneResult.ComponentCount);
-                            performance.SetCounter("scene.references", sceneResult.ReferenceCount);
-                            performance.SetCounter("index.reused", sceneResult.Reused ? 1 : 0);
-                        }
-                        return WriteSceneResult(commandOutput, sceneResult);
-                    }
-                    var snapshot = repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexingWorkflowResult result;
-                    string codebase;
-                    string channel;
-                    if (requestedCodebase is null && requestedChannel is null && requestedCommit is null)
-                    {
-                        if (snapshot is null)
-                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
-                        result = workflow.RunScheduleOneAsync(
-                            snapshot.Build.BuildId,
-                            options.Force,
-                            cancellationToken,
-                            requestedInteropPath).GetAwaiter().GetResult();
-                        codebase = "ScheduleI";
-                        channel = "Installed";
+                        codebase = apiCodebase.ToString();
+                        channel = apiChannel.ToString();
                     }
                     else
                     {
-                        if (!TryParseApiCodebase(requestedCodebase, out var apiCodebase) ||
-                            !TryParseApiChannel(requestedChannel, out var apiChannel))
+                        if (snapshot is null)
+                            return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
+                        var dependencyKind = apiCodebase == CodebaseKind.S1Api
+                            ? DependencyKind.S1Api
+                            : DependencyKind.S1Mapi;
+                        var dependency = snapshot.Dependencies.SingleOrDefault(item => item.Kind == dependencyKind);
+                        if (dependency is null || !dependency.IsInstalled || string.IsNullOrWhiteSpace(dependency.Path))
                         {
                             return commandOutput.Failure(
                                 1,
-                                "InvalidCodebaseChannel",
-                                "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.");
+                                "InstalledDependencyMissing",
+                                $"The installed {apiCodebase} dependency is not present in the current environment snapshot.");
                         }
-                        if (apiChannel is CodeChannel.Release or CodeChannel.Preview)
-                        {
-                            if (requestedCommit is null)
-                                return commandOutput.Failure(1, "InvalidCommit", "Release and Preview indexing require --commit <40-character cached SHA>.");
-                            try
-                            {
-                                result = apiWorkflow.RunCachedSourceAsync(
-                                    apiCodebase,
-                                    apiChannel,
-                                    requestedCommit,
-                                    options.Force,
-                                    cancellationToken).GetAwaiter().GetResult();
-                            }
-                            catch (ArgumentException exception)
-                            {
-                                return commandOutput.Failure(1, "InvalidCommit", exception.Message);
-                            }
-                            catch (FileNotFoundException exception)
-                            {
-                                return commandOutput.Failure(1, "UpstreamUnavailable", exception.Message);
-                            }
-                            catch (InvalidDataException exception)
-                            {
-                                return commandOutput.Failure(1, "UpstreamUnavailable", exception.Message);
-                            }
-                            codebase = apiCodebase.ToString();
-                            channel = apiChannel.ToString();
-                        }
-                        else
-                        {
-                            if (snapshot is null)
-                                return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
-                            var dependencyKind = apiCodebase == CodebaseKind.S1Api
-                                ? DependencyKind.S1Api
-                                : DependencyKind.S1Mapi;
-                            var dependency = snapshot.Dependencies.SingleOrDefault(item => item.Kind == dependencyKind);
-                            if (dependency is null || !dependency.IsInstalled || string.IsNullOrWhiteSpace(dependency.Path))
-                            {
-                                return commandOutput.Failure(
-                                    1,
-                                    "InstalledDependencyMissing",
-                                    $"The installed {apiCodebase} dependency is not present in the current environment snapshot.");
-                            }
 
-                            result = apiWorkflow.RunInstalledAsync(
-                                apiCodebase,
-                                EnvironmentSnapshotId.Create(snapshot),
-                                dependency.Path,
-                                options.Force,
-                                cancellationToken).GetAwaiter().GetResult();
-                            codebase = apiCodebase.ToString();
-                            channel = apiChannel.ToString();
-                        }
+                        result = apiWorkflow.RunInstalledAsync(
+                            apiCodebase,
+                            EnvironmentSnapshotId.Create(snapshot),
+                            dependency.Path,
+                            options.Force,
+                            cancellationToken).GetAwaiter().GetResult();
+                        codebase = apiCodebase.ToString();
+                        channel = apiChannel.ToString();
                     }
-                    var data = new IndexOutput(
-                        codebase,
-                        channel,
-                        channel is "Release" or "Preview"
-                            ? requestedCommit ?? string.Empty
-                            : snapshot?.Build.BuildId ?? string.Empty,
-                        result.IndexId,
-                        result.Reused,
-                        result.SymbolCount,
-                        result.SourceFileCount,
-                        result.RelationshipCount,
-                        result.Warnings);
-                    if (performance is not null)
-                    {
-                        performance.SetCounter("index.symbols", result.SymbolCount);
-                        performance.SetCounter("index.sourceFiles", result.SourceFileCount);
-                        performance.SetCounter("index.relationships", result.RelationshipCount);
-                        performance.SetCounter("index.reused", result.Reused ? 1 : 0);
-                    }
-                    return commandOutput.Success(
-                        data,
-                        writer => writer.WriteLine(
-                            $"{codebase} {channel} | {result.IndexId} | " +
-                            (result.Reused ? "reused" : "rebuilt") +
-                            $" | symbols {result.SymbolCount} | source files {result.SourceFileCount} | relationships {result.RelationshipCount}"));
-                },
+                }
+                var data = new IndexOutput(
+                    codebase,
+                    channel,
+                    channel is "Release" or "Preview"
+                        ? requestedCommit ?? string.Empty
+                        : snapshot?.Build.BuildId ?? string.Empty,
+                    result.IndexId,
+                    result.Reused,
+                    result.SymbolCount,
+                    result.SourceFileCount,
+                    result.RelationshipCount,
+                    result.Warnings);
+                if (performance is not null)
+                {
+                    performance.SetCounter("index.symbols", result.SymbolCount);
+                    performance.SetCounter("index.sourceFiles", result.SourceFileCount);
+                    performance.SetCounter("index.relationships", result.RelationshipCount);
+                    performance.SetCounter("index.reused", result.Reused ? 1 : 0);
+                }
+                return commandOutput.Success(
+                    data,
+                    writer => writer.WriteLine(
+                        $"{codebase} {channel} | {result.IndexId} | " +
+                        (result.Reused ? "reused" : "rebuilt") +
+                        $" | symbols {result.SymbolCount} | source files {result.SourceFileCount} | relationships {result.RelationshipCount}"));
+            },
                 commandOutput,
                 cancellationToken,
                 performance);
