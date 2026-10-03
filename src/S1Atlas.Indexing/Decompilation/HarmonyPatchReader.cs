@@ -66,6 +66,11 @@ public static class HarmonyPatchReader
         return patches;
     }
 
+    // One fact per method: the first kind attribute in Prefix/Postfix/Transpiler/Finalizer
+    // order wins, falling back to the method-name convention. A method carrying several
+    // kind attributes therefore yields a single patch; that priority is deliberate, since
+    // the real multi-kind behavior is unverified and emitting one edge cannot invent a
+    // patch that does not exist.
     private static HarmonyPatchKind? ReadKind(MetadataReader reader, MethodDefinition method)
     {
         var attributes = method.GetCustomAttributes()
@@ -199,6 +204,12 @@ public static class HarmonyPatchReader
             return merged;
         }
 
+        // Positional shapes from the Harmony annotations reference
+        // (harmony.pardeike.net/articles/annotations.html): empty, declaring type, method
+        // name, method type, argument types, and variations, alone and combined. Targeting
+        // is purely positional there, so named arguments carry no target information and
+        // are ignored. Unlisted shapes merge as Empty and stay unresolved rather than
+        // guessed.
         public static PatchTargetInfo FromArguments(IReadOnlyList<CustomAttributeValue> fixedArguments)
         {
             var kinds = fixedArguments.Select(argument => argument.Kind).ToArray();
