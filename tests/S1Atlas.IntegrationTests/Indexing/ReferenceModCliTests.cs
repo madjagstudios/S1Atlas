@@ -219,6 +219,8 @@ public sealed class ReferenceModCliTests
     [InlineData("refs")]
     [InlineData("call-sites")]
     [InlineData("field-refs")]
+    [InlineData("type")]
+    [InlineData("method")]
     public async Task Reference_scoped_queries_require_collection_and_game_scope_rejects_one(string command)
     {
         await using var atlas = await ReferenceCliFixture.CreateAsync();
@@ -330,16 +332,27 @@ public sealed class ReferenceModCliTests
         Assert.Contains("InvalidOptionCombination", result.StandardOutput, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Type_and_method_keep_their_existing_game_api_contract_without_scope_options()
+    [Theory]
+    [InlineData("type", "InteropFixtureRoot", "Type")]
+    [InlineData("method", "il2cpp_runtime_invoke", "Method")]
+    public async Task Type_and_method_support_reference_scope(string command, string query, string kind)
     {
         await using var atlas = await ReferenceCliFixture.CreateAsync();
+        var indexed = atlas.Run("reference", "index", atlas.ManifestPath, "--json");
+        Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
 
-        var type = atlas.Run("type", "Alpha", "--scope", "reference", "--collection", "qol", "--json");
-        var method = atlas.Run("method", "Alpha", "--scope", "reference", "--collection", "qol", "--json");
+        var result = atlas.Run(command, query, "--scope", "reference", "--collection", "qol", "--json");
 
-        Assert.NotEqual(0, type.ExitCode);
-        Assert.NotEqual(0, method.ExitCode);
+        Assert.True(result.ExitCode == 0, result.StandardOutput + result.StandardError);
+        using var json = JsonDocument.Parse(result.StandardOutput);
+        var results = json.RootElement.GetProperty("data").GetProperty("results").EnumerateArray().ToArray();
+        Assert.NotEmpty(results);
+        Assert.All(results, item =>
+        {
+            Assert.Equal("reference", item.GetProperty("origin").GetString());
+            Assert.Equal("qol", item.GetProperty("collection").GetString());
+            Assert.Equal(kind, item.GetProperty("kind").GetString());
+        });
     }
 }
 
