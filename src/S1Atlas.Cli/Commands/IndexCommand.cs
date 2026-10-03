@@ -51,21 +51,57 @@ internal static class IndexCommand
             var performance = parseResult.GetValue(performanceOption)
                 ? new PerformanceMeasurement("index", dataRoot)
                 : null;
-            return CommandExecution.Run(
-                () =>
-                {
+            return Execute(
+                workflow,
+                apiWorkflow,
+                sceneWorkflow,
+                repository,
+                new IndexCommandOptions(
+                    parseResult.GetValue(forceOption),
+                    parseResult.GetValue(sceneOption),
+                    parseResult.GetValue(buildOption),
+                    parseResult.GetValue(codebaseOption),
+                    parseResult.GetValue(channelOption),
+                    parseResult.GetValue(commitOption),
+                    parseResult.GetValue(interopPathOption)),
+                commandOutput,
+                performance,
+                cancellationToken);
+        });
+        return command;
+    }
+
+    internal static int Execute(
+        IndexingWorkflow workflow,
+        ApiIndexingWorkflow apiWorkflow,
+        SceneIndexWorkflow sceneWorkflow,
+        IAtlasRepository repository,
+        IndexCommandOptions options,
+        CommandOutput commandOutput,
+        PerformanceMeasurement? performance,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workflow);
+        ArgumentNullException.ThrowIfNull(apiWorkflow);
+        ArgumentNullException.ThrowIfNull(sceneWorkflow);
+        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(commandOutput);
+        return CommandExecution.Run(
+            () =>
+            {
                     using (performance?.Measure("repository.initialize"))
                     {
                         repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
                     }
 
                     using var workflowPhase = performance?.Measure("index.workflow");
-                    var sceneIndexRequested = parseResult.GetValue(sceneOption);
-                    var requestedBuild = parseResult.GetValue(buildOption);
-                    var requestedCodebase = parseResult.GetValue(codebaseOption);
-                    var requestedChannel = parseResult.GetValue(channelOption);
-                    var requestedCommit = parseResult.GetValue(commitOption);
-                    var requestedInteropPath = parseResult.GetValue(interopPathOption);
+                    var sceneIndexRequested = options.Scene;
+                    var requestedBuild = options.Build;
+                    var requestedCodebase = options.Codebase;
+                    var requestedChannel = options.Channel;
+                    var requestedCommit = options.Commit;
+                    var requestedInteropPath = options.InteropPath;
                     if (requestedInteropPath is not null &&
                         (sceneIndexRequested || requestedBuild is not null || requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
                     {
@@ -97,7 +133,7 @@ internal static class IndexCommand
                         SceneIndexWorkflowResult sceneResult;
                         try
                         {
-                            sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, parseResult.GetValue(forceOption), cancellationToken).GetAwaiter().GetResult();
+                            sceneResult = sceneWorkflow.RunScheduleOneAsync(sceneBuildId, options.Force, cancellationToken).GetAwaiter().GetResult();
                         }
                         catch (InvalidDataException exception)
                         {
@@ -128,7 +164,7 @@ internal static class IndexCommand
                             return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
                         result = workflow.RunScheduleOneAsync(
                             snapshot.Build.BuildId,
-                            parseResult.GetValue(forceOption),
+                            options.Force,
                             cancellationToken,
                             requestedInteropPath).GetAwaiter().GetResult();
                         codebase = "ScheduleI";
@@ -154,7 +190,7 @@ internal static class IndexCommand
                                     apiCodebase,
                                     apiChannel,
                                     requestedCommit,
-                                    parseResult.GetValue(forceOption),
+                                    options.Force,
                                     cancellationToken).GetAwaiter().GetResult();
                             }
                             catch (ArgumentException exception)
@@ -192,7 +228,7 @@ internal static class IndexCommand
                                 apiCodebase,
                                 EnvironmentSnapshotId.Create(snapshot),
                                 dependency.Path,
-                                parseResult.GetValue(forceOption),
+                                options.Force,
                                 cancellationToken).GetAwaiter().GetResult();
                             codebase = apiCodebase.ToString();
                             channel = apiChannel.ToString();
@@ -227,8 +263,6 @@ internal static class IndexCommand
                 commandOutput,
                 cancellationToken,
                 performance);
-        });
-        return command;
     }
 
     internal static int WriteSceneResult(CommandOutput commandOutput, SceneIndexWorkflowResult sceneResult)
@@ -291,3 +325,12 @@ internal static class IndexCommand
              string.Equals(value, "preview", StringComparison.OrdinalIgnoreCase));
     }
 }
+
+internal sealed record IndexCommandOptions(
+    bool Force = false,
+    bool Scene = false,
+    string? Build = null,
+    string? Codebase = null,
+    string? Channel = null,
+    string? Commit = null,
+    string? InteropPath = null);

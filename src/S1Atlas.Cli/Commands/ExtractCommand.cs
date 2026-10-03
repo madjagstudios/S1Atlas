@@ -87,90 +87,109 @@ internal static class ExtractCommand
             var performance = parseResult.GetValue(performanceOption)
                 ? new PerformanceMeasurement("extract", dataRoot)
                 : null;
-            return CommandExecution.Run(
-                () =>
-                {
-                    var inputSnapshot = parseResult.GetValue(inputSnapshotOption);
-                    var gamePath = parseResult.GetValue(gamePathOption);
-                    var retry = parseResult.GetValue(retryOption);
-                    var snapshotInputs = parseResult.GetValue(snapshotInputsOption);
-                    var validationFailure = ValidateInputSnapshotOption(
-                        inputSnapshot, gamePath, retry, snapshotInputs, commandOutput);
-                    if (validationFailure is int failureExitCode)
-                    {
-                        return failureExitCode;
-                    }
-
-                    ExtractionWorkflowResult result;
-                    using (performance?.Measure("extraction.workflow"))
-                    {
-                        result = workflow.RunAsync(
-                                new ExtractionOptions(
-                                    parseResult.GetValue(buildOption),
-                                    gamePath,
-                                    parseResult.GetValue(cpp2IlPathOption),
-                                    parseResult.GetValue(profileOption) ?? DefaultProfileId,
-                                    retry,
-                                    snapshotInputs,
-                                    parseResult.GetValue(keepFailedArtifactsOption),
-                                    inputSnapshot),
-                                cancellationToken)
-                            .GetAwaiter()
-                            .GetResult();
-                    }
-
-                    if (performance is not null)
-                    {
-                        performance.SetCounter("process.wasRun", result.ProcessWasRun ? 1 : 0);
-                        performance.SetCounter("validation.wasRun", result.ValidationWasRun ? 1 : 0);
-                        performance.SetCounter("extraction.reused", result.ReusedExistingExtraction ? 1 : 0);
-                        performance.SetCounter("extraction.authoritative", result.IsAuthoritative ? 1 : 0);
-                        performance.SetCounter(
-                            "inputSnapshot.replayVerified",
-                            result.InputSnapshotReplayVerified ? 1 : 0);
-                    }
-
-                    if (!result.IsAuthoritative)
-                    {
-                        // A candidate that ran the process but failed validation is not
-                        // authoritative and never reaches downstream consumers; report it
-                        // as an operational failure rather than a successful extraction.
-                        return commandOutput.Failure(
-                            1,
-                            "ExtractionNotAuthoritative",
-                            "The extraction did not produce authoritative validated output " +
-                            $"(validation outcome: {result.ValidationOutcome}). See the attempt's " +
-                            "validation report for the recorded issues.",
-                            attemptId: result.AttemptId,
-                            stage: result.ValidationOutcome.ToString());
-                    }
-
-                    var data = new ExtractionOutput(
-                        result.AttemptId,
-                        result.BuildId,
-                        result.RecipeId,
-                        result.ExtractionId,
-                        result.ExtractionRoot,
-                        result.ToolTrustLevel.ToString(),
-                        result.ValidationOutcome.ToString(),
-                        result.ProcessWasRun,
-                        result.ValidationWasRun,
-                        result.ReusedExistingExtraction,
-                        result.IsPreferred,
-                        result.IsAuthoritative,
-                        result.InputSource?.ToString(),
-                        result.InputSnapshotId,
-                        result.InputSnapshotReplayVerified);
-                    return commandOutput.Success(
-                        data,
-                        writer => WriteHuman(writer, data));
-                },
+            return Execute(
+                workflow,
+                new ExtractionOptions(
+                    parseResult.GetValue(buildOption),
+                    parseResult.GetValue(gamePathOption),
+                    parseResult.GetValue(cpp2IlPathOption),
+                    parseResult.GetValue(profileOption) ?? DefaultProfileId,
+                    parseResult.GetValue(retryOption),
+                    parseResult.GetValue(snapshotInputsOption),
+                    parseResult.GetValue(keepFailedArtifactsOption),
+                    parseResult.GetValue(inputSnapshotOption)),
                 commandOutput,
-                cancellationToken,
-                performance);
+                performance,
+                cancellationToken);
         });
 
         return command;
+    }
+
+    internal static ExtractionOptions DefaultOptions =>
+        new(null, null, null, DefaultProfileId, false, false, false, null);
+
+    internal static int Execute(
+        ValidatedExtractionWorkflow workflow,
+        ExtractionOptions options,
+        CommandOutput commandOutput,
+        PerformanceMeasurement? performance,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(workflow);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(commandOutput);
+        return CommandExecution.Run(
+            () =>
+            {
+                var validationFailure = ValidateInputSnapshotOption(
+                    options.InputSnapshotId,
+                    options.GamePath,
+                    options.Retry,
+                    options.SnapshotInputs,
+                    commandOutput);
+                if (validationFailure is int failureExitCode)
+                {
+                    return failureExitCode;
+                }
+
+                ExtractionWorkflowResult result;
+                using (performance?.Measure("extraction.workflow"))
+                {
+                    result = workflow.RunAsync(options, cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
+                }
+
+                if (performance is not null)
+                {
+                    performance.SetCounter("process.wasRun", result.ProcessWasRun ? 1 : 0);
+                    performance.SetCounter("validation.wasRun", result.ValidationWasRun ? 1 : 0);
+                    performance.SetCounter("extraction.reused", result.ReusedExistingExtraction ? 1 : 0);
+                    performance.SetCounter("extraction.authoritative", result.IsAuthoritative ? 1 : 0);
+                    performance.SetCounter(
+                        "inputSnapshot.replayVerified",
+                        result.InputSnapshotReplayVerified ? 1 : 0);
+                }
+
+                if (!result.IsAuthoritative)
+                {
+                    // A candidate that ran the process but failed validation is not
+                    // authoritative and never reaches downstream consumers; report it
+                    // as an operational failure rather than a successful extraction.
+                    return commandOutput.Failure(
+                        1,
+                        "ExtractionNotAuthoritative",
+                        "The extraction did not produce authoritative validated output " +
+                        $"(validation outcome: {result.ValidationOutcome}). See the attempt's " +
+                        "validation report for the recorded issues.",
+                        attemptId: result.AttemptId,
+                        stage: result.ValidationOutcome.ToString());
+                }
+
+                var data = new ExtractionOutput(
+                    result.AttemptId,
+                    result.BuildId,
+                    result.RecipeId,
+                    result.ExtractionId,
+                    result.ExtractionRoot,
+                    result.ToolTrustLevel.ToString(),
+                    result.ValidationOutcome.ToString(),
+                    result.ProcessWasRun,
+                    result.ValidationWasRun,
+                    result.ReusedExistingExtraction,
+                    result.IsPreferred,
+                    result.IsAuthoritative,
+                    result.InputSource?.ToString(),
+                    result.InputSnapshotId,
+                    result.InputSnapshotReplayVerified);
+                return commandOutput.Success(
+                    data,
+                    writer => WriteHuman(writer, data));
+            },
+            commandOutput,
+            cancellationToken,
+            performance);
     }
 
     private static int? ValidateInputSnapshotOption(
