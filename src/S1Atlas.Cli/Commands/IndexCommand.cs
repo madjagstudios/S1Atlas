@@ -45,6 +45,62 @@ internal static class IndexCommand
         command.Options.Add(interopPathOption);
         command.Options.Add(performanceOption);
         command.Options.Add(jsonOption);
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                var scene = CliValidation.GetValue(result, sceneOption);
+                var build = CliValidation.GetValue(result, buildOption);
+                var codebase = CliValidation.GetValue(result, codebaseOption);
+                var channel = CliValidation.GetValue(result, channelOption);
+                var commit = CliValidation.GetValue(result, commitOption);
+                var interopPath = CliValidation.GetValue(result, interopPathOption);
+                if (interopPath is not null &&
+                    (scene || build is not null || codebase is not null || channel is not null || commit is not null))
+                {
+                    throw new CliValidationException(
+                        "index",
+                        "InvalidOptionCombination",
+                        "--interop-path is valid only for the default installed Schedule I code index.");
+                }
+                if (scene && (codebase is not null || channel is not null || commit is not null))
+                {
+                    throw new CliValidationException(
+                        "index",
+                        "InvalidOptionCombination",
+                        "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.");
+                }
+                if (!scene && build is not null)
+                {
+                    throw new CliValidationException(
+                        "index",
+                        "InvalidOptionCombination",
+                        "--build is valid only with --scene.");
+                }
+                if (codebase is null && channel is null && commit is null)
+                    return;
+                if (!TryParseApiCodebase(codebase, out _) || !TryParseApiChannel(channel, out _))
+                {
+                    throw new CliValidationException(
+                        "index",
+                        "InvalidCodebaseChannel",
+                        "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.");
+                }
+                if (commit is null &&
+                    TryParseApiChannel(channel, out var apiChannel) &&
+                    apiChannel is CodeChannel.Release or CodeChannel.Preview)
+                {
+                    throw new CliValidationException(
+                        "index",
+                        "InvalidCommit",
+                        "Release and Preview indexing require --commit <40-character cached SHA>.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("index", parseResult.GetValue(jsonOption), output, error);
@@ -102,28 +158,6 @@ internal static class IndexCommand
                 var requestedChannel = options.Channel;
                 var requestedCommit = options.Commit;
                 var requestedInteropPath = options.InteropPath;
-                if (requestedInteropPath is not null &&
-                    (sceneIndexRequested || requestedBuild is not null || requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
-                {
-                    return commandOutput.Failure(
-                        1,
-                        "InvalidOptionCombination",
-                        "--interop-path is valid only for the default installed Schedule I code index.");
-                }
-                if (sceneIndexRequested && (requestedCodebase is not null || requestedChannel is not null || requestedCommit is not null))
-                {
-                    return commandOutput.Failure(
-                        1,
-                        "InvalidOptionCombination",
-                        "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.");
-                }
-                if (!sceneIndexRequested && requestedBuild is not null)
-                {
-                    return commandOutput.Failure(
-                        1,
-                        "InvalidOptionCombination",
-                        "--build is valid only with --scene.");
-                }
 
                 if (sceneIndexRequested)
                 {
@@ -172,24 +206,16 @@ internal static class IndexCommand
                 }
                 else
                 {
-                    if (!TryParseApiCodebase(requestedCodebase, out var apiCodebase) ||
-                        !TryParseApiChannel(requestedChannel, out var apiChannel))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidCodebaseChannel",
-                            "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.");
-                    }
+                    TryParseApiCodebase(requestedCodebase, out var apiCodebase);
+                    TryParseApiChannel(requestedChannel, out var apiChannel);
                     if (apiChannel is CodeChannel.Release or CodeChannel.Preview)
                     {
-                        if (requestedCommit is null)
-                            return commandOutput.Failure(1, "InvalidCommit", "Release and Preview indexing require --commit <40-character cached SHA>.");
                         try
                         {
                             result = apiWorkflow.RunCachedSourceAsync(
                                 apiCodebase,
                                 apiChannel,
-                                requestedCommit,
+                                requestedCommit!,
                                 options.Force,
                                 cancellationToken).GetAwaiter().GetResult();
                         }

@@ -44,6 +44,18 @@ internal static class RecoverNativeBodyCommand
         command.Options.Add(traversalBudgetOption);
         command.Options.Add(buildOption);
         command.Options.Add(jsonOption);
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                if ((CliValidation.GetValue(result, symbolIdOption) ?? []).Length == 0)
+                    throw new CliValidationException("recover-native-body", "MissingSymbolId", "At least one --symbol-id must be provided.");
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput(
@@ -81,8 +93,6 @@ internal static class RecoverNativeBodyCommand
         CommandOutput commandOutput,
         CancellationToken cancellationToken)
     {
-        if (symbolIds.Count == 0)
-            return commandOutput.Failure(1, "MissingSymbolId", "At least one --symbol-id must be provided.");
         if (traversalBudget is < MinimumTraversalBudget or > MaximumTraversalBudget)
         {
             return commandOutput.Failure(

@@ -548,6 +548,12 @@ public sealed class CliApplication
         }
         catch (CliValidationException exception)
         {
+            // A framework parse error (unknown option, missing argument) wins
+            // over the option rule, as before validators existed.
+            CliValidation.ClearValidators(root);
+            var reparse = root.Parse(args);
+            if (reparse.Errors.Count > 0)
+                return reparse.Invoke(invocation);
             return new CommandOutput(exception.Command, CliValidation.JsonRequested(args), output, error)
                 .Failure(1, exception.Code, exception.Message);
         }

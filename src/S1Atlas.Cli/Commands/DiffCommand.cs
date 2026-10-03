@@ -36,6 +36,44 @@ internal static class DiffCommand
         command.Options.Add(limitOption);
         command.Options.Add(jsonOption);
 
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                if (CliValidation.GetValue(result, limitOption) <= 0)
+                    throw new CliValidationException("diff", "InvalidLimit", "--limit must be greater than zero.");
+                try
+                {
+                    IndexQueryCommandFactory.ParseOptions(CliValidation.GetValue(result, codebaseOption), null);
+                }
+                catch (ArgumentException exception)
+                {
+                    // The action never caught this; CommandExecution reported it
+                    // as OperationalFailure. Preserved byte-identically.
+                    throw new CliValidationException("diff", "OperationalFailure", "S1Atlas failed: " + exception.Message);
+                }
+                var channelRaw = (CliValidation.GetValue(result, channelOption) ?? "installed").ToLowerInvariant();
+                if (channelRaw is "release" or "preview")
+                {
+                    throw new CliValidationException(
+                        "diff",
+                        "UnsupportedChannel",
+                        "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.");
+                }
+                if (channelRaw != "installed")
+                {
+                    throw new CliValidationException(
+                        "diff",
+                        "InvalidChannel",
+                        "Channel must be installed. Release and preview are not supported for diffing.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
+
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("diff", parseResult.GetValue(jsonOption), output, error);
@@ -47,20 +85,8 @@ internal static class DiffCommand
                     var limit = parseResult.GetValue(limitOption);
                     var kindFilter = parseResult.GetValue(kindOption);
 
-                    if (limit <= 0)
-                        return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
-
                     var codebase = IndexQueryCommandFactory.ParseOptions(
                         parseResult.GetValue(codebaseOption), null).Codebase;
-
-                    var channelRaw = (parseResult.GetValue(channelOption) ?? "installed").ToLowerInvariant();
-                    if (channelRaw is "release" or "preview")
-                        return commandOutput.Failure(1, "UnsupportedChannel",
-                            "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.");
-
-                    if (channelRaw != "installed")
-                        return commandOutput.Failure(1, "InvalidChannel",
-                            "Channel must be installed. Release and preview are not supported for diffing.");
 
                     var channel = CodeChannel.Installed;
 

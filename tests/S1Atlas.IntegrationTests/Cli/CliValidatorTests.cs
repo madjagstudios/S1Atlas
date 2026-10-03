@@ -141,4 +141,84 @@ public sealed class CliValidatorTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("Examples:", result.StandardOutput, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("recover-native-body", "recover-native-body --json", "MissingSymbolId", "At least one --symbol-id must be provided.", true)]
+    [InlineData("extract", "extract --input-snapshot aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --json", "InputSnapshotRequiresRetry", "An explicit --input-snapshot run requires --retry so it always runs a new process from the archived snapshot.", true)]
+    [InlineData("extract", "extract --input-snapshot aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --retry --game-path x --json", "InputSnapshotConflict", "The --input-snapshot option cannot be combined with --game-path or --snapshot-inputs.", true)]
+    [InlineData("extract", "extract --input-snapshot zz --retry --json", "InvalidInputSnapshot", "The --input-snapshot value must be a 64-character lower-case hexadecimal snapshot ID.", true)]
+    [InlineData("upstream status", "upstream status --codebase bogus --json", "InvalidCodebase", "Upstream codebase must be s1api or s1mapi.", false)]
+    [InlineData("upstream sync", "upstream sync --codebase s1api --json", "CommitRequired", "upstream sync requires --commit so the cache is keyed by an exact commit SHA.", true)]
+    [InlineData("upstream sync", "upstream sync --codebase bogus --json", "InvalidCodebase", "Upstream codebase must be s1api or s1mapi.", false)]
+    [InlineData("index", "index --scene --codebase s1api --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
+    [InlineData("index", "index --build b --json", "InvalidOptionCombination", "--build is valid only with --scene.", true)]
+    [InlineData("index", "index --interop-path p --codebase s1api --channel installed --json", "InvalidOptionCombination", "--interop-path is valid only for the default installed Schedule I code index.", true)]
+    [InlineData("index", "index --codebase bogus --json", "InvalidCodebaseChannel", "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.", true)]
+    [InlineData("index", "index --codebase s1api --channel release --json", "InvalidCommit", "Release and Preview indexing require --commit <40-character cached SHA>.", true)]
+    [InlineData("diff", "diff a b --limit 0 --json", "InvalidLimit", "--limit must be greater than zero.", true)]
+    [InlineData("diff", "diff a b --channel release --json", "UnsupportedChannel", "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.", true)]
+    [InlineData("diff", "diff a b --channel bogus --json", "InvalidChannel", "Channel must be installed. Release and preview are not supported for diffing.", true)]
+    [InlineData("diff", "diff a b --codebase bogus --json", "OperationalFailure", "S1Atlas failed: Codebase must be schedule-i, s1api, or s1mapi.", false)]
+    public async Task Operational_option_rules_fail_with_the_stable_json_triple(
+        string expectedCommand,
+        string joinedArgs,
+        string expectedCode,
+        string expectedMessage,
+        bool exactMessage)
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run(joinedArgs.Split(' '));
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var root = document.RootElement;
+        Assert.Equal(expectedCommand, root.GetProperty("command").GetString());
+        Assert.Equal(1, root.GetProperty("exitCode").GetInt32());
+        Assert.Equal(expectedCode, root.GetProperty("error").GetProperty("code").GetString());
+        var message = root.GetProperty("error").GetProperty("message").GetString();
+        if (exactMessage)
+            Assert.Equal(expectedMessage, message);
+        else
+            Assert.Contains(expectedMessage, message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Open_rejects_an_out_of_range_port_on_stderr()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("open", "Alpha", "--port", "0");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardOutput);
+        Assert.Contains("Invalid port '0'. Use 1 to 65535.", result.StandardError, StringComparison.Ordinal);
+        Assert.Contains("Code:    InvalidPort", result.StandardError, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("search --codebase bogus", "Required argument missing for command")]
+    [InlineData("search Alpha --codebase bogus --bogus-flag", "Unrecognized command or argument '--bogus-flag'")]
+    public async Task Framework_parse_errors_win_over_option_rules(string joinedArgs, string expectedFragment)
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run(joinedArgs.Split(' '));
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains(expectedFragment, result.StandardError, StringComparison.Ordinal);
+        Assert.DoesNotContain("schemaVersion", result.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Help_wins_over_a_missing_required_option()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("recover-native-body", "--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Examples:", result.StandardOutput, StringComparison.Ordinal);
+    }
 }
