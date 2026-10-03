@@ -1098,6 +1098,7 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas open <selector> [--port]` | Open one resolved symbol in the local serve web app. |
 | `s1atlas overridden-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--json]` | Show the methods that override or implement a method, transitively. |
 | `s1atlas overrides <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Show the base and interface slots a method fills, up to the root. |
+| `s1atlas patched-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Find reference-mod Harmony patches targeting one game method, including unresolved patches that name the method. |
 | `s1atlas prefab <prefab-id|exact-name> [--objects] [--components] [--refs] [--limit] [--json]` | Query one proven prefab document. |
 | `s1atlas recover-native-body [--symbol-id] [--native-traversal-budget] [--build] [--json]` | Recover native method bodies for the selected symbols and persist the result. |
 | `s1atlas reference collections list [--json]` | List completed local reference-mod collections. |

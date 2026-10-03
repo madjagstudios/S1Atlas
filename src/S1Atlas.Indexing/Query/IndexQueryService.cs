@@ -6,6 +6,7 @@ namespace S1Atlas.Indexing.Query;
 public sealed class IndexQueryService
 {
     private const string CallSiteCompletenessNotice = "Call-site results are evidence of recovered IL references and do not prove runtime behavior or execution order.";
+    private const string ReferencePatchesNotice = "Patches are reference-mod evidence; query with --scope reference --collection <id>.";
     private const int MaxSourceNeighborhoodLimit = 50;
     private readonly IIndexRepository _repository;
     private readonly string? _dataRoot;
@@ -527,7 +528,27 @@ public sealed class IndexQueryService
             [],
             null,
             false,
-            "Patches are reference-mod evidence; query with --scope reference --collection <id>.",
+            ReferencePatchesNotice,
+            0);
+    }
+
+    public async Task<RelationshipQuerySetResult> PatchesInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string selector,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        var resolution = await ResolveInIndexAsync(run, codebase, channel, selector, cancellationToken);
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return new RelationshipQuerySetResult(resolution, [], null, false, string.Empty);
+        return new RelationshipQuerySetResult(
+            resolution,
+            [],
+            null,
+            false,
+            ReferencePatchesNotice,
             0);
     }
 

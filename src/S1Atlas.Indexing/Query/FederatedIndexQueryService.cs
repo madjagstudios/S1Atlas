@@ -171,14 +171,15 @@ public sealed class FederatedIndexQueryService
         string selector,
         IndexQueryOptions options,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        string? referenceIndexId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         ValidateOptions(options);
         ValidateLimit(options.Limit);
         if (options.Scope == IndexQueryScope.Game)
             return _game.PatchesAsync(selector, GameOptions(options, options.Limit), cancellationToken);
-        return _reference.PatchedByAsync(selector, options, cancellationToken, includeGenerated);
+        return _reference.PatchedByAsync(selector, options, cancellationToken, includeGenerated, referenceIndexId);
     }
 
     public Task<HierarchyQueryResult> OverridesAsync(

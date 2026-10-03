@@ -264,10 +264,11 @@ public sealed class ReferenceModQueryService
         string selector,
         IndexQueryOptions options,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        string? referenceIndexId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
-        var selection = await RequireSelectionAsync(options, cancellationToken);
+        var selection = await RequireSelectionAsync(options, referenceIndexId, cancellationToken);
         if (selection is null)
             return new RelationshipQuerySetResult(NoCompletedIndex(), [], null, false, "no completed reference collection");
 

@@ -100,6 +100,29 @@ public sealed class PatchedByCliTests
     }
 
     [Fact]
+    public async Task Patched_by_game_scope_reports_the_reference_notice()
+    {
+        await using var atlas = await HarmonyPatchCliAtlas.CreateAsync();
+
+        var result = atlas.Run(
+            "patched-by",
+            "Game.Widget::Run()",
+            "--scope",
+            "game",
+            "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var root = document.RootElement;
+        Assert.Equal("patched-by", root.GetProperty("command").GetString());
+        Assert.Empty(root.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Contains(
+            "--scope reference",
+            root.GetProperty("data").GetProperty("completenessNotice").GetString(),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Investigate_seam_lists_patches_as_prior_art()
     {
         await using var atlas = await HarmonyPatchCliAtlas.CreateAsync();
