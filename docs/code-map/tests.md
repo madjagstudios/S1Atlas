@@ -70,8 +70,8 @@ Roots: tests
 | tests/S1Atlas.NativeRecovery.Tests/ | 14 |
 | tests/S1Atlas.NativeRecovery.Tests/Spikes/ | 3 |
 | tests/S1Atlas.Storage.Tests/ | 5 |
-| tests/S1Atlas.Storage.Tests/Indexing/ | 3 |
-| tests/S1Atlas.Storage.Tests/Migrations/ | 12 |
+| tests/S1Atlas.Storage.Tests/Indexing/ | 4 |
+| tests/S1Atlas.Storage.Tests/Migrations/ | 13 |
 | tests/S1Atlas.Storage.Tests/Scene/ | 3 |
 | tests/S1Atlas.Storage.Tests/Sqlite/ | 11 |
 | tests/S1Atlas.Web.Tests/ | 24 |
