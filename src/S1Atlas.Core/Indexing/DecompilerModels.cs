@@ -92,6 +92,7 @@ public static class HarmonyPatchReasons
     public const string AmbiguousPatchMethod = "ambiguous-patch-method";
     public const string UnknownPatchMethod = "unknown-patch-method";
     public const string NonConstantArguments = "non-constant-arguments";
+    public const string NonConstantTarget = "non-constant-target";
     public const string UnrecognizedManualShape = "unrecognized-manual-shape";
 
     public static string Qualify(string reason, string text) => $"unresolved:{reason}:{text}";

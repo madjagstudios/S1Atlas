@@ -74,8 +74,28 @@ public sealed class FindPatchesTests
         var thirdText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(third.Content)).Text;
         using var thirdDocument = JsonDocument.Parse(thirdText);
         var thirdRoot = thirdDocument.RootElement;
-        Assert.Single(thirdRoot.GetProperty("data").GetProperty("relationships").EnumerateArray());
-        Assert.Null(thirdRoot.GetProperty("data").GetProperty("nextCursor").GetString());
+        Assert.Equal(2, thirdRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
+        Assert.False(string.IsNullOrWhiteSpace(thirdRoot.GetProperty("data").GetProperty("nextCursor").GetString()));
+
+        var fourth = await server.Client.CallToolAsync(
+            "find_patches",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Game.Widget::Run()",
+                ["codebase"] = "scheduleI",
+                ["limit"] = 2,
+                ["scope"] = "reference",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+                ["cursor"] = thirdRoot.GetProperty("data").GetProperty("nextCursor").GetString(),
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(fourth.IsError ?? false);
+        var fourthText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(fourth.Content)).Text;
+        using var fourthDocument = JsonDocument.Parse(fourthText);
+        var fourthRoot = fourthDocument.RootElement;
+        Assert.Single(fourthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Null(fourthRoot.GetProperty("data").GetProperty("nextCursor").GetString());
 
         await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }

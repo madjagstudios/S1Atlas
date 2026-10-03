@@ -24,13 +24,13 @@ public sealed class HarmonyPatchEdgeTests
                 .Where(edge => edge.Kind == "Patches")
                 .ToArray();
 
-            Assert.Equal(13, edges.Count(edge => edge.TargetSymbolId is not null));
+            Assert.Equal(16, edges.Count(edge => edge.TargetSymbolId is not null));
             Assert.Equal(6, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
                 .ToDictionary(symbol => symbol.SymbolId, symbol => symbol.Signature, StringComparer.Ordinal);
 
-            Assert.Equal(4, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
+            Assert.Equal(6, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
             Assert.All(
                 edges.Where(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)),
                 edge => Assert.Equal("Prefix", edge.GeneratedDetail));
@@ -38,10 +38,10 @@ public sealed class HarmonyPatchEdgeTests
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "Metadata"));
-            Assert.Equal("RecoveredIL", edges.Single(edge =>
+            Assert.Equal(3, edges.Count(edge =>
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
-                edge.Evidence != "Metadata").Evidence);
+                edge.Evidence == "RecoveredIL"));
 
             Assert.Equal(2, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Compute(System.Int32,System.String)", StringComparison.Ordinal)));
             Assert.All(
@@ -54,6 +54,9 @@ public sealed class HarmonyPatchEdgeTests
             Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::.cctor(", StringComparison.Ordinal));
             Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Compute(System.Int32&)", StringComparison.Ordinal));
             Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Consume(System.Int32&)", StringComparison.Ordinal));
+            var untouched = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Untouched(", StringComparison.Ordinal));
+            Assert.Equal("Prefix", untouched.GeneratedDetail);
+            Assert.Equal("Metadata", untouched.Evidence);
             var transpiler = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("Widget+Nested::Inner(", StringComparison.Ordinal));
             Assert.Equal("Transpiler", transpiler.GeneratedDetail);
 
