@@ -806,14 +806,16 @@ public static class EnvelopeMapper
         var selected = SelectSeamAuthority(authority, referenceAuthority, result, scope);
         var selectedEnvelope = envelope with
         {
-            Provenance = envelope.Provenance
-                .Select(entry => new ProvenanceEntry(
-                    entry.Classification,
-                    entry.Source,
-                    selected.BuildId,
-                    selected.ExtractionId,
-                    selected.IndexId))
-                .ToArray()
+            Provenance = ToolEnvelope<T>.StripDuplicateBuildIds(
+                envelope.Build,
+                envelope.Provenance
+                    .Select(entry => new ProvenanceEntry(
+                        entry.Classification,
+                        entry.Source,
+                        selected.BuildId,
+                        selected.ExtractionId,
+                        selected.IndexId))
+                    .ToArray())
         };
         return AddSeamReferenceCollectionProvenance(
             selectedEnvelope,

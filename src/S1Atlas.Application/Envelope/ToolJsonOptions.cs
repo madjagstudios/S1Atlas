@@ -39,7 +39,7 @@ public static class ToolJsonOptions
         };
         options.TypeInfoResolver = new DefaultJsonTypeInfoResolver
         {
-            Modifiers = { SkipNullProperties, MapAdvertisedVocabulary }
+            Modifiers = { SkipNullProperties, SkipEmptyCandidatesAndSuggestions, MapAdvertisedVocabulary }
         };
         options.Converters.Add(new ToolStatusJsonConverter());
         options.Converters.Add(new ProvenanceClassificationJsonConverter());
@@ -51,6 +51,23 @@ public static class ToolJsonOptions
     {
         foreach (var property in typeInfo.Properties)
             property.ShouldSerialize = (_, value) => value is not null;
+    }
+
+    public static void SkipEmptyCandidatesAndSuggestions(JsonTypeInfo typeInfo)
+    {
+        foreach (var property in typeInfo.Properties)
+        {
+            if (!property.Name.Equals("candidates", StringComparison.OrdinalIgnoreCase) &&
+                !property.Name.Equals("suggestions", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var prior = property.ShouldSerialize;
+            property.ShouldSerialize = (parent, value) =>
+                (prior is null || prior(parent, value)) &&
+                value is not System.Collections.ICollection { Count: 0 };
+        }
     }
 
     public static void MapAdvertisedVocabulary(JsonTypeInfo typeInfo)

@@ -36,6 +36,8 @@ internal sealed class SeamToolEnvelopeJsonConverter : JsonConverter<ToolEnvelope
                                 instance is not SeamInvestigationResult { NativeEvidence: null };
                         }
 
+                        ToolJsonOptions.SkipEmptyCandidatesAndSuggestions(typeInfo);
+
                         if (typeInfo.Type == typeof(SeamEvidenceClaim))
                         {
                             var evidenceClassification = typeInfo.Properties.FirstOrDefault(

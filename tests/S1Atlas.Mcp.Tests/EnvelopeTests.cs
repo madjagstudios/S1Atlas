@@ -36,9 +36,9 @@ public sealed class EnvelopeTests
         var provenance = Assert.Single(envelope.Provenance);
         Assert.Equal(ProvenanceClassification.Fact, provenance.Classification);
         Assert.Equal("installed-build-authority", provenance.Source);
-        Assert.Equal("b", provenance.BuildId);
-        Assert.Equal("e", provenance.ExtractionId);
-        Assert.Equal("i", provenance.IndexId);
+        Assert.Null(provenance.BuildId);
+        Assert.Null(provenance.ExtractionId);
+        Assert.Null(provenance.IndexId);
     }
 
     [Fact]
@@ -172,9 +172,9 @@ public sealed class EnvelopeTests
         var provenance = Assert.Single(envelope.Provenance);
         Assert.Equal(ProvenanceClassification.Fact, provenance.Classification);
         Assert.Equal("installed-build-authority", provenance.Source);
-        Assert.Equal("resolved", provenance.BuildId);
-        Assert.Equal("extraction", provenance.ExtractionId);
-        Assert.Equal("index", provenance.IndexId);
+        Assert.Null(provenance.BuildId);
+        Assert.Null(provenance.ExtractionId);
+        Assert.Null(provenance.IndexId);
     }
 
     [Theory]

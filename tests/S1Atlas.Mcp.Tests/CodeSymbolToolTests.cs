@@ -124,7 +124,7 @@ public sealed class CodeSymbolToolTests
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Null(envelope.Data);
         var suggestion = Assert.Single(envelope.Suggestions);
-        Assert.Equal("Demo.Widget", ((SymbolQueryResult)suggestion).QualifiedName);
+        Assert.Equal("Demo.Widget", ((SlimSymbolCandidate)suggestion).QualifiedName);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public sealed class CodeSymbolToolTests
         Assert.Null(envelope.Data);
         Assert.Contains(
             envelope.Suggestions,
-            suggestion => ((SymbolQueryResult)suggestion).QualifiedName == "Demo.Widget.Render");
+            suggestion => ((SlimSymbolCandidate)suggestion).QualifiedName == "Demo.Widget.Render");
     }
 
     [Fact]

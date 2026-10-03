@@ -64,7 +64,7 @@ public sealed class SelectorStdioTests
             Assert.Equal(
                 candidates.GetArrayLength(),
                 root.GetProperty("totalCandidateCount").GetInt32());
-            Assert.Equal(0, root.GetProperty("suggestions").GetArrayLength());
+            Assert.False(root.TryGetProperty("suggestions", out _), tool);
         }
     }
 

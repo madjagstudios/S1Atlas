@@ -601,7 +601,7 @@ public sealed class ApiCodebaseRoutingTests
         Assert.Equal(symbolId, symbol.SymbolId);
         Assert.Contains(envelope.Provenance, entry =>
             entry.Classification == ProvenanceClassification.Fact &&
-            entry.IndexId == indexId &&
+            entry.IndexId is null &&
             entry.Source.Contains(sourceIdentity, StringComparison.Ordinal));
     }
 

@@ -69,7 +69,8 @@ public sealed class BuildEnvironmentToolTests
         Assert.True(envelope.Build.IntegrityVerified);
         Assert.Contains(envelope.Provenance, entry =>
             entry.Classification == ProvenanceClassification.Fact &&
-            entry.BuildId == atlas.BuildIdB);
+            entry.Source == "current-environment-snapshot" &&
+            entry.BuildId is null);
     }
 
     private static BuildEnvironmentTools CreateTools(McpTestAtlas atlas) =>

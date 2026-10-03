@@ -148,10 +148,16 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
             root.GetProperty("provenance").EnumerateArray(),
             entry =>
             {
-                Assert.Equal("build-seam-old", entry.GetProperty("buildId").GetString());
-                Assert.Equal("index-seam-old", entry.GetProperty("indexId").GetString());
+                AssertNullOrAbsent(entry, "buildId");
+                AssertNullOrAbsent(entry, "extractionId");
+                AssertNullOrAbsent(entry, "indexId");
             });
     }
+
+    private static void AssertNullOrAbsent(JsonElement entry, string name) =>
+        Assert.True(
+            !entry.TryGetProperty(name, out var value) || value.ValueKind is JsonValueKind.Null,
+            name);
 
     [Fact]
     public void EnvelopeMapper_MapsResolvedSupportableSeamPacketsWithoutChangingConclusion()
@@ -258,17 +264,17 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
             {
                 Assert.Equal(ProvenanceClassification.Fact, entry.Classification);
                 Assert.Equal("seam-investigation", entry.Source);
-                Assert.Equal("build-supportable", entry.BuildId);
-                Assert.Equal("extraction-supportable", entry.ExtractionId);
-                Assert.Equal("index-supportable", entry.IndexId);
+                Assert.Null(entry.BuildId);
+                Assert.Null(entry.ExtractionId);
+                Assert.Null(entry.IndexId);
             },
             entry =>
             {
                 Assert.Equal(ProvenanceClassification.Derived, entry.Classification);
                 Assert.Equal("seam-evaluation", entry.Source);
-                Assert.Equal("build-supportable", entry.BuildId);
-                Assert.Equal("extraction-supportable", entry.ExtractionId);
-                Assert.Equal("index-supportable", entry.IndexId);
+                Assert.Null(entry.BuildId);
+                Assert.Null(entry.ExtractionId);
+                Assert.Null(entry.IndexId);
             });
     }
 
@@ -343,11 +349,13 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Equal(SeamConclusion.NoSupportableSeam, envelope.Data!.Conclusion);
+        Assert.Equal("build-no-supportable", envelope.Build!.ResolvedBuildId);
+        Assert.Equal("index-no-supportable", envelope.Build.IndexId);
         Assert.Contains(envelope.Provenance, entry =>
             entry.Classification == ProvenanceClassification.Fact &&
             entry.Source == "seam-investigation" &&
-            entry.BuildId == "build-no-supportable" &&
-            entry.IndexId == "index-no-supportable");
+            entry.BuildId is null &&
+            entry.IndexId is null);
     }
 
     [Fact]
@@ -429,7 +437,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
             entry.IndexId == reference.IndexId);
         Assert.Contains(envelope.Provenance, entry =>
             entry.Source == "seam-investigation" &&
-            entry.BuildId == atlas.BuildIdA &&
+            entry.BuildId is null &&
             entry.ExtractionId is null &&
             entry.IndexId == reference.IndexId);
     }
@@ -600,10 +608,10 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
             value => value == $"reference-collection|{atlas.BuildIdA}||{reference.IndexId}");
         Assert.Contains(
             McpProvenanceIdentifiers(summaryRoot),
-            value => value == $"seam-investigation|{atlas.BuildIdA}||{reference.IndexId}");
+            value => value == $"seam-investigation|||{reference.IndexId}");
         Assert.Contains(
             McpProvenanceIdentifiers(summaryRoot),
-            value => value == $"seam-evaluation|{atlas.BuildIdA}||{reference.IndexId}");
+            value => value == $"seam-evaluation|||{reference.IndexId}");
         Assert.Empty(summaryData.GetProperty("claims").EnumerateArray());
         Assert.Empty(summaryData.GetProperty("evidenceSections").EnumerateArray());
         Assert.NotEmpty(detailsData.GetProperty("claims").EnumerateArray());
@@ -630,7 +638,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         Assert.Equal("ambiguous", root.GetProperty("status").GetString());
         Assert.Equal(2, root.GetProperty("candidates").GetArrayLength());
         Assert.Equal(2, root.GetProperty("totalCandidateCount").GetInt32());
-        Assert.Equal(0, root.GetProperty("suggestions").GetArrayLength());
+        Assert.False(root.TryGetProperty("suggestions", out _));
         Assert.True(!root.TryGetProperty("data", out var data) || data.ValueKind is JsonValueKind.Null);
     }
 
@@ -756,7 +764,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         Assert.Equal(details, cliData.GetProperty("claims").GetArrayLength() > 0);
         Assert.Equal(details, cliData.GetProperty("evidenceSections").GetArrayLength() > 0);
         Assert.Equal(
-            ExpectedMcpProvenanceIdentifiers(atlas, cliData),
+            ExpectedMcpProvenanceIdentifiers(),
             McpProvenanceIdentifiers(mcpRoot));
         Assert.Equal(atlas.BuildId, resolvedBuildId);
         Assert.Equal(atlas.PreferredExtractionId, extractionId);
@@ -830,10 +838,38 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         // not the interface vocabulary.
         MapCliVocabularyToAdvertised(cliSharedPacket);
 
+        // MCP omits empty candidates/suggestions arrays while CLI JSON keeps
+        // them; drop the CLI empties so parity compares packet content.
+        StripEmptyCandidatesAndSuggestions(cliSharedPacket);
+
         var mcpPacket = JsonNode.Parse(mcpData.GetRawText());
         Assert.True(
             JsonNode.DeepEquals(cliSharedPacket, mcpPacket),
             $"CLI and MCP shared seam packets differ. CLI: {cliSharedPacket} MCP: {mcpPacket}");
+    }
+
+    private static void StripEmptyCandidatesAndSuggestions(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var (key, value) in obj.ToArray())
+            {
+                if ((key == "candidates" || key == "suggestions") &&
+                    value is JsonArray array && array.Count == 0)
+                {
+                    obj.Remove(key);
+                }
+                else
+                {
+                    StripEmptyCandidatesAndSuggestions(value);
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+                StripEmptyCandidatesAndSuggestions(item);
+        }
     }
 
     private static void MapCliVocabularyToAdvertised(JsonNode? node)
@@ -893,25 +929,29 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         }
     }
 
-    private static string[] ExpectedMcpProvenanceIdentifiers(SeamMcpTestAtlas atlas, JsonElement cliData)
+    private static string[] ExpectedMcpProvenanceIdentifiers()
     {
-        var cliIndexId = cliData.GetProperty("resolution").GetProperty("symbol").GetProperty("indexId").GetString()!;
+        // The seam entries duplicate the envelope build, so the slim envelope
+        // strips their IDs; the build linkage is asserted separately.
         return
         [
-            $"seam-evaluation|{atlas.BuildId}|{atlas.PreferredExtractionId}|{cliIndexId}",
-            $"seam-investigation|{atlas.BuildId}|{atlas.PreferredExtractionId}|{cliIndexId}"
+            "seam-evaluation|||",
+            "seam-investigation|||"
         ];
     }
+
+    private static string ExpectedMcpProvenanceIdentifier(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) ? value.GetString() ?? string.Empty : string.Empty;
 
     private static string[] McpProvenanceIdentifiers(JsonElement root) =>
         root.GetProperty("provenance")
             .EnumerateArray()
             .Select(item => string.Join(
                 "|",
-                item.GetProperty("source").GetString(),
-                item.GetProperty("buildId").GetString(),
-                item.GetProperty("extractionId").GetString(),
-                item.GetProperty("indexId").GetString()))
+                ExpectedMcpProvenanceIdentifier(item, "source"),
+                ExpectedMcpProvenanceIdentifier(item, "buildId"),
+                ExpectedMcpProvenanceIdentifier(item, "extractionId"),
+                ExpectedMcpProvenanceIdentifier(item, "indexId")))
             .OrderBy(value => value, StringComparer.Ordinal)
             .ToArray();
 
