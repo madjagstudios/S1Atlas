@@ -70,12 +70,13 @@ public sealed class SeamInvestigationService
         var callees = await CalleesAsync(resolution.Symbol, boundedOptions, cancellationToken);
         var callSites = await CallSitesAsync(resolution.Symbol, boundedOptions, cancellationToken);
         var fieldReferences = await FieldReferencesAsync(resolution.Symbol, boundedOptions, cancellationToken);
+        var patches = await PatchesAsync(resolution.Symbol, boundedOptions, cancellationToken);
         var callableSurface = await CallableSurfaceAsync(resolution.Symbol, cancellationToken);
 
         var bodyStatus = source.Snippet?.BodyRecoveryStatus ?? callers.BodyRecoveryStatus ?? callees.BodyRecoveryStatus;
         var bodyCoverage = DetermineBodyCoverage(resolution.Symbol.Kind, bodyStatus, source.Snippet is not null);
         var callableCoverage = DetermineCallableCoverage(resolution.Symbol.Kind, callableSurface);
-        var evidenceSections = BuildEvidenceSections(source, references, callers, callees, callSites, fieldReferences, bodyStatus);
+        var evidenceSections = BuildEvidenceSections(source, references, callers, callees, callSites, fieldReferences, patches, bodyStatus);
         var ownerCandidateSet = await BuildOwnerCandidatesAsync(resolution.Symbol, boundedOptions, request.OwnerCandidateLimit, cancellationToken);
         var ownerCandidates = ownerCandidateSet.Candidates;
         var selectedCandidate = ownerCandidates.FirstOrDefault();
@@ -363,6 +364,20 @@ public sealed class SeamInvestigationService
         return await _gameQuery.CalleesAsync(symbol.SymbolId, options, cancellationToken);
     }
 
+    private async Task<RelationshipQuerySetResult> PatchesAsync(
+        SymbolQueryResult symbol,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (options.Scope == IndexQueryScope.Game && IsGameSymbol(symbol))
+            return await _gameQuery.PatchesInIndexAsync(PinnedRun(symbol), CodebaseKind.ScheduleI, CodeChannel.Installed, symbol.SymbolId, cancellationToken);
+        if (options.Scope == IndexQueryScope.Reference && options.Codebase == CodebaseKind.ReferenceMod)
+            return await _referenceQuery.PatchedByAsync(symbol.SymbolId, options, cancellationToken);
+        if (options.Scope != IndexQueryScope.Game)
+            return await _federatedQuery.PatchesAsync(symbol.SymbolId, options, cancellationToken);
+        return await _gameQuery.PatchesAsync(symbol.SymbolId, options, cancellationToken);
+    }
+
     private async Task<CallSiteQueryResult> CallSitesAsync(
         SymbolQueryResult symbol,
         IndexQueryOptions options,
@@ -644,6 +659,7 @@ public sealed class SeamInvestigationService
         RelationshipQuerySetResult callees,
         CallSiteQueryResult callSites,
         FieldReferenceQueryResult fieldReferences,
+        RelationshipQuerySetResult patches,
         BodyRecoveryStatus? bodyStatus)
     {
         var neighborhood = source.Snippet?.Neighborhood;
@@ -672,7 +688,8 @@ public sealed class SeamInvestigationService
                     bodyStatus,
                     true),
             CreateSection("CallSites", callSites.TotalCount, callSites.ReturnedCount, callSites.Relationships.Select(edge => edge.RelationshipId), callSites.CompletenessNotice, bodyStatus, false),
-            CreateSection("FieldReferences", fieldReferences.TotalCount, fieldReferences.ReturnedCount, fieldReferences.Relationships.Select(edge => edge.RelationshipId), fieldReferences.CompletenessNotice, bodyStatus, false)
+            CreateSection("FieldReferences", fieldReferences.TotalCount, fieldReferences.ReturnedCount, fieldReferences.Relationships.Select(edge => edge.RelationshipId), fieldReferences.CompletenessNotice, bodyStatus, false),
+            CreateRelationshipSection("Patches", patches, bodyStatus, false)
         ];
     }
 
@@ -948,6 +965,16 @@ public sealed class SeamInvestigationService
             SeamEvidenceClassification.Unknown,
             "The seam evidence is pinned to the completed index identity; build and extraction authority is supplied by the calling adapter when available.",
             [$"resolution:{resolved.SymbolId}"]));
+
+        var patchesSection = sections.SingleOrDefault(section => section.Family == "Patches");
+        if (patchesSection is not null && patchesSection.TotalCount > 0)
+        {
+            claims.Add(new SeamEvidenceClaim(
+                "reference-mod patches",
+                SeamEvidenceClassification.Fact,
+                $"{patchesSection.TotalCount} reference-mod Harmony patches target '{resolved.QualifiedName}'.",
+                patchesSection.EvidenceIds.ToArray()));
+        }
 
         if (selectedCandidate is not null)
         {

@@ -204,13 +204,18 @@ public enum RelationshipLabelContext
     Readers,
     Writers,
     All,
-    Refs
+    Refs,
+    Patches
 }
 
 public static class RelationshipLabels
 {
     public static string? ForRelationship(string kind, string evidence, RelationshipLabelContext context)
     {
+        if (string.Equals(kind, nameof(RelationshipKind.Patches), StringComparison.Ordinal))
+            return string.Equals(evidence, nameof(RelationshipEvidence.Metadata), StringComparison.Ordinal)
+                ? "attribute"
+                : "DERIVED";
         if (string.Equals(kind, nameof(RelationshipKind.ReferencesMethod), StringComparison.Ordinal))
             return string.Equals(evidence, nameof(RelationshipEvidence.Metadata), StringComparison.Ordinal)
                 ? "metadata reference (not called)"

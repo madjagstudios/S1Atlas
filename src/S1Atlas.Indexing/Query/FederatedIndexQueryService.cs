@@ -167,6 +167,21 @@ public sealed class FederatedIndexQueryService
     public Task<RelationshipQuerySetResult> CalleesAsync(string selector, IndexQueryOptions options, CancellationToken cancellationToken, bool includeGenerated = false, bool includeDelegates = false) =>
         RelationshipsAsync(selector, options, RelationshipKind.Callees, cancellationToken, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
 
+    public Task<RelationshipQuerySetResult> PatchesAsync(
+        string selector,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken,
+        bool includeGenerated = false,
+        string? referenceIndexId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(selector);
+        ValidateOptions(options);
+        ValidateLimit(options.Limit);
+        if (options.Scope == IndexQueryScope.Game)
+            return _game.PatchesAsync(selector, GameOptions(options, options.Limit), cancellationToken);
+        return _reference.PatchedByAsync(selector, options, cancellationToken, includeGenerated, referenceIndexId);
+    }
+
     public Task<HierarchyQueryResult> OverridesAsync(
         string selector,
         IndexQueryOptions options,

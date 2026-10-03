@@ -13,7 +13,7 @@ Roots: src
 | src/S1Atlas.Application/Envelope/ | 4 |
 | src/S1Atlas.Application/Readiness/ | 5 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 57 |
+| src/S1Atlas.Cli/Commands/ | 58 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 16 |
 | src/S1Atlas.Cli/Performance/ | 1 |
@@ -27,7 +27,8 @@ Roots: src
 | src/S1Atlas.Core/Extraction/ | 34 |
 | src/S1Atlas.Core/Hashing/ | 1 |
 | src/S1Atlas.Core/Identity/ | 1 |
-| src/S1Atlas.Core/Indexing/ | 19 |
+| src/S1Atlas.Core/Indexing/ | 20 |
+| src/S1Atlas.Core/Metadata/ | 1 |
 | src/S1Atlas.Core/Properties/ | 1 |
 | src/S1Atlas.Core/ReferenceMods/ | 1 |
 | src/S1Atlas.Core/Scenes/ | 3 |
@@ -52,7 +53,7 @@ Roots: src
 | src/S1Atlas.Extraction/Validation/ | 8 |
 | src/S1Atlas.Indexing/ | 2 |
 | src/S1Atlas.Indexing/Authority/ | 2 |
-| src/S1Atlas.Indexing/Decompilation/ | 4 |
+| src/S1Atlas.Indexing/Decompilation/ | 6 |
 | src/S1Atlas.Indexing/Diff/ | 1 |
 | src/S1Atlas.Indexing/Fingerprints/ | 1 |
 | src/S1Atlas.Indexing/NativeRecovery/ | 2 |
@@ -60,7 +61,7 @@ Roots: src
 | src/S1Atlas.Indexing/Properties/ | 1 |
 | src/S1Atlas.Indexing/Query/ | 18 |
 | src/S1Atlas.Indexing/ReferenceMods/ | 3 |
-| src/S1Atlas.Indexing/Relationships/ | 3 |
+| src/S1Atlas.Indexing/Relationships/ | 4 |
 | src/S1Atlas.Indexing/Scene/ | 10 |
 | src/S1Atlas.Indexing/Source/ | 2 |
 | src/S1Atlas.Indexing/Upstream/ | 5 |

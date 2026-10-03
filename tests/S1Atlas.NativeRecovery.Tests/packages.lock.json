@@ -381,6 +381,7 @@
           "Microsoft.Data.Sqlite": "[8.0.29, )",
           "S1Atlas.Core": "[1.5.0, )",
           "S1Atlas.Extraction": "[1.5.0, )",
+          "S1Atlas.Indexing": "[1.5.0, )",
           "S1Atlas.Storage": "[1.5.0, )"
         }
       }

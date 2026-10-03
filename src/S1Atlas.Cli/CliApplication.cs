@@ -502,6 +502,7 @@ public sealed class CliApplication
         root.Subcommands.Add(CallersCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CalleesCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(CallSitesCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(PatchedByCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(FieldRefsCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(OverridesCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(OverriddenByCommand.Create(indexQueryService, federatedIndexQueryService, referenceQueryService, authorityResolver, repository, output, error, cancellationToken));

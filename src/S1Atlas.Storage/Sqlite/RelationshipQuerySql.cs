@@ -102,6 +102,20 @@ internal static class RelationshipQuerySql
         LIMIT $limit;
         """;
 
+    internal const string SelectByKind = """
+        SELECT relationship.relationship_id, relationship.snapshot_id, relationship.source_symbol_id,
+               relationship.target_symbol_id, relationship.target_text,
+               relationship.relationship_kind, relationship.evidence, relationship.generated_source_symbol_id, relationship.generated_detail
+        FROM index_runs AS run
+        INNER JOIN relationships AS relationship INDEXED BY ix_relationships_snapshot_kind_target_text
+            ON relationship.snapshot_id = run.snapshot_id
+        WHERE run.index_id = $indexId
+          AND run.status = 'Completed'
+          AND relationship.relationship_kind = $relationshipKind
+        ORDER BY relationship.relationship_id COLLATE BINARY
+        LIMIT $limit;
+        """;
+
     internal static string CountByTargetText(RelationshipTargetTextMatchMode matchMode) =>
         matchMode == RelationshipTargetTextMatchMode.Exact ? CountByTargetTextExact : CountByTargetTextPrefix;
 
@@ -126,6 +140,18 @@ internal static class RelationshipQuerySql
         ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
         ArgumentException.ThrowIfNullOrWhiteSpace(symbolId);
         ArgumentException.ThrowIfNullOrWhiteSpace(relationshipKind);
+    }
+
+    internal static void ValidateKind(string indexId, string relationshipKind)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relationshipKind);
+    }
+
+    internal static void AddKindParameters(SqliteCommand command, string indexId, string relationshipKind)
+    {
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$relationshipKind", relationshipKind);
     }
 
     internal static void AddTargetTextParameters(

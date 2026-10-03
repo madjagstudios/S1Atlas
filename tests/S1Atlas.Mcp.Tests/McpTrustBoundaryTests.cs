@@ -44,6 +44,7 @@ public sealed class McpTrustBoundaryTests
                 "find_field_references",
                 "find_overriders",
                 "find_overrides",
+                "find_patches",
                 "find_references",
                 "find_related_types",
                 "get_callable_surface",
@@ -236,7 +237,7 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        Assert.Equal(26, schemas.Count);
+        Assert.Equal(27, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector"]);
@@ -245,6 +246,7 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["find_field_references"], ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_overriders"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_overrides"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_patches"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
@@ -281,6 +283,7 @@ public sealed class McpTrustBoundaryTests
             ["find_field_references"] = new Dictionary<string, object?> { ["selector"] = atlas.GameFieldSelector },
             ["find_overriders"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyBaseMethodSelector },
             ["find_overrides"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyDerivedMethodSelector },
+            ["find_patches"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["find_references"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["find_related_types"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
 

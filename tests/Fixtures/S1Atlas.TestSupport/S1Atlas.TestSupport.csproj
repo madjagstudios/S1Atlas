@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\S1Atlas.Core\S1Atlas.Core.csproj" />
     <ProjectReference Include="..\..\..\src\S1Atlas.Extraction\S1Atlas.Extraction.csproj" />
+    <ProjectReference Include="..\..\..\src\S1Atlas.Indexing\S1Atlas.Indexing.csproj" />
     <ProjectReference Include="..\..\..\src\S1Atlas.Storage\S1Atlas.Storage.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.29" />
   </ItemGroup>

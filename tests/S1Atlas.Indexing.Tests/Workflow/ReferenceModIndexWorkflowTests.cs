@@ -117,6 +117,22 @@ public sealed class ReferenceModIndexWorkflowTests
     }
 
     [Fact]
+    public async Task Duplicate_game_signatures_keep_the_first_loaded_symbol()
+    {
+        await using var fixture = await ReferenceWorkflowFixture.CreateAsync(includeEnvironmentLink: false, duplicateGameSymbol: true);
+        fixture.CreateInput("qol", "plugins/QolMod.dll", "selected");
+        var workflow = fixture.CreateWorkflow(new RecordingDecompiler(fixture.CreateModDecompilation("Qol.Mod")));
+        var collection = fixture.Collection(new ReferenceModDefinition("qol", "Quality of Life", "1.0.0", null, fixture.ModRoot("qol"), "qol-content", ["plugins/**"]));
+
+        var result = await workflow.RunAsync(fixture.BuildId, collection, false, TestContext.Current.CancellationToken);
+
+        var relationship = Assert.Single(
+            await fixture.Repository.GetCompletedRelationshipsAsync(result.IndexId, TestContext.Current.CancellationToken),
+            edge => edge.Kind == "Calls");
+        Assert.Equal(fixture.GameSymbolId, relationship.TargetSymbolId);
+    }
+
+    [Fact]
     public async Task Loads_normal_completed_schedule_one_symbols_without_an_environment_link()
     {
         await using var fixture = await ReferenceWorkflowFixture.CreateAsync(includeEnvironmentLink: false);
@@ -165,7 +181,7 @@ public sealed class ReferenceModIndexWorkflowTests
         public string Root { get; }
         public SqliteAtlasRepository Repository { get; }
 
-        public static async Task<ReferenceWorkflowFixture> CreateAsync(bool includeEnvironmentLink = true)
+        public static async Task<ReferenceWorkflowFixture> CreateAsync(bool includeEnvironmentLink = true, bool duplicateGameSymbol = false)
         {
             var root = Path.Combine(Path.GetTempPath(), "s1atlas-reference-workflow-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -178,9 +194,20 @@ public sealed class ReferenceModIndexWorkflowTests
             var snapshot = new CodeSnapshotRecord("game-snapshot", CodebaseKind.ScheduleI, CodeChannel.Installed, fixture.ExtractionIdentity, now.ToString("O"), environmentId);
             await fixture.Repository.CreateCodeSnapshotAsync(snapshot, TestContext.Current.CancellationToken);
             await fixture.Repository.StartIndexRunAsync(new IndexRunRecord(fixture.GameIndexId, snapshot.SnapshotId, IndexRunStatus.Running, now.ToString("O")), TestContext.Current.CancellationToken);
-            await fixture.Repository.CompleteIndexRunAsync(fixture.GameIndexId, new IndexWriteSet([
-                new IndexSymbolRecord(fixture.GameSymbolId, snapshot.SnapshotId, "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false)
-            ], [], [], [], []), now.ToString("O"), TestContext.Current.CancellationToken);
+            var gameSymbols = new List<IndexSymbolRecord>
+            {
+                new(fixture.GameSymbolId, snapshot.SnapshotId, "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false)
+            };
+            if (duplicateGameSymbol)
+                gameSymbols.Add(new IndexSymbolRecord(
+                    "game-symbol-duplicate",
+                    snapshot.SnapshotId,
+                    "ScheduleI:Installed:Method:Game.Target::Run():System.Void:duplicate",
+                    "Method",
+                    "Game.Target::Run():System.Void",
+                    "Game.Target::Run():System.Void",
+                    false));
+            await fixture.Repository.CompleteIndexRunAsync(fixture.GameIndexId, new IndexWriteSet(gameSymbols, [], [], [], []), now.ToString("O"), TestContext.Current.CancellationToken);
             return fixture;
         }
 
