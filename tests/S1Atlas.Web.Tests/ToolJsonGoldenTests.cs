@@ -1,5 +1,7 @@
 using System.Text.Json;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
+using S1Atlas.Web.Api;
 using Xunit;
 
 namespace S1Atlas.Web.Tests;
@@ -28,7 +30,7 @@ public sealed class ToolJsonGoldenTests
 
         Assert.Equal(
             "{\"status\":\"not_found\"," +
-            "\"build\":{\"resolvedBuildId\":\"build-1\",\"indexId\":\"index-1\",\"codebase\":\"ScheduleI\",\"channel\":\"Installed\",\"integrityVerified\":true}," +
+            "\"build\":{\"resolvedBuildId\":\"build-1\",\"indexId\":\"index-1\",\"codebase\":\"scheduleI\",\"channel\":\"Installed\",\"integrityVerified\":true}," +
             "\"candidates\":[]," +
             "\"provenance\":[{\"classification\":\"FACT\",\"source\":\"index-search\",\"buildId\":\"build-1\",\"indexId\":\"index-1\"}]," +
             "\"error\":{\"code\":\"SymbolNotFound\",\"message\":\"Bad \\u003Ctag\\u003E \\u0026 \\u0022quoted\\u0022 \\u0027apostrophe\\u0027 h\\u00E9llo \\u2192\"}," +
@@ -55,6 +57,25 @@ public sealed class ToolJsonGoldenTests
             "\"error\":{\"code\":\"NoCurrentBuild\",\"message\":\"No current environment snapshot is available.\",\"hint\":\"s1atlas scan\"}," +
             "\"suggestions\":[]}",
             json);
+    }
+
+    [Fact]
+    public void CodebaseAndOriginSerializeAsAdvertised()
+    {
+        var symbol = new SymbolQueryResult(
+            "index-1", "S1Api", "Release", "id-a", "Type", "A", "A", false,
+            Origin: "reference");
+        var scheduled = new ServeIndexStatus(CodebaseKind.ScheduleI, CodeChannel.Installed, "index-1", 1);
+        var unmapped = new ServeIndexStatus(CodebaseKind.ReferenceMod, CodeChannel.Installed, "index-2", 1);
+
+        var symbolJson = JsonSerializer.Serialize(symbol, ToolJsonOptions.Create());
+        var scheduledJson = JsonSerializer.Serialize(scheduled, ToolJsonOptions.Create());
+        var unmappedJson = JsonSerializer.Serialize(unmapped, ToolJsonOptions.Create());
+
+        Assert.Contains("\"codebase\":\"s1api\"", symbolJson, StringComparison.Ordinal);
+        Assert.Contains("\"origin\":\"Reference\"", symbolJson, StringComparison.Ordinal);
+        Assert.Contains("\"codebase\":\"scheduleI\"", scheduledJson, StringComparison.Ordinal);
+        Assert.Contains("\"codebase\":\"ReferenceMod\"", unmappedJson, StringComparison.Ordinal);
     }
 
     [Fact]

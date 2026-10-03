@@ -60,10 +60,10 @@ public sealed class LandingTests
         Assert.Equal("Resolved", data.GetProperty("authorityStatus").GetString());
         var indexes = data.GetProperty("indexes").EnumerateArray().ToArray();
         Assert.Equal(2, indexes.Length);
-        Assert.Equal("ScheduleI", indexes[0].GetProperty("codebase").GetString());
+        Assert.Equal("scheduleI", indexes[0].GetProperty("codebase").GetString());
         Assert.Equal("Installed", indexes[0].GetProperty("channel").GetString());
         Assert.Equal(50, indexes[0].GetProperty("symbolCount").GetInt32());
-        Assert.Equal("S1Api", indexes[1].GetProperty("codebase").GetString());
+        Assert.Equal("s1api", indexes[1].GetProperty("codebase").GetString());
         Assert.Equal("Release", indexes[1].GetProperty("channel").GetString());
         Assert.Equal(3, indexes[1].GetProperty("symbolCount").GetInt32());
     }

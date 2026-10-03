@@ -91,7 +91,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         var pinnedProvenance = data.GetProperty("pinnedProvenance");
         Assert.Equal("build-oc32", pinnedProvenance.GetProperty("requestedBuildId").GetString());
         Assert.Equal("build-oc32", pinnedProvenance.GetProperty("resolvedBuildId").GetString());
-        Assert.Equal("ScheduleI", pinnedProvenance.GetProperty("codebase").GetString());
+        Assert.Equal("scheduleI", pinnedProvenance.GetProperty("codebase").GetString());
         Assert.Equal("Installed", pinnedProvenance.GetProperty("channel").GetString());
         Assert.True(pinnedProvenance.GetProperty("integrityVerified").GetBoolean());
         Assert.Equal("InsufficientCoverage", data.GetProperty("conclusion").GetString());
@@ -824,11 +824,58 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
                 cliSharedPacket[property.Name] = JsonNode.Parse(property.Value.GetRawText());
         }
 
+        // MCP serializes codebase/origin with the advertised input spellings
+        // (ToolJsonOptions); CLI JSON keeps the stored spellings. Normalize
+        // the CLI packet through the same map so parity compares the packet,
+        // not the interface vocabulary.
+        MapCliVocabularyToAdvertised(cliSharedPacket);
+
         var mcpPacket = JsonNode.Parse(mcpData.GetRawText());
         Assert.True(
             JsonNode.DeepEquals(cliSharedPacket, mcpPacket),
             $"CLI and MCP shared seam packets differ. CLI: {cliSharedPacket} MCP: {mcpPacket}");
     }
+
+    private static void MapCliVocabularyToAdvertised(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var (key, value) in obj.ToArray())
+            {
+                if (value is JsonValue scalar && scalar.TryGetValue<string>(out var text))
+                {
+                    if (key == "codebase" && CliCodebaseSpellings.TryGetValue(text, out var codebase))
+                        obj[key] = codebase;
+                    else if (key == "origin" && CliOriginSpellings.TryGetValue(text, out var origin))
+                        obj[key] = origin;
+                }
+                else
+                {
+                    MapCliVocabularyToAdvertised(value);
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            foreach (var item in array)
+                MapCliVocabularyToAdvertised(item);
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> CliCodebaseSpellings =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ScheduleI"] = "scheduleI",
+            ["S1Api"] = "s1api",
+            ["S1MApi"] = "s1mapi"
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> CliOriginSpellings =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["game"] = "Game",
+            ["reference"] = "Reference"
+        };
 
     private static void AssertRequiredGateRecordsPresent(JsonElement data)
     {

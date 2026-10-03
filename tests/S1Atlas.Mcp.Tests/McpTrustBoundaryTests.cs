@@ -501,7 +501,7 @@ public sealed class McpTrustBoundaryTests
             Assert.Equal(
                 status is "not_found" or "invalid" or "unavailable",
                 outcome.IsError ?? false);
-            Assert.DoesNotContain("\"origin\":\"game\"", serialized, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"origin\":\"Game\"", serialized, StringComparison.Ordinal);
             Assert.True(!root.TryGetProperty("data", out var data) || data.ValueKind is JsonValueKind.Null);
         }
     }

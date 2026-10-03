@@ -28,6 +28,7 @@ internal sealed class SeamToolEnvelopeJsonConverter : JsonConverter<ToolEnvelope
                 {
                     typeInfo =>
                     {
+                        ToolJsonOptions.MapAdvertisedVocabulary(typeInfo);
                         foreach (var property in typeInfo.Properties)
                         {
                             property.ShouldSerialize = (instance, _) =>

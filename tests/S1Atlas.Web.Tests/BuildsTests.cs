@@ -137,7 +137,7 @@ public sealed class BuildsTests
         Assert.True(data.GetProperty("environmentAvailable").GetBoolean());
         var surfaces = data.GetProperty("surfaces").EnumerateArray().ToArray();
         Assert.Contains(surfaces, surface =>
-            surface.GetProperty("codebase").GetString() == "ScheduleI"
+            surface.GetProperty("codebase").GetString() == "scheduleI"
             && surface.GetProperty("symbolCount").GetInt32() == 50);
         var diffs = data.GetProperty("adjacentDiffs").EnumerateArray().ToArray();
         Assert.Single(diffs);
