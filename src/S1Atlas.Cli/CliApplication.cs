@@ -4,6 +4,7 @@ using S1Atlas.Application.Authority;
 using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Commands;
 using S1Atlas.Cli.Configuration;
+using S1Atlas.Cli.Output;
 using S1Atlas.Core.Discovery;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
@@ -386,6 +387,59 @@ public sealed class CliApplication
             StatusCommand.Create(repository, readinessService, output, error, cancellationToken));
         root.Subcommands.Add(
             DoctorCommand.Create(readinessService, output, error, cancellationToken));
+        root.Subcommands.Add(
+            SetupCommand.Create(
+                readinessService,
+                new SetupStepRunners(
+                    cancellation =>
+                        Task.FromResult(ScanCommand.Execute(
+                            discovery,
+                            repository,
+                            _atlasVersion,
+                            null,
+                            new CommandOutput("scan", json: false, output, error),
+                            null,
+                            cancellation)),
+                    (toolId, cancellation) =>
+                        Task.FromResult(ToolsInstallCommand.Execute(
+                            toolService,
+                            repository,
+                            toolId,
+                            false,
+                            new CommandOutput("tools install", json: false, output, error),
+                            cancellation)),
+                    cancellation =>
+                        Task.FromResult(ExtractCommand.Execute(
+                            workflow,
+                            ExtractCommand.DefaultOptions,
+                            new CommandOutput("extract", json: false, output, error),
+                            null,
+                            cancellation)),
+                    cancellation =>
+                        Task.FromResult(IndexCommand.Execute(
+                            indexingWorkflow,
+                            apiIndexingWorkflow,
+                            sceneIndexingWorkflow,
+                            repository,
+                            new IndexCommandOptions(),
+                            new CommandOutput("index", json: false, output, error),
+                            null,
+                            cancellation)),
+                    cancellation =>
+                        Task.FromResult(IndexCommand.Execute(
+                            indexingWorkflow,
+                            apiIndexingWorkflow,
+                            sceneIndexingWorkflow,
+                            repository,
+                            new IndexCommandOptions(Scene: true),
+                            new CommandOutput("index", json: false, output, error),
+                            null,
+                            cancellation))),
+                Console.In,
+                Console.IsInputRedirected,
+                output,
+                error,
+                cancellationToken));
         root.Subcommands.Add(
             EnvironmentCommand.Create(repository, output, error, cancellationToken));
         root.Subcommands.Add(
