@@ -169,7 +169,7 @@ public sealed class SearchTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "SymbolNotFound",
+            "symbol_not_found",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
@@ -250,7 +250,7 @@ public sealed class SearchTests
         using var json = JsonDocument.Parse(apiBody);
         Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "NoCompletedIndex",
+            "no_completed_index",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 

@@ -18,7 +18,7 @@ public sealed class AuthorityHintStdioTests
             atlas.DataRoot,
             new Dictionary<string, object?> { ["selector"] = "Demo.Widget" });
 
-        Assert.Equal("NoCurrentBuild", error.GetProperty("code").GetString());
+        Assert.Equal("no_current_build", error.GetProperty("code").GetString());
         Assert.Equal(ReadinessFixCommands.Scan, error.GetProperty("hint").GetString());
     }
 
@@ -35,7 +35,7 @@ public sealed class AuthorityHintStdioTests
                 ["buildId"] = "missing-build"
             });
 
-        Assert.Equal("BuildNotFound", error.GetProperty("code").GetString());
+        Assert.Equal("snapshot_not_found", error.GetProperty("code").GetString());
         Assert.Equal(ReadinessFixCommands.Builds, error.GetProperty("hint").GetString());
     }
 
@@ -52,7 +52,7 @@ public sealed class AuthorityHintStdioTests
                 ["buildId"] = "abcdef12"
             });
 
-        Assert.Equal("AmbiguousBuildPrefix", error.GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", error.GetProperty("code").GetString());
         Assert.False(error.TryGetProperty("hint", out _), error.GetRawText());
     }
 
@@ -69,7 +69,7 @@ public sealed class AuthorityHintStdioTests
                 ["buildId"] = McpTestAtlas.NonCurrentBuildIdSeed
             });
 
-        Assert.Equal("NoPreferredVerifiedExtraction", error.GetProperty("code").GetString());
+        Assert.Equal("no_completed_index", error.GetProperty("code").GetString());
         Assert.Equal(
             "s1atlas extract --build 1234567890ab",
             error.GetProperty("hint").GetString());
@@ -84,7 +84,7 @@ public sealed class AuthorityHintStdioTests
             atlas.DataRoot,
             new Dictionary<string, object?> { ["selector"] = "Demo.Widget" });
 
-        Assert.Equal("NoPreferredVerifiedExtraction", error.GetProperty("code").GetString());
+        Assert.Equal("no_completed_index", error.GetProperty("code").GetString());
         Assert.Equal(ReadinessFixCommands.Extract, error.GetProperty("hint").GetString());
     }
 
@@ -97,7 +97,7 @@ public sealed class AuthorityHintStdioTests
             atlas.DataRoot,
             new Dictionary<string, object?> { ["selector"] = "Demo.Widget" });
 
-        Assert.Equal("ExtractionIntegrityFailure", error.GetProperty("code").GetString());
+        Assert.Equal("source_integrity_failure", error.GetProperty("code").GetString());
         Assert.False(error.TryGetProperty("hint", out _), error.GetRawText());
     }
 
@@ -110,7 +110,7 @@ public sealed class AuthorityHintStdioTests
             atlas.DataRoot,
             new Dictionary<string, object?> { ["selector"] = "Demo.Widget" });
 
-        Assert.Equal("NoCompletedIndex", error.GetProperty("code").GetString());
+        Assert.Equal("no_completed_index", error.GetProperty("code").GetString());
         Assert.Equal(ReadinessFixCommands.Index, error.GetProperty("hint").GetString());
     }
 
@@ -123,7 +123,7 @@ public sealed class AuthorityHintStdioTests
             atlas.DataRoot,
             new Dictionary<string, object?> { ["selector"] = "Demo.Widget" });
 
-        Assert.Equal("IndexBuildMismatch", error.GetProperty("code").GetString());
+        Assert.Equal("snapshot_not_found", error.GetProperty("code").GetString());
         Assert.False(error.TryGetProperty("hint", out _), error.GetRawText());
     }
 

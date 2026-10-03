@@ -116,7 +116,7 @@ public sealed class ServeRunnerTests
         runCts.Cancel();
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Contains("AtlasUnavailable", body);
+        Assert.Contains("atlas_unavailable", body);
         Assert.Equal(0, await run);
     }
 

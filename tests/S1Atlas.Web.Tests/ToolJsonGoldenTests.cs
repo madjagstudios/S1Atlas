@@ -32,7 +32,7 @@ public sealed class ToolJsonGoldenTests
             "{\"status\":\"not_found\"," +
             "\"build\":{\"resolvedBuildId\":\"build-1\",\"indexId\":\"index-1\",\"codebase\":\"scheduleI\",\"channel\":\"Installed\",\"integrityVerified\":true}," +
             "\"provenance\":[{\"classification\":\"FACT\",\"source\":\"index-search\"}]," +
-            "\"error\":{\"code\":\"SymbolNotFound\",\"message\":\"Bad \\u003Ctag\\u003E \\u0026 \\u0022quoted\\u0022 \\u0027apostrophe\\u0027 h\\u00E9llo \\u2192\"}}",
+            "\"error\":{\"code\":\"symbol_not_found\",\"message\":\"Bad \\u003Ctag\\u003E \\u0026 \\u0022quoted\\u0022 \\u0027apostrophe\\u0027 h\\u00E9llo \\u2192\"}}",
             json);
     }
 
@@ -51,7 +51,7 @@ public sealed class ToolJsonGoldenTests
         Assert.Equal(
             "{\"status\":\"not_found\"," +
             "\"provenance\":[]," +
-            "\"error\":{\"code\":\"NoCurrentBuild\",\"message\":\"No current environment snapshot is available.\",\"hint\":\"s1atlas scan\"}}",
+            "\"error\":{\"code\":\"no_current_build\",\"message\":\"No current environment snapshot is available.\",\"hint\":\"s1atlas scan\"}}",
             json);
     }
 

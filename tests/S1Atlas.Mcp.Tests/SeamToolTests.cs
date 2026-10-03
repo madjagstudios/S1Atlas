@@ -643,11 +643,11 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
     }
 
     [Theory]
-    [InlineData("relationshipLimit", 0, "InvalidRelationshipLimit")]
-    [InlineData("relationshipLimit", 51, "InvalidRelationshipLimit")]
-    [InlineData("ownerLimit", 0, "InvalidOwnerLimit")]
-    [InlineData("ownerLimit", 51, "InvalidOwnerLimit")]
-    [InlineData("context", -1, "InvalidContext")]
+    [InlineData("relationshipLimit", 0, "invalid_arguments")]
+    [InlineData("relationshipLimit", 51, "invalid_arguments")]
+    [InlineData("ownerLimit", 0, "invalid_arguments")]
+    [InlineData("ownerLimit", 51, "invalid_arguments")]
+    [InlineData("context", -1, "invalid_arguments")]
     public async Task InvestigateSeam_RejectsInvalidLimits(
         string argumentName,
         int argumentValue,
@@ -695,7 +695,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         var root = document.RootElement;
 
         Assert.Equal("unavailable", root.GetProperty("status").GetString());
-        Assert.Equal("NoCurrentBuild", root.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("no_current_build", root.GetProperty("error").GetProperty("code").GetString());
         Assert.True(!root.TryGetProperty("build", out var build) || build.ValueKind is JsonValueKind.Null);
     }
 

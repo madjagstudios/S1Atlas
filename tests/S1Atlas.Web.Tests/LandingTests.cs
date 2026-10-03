@@ -81,7 +81,7 @@ public sealed class LandingTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal("unavailable", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "AtlasUnavailable",
+            "atlas_unavailable",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 }

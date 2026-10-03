@@ -220,7 +220,7 @@ public sealed class DiffTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "BuildNotFound",
+            "snapshot_not_found",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
         Assert.Equal(
             "s1atlas builds",

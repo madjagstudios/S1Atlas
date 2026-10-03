@@ -39,7 +39,7 @@ public static class ToolJsonOptions
         };
         options.TypeInfoResolver = new DefaultJsonTypeInfoResolver
         {
-            Modifiers = { SkipNullProperties, SkipEmptyCandidatesAndSuggestions, MapAdvertisedVocabulary }
+            Modifiers = { SkipNullProperties, SkipEmptyCandidatesAndSuggestions, MapAdvertisedVocabulary, MapErrorCodes }
         };
         options.Converters.Add(new ToolStatusJsonConverter());
         options.Converters.Add(new ProvenanceClassificationJsonConverter());
@@ -83,6 +83,30 @@ public static class ToolJsonOptions
             else if (property.Name.Equals("Origin", StringComparison.OrdinalIgnoreCase) && property.PropertyType == typeof(string))
                 property.CustomConverter = new VocabularyJsonConverter(OriginSpellings);
         }
+    }
+
+    public static void MapErrorCodes(JsonTypeInfo typeInfo)
+    {
+        if (typeInfo.Type != typeof(ToolError))
+            return;
+
+        foreach (var property in typeInfo.Properties)
+        {
+            if (property.Name.Equals("code", StringComparison.OrdinalIgnoreCase) &&
+                property.PropertyType == typeof(string))
+            {
+                property.CustomConverter = new ToolErrorCodeJsonConverter();
+            }
+        }
+    }
+
+    private sealed class ToolErrorCodeJsonConverter : JsonConverter<string>
+    {
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.TokenType == JsonTokenType.Null ? null : reader.GetString();
+
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(McpToolErrorCodes.MapToWireCode(value));
     }
 
     private sealed class VocabularyJsonConverter(IReadOnlyDictionary<string, string> spellings) : JsonConverter<string>

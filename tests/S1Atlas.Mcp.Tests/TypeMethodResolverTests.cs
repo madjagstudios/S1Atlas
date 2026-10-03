@@ -161,7 +161,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             });
         using var byId = JsonDocument.Parse(TextOf(mismatches["get_type"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byId));
-        Assert.Equal("SymbolKindMismatch", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
         var byIdMessage = byId.RootElement.GetProperty("error").GetProperty("message").GetString()!;
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
@@ -179,7 +179,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             });
         using var byKeyResult = JsonDocument.Parse(TextOf(byKey["get_type"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byKeyResult));
-        Assert.Equal("SymbolKindMismatch", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             });
         using var byId = JsonDocument.Parse(TextOf(mismatches["get_method"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byId));
-        Assert.Equal("SymbolKindMismatch", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
         var byIdMessage = byId.RootElement.GetProperty("error").GetProperty("message").GetString()!;
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
@@ -215,7 +215,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             });
         using var byKeyResult = JsonDocument.Parse(TextOf(byKey["get_method"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byKeyResult));
-        Assert.Equal("SymbolKindMismatch", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]

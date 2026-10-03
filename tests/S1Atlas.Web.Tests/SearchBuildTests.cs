@@ -81,7 +81,7 @@ public sealed class SearchBuildTests
         using var json = JsonDocument.Parse(apiBody);
         Assert.Equal("invalid", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "BuildNotFound",
+            "snapshot_not_found",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
