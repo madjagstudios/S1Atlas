@@ -35,12 +35,6 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(
             [
                 "compare_symbol",
-                "find_api_call_sites",
-                "find_api_callees",
-                "find_api_callers",
-                "find_api_field_references",
-                "find_api_references",
-                "find_api_related_types",
                 "find_call_sites",
                 "find_callees",
                 "find_callers",
@@ -50,7 +44,6 @@ public sealed class McpTrustBoundaryTests
                 "find_overrides",
                 "find_references",
                 "find_related_types",
-                "get_api_source",
                 "get_callable_surface",
                 "get_component",
                 "get_environment",
@@ -67,7 +60,6 @@ public sealed class McpTrustBoundaryTests
                 "list_reference_collections",
                 "list_scenes",
                 "plan_runtime_proof",
-                "search_api_symbols",
                 "search_symbols"
             ],
             tools.OrderBy(name => name, StringComparer.Ordinal));
@@ -146,14 +138,6 @@ public sealed class McpTrustBoundaryTests
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
         AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query", "codebase"]);
         AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
-        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit", "includeGenerated"], ["codebase", "channel", "query"]);
-        AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit", "exact", "includeGenerated", "includeDelegates"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit", "includeGenerated", "includeDelegates"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_related_types"], ["codebase", "channel", "selector", "relationKinds", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
         AssertSchema(
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
@@ -170,54 +154,6 @@ public sealed class McpTrustBoundaryTests
         foreach (var (toolName, arguments) in new Dictionary<string, IReadOnlyDictionary<string, object?>>
         {
             ["list_api_indexes"] = new Dictionary<string, object?>(),
-            ["search_api_symbols"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["query"] = "Missing.Api"
-            },
-            ["get_api_source"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
-            ["find_api_callers"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
-            ["find_api_callees"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
-            ["find_api_references"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
-            ["find_api_related_types"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
-            ["find_api_call_sites"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
-            ["find_api_field_references"] = new Dictionary<string, object?>
-            {
-                ["codebase"] = "s1api",
-                ["channel"] = "release",
-                ["selector"] = "Missing.Api"
-            },
             ["plan_runtime_proof"] = new Dictionary<string, object?>
             {
                 ["behavioralQuestion"] = "Which authority owns settlement clearing?",
@@ -299,14 +235,8 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        Assert.Equal(35, schemas.Count);
+        Assert.Equal(27, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
-        AssertSchema(schemas["find_api_call_sites"], ["codebase", "channel", "selector", "limit"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callees"], ["codebase", "channel", "selector", "limit", "includeGenerated", "includeDelegates"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_callers"], ["codebase", "channel", "selector", "limit", "exact", "includeGenerated", "includeDelegates"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_field_references"], ["codebase", "channel", "selector", "readers", "writers", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_references"], ["codebase", "channel", "selector", "limit", "includeGenerated"], ["codebase", "channel", "selector"]);
-        AssertSchema(schemas["find_api_related_types"], ["codebase", "channel", "selector", "relationKinds", "limit"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection"], ["selector", "codebase"]);
         AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
         AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
@@ -316,7 +246,6 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["find_overrides"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection"], ["selector", "codebase"]);
         AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
         AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["get_api_source"], ["codebase", "channel", "selector", "context", "relatedLimit"], ["codebase", "channel", "selector"]);
         AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
         AssertSchema(schemas["get_component"], ["selector", "buildId", "sceneSnapshotId", "includeReferences", "includeCode", "limit"], ["selector"]);
         AssertSchema(schemas["get_environment"], ["buildId"], []);
@@ -339,18 +268,12 @@ public sealed class McpTrustBoundaryTests
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
-        AssertSchema(schemas["search_api_symbols"], ["codebase", "channel", "query", "limit", "includeGenerated"], ["codebase", "channel", "query"]);
         AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query", "codebase"]);
 
         Dictionary<string, IReadOnlyDictionary<string, object?>> minimalCalls = new()
         {
             ["compare_symbol"] = new Dictionary<string, object?> { ["selector"] = atlas.CompareSelector },
-            ["find_api_call_sites"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
-            ["find_api_callees"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
-            ["find_api_callers"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
-            ["find_api_field_references"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
-            ["find_api_references"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
-            ["find_api_related_types"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+
             ["find_call_sites"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.EngineCallSiteSelector },
             ["find_callees"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
             ["find_callers"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
@@ -360,7 +283,7 @@ public sealed class McpTrustBoundaryTests
             ["find_overrides"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.HierarchyDerivedMethodSelector },
             ["find_references"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
             ["find_related_types"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
-            ["get_api_source"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["selector"] = "Missing.Api" },
+
             ["get_callable_surface"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["get_component"] = new Dictionary<string, object?> { ["selector"] = atlas.ComponentSelector },
             ["get_environment"] = new Dictionary<string, object?>(),
@@ -387,7 +310,7 @@ public sealed class McpTrustBoundaryTests
                 ["canonicalIdentity"] = "Demo.Widget.Run",
                 ["authority"] = "Demo.Widget"
             },
-            ["search_api_symbols"] = new Dictionary<string, object?> { ["codebase"] = "s1api", ["channel"] = "release", ["query"] = "Missing.Api" },
+
             ["search_symbols"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["query"] = atlas.KnownSymbolFragment }
         };
 
@@ -939,19 +862,10 @@ internal static class McpTestHost
         var build = new BuildEnvironmentTools(services);
         var scene = new SceneTools(services);
         var seam = new SeamTools(services);
-        var api = new ApiIndexTools(services);
         var runtimeProof = new RuntimeProofTools();
         var ct = CancellationToken.None;
 
-        await api.ListApiIndexesAsync(ct: ct);
-        await api.SearchApiSymbolsAsync("s1api", "release", "Missing.Api", 10, ct);
-        await api.GetApiSourceAsync("s1api", "release", "Missing.Api", 0, 0, ct);
-        await api.FindApiCallersAsync("s1api", "release", "Missing.Api", 10, ct);
-        await api.FindApiCalleesAsync("s1api", "release", "Missing.Api", 10, ct);
-        await api.FindApiReferencesAsync("s1api", "release", "Missing.Api", 10, ct);
-        await api.FindApiRelatedTypesAsync("s1api", "release", "Missing.Api", null, 10, ct);
-        await api.FindApiCallSitesAsync("s1api", "release", "Missing.Api", 10, ct);
-        await api.FindApiFieldReferencesAsync("s1api", "release", "Missing.Api", false, false, 10, ct);
+        await code.ListApiIndexesAsync(ct: ct);
         await runtimeProof.PlanRuntimeProofAsync(
             "Which authority owns the Demo.Widget run path?",
             "singlePlayer",

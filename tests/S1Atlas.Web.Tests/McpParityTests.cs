@@ -63,10 +63,10 @@ public sealed class McpParityTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
-        var tools = new ApiIndexTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
+        var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
 
         var served = await fixture.GetStringAsync("/api/search?q=Catalog&codebase=s1api", cancellationToken);
-        var envelope = await tools.SearchApiSymbolsAsync("s1api", "release", "Catalog", limit: 20, ct: cancellationToken);
+        var envelope = await tools.SearchSymbolsAsync("Catalog", McpCodebase.s1api, CodeChannel.Release, limit: 20, ct: cancellationToken);
         var expected = JsonSerializer.Serialize(envelope, ToolJsonOptions.Create());
 
         Assert.Equal(expected, served);
@@ -184,13 +184,13 @@ public sealed class McpParityTests
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
-        var tools = new ApiIndexTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
+        var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(fixture.Atlas.DataRoot));
 
         using var served = JsonDocument.Parse(
             await fixture.GetStringAsync(
                 $"/api/symbol/{SyntheticAtlas.LookupMethodId}/callers?limit=50", cancellationToken));
-        var envelope = await tools.FindApiCallersAsync(
-            "s1api", "release", SyntheticAtlas.LookupSelector, limit: 50, ct: cancellationToken);
+        var envelope = await tools.FindCallersAsync(
+            SyntheticAtlas.LookupSelector, McpCodebase.s1api, CodeChannel.Release, limit: 50, ct: cancellationToken);
         using var expected = JsonDocument.Parse(
             JsonSerializer.Serialize(envelope, ToolJsonOptions.Create()));
 

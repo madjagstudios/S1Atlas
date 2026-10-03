@@ -1197,6 +1197,16 @@ public sealed class CodeSymbolTools
             });
     }
 
+    [McpServerTool(Name = "list_api_indexes", Title = "List API indexes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed S1API and S1MAPI indexes available to the read-only Atlas host.")]
+    public async Task<ToolEnvelope<ApiIndexCatalogResult>> ListApiIndexesAsync(
+        [Description("Optional Schedule I build ID used only to select installed API indexes.")] string? buildId = null,
+        CancellationToken ct = default) =>
+        await EnvelopeMapper.WithAtlasAvailabilityAsync(async () =>
+        {
+            var result = await _services.ApiIndexQueryService.ListAsync(buildId, ct);
+            return EnvelopeMapper.FromApiCatalog(result);
+        });
+
     private static CodebaseKind MapCodebase(McpCodebase codebase) => codebase switch
     {
         McpCodebase.s1api => CodebaseKind.S1Api,
