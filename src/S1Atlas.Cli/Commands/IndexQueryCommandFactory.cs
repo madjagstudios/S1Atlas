@@ -15,7 +15,7 @@ internal static class IndexQueryCommandFactory
     internal const string QueryArgumentDescription =
         "A symbol selector: full symbol ID, unique short-ID prefix, canonical key, signature, qualified name, or fuzzy text.";
     internal const string BuildOptionDescription =
-        "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed or all.";
+        "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed.";
     internal const string ScopedBuildOptionDescription =
         "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.";
 
@@ -506,7 +506,7 @@ internal static class IndexQueryCommandFactory
         !(hasReferenceService && options.Scope is IndexQueryScope.Reference or IndexQueryScope.All)
             ? hasReferenceService
                 ? "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all."
-                : "--build is only valid with --codebase schedule-i and --channel installed or all."
+                : "--build is only valid with --codebase schedule-i and --channel installed."
             : null;
 
     public static IndexQueryOptions ParseOptions(
