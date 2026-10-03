@@ -58,4 +58,27 @@ public sealed class CliCompletionTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("search", result.StandardOutput, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Suggest_past_the_end_lists_subcommands()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("[suggest:8]", "s1atlas");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("search", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("index", result.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Suggest_past_the_end_lists_command_options()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("[suggest:15]", "s1atlas search");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--limit", result.StandardOutput, StringComparison.Ordinal);
+    }
 }
