@@ -62,8 +62,8 @@ s1atlas scan --game-path "C:\Program Files (x86)\Steam\steamapps\common\Schedule
 s1atlas extract
 s1atlas index
 s1atlas search "Player" --limit 20
-s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
-s1atlas fieldrefs "MoneyManager.cashBalance" --writers
+s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+s1atlas field-refs "MoneyManager.cashBalance" --writers
 
 # validate and index a local reference-mod collection selected by a manifest
 s1atlas reference collections validate "C:\path\to\reference-manifest.json"
@@ -78,7 +78,7 @@ The full command walkthrough, every option, the MCP server, and the agent skill 
 
 ## Interfaces
 
-- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `callsites` / `fieldrefs` / `callable`, `investigate_seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `gameobject` / `prefab` / `component` graph queries, `upstream`, `serve`, and `open`.
+- **CLI**: `scan`, `extract`, `index`, `search` / `type` / `method` / `source` / `refs` / `callers` / `callees` / `call-sites` / `field-refs` / `callable`, `investigate-seam`, `recover-native-body`, `diff`, the `scenes` / `scene` / `game-object` / `prefab` / `component` graph queries, `upstream`, `serve`, and `open`.
 - **Read-only MCP server**: the Schedule I Installed query surface (symbols, source, relationships, call sites, field references, callable surface, scenes), `investigate_seam` with read-only native evidence, `plan_runtime_proof`, S1API/S1MAPI queries, and completed local reference-collection queries, for coding agents (run the installed `s1atlas-mcp` with no arguments).
 - **Local web app**: `s1atlas serve` starts a loopback-only, read-only web app with ranked search, symbol pages, builds, environment, and diffs.
 - **Agent skill**: an evidence-first usage methodology at [`skills/s1atlas/SKILL.md`](skills/s1atlas/SKILL.md).
@@ -100,7 +100,7 @@ S1Atlas treats the game install and Steam manifest as **read-only input**. Extra
 
 Reference collections are local and CLI-indexed. Each completed collection records its selected mods, hashes, and Schedule I base index; MCP exposes the resulting read-only queries and collection list. `reference` stays within one collection, while `all` is the explicit cross-origin view. Body recovery, callability, and reference prior art are separate evidence dimensions, and none establishes the others.
 
-`callsites` and `fieldrefs`, in both CLI and MCP form, are static recovered-IL relationship evidence. They can prove that the indexed code references a target or field in the recovered body set; they do not prove runtime scene behavior, geometry behavior, lifecycle sequencing, or call order. Recovered native pseudocode is static evidence in the same sense: it requires runtime validation before being treated as behavioral fact.
+`call-sites` and `field-refs`, in both CLI and MCP form, are static recovered-IL relationship evidence. They can prove that the indexed code references a target or field in the recovered body set; they do not prove runtime scene behavior, geometry behavior, lifecycle sequencing, or call order. Recovered native pseudocode is static evidence in the same sense: it requires runtime validation before being treated as behavioral fact.
 
 Deep internals, including on-disk data layout, the pinned Cpp2IL definition, the validation policy, and build/environment identity, are documented in **[docs/REFERENCE.md](docs/REFERENCE.md)**.
 

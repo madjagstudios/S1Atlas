@@ -753,7 +753,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         Assert.Equal(string.Empty, cli.StandardError);
         Assert.True(cliDocument.RootElement.GetProperty("success").GetBoolean());
         Assert.Equal(0, cliDocument.RootElement.GetProperty("exitCode").GetInt32());
-        Assert.Equal("investigate_seam", cliDocument.RootElement.GetProperty("command").GetString());
+        Assert.Equal("investigate-seam", cliDocument.RootElement.GetProperty("command").GetString());
         Assert.Equal("resolved", mcpRoot.GetProperty("status").GetString());
         AssertCompleteSharedPacketEquivalent(cliData, mcpData);
         AssertRequiredGateRecordsPresent(cliData);
@@ -801,7 +801,7 @@ public sealed class SeamToolTests : IClassFixture<SharedOc32ServerFixture>
         using var error = new StringWriter();
         var arguments = new List<string>
         {
-            "investigate_seam",
+            "investigate-seam",
             selector,
             "--question",
             "Which seam owns settlement clearing?",

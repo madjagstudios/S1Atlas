@@ -141,10 +141,10 @@ public sealed class AgentUsageContractTests
         var usage = File.ReadAllText(Path.Combine(root, "docs", "USAGE.md")).ReplaceLineEndings("\n");
         var normalizedUsage = NormalizeWhitespace(usage);
 
-        Assert.Contains("s1atlas investigate_seam", usage, StringComparison.Ordinal);
-        Assert.Contains("`investigate_seam`", usage, StringComparison.Ordinal);
-        Assert.Contains("`investigate_seam <selector> --question <text>", usage, StringComparison.Ordinal);
-        Assert.Contains("[--native-symbol-id <id>] [--native-traversal-budget <0-500>]", usage, StringComparison.Ordinal);
+        Assert.Contains("s1atlas investigate-seam", usage, StringComparison.Ordinal);
+        Assert.Contains("`investigate-seam`", usage, StringComparison.Ordinal);
+        Assert.Contains("s1atlas investigate-seam <selector> --question", usage, StringComparison.Ordinal);
+        Assert.Contains("[--native-symbol-id] [--native-traversal-budget]", usage, StringComparison.Ordinal);
         Assert.Contains("repeated `--native-symbol-id`, `--native-traversal-budget` from `0` to `500`", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("The MCP surface accepts `selector`, `behavioralQuestion`, `buildId`, `scope`, `collection`, `relationshipLimit`, `ownerLimit`, `context`, `details`, `nativeSymbolIds`, and `nativeTraversalBudget`.", normalizedUsage, StringComparison.Ordinal);
         Assert.Contains("MCP already returns the structured result, so there is no extra `json` argument on the MCP tool.", normalizedUsage, StringComparison.Ordinal);

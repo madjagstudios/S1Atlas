@@ -122,13 +122,13 @@ treat a setup error as an empty index.
    containing type's verified source span; it is not a full-file result, and
    the CLI option conflicts with `--file` and `--output`.
 4. **Trace relationships.** Use CLI `refs`, `callers`, `callees`,
-   `callsites`, and `fieldrefs`, or MCP `find_references`, `find_callers`,
+   `call-sites`, and `field-refs`, or MCP `find_references`, `find_callers`,
    `find_callees`, `find_call_sites`, `find_field_references`, and
    `find_related_types`. Add the reference scope/collection when needed.
    Preserve the reported direction, resolution status, origin, unresolved raw
    target text, and completeness boundary. `reference` is isolated to the
    selected collection; use `all` explicitly when a recorded game endpoint or
-   game relationship is part of the evidence. `callsites` and `fieldrefs` are
+   game relationship is part of the evidence. `call-sites` and `field-refs` are
    recovered-IL static evidence only: they do not prove runtime behavior,
    lifecycle ordering, scene behavior, geometry behavior, or call order. Source
    neighborhoods are callable-only and default to 10 rows per direction; the
@@ -141,7 +141,7 @@ treat a setup error as an empty index.
    failure may omit the neighborhood and report a notice while leaving the
    verified source result available.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
-   `scene`, `gameobject`, `prefab`, `component`, and `scriptable-object`, or MCP
+   `scene`, `game-object`, `prefab`, `component`, and `scriptable-object`, or MCP
    `list_scenes`, `get_scene` (`kind: Prefab` for prefabs; omitting `kind`
    resolves scenes), `get_gameobject`, `get_component`, and
    `get_scriptable_object`. For game-balance values (prices, wages,
@@ -175,11 +175,11 @@ treat a setup error as an empty index.
 | Callable surface | `callable <game-member>` | `get_callable_surface` |
 | Behavior/source | `source <query> --context <n> [--full-type] [--related-limit <0-50>] --json` | `get_source` (`fullType`, `relatedLimit`) |
 | Callers/references | `callers`, `callees`, `refs` with `--scope`/`--collection` as needed | `find_callers`, `find_callees`, `find_references`, `find_related_types` with `scope`/`collection` as needed |
-| Static engine/BCL call sites | `callsites <target>` with `--scope`/`--collection` as needed | `find_call_sites` with `scope`/`collection` as needed |
-| Field readers/writers | `fieldrefs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |
+| Static engine/BCL call sites | `call-sites <target>` with `--scope`/`--collection` as needed | `find_call_sites` with `scope`/`collection` as needed |
+| Field readers/writers | `field-refs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
-| Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
+| Scenes | `scenes`, `scene`, `game-object`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
 | S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes` plus the shared code tools with `codebase: s1api` or `s1mapi` and an optional `channel` |
 
 Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.

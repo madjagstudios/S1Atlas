@@ -302,7 +302,7 @@ s1atlas scenes [--build <build-id>] [--snapshot <scene-snapshot-id>]
                [--kind scene|prefab] [--query <text>] [--limit <n>] [--json]
 s1atlas scene <scene-id|exact-name> [--children] [--components]
                [--refs] [--limit <n>] [--json]
-s1atlas gameobject <game-object-id|scene-id/name>
+s1atlas game-object <game-object-id|scene-id/name>
                     [--children] [--components] [--refs]
                     [--limit <n>] [--json]
 s1atlas prefab <prefab-id|exact-name> [--objects] [--components]

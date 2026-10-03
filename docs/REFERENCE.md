@@ -171,7 +171,7 @@ test policy with a tiny managed-byte floor and never modify the production
 
 ## Seam investigation contract
 
-`investigate_seam` is a read-only ownership-analysis surface shared by the CLI
+The CLI `investigate-seam` command and the MCP `investigate_seam` tool share a read-only ownership-analysis surface: the CLI
 JSON result and the MCP tool payload. Valid conclusion values are
 `SupportableSeam`, `NoSupportableSeam`, and `InsufficientCoverage`.
 

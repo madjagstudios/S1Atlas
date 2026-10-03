@@ -178,8 +178,8 @@ s1atlas source "<TypeName.MethodName>" --file --output symbol.cs
 s1atlas refs "<TypeName.MethodName>" --json
 s1atlas callers "<TypeName.MethodName>"
 s1atlas callees "<TypeName.MethodName>"
-s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
-s1atlas fieldrefs "Demo.State.Value" --readers
+s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+s1atlas field-refs "Demo.State.Value" --readers
 s1atlas overrides "<TypeName.MethodName>"
 s1atlas overridden-by "<TypeName.MethodName>" --depth 5
 s1atlas derived "<Namespace.TypeName>" --limit 20 --offset 20
@@ -235,9 +235,9 @@ The optional `--interop-path` override is valid only for the default installed
 Schedule I index; otherwise the standard path is derived from the persisted
 installation root.
 
-`callsites` finds static recovered-IL call-site edges for either a resolved
+`call-sites` finds static recovered-IL call-site edges for either a resolved
 game member selector or canonical raw target text such as
-`UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()`. `fieldrefs` resolves one
+`UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()`. `field-refs` resolves one
 field and reports incoming `ReadsField` and/or `WritesField` relationships; use
 `--readers` or `--writers` to filter, and never both together. Both commands are
 bounded, deterministic, and preserve unresolved raw target text and
@@ -258,12 +258,12 @@ assemblies without method bodies.
 
 ## Investigate seams
 
-Use `investigate_seam` when the question is which exact code seam owns a
+Use `investigate-seam` when the question is which exact code seam owns a
 behavior, not whether that behavior has already been proved at runtime:
 
 ```powershell
-s1atlas investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
-s1atlas investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
+s1atlas investigate-seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
+s1atlas investigate-seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
 ```
 
 The CLI surface requires `<selector>` and `--question`, and also accepts
@@ -306,7 +306,7 @@ records the selected reference index. MCP carries that base authority in its
 top-level `build` and `provenance` entries instead of duplicating the CLI-only
 field inside `data`.
 
-`investigate_seam` is a read-only investigation: it does not patch code, run
+`investigate-seam` is a read-only investigation: it does not patch code, run
 native recovery automatically, or prove runtime behavior. When explicitly
 requested, it may attach a matching stored native-evidence summary containing
 status, mapping evidence, direct native edges, field accesses, tool identity,
@@ -321,12 +321,12 @@ CLI-only step that maps such a method to its native `GameAssembly.dll` address
 and decodes bounded, static evidence around it:
 
 ```powershell
-s1atlas recover-native-body --symbol-id <symbol-id> --traversal-budget 100
+s1atlas recover-native-body --symbol-id <symbol-id> --native-traversal-budget 100
 ```
 
 It accepts one or more repeated `--symbol-id` values (at least one is
-required; full IDs or unique short-ID prefixes), `--traversal-budget` from
-`1` to `500` (default `100`), an optional `--build-id` (full ID or unique
+required; full IDs or unique short-ID prefixes), `--native-traversal-budget` from
+`1` to `500` (default `100`), an optional `--build` (full ID or unique
 short-ID prefix), and `--json`. It resolves the current (or selected) build
 authority, locates the Schedule I installation, and requires a completed
 Schedule I `Installed` index; it fails with a precise error rather than a
@@ -367,7 +367,7 @@ pinned libraries rather than an executable. See
 for the full evidence and sanitization contract.
 
 `recover-native-body` is the only write path for native evidence; reading it
-back afterward goes through `investigate_seam` (see above), which surfaces the
+back afterward goes through `investigate-seam` (see above), which surfaces the
 persisted record as read-only `nativeEvidence` on both the CLI and the MCP
 tool, using the same bounded evidence model.
 
@@ -377,7 +377,7 @@ networked upstream command:
 
 ```powershell
 s1atlas upstream status --codebase s1api
-s1atlas upstream sync s1api --commit <40-character-sha>
+s1atlas upstream sync --codebase s1api --commit <40-character-sha>
 s1atlas index --codebase s1api --channel release --commit <40-character-sha>
 ```
 
@@ -391,7 +391,7 @@ s1atlas index --scene --build <64-character-build-id> --json
 s1atlas scenes --kind scene --limit 50
 s1atlas scenes --kind prefab --limit 50 --json
 s1atlas scene <scene-id-or-exact-name> --children --components --refs
-s1atlas gameobject <game-object-id-or-scene-id/name> --children --components --refs
+s1atlas game-object <game-object-id-or-scene-id/name> --children --components --refs
 s1atlas prefab <prefab-id-or-exact-name> --objects --components
 s1atlas component <component-id-or-exact-type> --refs --code --json
 s1atlas scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
@@ -457,7 +457,7 @@ The class database is a hash-pinned download that never ships in this
 repository; the parser re-verifies its SHA-256 before reading it and resolves the
 class layouts for the container's Unity version. Every snapshot records which
 source decoded it in `typeTreeSource`, shown by `index --scene`, `scenes`,
-`scene`, `gameobject`, `prefab`, `component`, and the MCP scene tools:
+`scene`, `game-object`, `prefab`, `component`, and the MCP scene tools:
 `embedded`, or
 `class-database unity-classdata <version> sha256:<hash> (<dump> layouts for <unity>; nearest earlier dump)`
 when the package holds no dump for the exact Unity version and the newest earlier
@@ -516,7 +516,7 @@ Field: Icon (PPtr<$Sprite>) = 3:12 -> unresolved (fileId=3;localFileId=12;extern
 
 The target kind is `GameObject`, `Component`, `ScriptableAsset`, `MonoScript`,
 or `Asset` (any other Unity object, named by class ID). An indexed target carries
-its record ID, which `gameobject`, `component` and `scriptable-object` accept;
+its record ID, which `game-object`, `component` and `scriptable-object` accept;
 anything else carries its container and local file ID. A target is `unresolved`
 when its external file is not one of the indexed containers or the object does
 not exist there. JSON and MCP output carry the same data as a `target` object on
@@ -637,7 +637,7 @@ s1atlas reference collections list --json
 
 Reference indexing is an explicit offline CLI operation. Query commands accept
 `--scope game|reference|all` and `--collection <name-or-id>` for `search`,
-`source`, `refs`, `callers`, `callees`, `callsites`, `fieldrefs`,
+`source`, `refs`, `callers`, `callees`, `call-sites`, `field-refs`,
 `overrides`, `overridden-by`, and `derived`:
 
 ```powershell
@@ -645,8 +645,8 @@ s1atlas search "ModEntry" --scope reference --collection qol
 s1atlas source "ModEntry.Run" --scope all --collection qol
 s1atlas callers "Game.Target.Run" --scope all --collection qol
 s1atlas callees "ModEntry.Run" --scope reference --collection qol
-s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
-s1atlas fieldrefs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
+s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
+s1atlas field-refs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
 s1atlas refs "ModEntry.Run" --scope reference --collection qol
 ```
 
@@ -973,7 +973,7 @@ stay unmapped with a reason.
 
 Every relationship surface can show the raw generated rows instead:
 
-- CLI: `--include-generated` on `callers`, `callees`, `refs`, `fieldrefs`,
+- CLI: `--include-generated` on `callers`, `callees`, `refs`, `field-refs`,
   and `search`. Relationship IDs are unchanged: the same edge keeps its ID
   whether it renders credited or raw.
 - MCP: `includeGenerated` on the relationship and search tools.
@@ -981,7 +981,7 @@ Every relationship surface can show the raw generated rows instead:
   relationship/search APIs.
 
 Symbol search hides compiler-generated members by default and reports `<n>
-generated result(s) hidden` with the switch that reveals them. `fieldrefs`
+generated result(s) hidden` with the switch that reveals them. `field-refs`
 likewise excludes compiler-captured fields unless asked.
 
 ## Delegate creation and field addresses
@@ -1000,7 +1000,7 @@ Delegate references stay out of `callers`/`callees` unless asked:
 
 Included delegate rows are labeled `delegate created (not called)`.
 
-`fieldrefs` always shows address-taken sites in both readers and writers:
+`field-refs` always shows address-taken sites in both readers and writers:
 `possible write (address taken)` in writers (and in the combined view) and
 `possible read (address taken)` in readers. `refs` always shows both new
 kinds. `ldtoken` of a method or field records a metadata reference, never a
@@ -1009,9 +1009,9 @@ records nothing.
 
 ## Symbol selectors
 
-Every symbol-taking command (`callers`, `callees`, `refs`, `fieldrefs`,
-`callsites`, `overrides`, `overridden-by`, `derived`, `callable`, `source`,
-`open`, `investigate_seam`, plus the MCP `get_*` and `find_*` tools) accepts
+Every symbol-taking command (`callers`, `callees`, `refs`, `field-refs`,
+`call-sites`, `overrides`, `overridden-by`, `derived`, `callable`, `source`,
+`open`, `investigate-seam`, plus the MCP `get_*` and `find_*` tools) accepts
 the same selector forms, resolved in this order:
 
 1. Full 64-character symbol ID (lowercase).
@@ -1039,7 +1039,7 @@ MCP `not_found` envelopes carry the same near matches in `suggestions`;
 `ambiguous` envelopes carry candidates with `totalCandidateCount`.
 
 Build, extraction, and attempt IDs accept unique short-ID prefixes anywhere
-they are accepted: `--build`/`--build-id`, `diff` build arguments,
+they are accepted: `--build`, `diff` build arguments,
 `extractions show`, and `recover-native-body --symbol-id`. Ambiguous prefixes
 fail listing labeled short IDs (builds show their first-seen time, history
 entries their kind and creation time, symbols their signature) that can be

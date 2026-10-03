@@ -106,7 +106,7 @@ public sealed class NativeRecoveryParityTests
         using var error = new StringWriter();
         var exitCode = application.Invoke(
             [
-                "investigate_seam",
+                "investigate-seam",
                 selector,
                 "--question",
                 "Which seam owns settlement clearing?",

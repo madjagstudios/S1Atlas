@@ -145,7 +145,7 @@ public sealed class DelegateAddressTakenQueryTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Metadata_ldtoken_rows_stay_out_of_callers_and_fieldrefs()
+    public async Task Metadata_ldtoken_rows_stay_out_of_callers_and_field_references()
     {
         var service = await SeedAsync(TestContext.Current.CancellationToken);
         var options = new IndexQueryOptions(CodebaseKind.ScheduleI, CodeChannel.Installed, false, 50, IndexQueryScope.Game);
@@ -153,9 +153,9 @@ public sealed class DelegateAddressTakenQueryTests : IAsyncDisposable
         var callers = await service.CallersAsync(Target, options, TestContext.Current.CancellationToken, includeDelegates: true);
         Assert.DoesNotContain(callers.Relationships, row => row.Source.QualifiedName == MetaCreator);
 
-        var fieldrefs = await service.FieldReferencesAsync(
+        var fieldReferences = await service.FieldReferencesAsync(
             UserField, options, FieldReferenceFilter.All, TestContext.Current.CancellationToken);
-        Assert.DoesNotContain(fieldrefs.Page.Relationships, row => row.Source.QualifiedName == TokenTaker);
+        Assert.DoesNotContain(fieldReferences.Page.Relationships, row => row.Source.QualifiedName == TokenTaker);
     }
 
     [Fact]
