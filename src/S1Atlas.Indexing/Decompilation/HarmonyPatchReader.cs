@@ -38,7 +38,14 @@ public static class HarmonyPatchReader
         ArgumentNullException.ThrowIfNull(reader);
 
         var definition = reader.GetTypeDefinition(type);
-        var classInfos = ReadPatchInfos(reader, definition.GetCustomAttributes());
+        var classAttributes = definition.GetCustomAttributes();
+        var classInfos = ReadPatchInfos(reader, classAttributes);
+        // The method-name convention applies only inside classes that carry a
+        // [HarmonyPatch] attribute; methods named Prefix/Postfix/Transpiler/Finalizer
+        // elsewhere are ordinary methods. Nested and partial classes need no special
+        // case: nested types are visited as their own definitions, and partial classes
+        // already merged into one. Explicit kind attributes keep working regardless.
+        var classAnnotated = HasAttribute(reader, classAttributes, HarmonyPatchName);
         var methods = definition.GetMethods()
             .Select(handle => (Handle: handle, Definition: reader.GetMethodDefinition(handle)))
             .ToArray();
@@ -49,7 +56,7 @@ public static class HarmonyPatchReader
         var patches = new Dictionary<MethodDefinitionHandle, IReadOnlyList<ManagedPatchFact>>();
         foreach (var method in methods)
         {
-            var kind = ReadKind(reader, method.Definition);
+            var kind = ReadKind(reader, method.Definition, classAnnotated);
             if (kind is null)
                 continue;
 
@@ -71,7 +78,7 @@ public static class HarmonyPatchReader
     // kind attributes therefore yields a single patch; that priority is deliberate, since
     // the real multi-kind behavior is unverified and emitting one edge cannot invent a
     // patch that does not exist.
-    private static HarmonyPatchKind? ReadKind(MetadataReader reader, MethodDefinition method)
+    private static HarmonyPatchKind? ReadKind(MetadataReader reader, MethodDefinition method, bool classAnnotated)
     {
         var attributes = method.GetCustomAttributes()
             .Select(handle => CustomAttributeDecoder.AttributeTypeName(reader, handle))
@@ -81,6 +88,9 @@ public static class HarmonyPatchReader
             if (attributes.Contains(attributeName))
                 return kind;
         }
+
+        if (!classAnnotated)
+            return null;
 
         var name = reader.GetString(method.Name);
         foreach (var (_, methodName, kind) in Kinds)

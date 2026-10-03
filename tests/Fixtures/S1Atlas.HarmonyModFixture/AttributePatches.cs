@@ -118,6 +118,15 @@ public class LonelyPatch
 }
 
 [HarmonyPatch]
+public class EmptyTargetPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+    }
+}
+
+[HarmonyPatch]
 public class PartialPatch
 {
     [HarmonyPatch("Run")]

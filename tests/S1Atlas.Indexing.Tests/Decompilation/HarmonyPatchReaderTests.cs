@@ -59,7 +59,7 @@ public sealed class HarmonyPatchReaderTests
     [Theory]
     [InlineData("Mod.TargetMethodPatch", "Prefix", HarmonyPatchKind.Prefix, HarmonyPatchReasons.RuntimeComputedTarget)]
     [InlineData("Mod.TargetMethodsPatch", "Postfix", HarmonyPatchKind.Postfix, HarmonyPatchReasons.RuntimeComputedTarget)]
-    [InlineData("Mod.LonelyPatch", "Prefix", HarmonyPatchKind.Prefix, HarmonyPatchReasons.NoTargetSpecified)]
+    [InlineData("Mod.EmptyTargetPatch", "Prefix", HarmonyPatchKind.Prefix, HarmonyPatchReasons.NoTargetSpecified)]
     [InlineData("Mod.PartialPatch", "Prefix", HarmonyPatchKind.Prefix, HarmonyPatchReasons.UnknownDeclaringType)]
     [InlineData("Mod.GetterNoNamePatch", "Prefix", HarmonyPatchKind.Prefix, HarmonyPatchReasons.UnknownMemberName)]
     public async Task Unbuildable_attribute_targets_carry_reasons(
@@ -209,6 +209,7 @@ public sealed class HarmonyPatchReaderTests
     [InlineData("Mod.TargetMethodsPatch", "TargetMethods")]
     [InlineData("Mod.DecoderProbe", ".ctor")]
     [InlineData("Mod.RunPatch", ".ctor")]
+    [InlineData("Mod.LonelyPatch", "Prefix")]
     public async Task Non_patch_members_carry_no_patch_facts(string typeName, string methodName)
     {
         var member = await FindMemberAsync(typeName, methodName);
