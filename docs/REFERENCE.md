@@ -267,15 +267,14 @@ require runtime validation before being treated as behavioral fact. See
 [Native recovery provenance](design/2026-08-29-native-recovery-provenance.md)
 for the full evidence, sanitization, and provider-identity contract.
 
-The API parity MCP surface includes `find_api_callers`, `find_api_callees`,
-`find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
-`find_api_field_references` in addition to API index, symbol, and source
-queries. These remain read-only and use the same completed-index and exact
+The API parity MCP surface is the shared code tools with `codebase: s1api`
+or `s1mapi` and an optional `channel`, in addition to `list_api_indexes`.
+These remain read-only and use the same completed-index and exact
 environment-snapshot authority rules as the CLI query services.
 
 `plan_runtime_proof` is a bounded planning surface, not a game runner. Its
-`executionBoundary` is one of `singlePlayer`, `listenHost`, `dedicatedServer`,
-or `client`; the planner keeps observability and authority evidence inside that
+`executionBoundary` is one of `SinglePlayer`, `ListenHost`, `DedicatedServer`,
+or `Client`; the planner keeps observability and authority evidence inside that
 boundary. It returns competing hypotheses, controls, lifecycle checks,
 declared-observable limitations, cleanup, and `Pass`, `Inconclusive`, or `Stop`
 outcomes. A missing policy gate or authority starts at `Stop`; otherwise the

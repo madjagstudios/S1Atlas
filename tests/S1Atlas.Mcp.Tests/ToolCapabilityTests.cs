@@ -47,6 +47,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
             "search_symbols",
             new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["query"] = "Dealer",
                 ["buildId"] = null,
                 ["kind"] = null,
@@ -65,6 +66,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
             "get_method",
             new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["selector"] = "worker",
                 ["buildId"] = null,
                 ["limit"] = 50
@@ -84,6 +86,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
             "get_type",
             new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["selector"] = "Demo.DoesNotExist",
                 ["buildId"] = null,
                 ["limit"] = 50
@@ -101,6 +104,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
             "get_type",
             new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["selector"] = "   ",
                 ["buildId"] = null,
                 ["limit"] = 50
@@ -110,7 +114,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
         using var document = JsonDocument.Parse(text);
         Assert.Equal("invalid", document.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "InvalidArguments",
+            "invalid_arguments",
             document.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
@@ -124,6 +128,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
             "search_symbols",
             new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["query"] = "Dealer",
                 ["buildId"] = null,
                 ["kind"] = null,
@@ -134,7 +139,7 @@ public sealed class ToolCapabilityTests : IClassFixture<SharedHealthyServerFixtu
         using var document = JsonDocument.Parse(text);
         Assert.Equal("unavailable", document.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "NoCurrentBuild",
+            "no_current_build",
             document.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 

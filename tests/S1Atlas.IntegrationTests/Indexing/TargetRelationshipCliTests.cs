@@ -193,7 +193,7 @@ public sealed class TargetRelationshipCliTests
     }
 
     [Fact]
-    public async Task Callers_paging_returns_fact_first_with_unknown_totals()
+    public async Task Callers_paging_returns_fact_first_with_totals_when_covered()
     {
         await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
 
@@ -212,9 +212,9 @@ public sealed class TargetRelationshipCliTests
 
         using var document = JsonDocument.Parse(result.StandardOutput);
         var data = document.RootElement.GetProperty("data");
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("totalCount").ValueKind);
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("exactCount").ValueKind);
-        Assert.Equal(JsonValueKind.Null, data.GetProperty("derivedCount").ValueKind);
+        Assert.Equal(3, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(1, data.GetProperty("exactCount").GetInt32());
+        Assert.Equal(2, data.GetProperty("derivedCount").GetInt32());
         Assert.Equal(1, data.GetProperty("returnedCount").GetInt32());
         var relationship = Assert.Single(data.GetProperty("relationships").EnumerateArray());
         Assert.Equal("call-005-game", relationship.GetProperty("relationshipId").GetString());

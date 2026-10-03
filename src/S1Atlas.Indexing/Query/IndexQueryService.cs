@@ -432,8 +432,9 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         CancellationToken cancellationToken,
-        bool includeGenerated = false) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Refs, cancellationToken, includeGenerated: includeGenerated);
+        bool includeGenerated = false,
+        int offset = 0) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Refs, cancellationToken, includeGenerated: includeGenerated, offset: offset);
 
     public async Task<RelationshipQuerySetResult> RelatedTypesInIndexAsync(
         IndexRunRecord run,
@@ -442,7 +443,8 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         IReadOnlySet<string> relationshipKinds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(relationshipKinds);
         ValidateQueryLimit(limit, nameof(limit));
@@ -460,10 +462,12 @@ public sealed class IndexQueryService
         var filtered = all.Relationships
             .Where(relationship => relationshipKinds.Contains(relationship.Kind))
             .ToArray();
+        var (rows, hasMore) = TakePage(filtered, offset, limit);
         return all with
         {
-            Relationships = filtered.Take(limit).ToArray(),
-            TotalCount = filtered.Length
+            Relationships = rows,
+            TotalCount = filtered.Length,
+            HasMore = hasMore
         };
     }
 
@@ -485,8 +489,9 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken,
         bool exact = false,
         bool includeGenerated = false,
-        bool includeDelegates = false) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken, exact, includeGenerated, includeDelegates);
+        bool includeDelegates = false,
+        int offset = 0) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callers, cancellationToken, exact, includeGenerated, includeDelegates, offset);
 
     public Task<RelationshipQuerySetResult> CalleesAsync(
         string selector,
@@ -504,21 +509,22 @@ public sealed class IndexQueryService
         int limit,
         CancellationToken cancellationToken,
         bool includeGenerated = false,
-        bool includeDelegates = false) =>
-        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
+        bool includeDelegates = false,
+        int offset = 0) =>
+        RelationshipSetInRunAsync(run, codebase, channel, selector, limit, RelationshipQueryMode.Callees, cancellationToken, includeGenerated: includeGenerated, includeDelegates: includeDelegates, offset: offset);
 
     public Task<HierarchyQueryResult> OverridesAsync(
         string selector,
         IndexQueryOptions options,
         CancellationToken cancellationToken) =>
-        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, 0, cancellationToken);
+        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, options.Offset, cancellationToken);
 
     public Task<HierarchyQueryResult> OverriddenByAsync(
         string selector,
         IndexQueryOptions options,
         int depth,
         CancellationToken cancellationToken) =>
-        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.OverriddenBy, depth, 0, cancellationToken);
+        HierarchyAcrossChannelsAsync(selector, options, HierarchyQueryMode.OverriddenBy, depth, options.Offset, cancellationToken);
 
     public Task<HierarchyQueryResult> DerivedAsync(
         string selector,
@@ -534,8 +540,9 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string selector,
         int limit,
-        CancellationToken cancellationToken) =>
-        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, 0, cancellationToken);
+        CancellationToken cancellationToken,
+        int offset = 0) =>
+        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.Overrides, HierarchyTraversal.FullChainDepth, offset, cancellationToken);
 
     public Task<HierarchyQueryResult> OverriddenByInIndexAsync(
         IndexRunRecord run,
@@ -544,8 +551,9 @@ public sealed class IndexQueryService
         string selector,
         int limit,
         int depth,
-        CancellationToken cancellationToken) =>
-        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.OverriddenBy, depth, 0, cancellationToken);
+        CancellationToken cancellationToken,
+        int offset = 0) =>
+        HierarchyInRunAsync(run, codebase, channel, selector, limit, HierarchyQueryMode.OverriddenBy, depth, offset, cancellationToken);
 
     public Task<HierarchyQueryResult> DerivedInIndexAsync(
         IndexRunRecord run,
@@ -566,25 +574,33 @@ public sealed class IndexQueryService
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
         ValidateQueryLimit(options.Limit, nameof(options));
 
+        // Each channel returns its first span rows; the merge applies the
+        // offset and each channel reports whether it holds more rows. The
+        // per-index call adds the single +1 probe row itself.
+        var span = IndexPaging.PageSpan(options.Offset, options.Limit);
         var totalCount = 0;
+        var channelHasMore = false;
         var candidates = new List<RelationshipQueryResult>();
         foreach (var channel in Channels(options))
         {
             var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
             if (run is null) continue;
 
-            var page = await CallSitesInIndexAsync(run, options.Codebase, channel, selector, options.Limit, cancellationToken);
+            var page = await CallSitesInIndexAsync(run, options.Codebase, channel, selector, span, cancellationToken);
             totalCount += page.TotalCount;
+            channelHasMore |= page.HasMore;
             candidates.AddRange(page.Relationships);
         }
 
-        var relationships = candidates
+        var ordered = candidates
             .OrderBy(edge => edge.RelationshipId, StringComparer.Ordinal)
-            .Take(options.Limit)
+            .ThenBy(edge => edge.Direction, StringComparer.Ordinal)
             .ToArray();
+        var (relationships, hasMore) = TakePage(ordered, options.Offset, options.Limit);
         return new CallSiteQueryResult(
-            new RelationshipQueryPageResult(totalCount, relationships.Length, relationships),
-            CallSiteCompletenessNotice);
+            new RelationshipQueryPageResult(totalCount, relationships.Count, relationships),
+            CallSiteCompletenessNotice,
+            HasMore: hasMore || channelHasMore);
     }
 
     public async Task<CallSiteQueryResult> CallSitesInIndexAsync(
@@ -593,7 +609,8 @@ public sealed class IndexQueryService
         CodeChannel channel,
         string selector,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -618,6 +635,7 @@ public sealed class IndexQueryService
                 CallSiteCompletenessNotice);
         }
 
+        var window = PageWindow(offset, limit);
         var fetched = new List<IndexRelationshipRecord>();
         foreach (var kind in CallSiteKinds.Names)
         {
@@ -626,18 +644,19 @@ public sealed class IndexQueryService
                 targetQuery.TargetText,
                 targetQuery.MatchMode,
                 kind,
-                limit,
+                window,
                 cancellationToken));
         }
 
-        var edges = CallSiteKinds.MergeAndTake(fetched, limit);
+        var edges = CallSiteKinds.MergeAndTake(fetched, window, offset);
+        var (rows, hasMore) = TakePage(edges, 0, limit);
         var relationships = await MapRelationshipPageAsync(
             run,
-            edges.Select(edge => (edge, "Incoming")).ToArray(),
+            rows.Select(edge => (edge, "Incoming")).ToArray(),
             totalCount,
             SymbolResolver.OriginFor(codebase),
             cancellationToken);
-        return new CallSiteQueryResult(relationships, CallSiteCompletenessNotice);
+        return new CallSiteQueryResult(relationships, CallSiteCompletenessNotice, HasMore: hasMore);
     }
 
     public Task<FieldReferenceQueryResult> FieldReferencesAsync(
@@ -656,8 +675,9 @@ public sealed class IndexQueryService
         int limit,
         FieldReferenceFilter filter,
         CancellationToken cancellationToken,
-        bool includeGenerated = false) =>
-        FieldReferencesInRunAsync(run, codebase, channel, selector, limit, filter, cancellationToken, includeGenerated);
+        bool includeGenerated = false,
+        int offset = 0) =>
+        FieldReferencesInRunAsync(run, codebase, channel, selector, limit, filter, cancellationToken, includeGenerated, offset);
 
     private async Task<RelationshipQuerySetResult> RelationshipSetAsync(
         string selector,
@@ -710,7 +730,8 @@ public sealed class IndexQueryService
             options.Limit,
             filter,
             cancellationToken,
-            includeGenerated);
+            includeGenerated,
+            options.Offset);
     }
 
     public async Task<SourceSnippetResolutionResult> SourceInIndexAsync(
@@ -871,7 +892,8 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken,
         bool exact = false,
         bool includeGenerated = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -894,7 +916,8 @@ public sealed class IndexQueryService
             cancellationToken,
             exact,
             includeGenerated,
-            includeDelegates);
+            includeDelegates,
+            offset);
     }
 
     private async Task<RelationshipQuerySetResult> RelationshipSetFromSelectedAsync(
@@ -904,7 +927,8 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken,
         bool exact = false,
         bool includeGenerated = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        int offset = 0)
     {
         var symbolRecord = await _repository.GetCompletedSymbolByIdAsync(
             selected.Run.IndexId,
@@ -915,8 +939,8 @@ public sealed class IndexQueryService
             ? symbolRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         if (mode == RelationshipQueryMode.Callers && !exact)
-            return await ExpandedCallersFromSelectedAsync(selected, bodyRecoveryStatus, limit, cancellationToken, includeGenerated, includeDelegates);
-        var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken, includeDelegates);
+            return await ExpandedCallersFromSelectedAsync(selected, bodyRecoveryStatus, limit, cancellationToken, includeGenerated, includeDelegates, offset);
+        var selectedEdges = await GetSelectedRelationshipEdgesAsync(selected, mode, limit, cancellationToken, includeDelegates, offset);
         var relationships = (await MapRelationshipPageAsync(
             selected.Run,
             selectedEdges.Relationships,
@@ -937,7 +961,8 @@ public sealed class IndexQueryService
             notice,
             selectedEdges.TotalCount,
             ExactCount: mode == RelationshipQueryMode.Callers ? selectedEdges.TotalCount : null,
-            DerivedCount: mode == RelationshipQueryMode.Callers ? 0 : null);
+            DerivedCount: mode == RelationshipQueryMode.Callers ? 0 : null,
+            HasMore: selectedEdges.HasMore);
     }
 
     private async Task<RelationshipQuerySetResult> ExpandedCallersFromSelectedAsync(
@@ -946,7 +971,8 @@ public sealed class IndexQueryService
         int limit,
         CancellationToken cancellationToken,
         bool includeGenerated = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        int offset = 0)
     {
         var incoming = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
             selected.Run.IndexId,
@@ -981,16 +1007,19 @@ public sealed class IndexQueryService
         var flagged = derived
             .Select(row => row with { IsDerived = true, Routes = routesById[row.RelationshipId] })
             .ToArray();
-        var page = DispatchExpansion.MergeAndTake(exact, flagged, limit);
+        var window = limit >= int.MaxValue ? limit : limit + 1;
+        var page = DispatchExpansion.MergeAndTake(exact, flagged, window, offset);
+        var (rows, hasMore) = TakePage(page.Relationships, 0, limit);
         return new RelationshipQuerySetResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-            page.Relationships,
+            rows,
             bodyRecoveryStatus,
             true,
             CompletenessNotice(bodyRecoveryStatus, true),
             page.ExactCount + page.DerivedCount,
             page.ExactCount,
-            page.DerivedCount);
+            page.DerivedCount,
+            HasMore: hasMore);
     }
 
     private async Task<HierarchyQueryResult> HierarchyInRunAsync(
@@ -1062,12 +1091,13 @@ public sealed class IndexQueryService
         var ordered = HierarchyTraversal.Order(
             mapped.Zip(collected, (edge, item) => new HierarchyNodeQueryResult(edge, item.Depth, item.Depth == 1)).ToArray(),
             incoming);
-        var page = ordered.Skip(offset).Take(limit).ToArray();
+        var (rows, hasMore) = TakePage(ordered, offset, limit);
         return new HierarchyQueryResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-            page,
+            rows,
             ordered.Count,
-            page.Length);
+            rows.Count,
+            HasMore: hasMore);
     }
 
     private async Task<FieldReferenceQueryResult> FieldReferencesInRunAsync(
@@ -1078,7 +1108,8 @@ public sealed class IndexQueryService
         int limit,
         FieldReferenceFilter filter,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(run);
         ArgumentException.ThrowIfNullOrWhiteSpace(selector);
@@ -1088,7 +1119,7 @@ public sealed class IndexQueryService
         if (selection.Resolution.Status != SymbolResolutionStatus.Resolved || selection.Selected is null)
             return new FieldReferenceQueryResult(selection.Resolution, new RelationshipQueryPageResult(0, 0, []));
 
-        return await FieldReferencesFromSelectedAsync(selection.Selected.Value, limit, filter, cancellationToken, includeGenerated);
+        return await FieldReferencesFromSelectedAsync(selection.Selected.Value, limit, filter, cancellationToken, includeGenerated, offset);
     }
 
     private async Task<FieldReferenceQueryResult> FieldReferencesFromSelectedAsync(
@@ -1096,7 +1127,8 @@ public sealed class IndexQueryService
         int limit,
         FieldReferenceFilter filter,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        int offset = 0)
     {
         if (!includeGenerated)
         {
@@ -1124,19 +1156,22 @@ public sealed class IndexQueryService
                 selected.Run.IndexId,
                 selected.Symbol.SymbolId,
                 kind,
-                limit,
+                int.MaxValue,
                 cancellationToken));
         }
 
         var droppedMetadata = edges.RemoveAll(IsMetadataAddressTaken);
         totalCount = Math.Max(0, totalCount - droppedMetadata);
 
+        // The metadata filter drops rows after the fetch, so per-kind windows
+        // cannot bound it; the fetch stays bounded by the field's fan-out.
+        var ordered = edges.Select(edge => (edge, "Incoming"))
+            .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
+            .ToArray();
+        var (rows, hasMore) = TakePage(ordered, offset, limit);
         var page = await MapRelationshipPageAsync(
             selected.Run,
-            edges.Select(edge => (edge, "Incoming"))
-                .OrderBy(item => item.edge.RelationshipId, StringComparer.Ordinal)
-                .Take(limit)
-                .ToArray(),
+            rows,
             totalCount,
             selected.Symbol.Origin,
             cancellationToken,
@@ -1144,7 +1179,8 @@ public sealed class IndexQueryService
             LabelContextFor(filter));
         return new FieldReferenceQueryResult(
             new SymbolResolutionResult(SymbolResolutionStatus.Resolved, selected.Symbol, []),
-            page);
+            page,
+            HasMore: hasMore);
     }
 
     private async Task<SelectedRelationshipEdges> GetSelectedRelationshipEdgesAsync(
@@ -1152,7 +1188,8 @@ public sealed class IndexQueryService
         RelationshipQueryMode mode,
         int limit,
         CancellationToken cancellationToken,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        int offset = 0)
     {
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> allEdges;
         if (mode == RelationshipQueryMode.Refs)
@@ -1186,7 +1223,8 @@ public sealed class IndexQueryService
                 .ToArray();
         }
 
-        return new SelectedRelationshipEdges(allEdges.Take(limit).ToArray(), allEdges.Count);
+        var (rows, hasMore) = TakePage(allEdges, offset, limit);
+        return new SelectedRelationshipEdges(rows, allEdges.Count, hasMore);
     }
 
     private async Task<IReadOnlyList<RelationshipQueryResult>> MapRelationshipEdgesAsync(
@@ -1557,6 +1595,12 @@ public sealed class IndexQueryService
             throw new ArgumentOutOfRangeException(parameterName, "The query result limit must be positive.");
     }
 
+    private static (IReadOnlyList<T> Rows, bool HasMore) TakePage<T>(IReadOnlyList<T> ordered, int offset, int limit) =>
+        IndexPaging.TakePage(ordered, offset, limit);
+
+    private static int PageWindow(int offset, int limit) =>
+        IndexPaging.PageWindow(offset, limit);
+
     private static void ValidateSourceRelatedLimit(int relatedLimit)
     {
         if (relatedLimit < 0 || relatedLimit > MaxSourceNeighborhoodLimit)
@@ -1689,7 +1733,8 @@ public sealed class IndexQueryService
 
     private readonly record struct SelectedRelationshipEdges(
         IReadOnlyList<(IndexRelationshipRecord Edge, string Direction)> Relationships,
-        int TotalCount);
+        int TotalCount,
+        bool HasMore);
 
     private readonly record struct ChannelSelection(
         SymbolResolutionResult Resolution,

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using Xunit;
 
 namespace S1Atlas.Web.Tests;
@@ -163,7 +164,8 @@ public sealed class ServeHostTests
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.StartsWith("application/json", response.Content.Headers.ContentType?.ToString());
-        Assert.Contains("UnknownEndpoint", body);
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("invalid_arguments", json.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]

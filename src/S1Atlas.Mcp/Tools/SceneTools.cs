@@ -18,21 +18,27 @@ public sealed class SceneTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_scenes", Title = "List scenes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed Schedule I scenes and prefabs from a completed scene snapshot.")]
+    [McpServerTool(Name = "list_scenes", Title = "List scenes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed scenes and prefabs from a completed scene snapshot.")]
     public async Task<ToolEnvelope<SceneListResult>> ListScenesAsync(
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
-        [Description("Optional document kind: Scene or Prefab.")] string? kind = null,
+        [Description("Optional document kind filter.")] SceneDocumentKind? kind = null,
         [Description("Optional case-insensitive name fragment.")] string? query = null,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null)
     {
         return await WithAuthorityAsync(buildId, ct, async authority =>
         {
             try
             {
                 var boundedLimit = BoundLimit(limit);
-                var parsedKind = ParseKind(kind);
+                if (!CodeSymbolTools.ToolArguments.TryDecodeCursor<SceneListResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                var parsedKind = kind;
                 return await WithSnapshotForAuthorityAsync(
                 authority,
                 sceneSnapshotId,
@@ -40,8 +46,17 @@ public sealed class SceneTools
                 async (authority, snapshot) =>
                 {
                     var result = await _services.SceneQueryService.ScenesAsync(
-                        new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit), ct);
-                    return FromResult(authority, result.Status, result, [], "scene-list");
+                        new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit, offset), ct);
+                    var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
+                        "list_scenes", authority.ResolvedBuildId, snapshot.SceneSnapshotId,
+                        buildId, sceneSnapshotId, parsedKind?.ToString(), query, boundedLimit.ToString());
+                    if (!CodeSymbolTools.ToolArguments.VerifyCursorHash<SceneListResult>(cursorHash, expectedHash, authority, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return FromResult(authority, result.Status, nextCursor is null ? result : result with { NextCursor = nextCursor }, [], "scene-list");
                 });
             }
             catch (ArgumentOutOfRangeException exception)
@@ -58,20 +73,20 @@ public sealed class SceneTools
     [McpServerTool(Name = "get_scene", Title = "Get scene", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I scene document.")]
     public Task<ToolEnvelope<SceneDocumentQueryResult>> GetSceneAsync(
         [Description("Exact or fuzzy scene selector.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
-        [Description("Optional document kind: Scene or Prefab.")] string? kind = null,
+        [Description("Document kind: Scene (default) or Prefab.")] SceneDocumentKind? kind = null,
         [Description("Include child game objects.")] bool includeChildren = false,
         [Description("Include components.")] bool includeComponents = false,
         [Description("Include references.")] bool includeReferences = false,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
         CancellationToken ct = default) =>
-        GetDocumentAsync(selector, buildId, sceneSnapshotId, kind, includeChildren, includeComponents, includeReferences, limit, ct, prefab: false);
+        GetDocumentAsync(selector, buildId, sceneSnapshotId, kind, includeChildren, includeComponents, includeReferences, limit, ct);
 
     [McpServerTool(Name = "get_gameobject", Title = "Get game object", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I game object.")]
     public async Task<ToolEnvelope<GameObjectQueryResult>> GetGameObjectAsync(
         [Description("Exact or fuzzy game object selector.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
         [Description("Include child game objects.")] bool includeChildren = false,
         [Description("Include components.")] bool includeComponents = false,
@@ -99,22 +114,11 @@ public sealed class SceneTools
         });
     }
 
-    [McpServerTool(Name = "get_prefab", Title = "Get prefab", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I prefab document.")]
-    public Task<ToolEnvelope<SceneDocumentQueryResult>> GetPrefabAsync(
-        [Description("Exact or fuzzy prefab selector.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
-        [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
-        [Description("Include prefab game objects.")] bool includeObjects = false,
-        [Description("Include components.")] bool includeComponents = false,
-        [Description("Include references.")] bool includeReferences = false,
-        [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
-        CancellationToken ct = default) =>
-        GetDocumentAsync(selector, buildId, sceneSnapshotId, "Prefab", includeObjects, includeComponents, includeReferences, limit, ct, prefab: true);
 
-    [McpServerTool(Name = "get_scriptable_object", Title = "Get ScriptableObject", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I ScriptableObject asset (an asset-level MonoBehaviour with no GameObject, such as SpecialCustomerData) by asset ID, exact asset name, or exact Namespace.Class, including its decoded serialized script field values when the scene index had restored script layouts.")]
+    [McpServerTool(Name = "get_scriptable_object", Title = "Get ScriptableObject", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one asset-level Schedule I ScriptableObject (no GameObject) by asset ID, exact asset name, or exact Namespace.Class, with decoded script field values when restored.")]
     public async Task<ToolEnvelope<ScriptableAssetQueryResult>> GetScriptableObjectAsync(
         [Description("Asset ID, exact asset name (m_Name), or exact Namespace.Class.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
         CancellationToken ct = default)
     {
@@ -130,10 +134,10 @@ public sealed class SceneTools
         });
     }
 
-    [McpServerTool(Name = "get_component", Title = "Get component", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I component, including its decoded serialized script field values (when the scene index had restored script layouts) and its resolved code-symbol handoff when requested.")]
+    [McpServerTool(Name = "get_component", Title = "Get component", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I component with decoded script field values when restored, plus its resolved code-symbol handoff when requested.")]
     public async Task<ToolEnvelope<ComponentQueryResult>> GetComponentAsync(
         [Description("Exact or fuzzy component selector.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
         [Description("Include scene references originating at the component.")] bool includeReferences = false,
         [Description("Require the component's exact resolved code-symbol handoff.")] bool includeCode = false,
@@ -161,9 +165,9 @@ public sealed class SceneTools
     }
 
     private async Task<ToolEnvelope<SceneDocumentQueryResult>> GetDocumentAsync(
-        string selector, string? buildId, string? sceneSnapshotId, string? kind,
+        string selector, string? buildId, string? sceneSnapshotId, SceneDocumentKind? kind,
         bool includeChildren, bool includeComponents, bool includeReferences, int limit,
-        CancellationToken ct, bool prefab)
+        CancellationToken ct)
     {
         return await WithAuthorityAsync(buildId, ct, async authority =>
         {
@@ -171,12 +175,10 @@ public sealed class SceneTools
             try
             {
                 var boundedLimit = BoundLimit(limit);
-                var parsedKind = prefab ? SceneDocumentKind.Prefab : ParseSceneKind(kind);
+                var parsedKind = kind ?? SceneDocumentKind.Scene;
                 return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
                 {
-                    var result = prefab
-                        ? await _services.SceneQueryService.PrefabAsync(new PrefabQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct)
-                        : await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
+                    var result = await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
                     return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query");
                 });
             }
@@ -290,23 +292,6 @@ public sealed class SceneTools
     {
         if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
         return Math.Min(limit, 500);
-    }
-
-    private static SceneDocumentKind? ParseKind(string? kind)
-    {
-        if (string.IsNullOrWhiteSpace(kind)) return null;
-        if (Enum.TryParse<SceneDocumentKind>(kind, ignoreCase: true, out var parsed)) return parsed;
-        throw new ArgumentException("Scene kind must be Scene or Prefab.", nameof(kind));
-    }
-
-    private static SceneDocumentKind ParseSceneKind(string? kind)
-    {
-        if (string.IsNullOrWhiteSpace(kind) || string.Equals(kind, nameof(SceneDocumentKind.Scene), StringComparison.OrdinalIgnoreCase))
-        {
-            return SceneDocumentKind.Scene;
-        }
-
-        throw new ArgumentException("Scene kind must be Scene.", nameof(kind));
     }
 
     private static ToolEnvelope<T> Invalid<T>(InstalledBuildAuthority authority, string code, string message) where T : class =>

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using S1Atlas.Core.Storage;
 
 namespace S1Atlas.Core.Indexing;
@@ -8,7 +9,8 @@ public sealed record IndexQueryOptions(
     bool AllChannels = false,
     int Limit = 50,
     IndexQueryScope Scope = IndexQueryScope.Game,
-    string? ReferenceCollection = null);
+    string? ReferenceCollection = null,
+    int Offset = 0);
 
 public enum IndexQueryScope
 {
@@ -264,7 +266,9 @@ public sealed record RelationshipQuerySetResult(
     string CompletenessNotice,
     int? TotalCount = null,
     int? ExactCount = null,
-    int? DerivedCount = null);
+    int? DerivedCount = null,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false);
 
 public sealed record HierarchyNodeQueryResult(
     RelationshipQueryResult Edge,
@@ -275,7 +279,9 @@ public sealed record HierarchyQueryResult(
     SymbolResolutionResult Resolution,
     IReadOnlyList<HierarchyNodeQueryResult> Nodes,
     int TotalCount,
-    int ReturnedCount)
+    int ReturnedCount,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false)
 {
     public SymbolResolutionResult Resolution { get; init; } = Resolution ?? throw new ArgumentNullException(nameof(Resolution));
     public IReadOnlyList<HierarchyNodeQueryResult> Nodes { get; init; } = Nodes ?? throw new ArgumentNullException(nameof(Nodes));
@@ -379,7 +385,9 @@ public sealed record ReferenceModQueryResult(
 
 public sealed record ReferenceCollectionListResult(
     int TotalCount,
-    IReadOnlyList<ReferenceCollectionQueryResult> Collections);
+    IReadOnlyList<ReferenceCollectionQueryResult> Collections,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false);
 
 public sealed record ReferenceCollectionAuthorityQueryResult(
     string Collection,

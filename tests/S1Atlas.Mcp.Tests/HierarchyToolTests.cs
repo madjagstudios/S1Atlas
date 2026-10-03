@@ -1,4 +1,5 @@
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Mcp.Mapping;
 using S1Atlas.Mcp.Tools;
 using Xunit;
@@ -15,6 +16,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridesAsync(
             atlas.HierarchyDerivedMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             CancellationToken.None);
@@ -38,6 +41,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridersAsync(
             atlas.HierarchyBaseMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
@@ -57,6 +62,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridersAsync(
             atlas.HierarchyBaseMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 0,
@@ -74,11 +81,13 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindDerivedTypesAsync(
             atlas.HierarchyBaseTypeSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
-            offset: 0,
-            CancellationToken.None);
+            cursor: null,
+            ct: CancellationToken.None);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Equal(1, envelope.Data!.TotalCount);
@@ -89,24 +98,6 @@ public sealed class HierarchyToolTests
     }
 
     [Fact]
-    public async Task FindDerivedTypes_InvalidOffset_ReturnsInvalid()
-    {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-        var tools = CreateTools(atlas);
-
-        var envelope = await tools.FindDerivedTypesAsync(
-            atlas.HierarchyBaseTypeSelector,
-            buildId: null,
-            limit: 50,
-            depth: 10,
-            offset: -1,
-            CancellationToken.None);
-
-        Assert.Equal(ToolStatus.Invalid, envelope.Status);
-        Assert.Equal("InvalidOffset", envelope.Error?.Code);
-    }
-
-    [Fact]
     public async Task FindOverrides_NotFound_ReturnsNotFound()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -114,6 +105,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridesAsync(
             "No.Such.Symbol",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             CancellationToken.None);
@@ -132,6 +125,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridesAsync(
             "Render",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             CancellationToken.None);
@@ -150,6 +145,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridersAsync(
             "Render",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
@@ -169,11 +166,13 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindDerivedTypesAsync(
             "Render",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
-            offset: 0,
-            CancellationToken.None);
+            cursor: null,
+            ct: CancellationToken.None);
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.NotEmpty(envelope.Candidates);

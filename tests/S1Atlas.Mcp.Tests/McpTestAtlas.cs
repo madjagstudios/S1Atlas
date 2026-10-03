@@ -334,7 +334,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string buildId = BuildIdASeed,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
         bool includeGeneratedCredit = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        bool includeRelatedTypesWindow = false)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -350,7 +351,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             compareBodyFingerprint: "compare-body-same",
             methodBodyStatus,
             includeGeneratedCredit,
-            includeDelegates);
+            includeDelegates,
+            includeRelatedTypesWindow);
         atlas.IndexId = seeded.IndexId;
         atlas.IndexIdA = seeded.IndexId;
         atlas.ExtractionIdA = seeded.ExtractionId;
@@ -692,7 +694,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string compareBodyFingerprint,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
         bool includeGeneratedCredit = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        bool includeRelatedTypesWindow = false)
     {
         await SeedCurrentBuildAsync(buildId);
         var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
@@ -721,7 +724,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             compareBodyFingerprint,
             methodBodyStatus,
             includeGeneratedCredit,
-            includeDelegates);
+            includeDelegates,
+            includeRelatedTypesWindow);
 
         return new HealthySeed(buildId, seeded.Extraction.ExtractionId, seeded.InputSnapshot.InputSnapshotId, resolvedIndexId);
     }
@@ -859,7 +863,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         string compareBodyFingerprint,
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
         bool includeGeneratedCredit = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        bool includeRelatedTypesWindow = false)
     {
         var ct = CancellationToken.None;
         string Id(string value) => extractionId == NonAuthoritativeExtractionId
@@ -1039,10 +1044,50 @@ public sealed class McpTestAtlas : IAsyncDisposable
             return edges;
         }
 
+        List<IndexSymbolRecord> WithRelatedTypesWindowSymbols(List<IndexSymbolRecord> symbols)
+        {
+            if (includeRelatedTypesWindow)
+            {
+                for (var i = 0; i <= 500; i++)
+                {
+                    symbols.Add(new IndexSymbolRecord(
+                        Id($"rel-window-target-{i:000}"),
+                        snapshotId,
+                        $"ScheduleI:Installed:Type:RelWindow.Target{i:000}",
+                        "Type",
+                        $"RelWindow.Target{i:000}",
+                        $"RelWindow.Target{i:000}",
+                        false));
+                }
+            }
+
+            return symbols;
+        }
+
+        List<IndexRelationshipRecord> WithRelatedTypesWindowEdges(List<IndexRelationshipRecord> edges)
+        {
+            if (includeRelatedTypesWindow)
+            {
+                for (var i = 0; i <= 500; i++)
+                {
+                    edges.Add(new IndexRelationshipRecord(
+                        Id($"rel-window-{i:000}"),
+                        snapshotId,
+                        Id("type-widget"),
+                        Id($"rel-window-target-{i:000}"),
+                        null,
+                        "ImplementsInterface",
+                        "fixture:rel-window"));
+                }
+            }
+
+            return edges;
+        }
+
         await _repository.CompleteIndexRunAsync(
             indexId,
             new IndexWriteSet(
-                WithDelegateSymbols(WithCreditSymbols(
+                WithDelegateSymbols(WithCreditSymbols(WithRelatedTypesWindowSymbols(
                 [
                     new IndexSymbolRecord(
                         Id("symbol-" + extractionId),
@@ -1214,7 +1259,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "Beta.State.SharedValue",
                         "System.Int32 Beta.State::SharedValue",
                         false)
-                ])),
+                ]))),
                 [sourceFile],
                 [sourceLocation, typeSourceLocation, runtimeSourceLocation],
                 [
@@ -1227,7 +1272,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "method-body",
                         compareBodyFingerprint)
                 ],
-                WithDelegateEdges(WithCreditEdges(
+                WithDelegateEdges(WithCreditEdges(WithRelatedTypesWindowEdges(
                 [
                     new IndexRelationshipRecord(
                         Id("incoming-call"),
@@ -1333,7 +1378,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink(System.Boolean)",
                         "Calls",
                         "fixture:callsite-overload")
-                ])),
+                ]))),
                 [new IndexCallableSurfaceRecord(
                     Id("callable-method"),
                     indexId,

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Core.Storage;
 
@@ -29,9 +31,17 @@ public sealed class SceneQueryService
         if (snapshot.Status != SceneQueryStatus.Resolved || snapshot.Snapshot is null)
             return new SceneListResult(snapshot.Status, snapshot.Snapshot, Empty<SceneDocumentRecord>());
 
-        var page = await _repository.ListScenesAsync(
-            new SceneListQueryOptions(snapshot.Snapshot.SceneSnapshotId, request.Kind, request.Query, request.Limit), cancellationToken);
-        return new SceneListResult(SceneQueryStatus.Resolved, snapshot.Snapshot, page, await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, page.Rows.Select(row => row.ContainerId), cancellationToken));
+        var window = IndexPaging.PageWindow(request.Offset, request.Limit);
+        var fetched = await _repository.ListScenesAsync(
+            new SceneListQueryOptions(snapshot.Snapshot.SceneSnapshotId, request.Kind, request.Query, window, request.Offset), cancellationToken);
+        var (rows, hasMore) = IndexPaging.TakePage(fetched.Rows, 0, request.Limit);
+        var page = fetched with { ReturnedCount = rows.Count, Rows = rows };
+        return new SceneListResult(
+            SceneQueryStatus.Resolved,
+            snapshot.Snapshot,
+            page,
+            await ContainersAsync(snapshot.Snapshot.SceneSnapshotId, page.Rows.Select(row => row.ContainerId), cancellationToken),
+            HasMore: hasMore);
     }
 
     public async Task<SceneDocumentQueryResult> SceneAsync(SceneQueryRequest request, CancellationToken cancellationToken)
@@ -200,13 +210,13 @@ public enum SceneQueryStatus
     AmbiguousScriptableAsset
 }
 
-public sealed record SceneListRequest(string? BuildId = null, string? SceneSnapshotId = null, SceneDocumentKind? Kind = null, string? Query = null, int Limit = SceneQueryService.DefaultLimit);
+public sealed record SceneListRequest(string? BuildId = null, string? SceneSnapshotId = null, SceneDocumentKind? Kind = null, string? Query = null, int Limit = SceneQueryService.DefaultLimit, int Offset = 0);
 public sealed record SceneQueryRequest(string? SceneSnapshotId, string Selector, SceneDocumentKind? Kind = null, bool IncludeChildren = false, bool IncludeComponents = false, bool IncludeReferences = false, int Limit = SceneQueryService.DefaultLimit);
 public sealed record GameObjectQueryRequest(string? SceneSnapshotId, string Selector, bool IncludeChildren = false, bool IncludeComponents = false, bool IncludeReferences = false, int Limit = SceneQueryService.DefaultLimit);
 public sealed record PrefabQueryRequest(string? SceneSnapshotId, string Selector, bool IncludeObjects = false, bool IncludeComponents = false, bool IncludeReferences = false, int Limit = SceneQueryService.DefaultLimit);
 public sealed record ComponentQueryRequest(string? SceneSnapshotId, string Selector, bool IncludeReferences = false, bool IncludeCode = false, int Limit = SceneQueryService.DefaultLimit);
 public sealed record SceneSnapshotQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot);
-public sealed record SceneListResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, ScenePageResult<SceneDocumentRecord> Page, IReadOnlyList<SceneContainerRecord>? Containers = null);
+public sealed record SceneListResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, ScenePageResult<SceneDocumentRecord> Page, IReadOnlyList<SceneContainerRecord>? Containers = null, string? NextCursor = null, [property: JsonIgnore] bool HasMore = false);
 public sealed record SceneDocumentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneDocumentRecord? Scene, IReadOnlyList<SceneDocumentRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null);
 public sealed record GameObjectQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneGameObjectRecord? GameObject, IReadOnlyList<SceneGameObjectRecord> Candidates, ScenePageResult<SceneGameObjectRecord> Children, ScenePageResult<SceneComponentRecord> Components, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null, SceneTransformRecord? Transform = null);
 public sealed record ComponentQueryResult(SceneQueryStatus Status, SceneSnapshotRecord? Snapshot, SceneComponentRecord? Component, IReadOnlyList<SceneComponentRecord> Candidates, ScenePageResult<SceneReferenceRecord> References, IReadOnlyList<SceneContainerRecord>? Containers = null, SceneScriptFieldSetRecord? ScriptFields = null);

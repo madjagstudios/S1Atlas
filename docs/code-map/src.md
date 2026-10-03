@@ -10,7 +10,7 @@ Roots: src
 | src/S1Atlas.Application/Authority/ | 3 |
 | src/S1Atlas.Application/Composition/ | 1 |
 | src/S1Atlas.Application/Configuration/ | 1 |
-| src/S1Atlas.Application/Envelope/ | 3 |
+| src/S1Atlas.Application/Envelope/ | 4 |
 | src/S1Atlas.Application/Readiness/ | 5 |
 | src/S1Atlas.Cli/ | 3 |
 | src/S1Atlas.Cli/Commands/ | 54 |
@@ -27,7 +27,7 @@ Roots: src
 | src/S1Atlas.Core/Extraction/ | 34 |
 | src/S1Atlas.Core/Hashing/ | 1 |
 | src/S1Atlas.Core/Identity/ | 1 |
-| src/S1Atlas.Core/Indexing/ | 18 |
+| src/S1Atlas.Core/Indexing/ | 19 |
 | src/S1Atlas.Core/Properties/ | 1 |
 | src/S1Atlas.Core/ReferenceMods/ | 1 |
 | src/S1Atlas.Core/Scenes/ | 3 |
@@ -68,7 +68,7 @@ Roots: src
 | src/S1Atlas.Mcp/ | 7 |
 | src/S1Atlas.Mcp/Mapping/ | 1 |
 | src/S1Atlas.Mcp/Serialization/ | 1 |
-| src/S1Atlas.Mcp/Tools/ | 8 |
+| src/S1Atlas.Mcp/Tools/ | 9 |
 | src/S1Atlas.NativeRecovery/ | 12 |
 | src/S1Atlas.NativeRecovery/Properties/ | 1 |
 | src/S1Atlas.Storage/ | 1 |

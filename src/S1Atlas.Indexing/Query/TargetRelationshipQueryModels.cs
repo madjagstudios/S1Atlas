@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Indexing.Query;
@@ -17,8 +18,10 @@ public enum FieldReferenceFilter
 }
 
 public sealed record CallSiteQueryResult(
-    RelationshipQueryPageResult Page,
-    string CompletenessNotice)
+    [property: JsonIgnore] RelationshipQueryPageResult Page,
+    string CompletenessNotice,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false)
 {
     public int TotalCount => Page.TotalCount;
     public int ReturnedCount => Page.ReturnedCount;
@@ -27,8 +30,10 @@ public sealed record CallSiteQueryResult(
 
 public sealed record FieldReferenceQueryResult(
     SymbolResolutionResult Resolution,
-    RelationshipQueryPageResult Page,
-    string CompletenessNotice = TargetRelationshipQueryNotices.FieldReferences)
+    [property: JsonIgnore] RelationshipQueryPageResult Page,
+    string CompletenessNotice = TargetRelationshipQueryNotices.FieldReferences,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false)
 {
     public int TotalCount => Page.TotalCount;
     public int ReturnedCount => Page.ReturnedCount;

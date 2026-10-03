@@ -64,6 +64,13 @@ internal static class McpBindingErrorFilter
         foreach (var property in properties.EnumerateObject())
         {
             if (!context.Params.Arguments.TryGetValue(property.Name, out var value)) continue;
+            if (TryEnumMismatch(value, property.Value, out var allowed))
+            {
+                detail = $"argument '{property.Name}' must be one of {allowed} but received {DescribeEnumValue(value)}.";
+                return true;
+            }
+
+            if (IsBoundEnumNumber(value, property.Value)) continue;
             if (!MatchesDeclaredType(value, property.Value, out var expected))
             {
                 detail = $"argument '{property.Name}' must be {expected} but received {DescribeJson(value)}.";
@@ -73,6 +80,47 @@ internal static class McpBindingErrorFilter
 
         return false;
     }
+
+    // A schema "enum" array marks a fixed vocabulary. Binding accepts member
+    // names case-insensitively and binds numbers unchecked, so only a string
+    // outside the vocabulary (or a null against a non-nullable enum) is
+    // positively a binding failure.
+    private static bool TryEnumMismatch(JsonElement value, JsonElement propertySchema, out string allowed)
+    {
+        allowed = string.Empty;
+        if (!propertySchema.TryGetProperty("enum", out var members) || members.ValueKind != JsonValueKind.Array)
+            return false;
+        var names = members.EnumerateArray()
+            .Where(member => member.ValueKind == JsonValueKind.String)
+            .Select(member => member.GetString()!)
+            .ToArray();
+        if (names.Length == 0) return false;
+
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            if (names.Contains(value.GetString(), StringComparer.OrdinalIgnoreCase)) return false;
+        }
+        else if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            if (members.EnumerateArray().Any(member => member.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined))
+                return false;
+        }
+        else
+        {
+            return false;
+        }
+
+        allowed = string.Join(", ", names);
+        return true;
+    }
+
+    private static bool IsBoundEnumNumber(JsonElement value, JsonElement propertySchema) =>
+        value.ValueKind == JsonValueKind.Number &&
+        propertySchema.TryGetProperty("enum", out var members) &&
+        members.ValueKind == JsonValueKind.Array;
+
+    private static string DescribeEnumValue(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String ? $"\"{value.GetString()}\"" : DescribeJson(value);
 
     private static bool MatchesDeclaredType(JsonElement value, JsonElement propertySchema, out string expected)
     {

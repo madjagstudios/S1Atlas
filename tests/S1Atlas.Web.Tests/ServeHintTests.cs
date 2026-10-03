@@ -48,7 +48,7 @@ public sealed class ServeHintTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         using var json = JsonDocument.Parse(body);
         var error = json.RootElement.GetProperty("error");
-        Assert.Equal("NoCurrentBuild", error.GetProperty("code").GetString());
+        Assert.Equal("no_current_build", error.GetProperty("code").GetString());
         Assert.Equal(ReadinessFixCommands.Scan, error.GetProperty("hint").GetString());
     }
 
@@ -88,7 +88,7 @@ public sealed class ServeHintTests : IAsyncDisposable
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         using var json = JsonDocument.Parse(body);
         var error = json.RootElement.GetProperty("error");
-        Assert.Equal("NoCompletedIndex", error.GetProperty("code").GetString());
+        Assert.Equal("no_completed_index", error.GetProperty("code").GetString());
         Assert.Equal(ReadinessFixCommands.Index, error.GetProperty("hint").GetString());
     }
 

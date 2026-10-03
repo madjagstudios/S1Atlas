@@ -343,6 +343,71 @@ public static class EnvelopeMapper
         };
     }
 
+    public static ToolEnvelope<SymbolQueryResult> FromApiTypeMethod(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        SymbolResolutionResult result,
+        IReadOnlySet<SymbolKind> kinds)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(kinds);
+
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        return result.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<SymbolQueryResult>.Ambiguous(
+                build,
+                result.Candidates.Cast<object>().ToArray(),
+                result.TotalCandidateCount,
+                provenance),
+            SymbolResolutionStatus.NotFound when result is KindedSymbolResolutionResult kinded => ToolEnvelope<SymbolQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolKindMismatch", KindMismatchMessage(kinded.KindMismatch, kinds)),
+                result.Suggestions.Cast<object>().ToArray(),
+                provenance),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<SymbolQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                result.Suggestions.Cast<object>().ToArray(),
+                provenance),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SymbolQueryResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
+                provenance),
+            _ => ToolEnvelope<SymbolQueryResult>.Resolved(build, result.Symbol!, provenance)
+        };
+    }
+
+    public static ToolEnvelope<HierarchyQueryResult> FromApiHierarchy(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        HierarchyQueryResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        return result.Resolution.Status switch
+        {
+            SymbolResolutionStatus.Ambiguous => ToolEnvelope<HierarchyQueryResult>.Ambiguous(
+                build,
+                result.Resolution.Candidates.Cast<object>().ToArray(),
+                result.Resolution.TotalCandidateCount,
+                provenance),
+            SymbolResolutionStatus.NotFound => ToolEnvelope<HierarchyQueryResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
+                result.Resolution.Suggestions.Cast<object>().ToArray(),
+                provenance),
+            SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<HierarchyQueryResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
+                provenance),
+            _ => ToolEnvelope<HierarchyQueryResult>.Resolved(build, result, provenance)
+        };
+    }
+
     public static ToolEnvelope<SymbolSearchResult> FromScopedSearch(
         InstalledBuildAuthority authority,
         SymbolSearchResult result,
@@ -741,14 +806,16 @@ public static class EnvelopeMapper
         var selected = SelectSeamAuthority(authority, referenceAuthority, result, scope);
         var selectedEnvelope = envelope with
         {
-            Provenance = envelope.Provenance
-                .Select(entry => new ProvenanceEntry(
-                    entry.Classification,
-                    entry.Source,
-                    selected.BuildId,
-                    selected.ExtractionId,
-                    selected.IndexId))
-                .ToArray()
+            Provenance = ToolEnvelope<T>.StripDuplicateBuildIds(
+                envelope.Build,
+                envelope.Provenance
+                    .Select(entry => new ProvenanceEntry(
+                        entry.Classification,
+                        entry.Source,
+                        selected.BuildId,
+                        selected.ExtractionId,
+                        selected.IndexId))
+                    .ToArray())
         };
         return AddSeamReferenceCollectionProvenance(
             selectedEnvelope,

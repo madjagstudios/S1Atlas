@@ -137,7 +137,7 @@ public sealed class BuildsTests
         Assert.True(data.GetProperty("environmentAvailable").GetBoolean());
         var surfaces = data.GetProperty("surfaces").EnumerateArray().ToArray();
         Assert.Contains(surfaces, surface =>
-            surface.GetProperty("codebase").GetString() == "ScheduleI"
+            surface.GetProperty("codebase").GetString() == "scheduleI"
             && surface.GetProperty("symbolCount").GetInt32() == 50);
         var diffs = data.GetProperty("adjacentDiffs").EnumerateArray().ToArray();
         Assert.Single(diffs);
@@ -158,7 +158,7 @@ public sealed class BuildsTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
         Assert.Equal(
-            "BuildNotFound",
+            "snapshot_not_found",
             json.RootElement.GetProperty("error").GetProperty("code").GetString());
         Assert.Equal(
             "s1atlas builds",

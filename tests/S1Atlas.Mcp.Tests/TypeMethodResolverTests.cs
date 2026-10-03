@@ -26,8 +26,8 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector },
-                ["get_source"] = new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.TypeSelector },
+                ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.TypeSelector }
             });
 
         using var typeResult = JsonDocument.Parse(envelopes["get_type"]);
@@ -44,8 +44,8 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = widgetId },
-                ["get_source"] = new Dictionary<string, object?> { ["selector"] = widgetId }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = widgetId },
+                ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = widgetId }
             });
         using var byIdType = JsonDocument.Parse(byId["get_type"]);
         using var byIdSource = JsonDocument.Parse(byId["get_source"]);
@@ -64,7 +64,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = "DealerService" }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = "DealerService" }
             });
         using var ambiguousResult = JsonDocument.Parse(ambiguous["get_type"]);
         Assert.Equal("ambiguous", StatusOf(ambiguousResult));
@@ -74,7 +74,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = candidateId }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = candidateId }
             });
         using var resolvedResult = JsonDocument.Parse(resolved["get_type"]);
         Assert.Equal("resolved", StatusOf(resolvedResult));
@@ -88,7 +88,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = "Worker.Run" }
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = "Worker.Run" }
             });
         using var ambiguousResult = JsonDocument.Parse(ambiguous["get_method"]);
         Assert.Equal("ambiguous", StatusOf(ambiguousResult));
@@ -98,7 +98,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = candidateId }
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = candidateId }
             });
         using var resolvedResult = JsonDocument.Parse(resolved["get_method"]);
         Assert.Equal("resolved", StatusOf(resolvedResult));
@@ -114,8 +114,8 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = TypeCanonicalKey },
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = MethodCanonicalKey }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = TypeCanonicalKey },
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = MethodCanonicalKey }
             });
 
         using var typeResult = JsonDocument.Parse(envelopes["get_type"]);
@@ -141,8 +141,8 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
-                ["get_source"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector }
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
+                ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector }
             });
         using var methodResult = JsonDocument.Parse(method["get_method"]);
         var methodId = DataOf(methodResult).GetProperty("symbolId").GetString()!;
@@ -156,12 +156,12 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = methodId },
-                ["get_source"] = new Dictionary<string, object?> { ["selector"] = methodId }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = methodId },
+                ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = methodId }
             });
         using var byId = JsonDocument.Parse(TextOf(mismatches["get_type"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byId));
-        Assert.Equal("SymbolKindMismatch", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
         var byIdMessage = byId.RootElement.GetProperty("error").GetProperty("message").GetString()!;
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
@@ -175,11 +175,11 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = MethodCanonicalKey }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = MethodCanonicalKey }
             });
         using var byKeyResult = JsonDocument.Parse(TextOf(byKey["get_type"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byKeyResult));
-        Assert.Equal("SymbolKindMismatch", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = "DealerService" }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = "DealerService" }
             });
         using var dealersResult = JsonDocument.Parse(dealers["get_type"]);
         var typeId = dealersResult.RootElement.GetProperty("candidates")[0].GetProperty("symbolId").GetString()!;
@@ -198,11 +198,11 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = typeId }
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = typeId }
             });
         using var byId = JsonDocument.Parse(TextOf(mismatches["get_method"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byId));
-        Assert.Equal("SymbolKindMismatch", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byId.RootElement.GetProperty("error").GetProperty("code").GetString());
         var byIdMessage = byId.RootElement.GetProperty("error").GetProperty("message").GetString()!;
         Assert.Contains("Type", byIdMessage, StringComparison.Ordinal);
         Assert.Contains("Method", byIdMessage, StringComparison.Ordinal);
@@ -211,11 +211,11 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = TypeCanonicalKey }
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = TypeCanonicalKey }
             });
         using var byKeyResult = JsonDocument.Parse(TextOf(byKey["get_method"], expectedIsError: true));
         Assert.Equal("not_found", StatusOf(byKeyResult));
-        Assert.Equal("SymbolKindMismatch", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("invalid_arguments", byKeyResult.RootElement.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Fact]
@@ -225,8 +225,8 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             _shared.Client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_type"] = new Dictionary<string, object?> { ["selector"] = "DealerService" },
-                ["get_method"] = new Dictionary<string, object?> { ["selector"] = "Worker.Run" }
+                ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = "DealerService" },
+                ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = "Worker.Run" }
             });
 
         using var typeResult = JsonDocument.Parse(envelopes["get_type"]);
@@ -252,7 +252,7 @@ public sealed class TypeMethodResolverTests : IClassFixture<SharedHealthyServerF
             client,
             new Dictionary<string, IReadOnlyDictionary<string, object?>>
             {
-                ["get_source"] = new Dictionary<string, object?> { ["selector"] = selector }
+                ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = selector }
             });
         using var result = JsonDocument.Parse(envelopes["get_source"]);
         Assert.Equal("resolved", StatusOf(result));

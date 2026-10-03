@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 using ModelContextProtocol.Server;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
@@ -19,14 +20,16 @@ public sealed class BuildEnvironmentTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_builds", Title = "List builds", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed Schedule I Installed builds and their verified extraction and index availability.")]
+    [McpServerTool(Name = "list_builds", Title = "List builds", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed Schedule I Installed builds with extraction and index availability.")]
     public Task<ToolEnvelope<BuildListResult>> ListBuildsAsync(
         [Description("Maximum builds to return (1-500).")] int limit = 50,
-        CancellationToken ct = default) =>
-        EnvelopeMapper.WithAtlasAvailabilityAsync(() => ListBuildsCoreAsync(limit, ct));
+        CancellationToken ct = default,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null) =>
+        EnvelopeMapper.WithAtlasAvailabilityAsync(() => ListBuildsCoreAsync(limit, cursor, ct));
 
     private async Task<ToolEnvelope<BuildListResult>> ListBuildsCoreAsync(
         int limit,
+        string? cursor,
         CancellationToken ct)
     {
         if (limit <= 0)
@@ -35,11 +38,18 @@ public sealed class BuildEnvironmentTools
                 new ToolError("InvalidLimit", "The build result limit must be positive."));
         }
 
+        var boundedLimit = Math.Min(limit, 500);
+        if (!CodeSymbolTools.ToolArguments.TryDecodeCursor<BuildListResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+        {
+            return cursorError;
+        }
+
         var current = await _services.Repository.GetCurrentSnapshotAsync(ct);
         var builds = await _services.Repository.ListBuildsAsync(ct);
-        var items = new List<BuildListItem>(Math.Min(builds.Count, limit));
+        var (window, hasMore) = IndexPaging.TakePage(builds, offset, boundedLimit);
+        var items = new List<BuildListItem>(window.Count);
 
-        foreach (var build in builds.Take(Math.Min(limit, 500)))
+        foreach (var build in window)
         {
             var preferred = await _services.AuthorityResolver.ResolvePreferredExtractionAsync(build.BuildId, ct);
             var authority = await _services.AuthorityResolver.ResolveAsync(build.BuildId, ct);
@@ -53,14 +63,22 @@ public sealed class BuildEnvironmentTools
                 authority.Status == InstalledBuildAuthorityStatus.Resolved));
         }
 
+        var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
+            "list_builds", current?.Build.BuildId, builds.Count.ToString(), boundedLimit.ToString());
+        if (!CodeSymbolTools.ToolArguments.VerifyCursorHash<BuildListResult>(cursorHash, expectedHash, null, out var hashError))
+        {
+            return hashError;
+        }
+
+        var nextCursor = McpPageCursor.MintNextCursor(hasMore, expectedHash, offset, boundedLimit);
         return ToolEnvelope<BuildListResult>.Resolved(
             null,
-            new BuildListResult(items),
+            new BuildListResult(items, nextCursor, hasMore),
             new ProvenanceEntry(ProvenanceClassification.Fact, "atlas-build-list", null, null, null),
             new ProvenanceEntry(ProvenanceClassification.Derived, "installed-build-availability", null, null, null));
     }
 
-    [McpServerTool(Name = "get_environment", Title = "Get environment", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return verified environment facts for the current Schedule I Installed build.")]
+    [McpServerTool(Name = "get_environment", Title = "Get environment", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return verified environment facts for the current build.")]
     public Task<ToolEnvelope<EnvironmentFacts>> GetEnvironmentAsync(
         [Description("Optional build ID; only the current environment snapshot can be returned.")] string? buildId = null,
         CancellationToken ct = default) =>
@@ -105,7 +123,10 @@ public sealed class BuildEnvironmentTools
     }
 }
 
-public sealed record BuildListResult(IReadOnlyList<BuildListItem> Builds);
+public sealed record BuildListResult(
+    IReadOnlyList<BuildListItem> Builds,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false);
 
 public sealed record BuildListItem(
     string BuildId,

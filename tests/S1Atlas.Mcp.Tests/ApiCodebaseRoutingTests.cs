@@ -13,56 +13,8 @@ using Xunit;
 
 namespace S1Atlas.Mcp.Tests;
 
-public sealed class ApiIndexToolTests
+public sealed class ApiCodebaseRoutingTests
 {
-    [Fact]
-    public void Tool_catalog_registers_only_read_only_api_index_names()
-    {
-        var names = McpToolCatalog.DiscoverToolNames();
-        var apiNames = names
-            .Where(name => name.Contains("api", StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        Assert.Contains("list_api_indexes", apiNames);
-        Assert.Contains("search_api_symbols", apiNames);
-        Assert.Contains("get_api_source", apiNames);
-        Assert.DoesNotContain(
-            apiNames,
-            name => name != "list_api_indexes" && new[] { "build", "create", "delete", "download", "index", "install", "mutate", "refresh", "run", "update", "write" }
-                .Any(verb => name.Contains(verb, StringComparison.OrdinalIgnoreCase)));
-    }
-
-    [Fact]
-    public async Task Invalid_arguments_are_rejected_before_the_atlas_is_opened()
-    {
-        var root = Path.Combine(Path.GetTempPath(), "s1atlas-api-tool-invalid-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        try
-        {
-            var tools = new ApiIndexTools(McpServerComposition.BuildReadOnlyServices(root));
-            var cancellationToken = TestContext.Current.CancellationToken;
-
-            var invalidCodebase = await tools.SearchApiSymbolsAsync("schedulei", "installed", "Demo.Api", 50, cancellationToken);
-            var invalidChannel = await tools.SearchApiSymbolsAsync("s1api", "nightly", "Demo.Api", 50, cancellationToken);
-            var blankQuery = await tools.SearchApiSymbolsAsync("s1api", "release", " ", 50, cancellationToken);
-            var invalidLimit = await tools.SearchApiSymbolsAsync("s1api", "release", "Demo.Api", 0, cancellationToken);
-            var invalidContext = await tools.GetApiSourceAsync("s1mapi", "preview", "Demo.Api", -1, 10, cancellationToken);
-            var invalidRelatedLimit = await tools.GetApiSourceAsync("s1mapi", "preview", "Demo.Api", 0, 51, cancellationToken);
-
-            AssertInvalid(invalidCodebase, "InvalidCodebase");
-            AssertInvalid(invalidChannel, "InvalidChannel");
-            AssertInvalid(blankQuery, "InvalidArguments");
-            AssertInvalid(invalidLimit, "InvalidLimit");
-            AssertInvalid(invalidContext, "InvalidContext");
-            AssertInvalid(invalidRelatedLimit, "InvalidRelatedLimit");
-            Assert.False(File.Exists(Path.Combine(root, "atlas.db")));
-        }
-        finally
-        {
-            await TestDirectory.DeleteTreeAsync(root);
-        }
-    }
-
     [Fact]
     public async Task List_api_indexes_preserves_each_completed_selection_and_its_source_provenance()
     {
@@ -85,7 +37,7 @@ public sealed class ApiIndexToolTests
             environmentSnapshotId: null,
             cancellationToken);
 
-        var result = await atlas.Tools.ListApiIndexesAsync(null, cancellationToken);
+        var result = await atlas.Tools.ListApiIndexesAsync(null, ct: cancellationToken);
 
         Assert.Equal(ToolStatus.Resolved, result.Status);
         var catalog = Assert.IsType<ApiIndexCatalogResult>(result.Data);
@@ -114,65 +66,90 @@ public sealed class ApiIndexToolTests
     }
 
     [Fact]
-    public async Task Search_api_symbols_uses_the_exact_s1api_or_s1mapi_upstream_scope()
+    public async Task Invalid_api_arguments_are_rejected_before_the_atlas_is_opened()
     {
-        await using var atlas = await ApiToolAtlas.CreateAsync();
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var s1ApiSource = new string('b', 40);
-        var s1MApiSource = new string('c', 40);
-        var s1Api = await atlas.SeedIndexAsync(
-            CodebaseKind.S1Api,
-            CodeChannel.Release,
-            "api-search-s1api-release",
-            s1ApiSource,
-            environmentSnapshotId: null,
-            cancellationToken,
-            symbols: [ApiSymbol("s1api-symbol", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiOnly")]);
-        var s1MApi = await atlas.SeedIndexAsync(
-            CodebaseKind.S1MApi,
-            CodeChannel.Preview,
-            "api-search-s1mapi-preview",
-            s1MApiSource,
-            environmentSnapshotId: null,
-            cancellationToken,
-            symbols: [ApiSymbol("s1mapi-symbol", CodebaseKind.S1MApi, CodeChannel.Preview, "Demo.ApiOnly")]);
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-api-tool-invalid-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(root));
+            var cancellationToken = TestContext.Current.CancellationToken;
 
-        var s1ApiResult = await atlas.Tools.SearchApiSymbolsAsync(
-            "s1api", "release", "Demo.ApiOnly", 10, cancellationToken);
-        var s1MApiResult = await atlas.Tools.SearchApiSymbolsAsync(
-            "S1MAPI", "PREVIEW", "Demo.ApiOnly", 10, cancellationToken);
+            var blankSelector = await tools.SearchSymbolsAsync(" ", McpCodebase.s1api, CodeChannel.Release, limit: 50, ct: cancellationToken);
+            var invalidLimit = await tools.SearchSymbolsAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, limit: 0, ct: cancellationToken);
+            var invalidContext = await tools.GetSourceAsync("Demo.Api", McpCodebase.s1mapi, CodeChannel.Preview, context: -1, ct: cancellationToken);
+            var invalidRelatedLimit = await tools.GetSourceAsync("Demo.Api", McpCodebase.s1mapi, CodeChannel.Preview, relatedLimit: 51, ct: cancellationToken);
+            var invalidKinds = await tools.FindRelatedTypesAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, relationKinds: ["Calls"], ct: cancellationToken);
+            var invalidFilter = await tools.FindFieldReferencesAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, readers: true, writers: true, ct: cancellationToken);
+            var invalidScope = await tools.SearchSymbolsAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, scope: IndexQueryScope.Reference, collection: "any", ct: cancellationToken);
+            var invalidCollection = await tools.SearchSymbolsAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, collection: "any", ct: cancellationToken);
 
-        AssertApiSearch(s1ApiResult, "S1Api", "Release", s1Api.IndexId, "s1api-symbol", s1ApiSource);
-        AssertApiSearch(s1MApiResult, "S1MApi", "Preview", s1MApi.IndexId, "s1mapi-symbol", s1MApiSource);
-        Assert.Null(s1ApiResult.Build!.ResolvedBuildId);
-        Assert.Null(s1MApiResult.Build!.ResolvedBuildId);
+            AssertInvalid(blankSelector, "InvalidArguments");
+            AssertInvalid(invalidLimit, "InvalidLimit");
+            AssertInvalid(invalidContext, "InvalidContext");
+            AssertInvalid(invalidRelatedLimit, "InvalidRelatedLimit");
+            AssertInvalid(invalidKinds, "InvalidRelationshipKind");
+            AssertInvalid(invalidFilter, "InvalidFieldFilter");
+            AssertInvalid(invalidScope, "InvalidScope");
+            AssertInvalid(invalidCollection, "InvalidCollection");
+            Assert.False(File.Exists(Path.Combine(root, "atlas.db")));
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
     }
 
     [Fact]
-    public async Task Get_api_source_preserves_source_identity_and_body_status()
+    public async Task Search_routes_to_s1api_release()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
-        var sourceIdentity = new string('d', 40);
-        var sourceText = "namespace Demo;\npublic sealed class Api\n{\n    public void Run() { }\n}\n";
+        var sourceIdentity = new string('b', 40);
+        var seeded = await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-routing-search",
+            sourceIdentity,
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [ApiSymbol("routing-search", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Parity")]);
+
+        var envelope = await atlas.Tools.SearchSymbolsAsync(
+            "Demo.Parity",
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            kind: null,
+            limit: 10,
+            cancellationToken);
+
+        AssertApiSearch(envelope, "S1Api", "Release", seeded.IndexId, "routing-search", sourceIdentity);
+    }
+
+    [Fact]
+    public async Task Get_source_routes_to_s1mapi_release()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var sourceText = "namespace Demo;\npublic sealed class Parity\n{\n    public void Run() { }\n}\n";
         var symbol = ApiSymbol(
-            "api-source-symbol",
+            "routing-source-symbol",
             CodebaseKind.S1MApi,
             CodeChannel.Release,
-            "Demo.Api.Run",
-            "System.Void Demo.Api::Run()",
-            BodyRecoveryStatus.StubOrUnavailable);
+            "Demo.Parity.Run",
+            "System.Void Demo.Parity::Run()");
         var sourceFile = new IndexSourceFileRecord(
-            "api-source-file",
+            "routing-source-file",
             string.Empty,
-            "Api.cs",
+            "Parity.cs",
             Sha256(sourceText),
             Encoding.UTF8.GetByteCount(sourceText));
-        var index = await atlas.SeedIndexAsync(
+        await atlas.SeedIndexAsync(
             CodebaseKind.S1MApi,
             CodeChannel.Release,
-            "api-source-s1mapi-release",
-            sourceIdentity,
+            "api-routing-source",
+            new string('c', 40),
             environmentSnapshotId: null,
             cancellationToken,
             symbols: [symbol],
@@ -180,288 +157,281 @@ public sealed class ApiIndexToolTests
             sourceLocations: [new IndexSourceLocationRecord(symbol.SymbolId, sourceFile.SourceFileId, 4, 5, 4, 26)],
             sourceText: sourceText);
 
-        var result = await atlas.Tools.GetApiSourceAsync(
-            "s1mapi",
-            "release",
+        var envelope = await atlas.Tools.GetSourceAsync(
             symbol.QualifiedName,
+            McpCodebase.s1mapi,
+            CodeChannel.Release,
+            buildId: null,
             context: 0,
-            relatedLimit: 0,
-            cancellationToken);
-
-        Assert.Equal(ToolStatus.Resolved, result.Status);
-        Assert.Equal("S1MApi", result.Build?.Codebase);
-        Assert.Equal("Release", result.Build?.Channel);
-        Assert.Equal(index.IndexId, result.Build?.IndexId);
-        Assert.Equal(sourceIdentity, result.Provenance.First(entry => entry.Classification == ProvenanceClassification.Fact).Source.Split("source=", StringSplitOptions.None).Last());
-        var source = Assert.IsType<SourceSnippetQueryResult>(result.Data);
-        Assert.Equal(index.IndexId, source.IndexId);
-        Assert.Equal(BodyRecoveryStatus.StubOrUnavailable, source.BodyRecoveryStatus);
-        Assert.Contains("public void Run", source.Text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Api_relationship_tools_preserve_direction_and_filter_type_totals()
-    {
-        await using var atlas = await ApiToolAtlas.CreateAsync();
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var target = ApiSymbol("api-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Target");
-        var caller = ApiSymbol("api-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Caller");
-        var callee = ApiSymbol("api-callee", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Callee");
-        var baseType = ApiSymbol("api-base", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Base");
-        var interfaceType = ApiSymbol("api-interface", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Interface");
-        await atlas.SeedIndexAsync(
-            CodebaseKind.S1Api,
-            CodeChannel.Release,
-            "api-relationships",
-            new string('h', 40),
-            environmentSnapshotId: null,
             cancellationToken,
-            symbols: [target, caller, callee, baseType, interfaceType],
-            relationships:
-            [
-                new("relationship-caller", string.Empty, caller.SymbolId, target.SymbolId, null, "Calls", "metadata"),
-                new("relationship-callee", string.Empty, target.SymbolId, callee.SymbolId, null, "Calls", "metadata"),
-                new("relationship-inherits", string.Empty, target.SymbolId, baseType.SymbolId, null, "Inherits", "metadata"),
-                new("relationship-interface", string.Empty, target.SymbolId, interfaceType.SymbolId, null, "ImplementsInterface", "metadata")
-            ]);
+            relatedLimit: 0);
 
-        var callers = await atlas.Tools.FindApiCallersAsync("s1api", "release", target.QualifiedName, 10, cancellationToken);
-        var callees = await atlas.Tools.FindApiCalleesAsync("s1api", "release", target.QualifiedName, 10, cancellationToken);
-        var references = await atlas.Tools.FindApiReferencesAsync("s1api", "release", target.QualifiedName, 10, cancellationToken);
-        var related = await atlas.Tools.FindApiRelatedTypesAsync(
-            "s1api", "release", target.QualifiedName, ["Inherits"], 10, cancellationToken);
-
-        Assert.Equal(ToolStatus.Resolved, callers.Status);
-        Assert.Equal("Incoming", Assert.Single(callers.Data!.Relationships).Direction);
-        Assert.Equal(ToolStatus.Resolved, callees.Status);
-        Assert.Equal("Outgoing", Assert.Single(callees.Data!.Relationships).Direction);
-        Assert.Equal(ToolStatus.Resolved, references.Status);
-        Assert.Equal(4, references.Data!.TotalCount);
-        Assert.Equal(ToolStatus.Resolved, related.Status);
-        Assert.Equal(1, related.Data!.TotalCount);
-        Assert.Equal("Inherits", Assert.Single(related.Data.Relationships).Kind);
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(symbol.QualifiedName, envelope.Data!.Symbol.QualifiedName);
+        Assert.Contains("public void Run", envelope.Data.Text, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task FindApiCallers_ExpandsDispatchAndHonorsExact()
+    public async Task Find_callers_routes_to_s1api_release()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
-        var baseMethod = ApiSymbol("api-dispatch-base", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Base");
-        var overrideMethod = ApiSymbol("api-dispatch-override", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Override");
-        var caller = ApiSymbol("api-dispatch-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Caller");
-        var direct = ApiSymbol("api-dispatch-direct", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Dispatch.Direct");
+        var target = ApiSymbol("routing-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityTarget");
+        var caller = ApiSymbol("routing-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCaller");
         await atlas.SeedIndexAsync(
             CodebaseKind.S1Api,
             CodeChannel.Release,
-            "api-dispatch",
+            "api-routing-callers",
             new string('d', 40),
             environmentSnapshotId: null,
             cancellationToken,
-            symbols: [baseMethod, overrideMethod, caller, direct],
+            symbols: [target, caller],
             relationships:
             [
-                new("relationship-override", string.Empty, overrideMethod.SymbolId, baseMethod.SymbolId, null, "Overrides", "metadata"),
-                new("relationship-virtual", string.Empty, caller.SymbolId, baseMethod.SymbolId, null, "CallsVirtual", "metadata"),
-                new("relationship-direct", string.Empty, direct.SymbolId, overrideMethod.SymbolId, null, "Calls", "metadata")
+                new("routing-calls", string.Empty, caller.SymbolId, target.SymbolId, null, "Calls", "metadata")
             ]);
 
-        var expanded = await atlas.Tools.FindApiCallersAsync("s1api", "release", overrideMethod.QualifiedName, 10, cancellationToken);
+        var envelope = await atlas.Tools.FindCallersAsync(
+            target.QualifiedName,
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            limit: 10,
+            cancellationToken,
+            exact: true,
+            includeDelegates: true);
 
-        Assert.Equal(ToolStatus.Resolved, expanded.Status);
-        Assert.Equal(2, expanded.Data!.TotalCount);
-        Assert.Equal(1, expanded.Data.ExactCount);
-        Assert.Equal(1, expanded.Data.DerivedCount);
-        Assert.Equal(
-            ["relationship-direct", "relationship-virtual"],
-            expanded.Data.Relationships.Select(edge => edge.RelationshipId));
-        var derived = expanded.Data.Relationships[1];
-        Assert.True(derived.IsDerived);
-        Assert.Equal(["via Demo.Dispatch.Base"], derived.Routes);
-        Assert.Contains(
-            expanded.Provenance,
-            entry => entry.Classification == ProvenanceClassification.Derived && entry.Source == "dispatch-expansion");
-
-        var exact = await atlas.Tools.FindApiCallersAsync("s1api", "release", overrideMethod.QualifiedName, 10, cancellationToken, exact: true);
-
-        Assert.Equal(ToolStatus.Resolved, exact.Status);
-        Assert.Equal(1, exact.Data!.TotalCount);
-        Assert.Equal(1, exact.Data.ExactCount);
-        Assert.Equal(0, exact.Data.DerivedCount);
-        var row = Assert.Single(exact.Data.Relationships);
-        Assert.Equal("relationship-direct", row.RelationshipId);
-        Assert.False(row.IsDerived);
-        Assert.DoesNotContain(exact.Provenance, entry => entry.Source == "dispatch-expansion");
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        var relationship = Assert.Single(envelope.Data!.Relationships);
+        Assert.Equal(caller.QualifiedName, relationship.Source.QualifiedName);
     }
 
     [Fact]
-    public async Task FindApiCallers_CreditedDetailByDefaultAndRawWithFlag()
+    public async Task Find_callees_routes_to_s1api_release()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
-        var foo = ApiSymbol("api-credit-foo", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiCredit.Foo");
-        var lambda = ApiSymbol(
-            "api-credit-lambda", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiCredit.Foo+<>c::<Foo>b__0_0",
-            isGenerated: true);
-        var leaf = ApiSymbol("api-credit-leaf", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiCredit.Leaf");
+        var caller = ApiSymbol("routing-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCaller");
+        var callee = ApiSymbol("routing-callee", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCallee");
         await atlas.SeedIndexAsync(
             CodebaseKind.S1Api,
             CodeChannel.Release,
-            "api-credit",
+            "api-routing-callees",
+            new string('e', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [caller, callee],
+            relationships:
+            [
+                new("routing-calls", string.Empty, caller.SymbolId, callee.SymbolId, null, "Calls", "metadata")
+            ]);
+
+        var envelope = await atlas.Tools.FindCalleesAsync(
+            caller.QualifiedName,
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            limit: 10,
+            cancellationToken);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        var relationship = Assert.Single(envelope.Data!.Relationships);
+        Assert.Equal(callee.QualifiedName, relationship.Target.QualifiedName);
+    }
+
+    [Fact]
+    public async Task Find_references_routes_to_s1api_release()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var target = ApiSymbol("routing-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityTarget");
+        var referrer = ApiSymbol("routing-referrer", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityReferrer");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-routing-references",
+            new string('f', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [target, referrer],
+            relationships:
+            [
+                new("routing-refers", string.Empty, referrer.SymbolId, target.SymbolId, null, "Calls", "metadata")
+            ]);
+
+        var envelope = await atlas.Tools.FindReferencesAsync(
+            target.QualifiedName,
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            limit: 10,
+            cancellationToken);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        var relationship = Assert.Single(envelope.Data!.Relationships);
+        Assert.Equal(referrer.QualifiedName, relationship.Source.QualifiedName);
+    }
+
+    [Fact]
+    public async Task Find_related_types_routes_to_s1api_release()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var target = ApiSymbol("routing-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityTarget", kind: "Type");
+        var baseType = ApiSymbol("routing-base", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityBase", kind: "Type");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-routing-related",
             new string('a', 40),
             environmentSnapshotId: null,
             cancellationToken,
-            symbols: [foo, lambda, leaf],
+            symbols: [target, baseType],
             relationships:
             [
-                new("relationship-credit", string.Empty, foo.SymbolId, leaf.SymbolId, null, "Calls", "Body",
-                    GeneratedSourceSymbolId: lambda.SymbolId, GeneratedDetail: "in lambda")
+                new("routing-inherits", string.Empty, target.SymbolId, baseType.SymbolId, null, "Inherits", "metadata")
             ]);
 
-        var credited = await atlas.Tools.FindApiCallersAsync("s1api", "release", leaf.QualifiedName, 10, cancellationToken);
-        var raw = await atlas.Tools.FindApiCallersAsync(
-            "s1api", "release", leaf.QualifiedName, 10, cancellationToken, includeGenerated: true);
+        var envelope = await atlas.Tools.FindRelatedTypesAsync(
+            target.QualifiedName,
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            relationKinds: ["Inherits"],
+            limit: 10,
+            cancellationToken);
 
-        Assert.Equal(ToolStatus.Resolved, credited.Status);
-        Assert.Equal(ToolStatus.Resolved, raw.Status);
-        var creditedRow = Assert.Single(credited.Data!.Relationships);
-        var rawRow = Assert.Single(raw.Data!.Relationships);
-        Assert.Equal(foo.QualifiedName, creditedRow.Source.QualifiedName);
-        Assert.Equal("in lambda", creditedRow.GeneratedDetail);
-        Assert.Equal(lambda.QualifiedName, rawRow.Source.QualifiedName);
-        Assert.Null(rawRow.GeneratedDetail);
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        var relationship = Assert.Single(envelope.Data!.Relationships);
+        Assert.Equal("Inherits", relationship.Kind);
+        Assert.Equal(baseType.QualifiedName, relationship.Target.QualifiedName);
     }
 
     [Fact]
-    public async Task FindApiCallers_SupportsIncludeDelegates()
+    public async Task Find_call_sites_routes_to_s1api_release()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
-        var creator = ApiSymbol("api-delegate-creator", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Build");
-        var target = ApiSymbol("api-delegate-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Handle");
+        var caller = ApiSymbol("routing-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCaller");
+        var target = ApiSymbol("routing-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Api.Target", "System.Void Demo.Api::Target()");
         await atlas.SeedIndexAsync(
             CodebaseKind.S1Api,
             CodeChannel.Release,
-            "api-delegate",
-            new string('e', 40),
-            environmentSnapshotId: null,
-            cancellationToken,
-            symbols: [creator, target],
-            relationships:
-            [
-                new("relationship-delegate", string.Empty, creator.SymbolId, target.SymbolId, null, "ReferencesMethod", "RecoveredIL")
-            ]);
-
-        var hidden = await atlas.Tools.FindApiCallersAsync("s1api", "release", target.QualifiedName, 10, cancellationToken);
-        var shown = await atlas.Tools.FindApiCallersAsync(
-            "s1api", "release", target.QualifiedName, 10, cancellationToken, includeDelegates: true);
-
-        Assert.Equal(ToolStatus.Resolved, hidden.Status);
-        Assert.Equal(ToolStatus.Resolved, shown.Status);
-        Assert.Empty(hidden.Data!.Relationships);
-        var row = Assert.Single(shown.Data!.Relationships);
-        Assert.Equal(creator.QualifiedName, row.Source.QualifiedName);
-        Assert.Equal("delegate created (not called)", row.Label);
-    }
-
-    [Fact]
-    public async Task FindApiCallees_SupportsIncludeDelegates()
-    {
-        await using var atlas = await ApiToolAtlas.CreateAsync();
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var creator = ApiSymbol("api-delegate-creator", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Build");
-        var target = ApiSymbol("api-delegate-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiDelegate.Handle");
-        await atlas.SeedIndexAsync(
-            CodebaseKind.S1Api,
-            CodeChannel.Release,
-            "api-delegate",
-            new string('e', 40),
-            environmentSnapshotId: null,
-            cancellationToken,
-            symbols: [creator, target],
-            relationships:
-            [
-                new("relationship-delegate", string.Empty, creator.SymbolId, target.SymbolId, null, "ReferencesMethod", "RecoveredIL")
-            ]);
-
-        var hidden = await atlas.Tools.FindApiCalleesAsync("s1api", "release", creator.QualifiedName, 10, cancellationToken);
-        var shown = await atlas.Tools.FindApiCalleesAsync(
-            "s1api", "release", creator.QualifiedName, 10, cancellationToken, includeDelegates: true);
-
-        Assert.Equal(ToolStatus.Resolved, hidden.Status);
-        Assert.Equal(ToolStatus.Resolved, shown.Status);
-        Assert.Empty(hidden.Data!.Relationships);
-        var row = Assert.Single(shown.Data!.Relationships);
-        Assert.Equal(target.QualifiedName, row.Target.QualifiedName);
-        Assert.Equal("delegate created (not called)", row.Label);
-    }
-
-    [Fact]
-    public async Task SearchApiSymbols_HidesGeneratedWithNotice()
-    {
-        await using var atlas = await ApiToolAtlas.CreateAsync();
-        var cancellationToken = TestContext.Current.CancellationToken;
-        var foo = ApiSymbol("api-search-foo", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiSearch.Foo");
-        var lambda = ApiSymbol(
-            "api-search-lambda", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiSearch.Foo+<>c::<Foo>b__0_0",
-            isGenerated: true);
-        await atlas.SeedIndexAsync(
-            CodebaseKind.S1Api,
-            CodeChannel.Release,
-            "api-search-credit",
+            "api-routing-call-sites",
             new string('b', 40),
             environmentSnapshotId: null,
             cancellationToken,
-            symbols: [foo, lambda]);
+            symbols: [caller, target],
+            relationships:
+            [
+                new("routing-callsite", string.Empty, caller.SymbolId, target.SymbolId, "Demo.Api::Target()", "Calls", "metadata")
+            ]);
 
-        var hidden = await atlas.Tools.SearchApiSymbolsAsync("s1api", "release", "ApiSearch.Foo", 10, cancellationToken);
-        var raw = await atlas.Tools.SearchApiSymbolsAsync(
-            "s1api", "release", "ApiSearch.Foo", 10, cancellationToken, includeGenerated: true);
+        var envelope = await atlas.Tools.FindCallSitesAsync(
+            "Demo.Api.Target",
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            limit: 10,
+            cancellationToken);
 
-        Assert.Equal(ToolStatus.Resolved, hidden.Status);
-        Assert.Equal(ToolStatus.Resolved, raw.Status);
-        Assert.Equal(1, hidden.Data!.TotalCount);
-        Assert.Equal(foo.QualifiedName, Assert.Single(hidden.Data.Results).QualifiedName);
-        Assert.Equal(
-            "1 generated result(s) hidden. Re-run with includeGenerated to include them.",
-            hidden.Data.SearchNotice);
-        Assert.Equal(2, raw.Data!.TotalCount);
-        Assert.Null(raw.Data.SearchNotice);
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(1, envelope.Data!.TotalCount);
     }
 
     [Fact]
-    public async Task FindApiFieldReferences_GeneratedFieldEmptyByDefault()
+    public async Task Find_field_references_routes_to_s1api_release()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
-        var foo = ApiSymbol("api-field-foo", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiField.Foo");
-        var capture = ApiSymbol(
-            "api-field-capture", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ApiField.Widget+<>c__DisplayClass0_0::x",
-            kind: "Field", isGenerated: true);
+        var reader = ApiSymbol("routing-reader", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityReader");
+        var field = ApiSymbol("routing-field", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityWidget::value", kind: "Field");
         await atlas.SeedIndexAsync(
             CodebaseKind.S1Api,
             CodeChannel.Release,
-            "api-field-credit",
+            "api-routing-fields",
             new string('c', 40),
             environmentSnapshotId: null,
             cancellationToken,
-            symbols: [foo, capture],
+            symbols: [reader, field],
             relationships:
             [
-                new("relationship-field-read", string.Empty, foo.SymbolId, capture.SymbolId, null, "ReadsField", "Body")
+                new("routing-reads", string.Empty, reader.SymbolId, field.SymbolId, null, "ReadsField", "Body")
             ]);
 
-        var hidden = await atlas.Tools.FindApiFieldReferencesAsync(
-            "s1api", "release", capture.QualifiedName, false, false, 10, cancellationToken);
-        var raw = await atlas.Tools.FindApiFieldReferencesAsync(
-            "s1api", "release", capture.QualifiedName, false, false, 10, cancellationToken, includeGenerated: true);
+        var envelope = await atlas.Tools.FindFieldReferencesAsync(
+            field.QualifiedName,
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            readers: true,
+            writers: false,
+            limit: 10,
+            cancellationToken);
 
-        Assert.Equal(ToolStatus.Resolved, hidden.Status);
-        Assert.Equal(ToolStatus.Resolved, raw.Status);
-        Assert.Equal(0, hidden.Data!.TotalCount);
-        Assert.Empty(hidden.Data.Page.Relationships);
-        var row = Assert.Single(raw.Data!.Page.Relationships);
-        Assert.Equal(foo.QualifiedName, row.Source.QualifiedName);
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        var relationship = Assert.Single(envelope.Data!.Relationships);
+        Assert.Equal(reader.QualifiedName, relationship.Source.QualifiedName);
+    }
+
+    [Fact]
+    public async Task Get_type_resolves_api_symbol()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-routing-get-type",
+            new string('d', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [ApiSymbol("routing-widget", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityWidget", kind: "Type")]);
+
+        var envelope = await atlas.Tools.GetTypeAsync(
+            "Demo.ParityWidget",
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            limit: 10,
+            cancellationToken);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal("Demo.ParityWidget", envelope.Data!.QualifiedName);
+    }
+
+    [Fact]
+    public async Task Find_overrides_traverses_api_hierarchy()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var derived = ApiSymbol("routing-derived", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityDerived.Render");
+        var @base = ApiSymbol("routing-base", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityBase.Render");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-routing-overrides",
+            new string('e', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [derived, @base],
+            relationships:
+            [
+                new("routing-overrides", string.Empty, derived.SymbolId, @base.SymbolId, null, "Overrides", "metadata")
+            ]);
+
+        var envelope = await atlas.Tools.FindOverridesAsync(
+            derived.QualifiedName,
+            McpCodebase.s1api,
+            CodeChannel.Release,
+            buildId: null,
+            limit: 10,
+            cancellationToken);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        var node = Assert.Single(envelope.Data!.Nodes);
+        Assert.Equal("Overrides", node.Edge.Kind);
+        Assert.Equal(@base.QualifiedName, node.Edge.Target.QualifiedName);
     }
 
     [Fact]
@@ -480,10 +450,10 @@ public sealed class ApiIndexToolTests
             cancellationToken,
             symbols: [ApiSymbol("stale-symbol", CodebaseKind.S1Api, CodeChannel.Installed, "Demo.Stale")]);
 
-        var stale = await atlas.Tools.SearchApiSymbolsAsync(
-            "s1api", "installed", "Demo.Stale", 10, cancellationToken);
-        var missing = await atlas.Tools.SearchApiSymbolsAsync(
-            "s1mapi", "preview", "Demo.Missing", 10, cancellationToken);
+        var stale = await atlas.Tools.SearchSymbolsAsync(
+            "Demo.Stale", McpCodebase.s1api, CodeChannel.Installed, buildId: null, limit: 10, ct: cancellationToken);
+        var missing = await atlas.Tools.SearchSymbolsAsync(
+            "Demo.Missing", McpCodebase.s1mapi, CodeChannel.Preview, buildId: null, limit: 10, ct: cancellationToken);
 
         Assert.Equal(ToolStatus.Unavailable, stale.Status);
         Assert.Equal("StaleApiIndex", stale.Error?.Code);
@@ -500,22 +470,24 @@ public sealed class ApiIndexToolTests
             CodebaseKind.S1Api,
             CodeChannel.Release,
             "api-read-only",
-            new string('e', 40),
+            new string('f', 40),
             environmentSnapshotId: null,
             cancellationToken,
             symbols: [ApiSymbol("read-only-symbol", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ReadOnly")]);
         var before = FileTree.HashAll(atlas.Root);
 
-        await atlas.Tools.ListApiIndexesAsync(null, cancellationToken);
-        await atlas.Tools.SearchApiSymbolsAsync("s1api", "release", "Demo.ReadOnly", 10, cancellationToken);
-        await atlas.Tools.GetApiSourceAsync("s1api", "release", "Demo.ReadOnly", 0, 0, cancellationToken);
+        await atlas.Tools.ListApiIndexesAsync(null, ct: cancellationToken);
+        await atlas.Tools.SearchSymbolsAsync(
+            "Demo.ReadOnly", McpCodebase.s1api, CodeChannel.Release, buildId: null, limit: 10, ct: cancellationToken);
+        await atlas.Tools.GetSourceAsync(
+            "Demo.ReadOnly", McpCodebase.s1api, CodeChannel.Release, buildId: null, context: 0, ct: cancellationToken, relatedLimit: 0);
 
         var after = FileTree.HashAll(atlas.Root);
         Assert.Equal(before, after);
     }
 
     [Fact]
-    public async Task Get_api_source_preserves_ambiguity_and_reports_source_failures()
+    public async Task Get_source_preserves_ambiguity_and_reports_source_failures()
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -523,7 +495,7 @@ public sealed class ApiIndexToolTests
             CodebaseKind.S1Api,
             CodeChannel.Preview,
             "api-source-ambiguous",
-            new string('f', 40),
+            new string('a', 40),
             environmentSnapshotId: null,
             cancellationToken,
             symbols:
@@ -531,15 +503,15 @@ public sealed class ApiIndexToolTests
                 ApiSymbol("ambiguous-int", CodebaseKind.S1Api, CodeChannel.Preview, "Demo.Api.Run", "System.Void Demo.Api::Run(System.Int32)"),
                 ApiSymbol("ambiguous-string", CodebaseKind.S1Api, CodeChannel.Preview, "Demo.Api.Run", "System.Void Demo.Api::Run(System.String)")
             ]);
-        var ambiguous = await atlas.Tools.GetApiSourceAsync(
-            "s1api", "preview", "Demo.Api.Run", 0, 0, cancellationToken);
+        var ambiguous = await atlas.Tools.GetSourceAsync(
+            "Demo.Api.Run", McpCodebase.s1api, CodeChannel.Preview, buildId: null, context: 0, ct: cancellationToken, relatedLimit: 0);
 
         Assert.Equal(ToolStatus.Ambiguous, ambiguous.Status);
         Assert.Equal(2, ambiguous.Candidates.Count);
         Assert.Equal(2, ambiguous.TotalCandidateCount);
         Assert.Empty(ambiguous.Suggestions);
 
-        var sourceIdentity = new string('g', 40);
+        var sourceIdentity = new string('b', 40);
         var sourceText = "namespace Demo;\npublic sealed class Api\n{\n    public void Run() { }\n}\n";
         var symbol = ApiSymbol("missing-source", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Api.Missing");
         var sourceFile = new IndexSourceFileRecord(
@@ -558,8 +530,8 @@ public sealed class ApiIndexToolTests
             symbols: [symbol],
             sourceFiles: [sourceFile],
             sourceLocations: [new IndexSourceLocationRecord(symbol.SymbolId, sourceFile.SourceFileId, 4, 5, 4, 26)]);
-        var missing = await atlas.Tools.GetApiSourceAsync(
-            "s1api", "release", symbol.QualifiedName, 0, 0, cancellationToken);
+        var missing = await atlas.Tools.GetSourceAsync(
+            symbol.QualifiedName, McpCodebase.s1api, CodeChannel.Release, buildId: null, context: 0, ct: cancellationToken, relatedLimit: 0);
 
         Assert.Equal(ToolStatus.Unavailable, missing.Status);
         Assert.Equal("SourceUnavailable", missing.Error?.Code);
@@ -575,8 +547,8 @@ public sealed class ApiIndexToolTests
             sourceFile.RelativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(tamperedPath)!);
         await File.WriteAllTextAsync(tamperedPath, "tampered", cancellationToken);
-        var integrity = await atlas.Tools.GetApiSourceAsync(
-            "s1api", "release", symbol.QualifiedName, 0, 0, cancellationToken);
+        var integrity = await atlas.Tools.GetSourceAsync(
+            symbol.QualifiedName, McpCodebase.s1api, CodeChannel.Release, buildId: null, context: 0, ct: cancellationToken, relatedLimit: 0);
 
         Assert.Equal(ToolStatus.Unavailable, integrity.Status);
         Assert.Equal("SourceIntegrityFailure", integrity.Error?.Code);
@@ -596,8 +568,8 @@ public sealed class ApiIndexToolTests
             cancellationToken,
             symbols: [ApiSymbol("no-authority", CodebaseKind.S1Api, CodeChannel.Installed, "Demo.NoAuthority")]);
 
-        var result = await atlas.Tools.SearchApiSymbolsAsync(
-            "s1api", "installed", "Demo.NoAuthority", 10, cancellationToken);
+        var result = await atlas.Tools.SearchSymbolsAsync(
+            "Demo.NoAuthority", McpCodebase.s1api, CodeChannel.Installed, buildId: null, limit: 10, ct: cancellationToken);
 
         Assert.Equal(ToolStatus.Unavailable, result.Status);
         Assert.Equal("ApiIndexUnavailable", result.Error?.Code);
@@ -629,7 +601,7 @@ public sealed class ApiIndexToolTests
         Assert.Equal(symbolId, symbol.SymbolId);
         Assert.Contains(envelope.Provenance, entry =>
             entry.Classification == ProvenanceClassification.Fact &&
-            entry.IndexId == indexId &&
+            entry.IndexId is null &&
             entry.Source.Contains(sourceIdentity, StringComparison.Ordinal));
     }
 
@@ -673,7 +645,7 @@ public sealed class ApiIndexToolTests
 
         public string Root { get; }
 
-        public ApiIndexTools Tools => new(McpServerComposition.BuildReadOnlyServices(Root));
+        public CodeSymbolTools Tools => new(McpServerComposition.BuildReadOnlyServices(Root));
 
         public static async Task<ApiToolAtlas> CreateAsync()
         {

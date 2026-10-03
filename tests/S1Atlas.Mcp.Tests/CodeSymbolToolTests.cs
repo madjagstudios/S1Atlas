@@ -17,6 +17,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetTypeAsync(
             "   ",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -53,6 +55,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.SearchSymbolsAsync(
             atlas.KnownSymbolFragment,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             kind: null,
             limit: 50,
@@ -74,6 +78,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.SearchSymbolsAsync(
             "Dealer",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             kind: null,
             limit: 50,
@@ -84,24 +90,6 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
-    public async Task SearchSymbols_InvalidKind_ReturnsSelectedBuild()
-    {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-        var tools = CreateTools(atlas);
-
-        var envelope = await tools.SearchSymbolsAsync(
-            atlas.KnownSymbolFragment,
-            buildId: null,
-            kind: "not-a-kind",
-            limit: 50,
-            CancellationToken.None);
-
-        Assert.Equal(ToolStatus.Invalid, envelope.Status);
-        Assert.Equal("InvalidKind", envelope.Error?.Code);
-        Assert.Equal(atlas.IndexId, envelope.Build?.IndexId);
-    }
-
-    [Fact]
     public async Task GetType_UnknownSelector_ReturnsNotFound()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -109,6 +97,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetTypeAsync(
             "Demo.DoesNotExist",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -126,13 +116,15 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetTypeAsync(
             "Widjet",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Null(envelope.Data);
         var suggestion = Assert.Single(envelope.Suggestions);
-        Assert.Equal("Demo.Widget", ((SymbolQueryResult)suggestion).QualifiedName);
+        Assert.Equal("Demo.Widget", ((SlimSymbolCandidate)suggestion).QualifiedName);
     }
 
     [Fact]
@@ -143,6 +135,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetMethodAsync(
             "Demo.Widget::Rendor",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -150,7 +144,7 @@ public sealed class CodeSymbolToolTests
         Assert.Null(envelope.Data);
         Assert.Contains(
             envelope.Suggestions,
-            suggestion => ((SymbolQueryResult)suggestion).QualifiedName == "Demo.Widget.Render");
+            suggestion => ((SlimSymbolCandidate)suggestion).QualifiedName == "Demo.Widget.Render");
     }
 
     [Fact]
@@ -161,6 +155,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetMethodAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -178,6 +174,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetMethodAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 1,
             ct: CancellationToken.None);
@@ -195,6 +193,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetTypeAsync(
             "DealerService",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 1,
             ct: CancellationToken.None);
@@ -243,6 +243,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetMethodAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 0,
             ct: CancellationToken.None);
@@ -260,7 +262,7 @@ public sealed class CodeSymbolToolTests
             .GetParameters();
 
         Assert.Equal(
-            ["selector", "buildId", "context", "ct", "scope", "collection", "fullType", "relatedLimit"],
+            ["selector", "codebase", "channel", "buildId", "context", "ct", "scope", "collection", "fullType", "relatedLimit"],
             parameters.Select(parameter => parameter.Name));
         Assert.Equal(false, parameters[^2].DefaultValue);
         Assert.Equal(10, parameters[^1].DefaultValue);
@@ -274,6 +276,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             CancellationToken.None);
@@ -291,6 +295,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             ct: CancellationToken.None);
@@ -314,6 +320,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             ct: CancellationToken.None,
@@ -334,6 +342,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             ct: CancellationToken.None,
@@ -352,6 +362,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             ct: CancellationToken.None,
@@ -373,6 +385,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.RuntimeMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             ct: CancellationToken.None,
@@ -395,19 +409,23 @@ public sealed class CodeSymbolToolTests
         var tools = CreateTools(atlas);
         var selected = await tools.SearchSymbolsAsync(
             "Qol.Mod::Run",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             kind: null,
             limit: 50,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection);
 
         var source = await tools.GetSourceAsync(
             selected.Data!.Results[0].Signature,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection,
             relatedLimit: 1);
 
@@ -429,6 +447,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             CancellationToken.None);
@@ -446,6 +466,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             CancellationToken.None);
@@ -462,6 +484,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallersAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
@@ -479,6 +503,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallersAsync(
             atlas.HierarchyDerivedMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
@@ -512,6 +538,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallersAsync(
             atlas.HierarchyDerivedMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
@@ -535,10 +563,14 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallersAsync(
             "Demo.DoesNotExist",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
         var exact = await tools.FindCallersAsync(
             "Demo.DoesNotExist",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None,
             exact: true);
@@ -559,6 +591,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallersAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -576,6 +610,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCalleesAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -593,6 +629,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindReferencesAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -610,6 +648,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindRelatedTypesAsync(
             "Widjet",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None);
 
@@ -625,6 +665,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindReferencesAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
@@ -643,6 +685,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallSitesAsync(
             atlas.EngineCallSiteSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 1,
             ct: CancellationToken.None);
@@ -672,10 +716,12 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindCallSitesAsync(
             atlas.EngineCallSiteSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
@@ -700,6 +746,8 @@ public sealed class CodeSymbolToolTests
 
         var readers = await tools.FindFieldReferencesAsync(
             atlas.GameFieldSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: true,
             writers: false,
@@ -707,6 +755,8 @@ public sealed class CodeSymbolToolTests
             ct: CancellationToken.None);
         var writers = await tools.FindFieldReferencesAsync(
             atlas.GameFieldSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: false,
             writers: true,
@@ -732,6 +782,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindFieldReferencesAsync(
             atlas.GameFieldSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: false,
             writers: false,
@@ -753,12 +805,14 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindFieldReferencesAsync(
             atlas.ReferenceFieldSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: false,
             writers: true,
             limit: 50,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
@@ -785,6 +839,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindFieldReferencesAsync(
             atlas.AmbiguousFieldSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: false,
             writers: false,
@@ -806,6 +862,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             CancellationToken.None);
@@ -824,6 +882,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.GetSourceAsync(
             "Widjet",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             context: 0,
             CancellationToken.None);
@@ -858,6 +918,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindFieldReferencesAsync(
             atlas.GameFieldSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: true,
             writers: true,
@@ -876,6 +938,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindRelatedTypesAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             relationKinds: null,
             limit: 50,
@@ -897,6 +961,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindRelatedTypesAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             relationKinds: ["ReturnType"],
             limit: 1,
@@ -915,6 +981,8 @@ public sealed class CodeSymbolToolTests
 
         var envelope = await tools.FindRelatedTypesAsync(
             atlas.MethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             relationKinds: ["Calls"],
             limit: 50,
@@ -933,11 +1001,15 @@ public sealed class CodeSymbolToolTests
 
         var credited = await tools.FindCallersAsync(
             atlas.CreditLeafSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
         var raw = await tools.FindCallersAsync(
             atlas.CreditLeafSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
@@ -962,11 +1034,15 @@ public sealed class CodeSymbolToolTests
 
         var credited = await tools.FindCalleesAsync(
             atlas.CreditFooSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
         var raw = await tools.FindCalleesAsync(
             atlas.CreditFooSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
@@ -990,11 +1066,15 @@ public sealed class CodeSymbolToolTests
 
         var credited = await tools.FindReferencesAsync(
             atlas.CreditLeafSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
         var raw = await tools.FindReferencesAsync(
             atlas.CreditLeafSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
@@ -1018,12 +1098,16 @@ public sealed class CodeSymbolToolTests
 
         var hidden = await tools.SearchSymbolsAsync(
             "Foo",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             kind: null,
             limit: 50,
             CancellationToken.None);
         var raw = await tools.SearchSymbolsAsync(
             "Foo",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             kind: null,
             limit: 50,
@@ -1049,6 +1133,8 @@ public sealed class CodeSymbolToolTests
 
         var hidden = await tools.FindFieldReferencesAsync(
             atlas.CreditCaptureSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: false,
             writers: false,
@@ -1056,6 +1142,8 @@ public sealed class CodeSymbolToolTests
             ct: CancellationToken.None);
         var raw = await tools.FindFieldReferencesAsync(
             atlas.CreditCaptureSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             readers: false,
             writers: false,
@@ -1079,11 +1167,15 @@ public sealed class CodeSymbolToolTests
 
         var ambiguous = await tools.FindCallersAsync(
             "worker",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None,
             includeGenerated: true);
         var missing = await tools.FindCallersAsync(
             "Demo.DoesNotExist",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             ct: CancellationToken.None,
             includeGenerated: true);
@@ -1101,6 +1193,8 @@ public sealed class CodeSymbolToolTests
 
         var hidden = await tools.FindCallersAsync(
             atlas.DelegateTargetSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
@@ -1118,6 +1212,8 @@ public sealed class CodeSymbolToolTests
 
         var shown = await tools.FindCallersAsync(
             atlas.DelegateTargetSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
@@ -1138,6 +1234,8 @@ public sealed class CodeSymbolToolTests
 
         var hidden = await tools.FindCalleesAsync(
             atlas.DelegateBuildSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None);
@@ -1154,6 +1252,8 @@ public sealed class CodeSymbolToolTests
 
         var shown = await tools.FindCalleesAsync(
             atlas.DelegateBuildSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
@@ -1174,6 +1274,8 @@ public sealed class CodeSymbolToolTests
 
         var shown = await tools.FindCallersAsync(
             atlas.DelegateTargetSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,

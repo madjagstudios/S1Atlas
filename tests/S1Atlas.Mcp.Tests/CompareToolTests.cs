@@ -43,12 +43,19 @@ public sealed class CompareToolTests
         Assert.Equal("Installed", envelope.BuildB.Channel);
         Assert.True(envelope.BuildB.IntegrityVerified);
         Assert.Equal(DiffClassification.Unchanged, envelope.Data!.Classification);
-        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA);
         Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB);
-        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA && entry.Classification == ProvenanceClassification.Fact);
         Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB && entry.Classification == ProvenanceClassification.Fact);
-        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA && entry.Classification == ProvenanceClassification.Derived);
         Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB && entry.Classification == ProvenanceClassification.Derived);
+        Assert.All(
+            envelope.Provenance.Where(entry => entry.Source.EndsWith(":left", StringComparison.Ordinal)),
+            entry =>
+            {
+                Assert.Null(entry.BuildId);
+                Assert.Null(entry.ExtractionId);
+                Assert.Null(entry.IndexId);
+            });
+        Assert.Contains(envelope.Provenance, entry => entry.Source == "installed-build-authority:left" && entry.Classification == ProvenanceClassification.Fact);
+        Assert.Contains(envelope.Provenance, entry => entry.Source == "compare-symbol:left" && entry.Classification == ProvenanceClassification.Derived);
     }
 
     [Fact]
@@ -70,7 +77,7 @@ public sealed class CompareToolTests
         Assert.Equal(atlas.CompareSelector, envelope.Data.CanonicalKey);
         Assert.Equal(atlas.BuildIdA, envelope.Build!.ResolvedBuildId);
         Assert.Equal(atlas.BuildIdB, envelope.BuildB!.ResolvedBuildId);
-        Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdA);
+        Assert.Contains(envelope.Provenance, entry => entry.Source == "installed-build-authority:left" && entry.BuildId is null);
         Assert.Contains(envelope.Provenance, entry => entry.BuildId == atlas.BuildIdB);
     }
 

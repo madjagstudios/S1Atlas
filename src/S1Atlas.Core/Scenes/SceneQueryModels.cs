@@ -4,14 +4,22 @@ public sealed record SceneListQueryOptions(
     string SceneSnapshotId,
     SceneDocumentKind? Kind = null,
     string? Query = null,
-    int Limit = 50)
+    int Limit = 50,
+    int Offset = 0)
 {
     public string SceneSnapshotId { get; init; } = SceneContract.RequireId(SceneSnapshotId, nameof(SceneSnapshotId));
     public int Limit { get; init; } = RequirePositiveLimit(Limit);
+    public int Offset { get; init; } = RequireNonNegativeOffset(Offset);
 
     private static int RequirePositiveLimit(int value)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+        return value;
+    }
+
+    private static int RequireNonNegativeOffset(int value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
         return value;
     }
 }

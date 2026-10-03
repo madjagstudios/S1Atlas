@@ -28,12 +28,16 @@ internal sealed class SeamToolEnvelopeJsonConverter : JsonConverter<ToolEnvelope
                 {
                     typeInfo =>
                     {
+                        ToolJsonOptions.MapAdvertisedVocabulary(typeInfo);
+                        ToolJsonOptions.MapErrorCodes(typeInfo);
                         foreach (var property in typeInfo.Properties)
                         {
                             property.ShouldSerialize = (instance, _) =>
                                 !property.Name.Equals(nameof(SeamInvestigationResult.NativeEvidence), StringComparison.OrdinalIgnoreCase) ||
                                 instance is not SeamInvestigationResult { NativeEvidence: null };
                         }
+
+                        ToolJsonOptions.SkipEmptyCandidatesAndSuggestions(typeInfo);
 
                         if (typeInfo.Type == typeof(SeamEvidenceClaim))
                         {

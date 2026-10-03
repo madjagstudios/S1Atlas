@@ -39,11 +39,13 @@ public sealed class ReferenceCollectionToolTests
         var collection = Assert.Single(catalog.Data!.Collections);
         var search = await symbols.SearchSymbolsAsync(
             "Fresh",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             null,
             null,
             50,
             CancellationToken.None,
-            "reference",
+            IndexQueryScope.Reference,
             "qol");
 
         Assert.Equal(runs.NewestIndexId, collection.IndexId);
@@ -60,19 +62,23 @@ public sealed class ReferenceCollectionToolTests
 
         var all = await tools.SearchSymbolsAsync(
             atlas.KnownSymbolFragment,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             null,
             null,
             50,
             CancellationToken.None,
-            "all",
+            IndexQueryScope.All,
             reference.Collection);
         var mismatch = await tools.SearchSymbolsAsync(
             atlas.KnownSymbolFragment,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             atlas.BuildIdB,
             null,
             50,
             CancellationToken.None,
-            "all",
+            IndexQueryScope.All,
             reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, all.Status);
@@ -94,9 +100,9 @@ public sealed class ReferenceCollectionToolTests
         await atlas.AddReferenceSourceLocationAsync(reference);
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 
-        var search = await tools.SearchSymbolsAsync("Qol.Mod::Run", null, null, 50, CancellationToken.None, "reference", reference.Collection);
-        var callees = await tools.FindCalleesAsync("qol/Qol.Mod::Run():System.Void", null, 50, CancellationToken.None, "all", reference.Collection);
-        var allCallers = await tools.FindCallersAsync(atlas.MethodSelector, null, 50, CancellationToken.None, "all", reference.Collection);
+        var search = await tools.SearchSymbolsAsync("Qol.Mod::Run", McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, IndexQueryScope.Reference, reference.Collection);
+        var callees = await tools.FindCalleesAsync("qol/Qol.Mod::Run():System.Void", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, CancellationToken.None, null, IndexQueryScope.All, reference.Collection);
+        var allCallers = await tools.FindCallersAsync(atlas.MethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, CancellationToken.None, null, IndexQueryScope.All, reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, search.Status);
         Assert.Equal("reference", search.Data!.Results[0].Origin);
@@ -117,15 +123,17 @@ public sealed class ReferenceCollectionToolTests
         var reference = await atlas.SeedReferenceCollectionAsync("qol");
         await atlas.AddReferenceSourceLocationAsync(reference);
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
-        var selected = await tools.SearchSymbolsAsync("Qol.Mod::Run", null, null, 50, CancellationToken.None, "reference", reference.Collection);
+        var selected = await tools.SearchSymbolsAsync("Qol.Mod::Run", McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, IndexQueryScope.Reference, reference.Collection);
         var selector = Assert.Single(selected.Data!.Results).Signature;
 
         var source = await tools.GetSourceAsync(
             selector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             null,
             0,
             CancellationToken.None,
-            "reference",
+            IndexQueryScope.Reference,
             reference.Collection);
         Assert.Equal(ToolStatus.Resolved, source.Status);
         Assert.Equal(reference.IndexId, source.Data!.IndexId);
@@ -139,21 +147,25 @@ public sealed class ReferenceCollectionToolTests
         await File.AppendAllTextAsync(generatedSource, "tampered", CancellationToken.None);
         var integrity = await tools.GetSourceAsync(
             selector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             null,
             0,
             CancellationToken.None,
-            "reference",
+            IndexQueryScope.Reference,
             reference.Collection);
         Assert.Equal(ToolStatus.Unavailable, integrity.Status);
         Assert.Equal("SourceIntegrityFailure", integrity.Error!.Code);
 
         var missing = await tools.SearchSymbolsAsync(
             "Qol.Mod",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             null,
             null,
             50,
             CancellationToken.None,
-            "reference",
+            IndexQueryScope.Reference,
             "missing-collection");
         Assert.Equal(ToolStatus.NotFound, missing.Status);
         Assert.Equal("NoCompletedIndex", missing.Error!.Code);
