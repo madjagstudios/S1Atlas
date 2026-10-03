@@ -121,7 +121,7 @@ public sealed class FoundationMigrationTests : IAsyncDisposable
                     "SELECT COUNT(*) FROM environment_snapshots WHERE snapshot_id = 'real-scan-foundation-v1';",
                     cancellationToken));
             Assert.Equal(
-                17,
+                18,
                 await ReadScalarInt64Async(
                     connection,
                     "SELECT COUNT(*) FROM schema_migrations;",
