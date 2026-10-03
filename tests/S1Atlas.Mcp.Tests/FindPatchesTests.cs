@@ -94,7 +94,7 @@ public sealed class FindPatchesTests
         var fourthText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(fourth.Content)).Text;
         using var fourthDocument = JsonDocument.Parse(fourthText);
         var fourthRoot = fourthDocument.RootElement;
-        Assert.Single(fourthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal(2, fourthRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
         Assert.False(
             fourthRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
             nextCursor.ValueKind != JsonValueKind.Null);
@@ -156,7 +156,7 @@ public sealed class FindPatchesTests
         var sections = root.GetProperty("data").GetProperty("evidenceSections");
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
-        Assert.Equal(7, patches.GetProperty("totalCount").GetInt32());
+        Assert.Equal(8, patches.GetProperty("totalCount").GetInt32());
         var claims = root.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),

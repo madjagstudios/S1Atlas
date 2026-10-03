@@ -281,7 +281,10 @@ internal static class ManualPatchRecognizer
                 return;
             }
 
-            var pop = parameters.Count + (opcode == OpCodes.Callvirt || string.Equals(name, ".ctor", StringComparison.Ordinal) ? 1 : 0);
+            // Newobj carries only the constructor arguments; the instance does not exist yet,
+            // so unlike Call/.ctor and Callvirt there is no receiver to pop.
+            var pop = parameters.Count + (opcode == OpCodes.Callvirt ||
+                (opcode == OpCodes.Call && string.Equals(name, ".ctor", StringComparison.Ordinal)) ? 1 : 0);
             for (var i = 0; i < pop; i++)
                 TryPop();
             if (opcode == OpCodes.Newobj || returnsValue)
@@ -493,6 +496,7 @@ internal static class ManualPatchRecognizer
         else if (opcode == OpCodes.Ldc_I4_8) constant = new IntValue(8);
         else if (opcode == OpCodes.Ldc_I4_S || opcode == OpCodes.Ldc_I4) constant = new IntValue(instruction.Number);
         else if (opcode == OpCodes.Ldc_I8) constant = new IntValue(instruction.Number);
+        else if (opcode == OpCodes.Ldc_R4 || opcode == OpCodes.Ldc_R8) constant = StackValue.Unknown;
         else return false;
         return true;
     }

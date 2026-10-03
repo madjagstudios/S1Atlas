@@ -138,3 +138,37 @@ public class ManualOverloadDisambiguationPatch
     {
     }
 }
+
+public class ManualNewobjPrecisionPatch
+{
+    public static void Install(Harmony harmony, string name)
+    {
+        var local = new Harmony("review-m5");
+        local.Patch(
+            AccessTools.Method(typeof(Widget), name),
+            prefix: new HarmonyMethod(typeof(ManualNewobjPrecisionPatch), nameof(NewobjPrefix)));
+    }
+
+    public static void NewobjPrefix()
+    {
+    }
+}
+
+public class ManualFloatConstantPatch
+{
+    public static float Scale;
+
+    public static double Factor;
+
+    public static void Install(Harmony harmony)
+    {
+        Scale = 1.5f;
+        var target = AccessTools.Method(typeof(Widget), "Run");
+        Factor = 2.0;
+        harmony.Patch(target, prefix: new HarmonyMethod(typeof(ManualFloatConstantPatch), nameof(FloatPrefix)));
+    }
+
+    public static void FloatPrefix()
+    {
+    }
+}

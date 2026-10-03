@@ -91,6 +91,7 @@ public sealed class HarmonyPatchReaderTests
     [InlineData("Mod.ManualUnknownMethodPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualUnknownMethodPatch", "Missing")]
     [InlineData("Mod.ManualMethodInfoPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualMethodInfoPatch", "InfoPrefix")]
     [InlineData("Mod.ManualOverloadDisambiguationPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualOverloadDisambiguationPatch", "Do")]
+    [InlineData("Mod.ManualFloatConstantPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualFloatConstantPatch", "FloatPrefix")]
     public async Task Manual_patches_resolve_from_constant_calls(
         string typeName,
         string methodName,
@@ -144,6 +145,19 @@ public sealed class HarmonyPatchReaderTests
         Assert.Equal("Game.Widget::Untouched", fact.TargetSignature);
         Assert.Equal(HarmonyPatchReasons.NonConstantArguments, fact.Reason);
         Assert.Null(fact.PatchMethodType);
+    }
+
+    [Fact]
+    public async Task Object_construction_before_a_manual_call_keeps_precision()
+    {
+        var member = await FindMemberAsync("Mod.ManualNewobjPrecisionPatch", "Install");
+
+        var fact = Assert.Single(member.Patches ?? []);
+        Assert.Equal(HarmonyPatchKind.Prefix, fact.Kind);
+        Assert.Null(fact.TargetSignature);
+        Assert.Equal(HarmonyPatchReasons.NonConstantArguments, fact.Reason);
+        Assert.Equal("Mod.ManualNewobjPrecisionPatch", fact.PatchMethodType);
+        Assert.Equal("NewobjPrefix", fact.PatchMethodName);
     }
 
     [Fact]

@@ -24,13 +24,13 @@ public sealed class HarmonyPatchEdgeTests
                 .Where(edge => edge.Kind == "Patches")
                 .ToArray();
 
-            Assert.Equal(16, edges.Count(edge => edge.TargetSymbolId is not null));
-            Assert.Equal(6, edges.Count(edge => edge.TargetSymbolId is null));
+            Assert.Equal(17, edges.Count(edge => edge.TargetSymbolId is not null));
+            Assert.Equal(7, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
                 .ToDictionary(symbol => symbol.SymbolId, symbol => symbol.Signature, StringComparer.Ordinal);
 
-            Assert.Equal(6, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
+            Assert.Equal(7, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
             Assert.All(
                 edges.Where(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)),
                 edge => Assert.Equal("Prefix", edge.GeneratedDetail));
@@ -38,7 +38,7 @@ public sealed class HarmonyPatchEdgeTests
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "Metadata"));
-            Assert.Equal(3, edges.Count(edge =>
+            Assert.Equal(4, edges.Count(edge =>
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "RecoveredIL"));
@@ -65,10 +65,10 @@ public sealed class HarmonyPatchEdgeTests
                 .Select(edge => edge.TargetText!)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
-            Assert.Equal(6, unresolvedReasons.Length);
+            Assert.Equal(7, unresolvedReasons.Length);
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:ambiguous-overload:", StringComparison.Ordinal));
             Assert.Equal(2, unresolvedReasons.Count(text => text.StartsWith("unresolved:runtime-computed-target:", StringComparison.Ordinal)));
-            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:non-constant-target:", StringComparison.Ordinal));
+            Assert.Equal(2, unresolvedReasons.Count(text => text.StartsWith("unresolved:non-constant-target:", StringComparison.Ordinal)));
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unsupported-method-type:", StringComparison.Ordinal));
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:no-target-specified:", StringComparison.Ordinal));
             Assert.DoesNotContain(unresolvedReasons, text => !text.StartsWith("unresolved:", StringComparison.Ordinal));
