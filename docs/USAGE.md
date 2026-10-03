@@ -750,15 +750,26 @@ database and all Atlas-owned data together. MCP opens the existing database in
 read-only mode; it does not create the root or database, run migrations, or
 change stored data.
 
-The read-only server exposes the Schedule I `Installed` surface and completed
-local reference collections through these tools:
+The read-only server exposes the Schedule I `Installed` surface, completed
+local reference collections, and completed S1API/S1MAPI indexes through 26
+tools:
 
-`search_symbols`, `get_type`, `get_method`, `get_source`, `find_callers`,
-`find_callees`, `find_call_sites`, `find_field_references`,
-`find_references`, `find_related_types`, `find_overrides`, `find_overriders`,
-`find_derived_types`, `compare_symbol`, `list_builds`,
-`get_environment`, `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`,
-`get_component`, `get_scriptable_object`, and `list_reference_collections`.
+| Area | Tools |
+|---|---|
+| Symbol search | `search_symbols`, `get_type`, `get_method`, `get_source`, `get_callable_surface` |
+| Relationships | `find_callers`, `find_callees`, `find_call_sites`, `find_field_references`, `find_references`, `find_related_types` |
+| Hierarchy | `find_overrides`, `find_overriders`, `find_derived_types` |
+| Scenes | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
+| Builds and collections | `list_builds`, `get_environment`, `list_api_indexes`, `list_reference_collections` |
+| Analysis | `compare_symbol`, `investigate_seam`, `plan_runtime_proof` |
+
+Thirteen code tools take a required `codebase` (`scheduleI`, `s1api`, or
+`s1mapi`) and an optional `channel` (default `Installed`); Schedule I has
+only the Installed channel. `get_callable_surface` is game-only and takes
+neither. Fixed vocabularies are advertised as schema enums: `codebase`,
+`channel`, `scope` (`Game`, `Reference`, `All`), and the symbol-kind and
+scene-kind filters. Binding is case-insensitive, and an invalid enum value
+fails with a readable error naming the parameter and the allowed values.
 
 `search_symbols`, `get_source`, `find_callers`, `find_callees`,
 `find_call_sites`, `find_field_references`, `find_references`,
@@ -767,26 +778,42 @@ local reference collections through these tools:
 `scope` defaults to `game`; `reference` and `all` require `collection`, while
 `game` rejects it. `find_field_references` also accepts `readers` and `writers`
 filters, which are mutually exclusive. `find_overriders` and
-`find_derived_types` accept `depth` (default `10`), and `find_derived_types`
-accepts `offset` (default `0`). `find_callers` and `find_api_callers` accept
-`exact` (default `false`): by default they also return may-dispatch callers
+`find_derived_types` accept `depth` (default `10`). `find_callers` accepts
+`exact` (default `false`): by default it also returns may-dispatch callers
 (call sites targeting an overridden base slot or interface method the
 selected method fills), labeled `DERIVED` with the route taken plus
 exact/derived split totals, while `exact: true` returns only statically
 bound callers. The relationship and search tools also accept
 `includeGenerated` (default `false`): by default generated bodies are
 credited to the declaring method with an `in ...` detail, while `true`
-shows the raw generated rows. `find_callers`, `find_callees`,
-`find_api_callers`, and `find_api_callees` accept `includeDelegates`
-(default `false`): by default delegate creation is excluded from
-callers/callees, while `true` includes it labeled `delegate created (not
-called)`. Slots with no resolvable indexed symbol contribute no
+shows the raw generated rows. `find_callers` and `find_callees` accept
+`includeDelegates` (default `false`): by default delegate creation is
+excluded from callers/callees, while `true` includes it labeled `delegate
+created (not called)`. Slots with no resolvable indexed symbol contribute no
 routes, so overrides of external framework methods add no derived rows. `list_reference_collections` reports
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
 the CLI and returns the same ordered candidate, warning, unknown-dimension, and
-next-action payload fields. `get_type`, `get_method`, and `get_callable_surface` retain their
-Schedule I-only behavior.
+next-action payload fields.
+
+The nine `find_*` tools and the four `list_*` tools page with an opaque
+`cursor`. Responses carry `nextCursor` only when more rows remain; pass it
+back with otherwise identical arguments to fetch the next page. Cursors are
+bound to the tool, the effective arguments, the limit, and the resolved
+build/index, so reuse with different arguments or after a re-index fails
+with `invalid_cursor`. `search_symbols` stays limit-only and takes no
+cursor. Merged `all`-scope totals are exact when both sides fit the page
+window and null when truncated.
+
+Envelopes omit empty `candidates` and `suggestions` arrays. Provenance
+entries omit build, extraction, and index IDs that duplicate the envelope
+build; entries pointing at a different index keep theirs. Symbol
+candidates slim to the fields a follow-up call needs, without the index
+identity the envelope already carries. Call-site and field-reference
+results serialize flat, without the doubled `page` object. Ambiguity
+behavior is unchanged: `ambiguous` envelopes still carry candidates with
+exact totals, and `not_found` envelopes still carry near-match
+suggestions.
 
 `get_source` also accepts `fullType` (default `false`) and `relatedLimit`
 (default `10`, bounded to `0`–`50`). `fullType` returns the containing type's
@@ -812,13 +839,26 @@ index. Responses include status, build and index context, provenance, data,
 candidates with exact totals on ambiguity, near-match suggestions on unknown
 selectors, and structured errors. `compare_symbol` requires two explicit build
 IDs; `get_environment` reports only the current snapshot and returns
-`NoMatchingEnvironmentSnapshot` for a historical request. Facts are labeled
+`snapshot_not_found` for a historical request. Facts are labeled
 `FACT`, while deterministic selections and counts are labeled `DERIVED`.
-Expected failures use stable domain codes; unexpected failures are logged to
-stderr and returned without stack traces or raw storage details. Setup errors
-such as `NoCurrentBuild` or `NoCompletedIndex` carry a `hint` field with the
-exact CLI fix command; run it, or run CLI `s1atlas doctor` to see the full
-readiness checklist.
+Expected failures use ten stable snake_case domain codes;
+unexpected failures are logged to stderr and returned without stack traces
+or raw storage details. Setup errors such as `no_current_build` or
+`no_completed_index` carry a `hint` field with the exact CLI fix command;
+run it, or run CLI `s1atlas doctor` to see the full readiness checklist.
+
+| Wire code | Meaning |
+|---|---|
+| `invalid_arguments` | A parameter value or combination is invalid. |
+| `symbol_not_found` | No symbol, scene, GameObject, component, or asset matches the selector. |
+| `no_completed_index` | No completed queryable index exists for the selection. |
+| `source_unavailable` | The backing source snapshot is unavailable. |
+| `source_integrity_failure` | A backing snapshot failed integrity verification. |
+| `snapshot_not_found` | No environment snapshot or build matches the request. |
+| `no_current_build` | No current environment snapshot exists. |
+| `atlas_unavailable` | The Atlas store itself is unavailable. |
+| `unexpected_tool_failure` | An internal failure; details are in the message, not the code. |
+| `invalid_cursor` | A page cursor was malformed or bound to a different query. |
 
 `find_call_sites` and `find_field_references` return recovered-IL static
 relationship evidence. `find_call_sites` falls back to raw-target matching when
@@ -837,14 +877,22 @@ results are bounded and retain local-only provenance. Native evidence is
 read-only, hash-keyed to the selected build/index/GameAssembly identity, and
 never stores proprietary bodies, disassembly, paths, or binary artifacts.
 
-The read-only MCP API parity tools are `list_api_indexes`, `search_api_symbols`,
-`get_api_source`, `find_api_callers`, `find_api_callees`,
-`find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
-`find_api_field_references`. They query only completed S1API/S1MAPI indexes and
-preserve the selected codebase, channel, build/index, and source-snapshot
-authority. Installed-current queries are bound to the exact current environment
-snapshot; a stale index is reported as stale/unavailable rather than silently
-treated as current.
+The read-only MCP API parity tools are the shared code tools with
+`codebase: s1api` or `s1mapi`, plus `list_api_indexes`. They query only
+completed S1API/S1MAPI indexes and preserve the selected codebase, channel,
+build/index, and source-snapshot authority. Installed-current queries are
+bound to the exact current environment snapshot; a stale index is reported
+as stale/unavailable rather than silently treated as current.
+
+Retired tools map to shared replacements with no behavior change:
+`search_api_symbols` to `search_symbols`, `get_api_source` to `get_source`,
+`find_api_callers` to `find_callers`, `find_api_callees` to `find_callees`,
+`find_api_references` to `find_references`, `find_api_related_types` to
+`find_related_types`, `find_api_call_sites` to `find_call_sites`, and
+`find_api_field_references` to `find_field_references`, each with the
+matching `codebase` and `channel`. `get_prefab` merged into `get_scene`,
+which resolves scenes and prefabs by name, and `find_derived_types` pages
+with `cursor` instead of `offset`.
 
 For runtime questions, use the read-only MCP `plan_runtime_proof` tool after the
 static ownership gate. It produces competing hypotheses, positive and negative

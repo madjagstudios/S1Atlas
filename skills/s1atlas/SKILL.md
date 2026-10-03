@@ -14,13 +14,13 @@ registered, its initialize instructions carry the evidence-loop, selector-syntax
 and provenance basics; follow them, and use this skill for the CLI fallback,
 the ownership gate, and the decision rules.
 
-The API parity MCP tools include `find_api_callers`, `find_api_callees`,
-`find_api_references`, `find_api_related_types`, `find_api_call_sites`, and
-`find_api_field_references`; they remain read-only and preserve exact
-codebase/channel/index authority. Use `plan_runtime_proof` after the static
-ownership gate for bounded runtime planning. Its execution boundary must be
-one of `singlePlayer`, `listenHost`, `dedicatedServer`, or `client`; never
-transfer authority or observability assumptions between those roles.
+The API parity MCP tools are the shared code tools with
+`codebase: s1api` or `s1mapi` and an optional `channel`; they remain
+read-only and preserve exact codebase/channel/index authority. Use
+`plan_runtime_proof` after the static ownership gate for bounded runtime
+planning. Its execution boundary must be one of `singlePlayer`,
+`listenHost`, `dedicatedServer`, or `client`; never transfer authority or
+observability assumptions between those roles.
 
 ## Install and prerequisites
 
@@ -85,7 +85,7 @@ own answer or decision record, never write a citation back to Atlas.
 ### Setup errors carry the fix
 
 Querying before the pipeline is ready fails with a setup error such as
-`NoCurrentBuild` or `NoCompletedIndex` instead of an empty result. Read the
+`no_current_build` or `no_completed_index` instead of an empty result. Read the
 error's `hint` field and run that exact CLI command, or run `s1atlas doctor`
 for the full readiness checklist and `s1atlas setup` for the guided fix. Never
 treat a setup error as an empty index.
@@ -133,13 +133,17 @@ treat a setup error as an empty index.
    neighborhoods are callable-only and default to 10 rows per direction; the
    CLI `--related-limit` and MCP `relatedLimit` accept 0–50, with zero disabling
    the lookup. Caller and callee totals are separate and complete even when
-   rows are bounded, with separate completeness notices. A relationship-query
+   rows are bounded, with separate completeness notices. When a result
+   carries `nextCursor`, pass it as `cursor` with otherwise identical
+   arguments for the next page; changing arguments invalidates the cursor.
+   A relationship-query
    failure may omit the neighborhood and report a notice while leaving the
    verified source result available.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
    `scene`, `gameobject`, `prefab`, `component`, and `scriptable-object`, or MCP
-   `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component`,
-   and `get_scriptable_object`. For game-balance values (prices, wages,
+   `list_scenes`, `get_scene` (which also resolves prefabs by name),
+   `get_gameobject`, `get_component`, and `get_scriptable_object`. For
+   game-balance values (prices, wages,
    capacities, order sizes) read the serialized fields these return: a decoded
    field set is FACT (provenance `serialized-script-fields`) for the serialized
    default only, so values computed at load time still need in-game
@@ -174,8 +178,8 @@ treat a setup error as an empty index.
 | Field readers/writers | `fieldrefs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
-| Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_prefab`, `get_component`, `get_scriptable_object` |
-| S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes`, `search_api_symbols`, `get_api_source`, and the `find_api_*` relationship tools |
+| Scenes | `scenes`, `scene`, `gameobject`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
+| S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes` plus the shared code tools with `codebase: s1api` or `s1mapi` and an optional `channel` |
 
 Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.
 `upstream sync` and `index --codebase ... --commit ...` prepare data; they are

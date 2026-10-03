@@ -181,6 +181,36 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 - **Local-only golden-facts suite for real-build checks** (AT-61): a new `LocalGameRequired` suite pins a few facts from your own live atlas (a serialized scene field value, an object-reference target name, a method callee set) plus value-free structural invariants, reading expected values from a gitignored `golden-facts.local.json` that the repository-hygiene gate refuses to track. Run it after each game update; see the usage guide.
 
+### Changed
+
+- **MCP tool surface consolidated from 35 tools to 26** (AT-81): the eight
+  API-only tools retire in favor of shared code tools with a required
+  `codebase` (`scheduleI`, `s1api`, `s1mapi`) and an optional `channel`
+  (`installed` by default): `search_api_symbols` becomes `search_symbols`,
+  `get_api_source` becomes `get_source`, `find_api_callers` becomes
+  `find_callers`, `find_api_callees` becomes `find_callees`,
+  `find_api_references` becomes `find_references`,
+  `find_api_related_types` becomes `find_related_types`,
+  `find_api_call_sites` becomes `find_call_sites`, and
+  `find_api_field_references` becomes `find_field_references`, each with
+  the matching `codebase` and `channel` and identical results. `get_prefab`
+  merges into `get_scene`, which now resolves scenes and prefabs by name,
+  and `find_derived_types` pages with `cursor` instead of `offset`.
+  Fixed vocabularies (`codebase`, `scope`, `kind`, `channel`, scene kind,
+  execution boundary) are advertised as schema enums with per-value
+  descriptions; an invalid enum value fails with a readable error naming
+  the parameter and its allowed values, and responses report the same
+  spellings the schemas advertise. Paged list and relationship tools return
+  `nextCursor`/`hasMore`, with the cursor bound to the exact query and
+  index: reuse with different arguments fails with `invalid_cursor`.
+  Envelopes omit empty `candidates`/`suggestions`, drop provenance IDs
+  that duplicate the build context, and return slimmer candidate rows.
+  MCP error codes unify into ten snake_case wire codes; see the usage
+  guide for the retired-tool map and the code table. Measured on the
+  deterministic test atlas, `tools/list` shrinks from 24838 to 23681 bytes
+  and the four probe responses shrink 22.6% in aggregate (6793 to 5258
+  bytes).
+
 ### Removed
 
 - **`docs generate` and the static portal are gone** (AT-108): `serve` covers
