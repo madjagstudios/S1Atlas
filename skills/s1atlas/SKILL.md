@@ -125,6 +125,11 @@ treat a setup error as an empty index.
    `call-sites`, and `field-refs`, or MCP `find_references`, `find_callers`,
    `find_callees`, `find_call_sites`, `find_field_references`, and
    `find_related_types`. Add the reference scope/collection when needed.
+   To learn which reference mods patch one game method, use CLI `patched-by`
+   or MCP `find_patches` with `reference`/`all` scope and a collection:
+   rows carry the patch kind, an `attribute` label for declared patches or
+   `DERIVED` for constant manual patches, and unresolved rows name the
+   method in raw text with a reason instead of a resolved target.
    Preserve the reported direction, resolution status, origin, unresolved raw
    target text, and completeness boundary. `reference` is isolated to the
    selected collection; use `all` explicitly when a recorded game endpoint or
@@ -175,6 +180,7 @@ treat a setup error as an empty index.
 | Callable surface | `callable <game-member>` | `get_callable_surface` |
 | Behavior/source | `source <query> --context <n> [--full-type] [--related-limit <0-50>] --json` | `get_source` (`fullType`, `relatedLimit`) |
 | Callers/references | `callers`, `callees`, `refs` with `--scope`/`--collection` as needed | `find_callers`, `find_callees`, `find_references`, `find_related_types` with `scope`/`collection` as needed |
+| Mod patches | `patched-by <game-method>` with `--scope reference`/`all` and `--collection` | `find_patches` with `scope`/`collection` |
 | Static engine/BCL call sites | `call-sites <target>` with `--scope`/`--collection` as needed | `find_call_sites` with `scope`/`collection` as needed |
 | Field readers/writers | `field-refs <field> --readers` or `--writers` with `--scope`/`--collection` as needed | `find_field_references` with `readers`/`writers` and `scope`/`collection` as needed |
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |

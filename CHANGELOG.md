@@ -209,6 +209,18 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   tools waits for the envelope trim.
 
 - **Local-only golden-facts suite for real-build checks** (AT-61): a new `LocalGameRequired` suite pins a few facts from your own live atlas (a serialized scene field value, an object-reference target name, a method callee set) plus value-free structural invariants, reading expected values from a gitignored `golden-facts.local.json` that the repository-hygiene gate refuses to track. Run it after each game update; see the usage guide.
+- **Harmony patch-target index** (AT-70): reference indexing now records
+  which reference mods patch each game method as `Patches` edges, covering
+  declared `[HarmonyPatch]` attributes (matched by full type name, no
+  package) and constant manual `harmony.Patch(AccessTools.Method(...))`
+  calls labeled `DERIVED`. New `s1atlas patched-by` command and MCP
+  `find_patches` tool answer the question per game method, including
+  unresolved patches that name the method, and `investigate-seam` gains a
+  `Patches` evidence section with a prior-art claim on both surfaces.
+  Patch rows carry the kind (`Prefix`, `Postfix`, `Transpiler`,
+  `Finalizer`) and `attribute`/`DERIVED` evidence labels. Reference
+  collections indexed before this version have no patch edges; re-run
+  `s1atlas reference index <manifest>` to rebuild with patches.
 
 ### Changed
 
@@ -308,6 +320,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   integration test version-pinned.
 
 - **Pruned tests that restated shared validation branches** (AT-61): removed nine MCP tool tests duplicating the same blank-selector and non-positive-limit branches; one test per branch still pins each behavior.
+- **Reference indexing survives duplicate game signatures** (AT-70):
+  building the relationship lookup crashed with a duplicate-key
+  `ArgumentException` on game snapshots where two symbols share one
+  signature, aborting the whole collection. The lookup now keeps the first
+  loaded symbol (game symbols load ordered by canonical key, so the winner
+  is deterministic) and resolution is unchanged when keys are unique.
+- **Relationship reads return the generated columns** (AT-70): the
+  completed-relationships reader selected the generated source and detail
+  columns but dropped them when mapping rows, so `generatedDetail` always
+  came back null. Both columns are now mapped like the read-only
+  repository already did.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 
