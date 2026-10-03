@@ -6,5 +6,4 @@ Roots: scripts
 
 | Directory | Files |
 |---|---|
-| scripts/ | 2 |
-
+| scripts/ | 5 |
