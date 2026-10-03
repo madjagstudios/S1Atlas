@@ -998,6 +998,28 @@ internal static class SqliteMigrations
         CREATE INDEX ix_symbols_generated ON symbols(snapshot_id, is_generated);
         """;
 
+    // Member simple names were backfilled by taking the text after the last '.',
+    // so methods kept their return type and nested types kept their outer name.
+    // The update trigger is dropped while the correction runs so it does not
+    // fire once per row; the FTS table is rebuilt once instead, then the
+    // trigger is recreated exactly as v16 defines it. s1_simple_name is the
+    // shared qualified-name parser, registered on the migration connection.
+    private const string SimpleNameCorrectionV18Sql = """
+        DROP TRIGGER symbols_fts_au;
+
+        UPDATE symbols SET simple_name = s1_simple_name(qualified_name)
+        WHERE simple_name IS NOT s1_simple_name(qualified_name);
+
+        INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild');
+
+        CREATE TRIGGER symbols_fts_au AFTER UPDATE ON symbols BEGIN
+            INSERT INTO symbols_fts(symbols_fts, rowid, qualified_name, simple_name, signature)
+            VALUES ('delete', old.rowid, old.qualified_name, old.simple_name, old.signature);
+            INSERT INTO symbols_fts(rowid, qualified_name, simple_name, signature)
+            VALUES (new.rowid, new.qualified_name, new.simple_name, new.signature);
+        END;
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -1016,6 +1038,7 @@ internal static class SqliteMigrations
         new(14, "scene-script-fields-v14", SceneScriptFieldsV14Sql),
         new(15, "native-evidence-method-extent-v15", NativeEvidenceMethodExtentV15Sql),
         new(16, "symbol-search-fts-v16", SymbolSearchFtsV16Sql, RequiresFts5Trigram: true),
-        new(17, "generated-body-credit-v17", GeneratedBodyCreditV17Sql)
+        new(17, "generated-body-credit-v17", GeneratedBodyCreditV17Sql),
+        new(18, "simple-name-correction-v18", SimpleNameCorrectionV18Sql, RequiresFts5Trigram: true)
     ];
 }

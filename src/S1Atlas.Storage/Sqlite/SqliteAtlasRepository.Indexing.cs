@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.Data.Sqlite;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 
@@ -710,12 +711,6 @@ public sealed partial class SqliteAtlasRepository
     private static string ToFtsPhrase(string value) =>
         "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
 
-    private static string SimpleNameOf(string qualifiedName)
-    {
-        var dot = qualifiedName.LastIndexOf('.');
-        return dot < 0 ? qualifiedName : qualifiedName[(dot + 1)..];
-    }
-
     private static void AddSnapshotParameters(SqliteCommand command, CodeSnapshotRecord snapshot)
     {
         command.Parameters.AddWithValue("$id", snapshot.SnapshotId);
@@ -783,7 +778,7 @@ public sealed partial class SqliteAtlasRepository
             key.Value = symbol.CanonicalKey;
             kind.Value = symbol.Kind;
             name.Value = symbol.QualifiedName;
-            simple.Value = SimpleNameOf(symbol.QualifiedName);
+            simple.Value = SymbolNames.SimpleName(symbol.QualifiedName);
             signature.Value = symbol.Signature;
             best.Value = symbol.IsBestEffort ? 1 : 0;
             bodyRecovery.Value = symbol.BodyRecoveryStatus?.ToString() ?? (object)DBNull.Value;

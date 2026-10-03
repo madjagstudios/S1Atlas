@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
+using S1Atlas.Core;
 
 namespace S1Atlas.Storage.Migrations;
 
@@ -397,6 +398,14 @@ internal sealed class SqliteMigrationRunner
         try
         {
             await connection.OpenAsync(cancellationToken);
+            // Registered on every migration connection so SQL-only
+            // migrations can reuse the shared qualified-name parser. If
+            // this registration is ever lost, the migration fails on the
+            // unknown function instead of silently writing wrong values.
+            connection.CreateFunction(
+                "s1_simple_name",
+                (string qualifiedName) => SymbolNames.SimpleName(qualifiedName),
+                isDeterministic: true);
             await using var command = connection.CreateCommand();
             command.CommandText = "PRAGMA foreign_keys = ON;";
             await command.ExecuteNonQueryAsync(cancellationToken);
