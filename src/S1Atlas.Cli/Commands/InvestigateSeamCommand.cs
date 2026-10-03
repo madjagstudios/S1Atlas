@@ -27,10 +27,10 @@ internal static class InvestigateSeamCommand
             Required = true
         };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all. The all channel requires --codebase schedule-i and --scope game." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.ScopedBuildOptionDescription };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         var relationshipLimitOption = new Option<int>("--relationship-limit")
         {
             Description = "Maximum relationship evidence rows to inspect (1-50).",

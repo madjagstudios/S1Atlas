@@ -15,7 +15,9 @@ internal static class IndexQueryCommandFactory
     internal const string QueryArgumentDescription =
         "A symbol selector: full symbol ID, unique short-ID prefix, canonical key, signature, qualified name, or fuzzy text.";
     internal const string BuildOptionDescription =
-        "Select a Schedule I Installed build ID or unique short-ID prefix.";
+        "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed or all.";
+    internal const string ScopedBuildOptionDescription =
+        "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.";
 
     public static Command Create(
         string name,
@@ -35,7 +37,9 @@ internal static class IndexQueryCommandFactory
         Func<string, IndexQueryOptions, CancellationToken, bool, Task<IndexQueryOutput>>? executeWithGenerated = null,
         Func<string, IndexRunRecord, int, CancellationToken, bool, Task<IndexQueryOutput>>? executeInIndexWithGenerated = null,
         Func<string, IndexQueryOptions, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeWithGeneratedAndDelegates = null,
-        Func<string, IndexRunRecord, int, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeInIndexWithGeneratedAndDelegates = null)
+        Func<string, IndexRunRecord, int, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeInIndexWithGeneratedAndDelegates = null,
+        string codebaseOptionDescription = "schedule-i, s1api, or s1mapi.",
+        string channelOptionDescription = "installed, release, preview, or all. The all channel requires --codebase schedule-i and --scope game.")
     {
         var classic = execute is not null && executeInIndex is not null;
         var withGenerated = executeWithGenerated is not null && executeInIndexWithGenerated is not null;
@@ -46,17 +50,17 @@ internal static class IndexQueryCommandFactory
                 nameof(execute));
 
         var queryArgument = new Argument<string>("query") { Description = QueryArgumentDescription };
-        var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = BuildOptionDescription };
+        var codebaseOption = new Option<string>("--codebase") { Description = codebaseOptionDescription };
+        var channelOption = new Option<string>("--channel") { Description = channelOptionDescription };
+        var buildOption = new Option<string?>("--build") { Description = referenceService is null ? BuildOptionDescription : ScopedBuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",
             DefaultValueFactory = _ => 50
         };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         var includeGeneratedOption = CreateIncludeGeneratedOption();
         var includeDelegatesOption = CreateIncludeDelegatesOption();
         var command = new Command(name, description);

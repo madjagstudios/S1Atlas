@@ -24,7 +24,7 @@ internal static class RecoverNativeBodyCommand
     {
         var symbolIdOption = new Option<string[]>("--symbol-id")
         {
-            Description = "A native symbol ID or unique short-ID prefix to recover; repeat for multiple IDs."
+            Description = "A native symbol ID or unique short-ID prefix to recover; repeat for multiple IDs. At least one is required."
         };
         var traversalBudgetOption = new Option<int>("--native-traversal-budget")
         {

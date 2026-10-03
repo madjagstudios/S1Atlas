@@ -24,7 +24,7 @@ internal static class DiffCommand
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed (default). Release and preview are not supported." };
         var kindOption = new Option<string>("--kind") { Description = "Filter by symbol kind: type, method, constructor, field, property, event." };
-        var limitOption = new Option<int>("--limit") { Description = "Maximum changed symbols to list.", DefaultValueFactory = _ => 50 };
+        var limitOption = new Option<int>("--limit") { Description = "Maximum changed symbols to list. Must be greater than zero.", DefaultValueFactory = _ => 50 };
         var jsonOption = CommandOutput.CreateJsonOption();
 
         var command = new Command("diff", CliExamples.With("Compare two indexed builds and report per-symbol changes.", "s1atlas diff <id-a> <id-b> --json"));

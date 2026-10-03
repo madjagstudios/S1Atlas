@@ -24,8 +24,8 @@ internal static class SourceCommand
     {
         var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all. The all channel requires --codebase schedule-i and --scope game." };
+        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed." };
         var limitOption = new Option<int>("--candidate-limit")
         {
             Description = "Maximum number of resolution candidates to consider.",
@@ -38,15 +38,15 @@ internal static class SourceCommand
         };
         var fileOption = new Option<bool>("--file")
         {
-            Description = "Return the complete hash-verified source file instead of a focused snippet."
+            Description = "Return the complete hash-verified source file instead of a focused snippet. Cannot be combined with --full-type."
         };
         var outputOption = new Option<string?>("--output")
         {
-            Description = "Write the complete hash-verified source file to this path."
+            Description = "Write the complete hash-verified source file to this path. Cannot be combined with --full-type."
         };
         var fullTypeOption = new Option<bool>("--full-type")
         {
-            Description = "Return the containing type's verified source span for a member selection."
+            Description = "Return the containing type's verified source span for a member selection. Cannot be combined with --file or --output."
         };
         var relatedLimitOption = new Option<int>("--related-limit")
         {
@@ -60,8 +60,8 @@ internal static class SourceCommand
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(buildOption);
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         command.Options.Add(scopeOption);
         command.Options.Add(collectionOption);
         command.Options.Add(limitOption);

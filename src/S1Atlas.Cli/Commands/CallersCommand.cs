@@ -20,15 +20,15 @@ internal static class CallersCommand
     {
         var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all. The all channel requires --codebase schedule-i and --scope game." };
         var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",
             DefaultValueFactory = _ => 50
         };
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         var exactOption = new Option<bool>("--exact") { Description = "Return only exact (statically bound) callers; omit may-dispatch callers." };
         var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
         var includeDelegatesOption = IndexQueryCommandFactory.CreateIncludeDelegatesOption();

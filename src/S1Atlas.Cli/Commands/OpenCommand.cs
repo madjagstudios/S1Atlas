@@ -26,7 +26,7 @@ internal static class OpenCommand
         var selectorArgument = new Argument<string>("selector") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var portOption = new Option<int>("--port")
         {
-            Description = "The loopback port serve is listening on.",
+            Description = "The loopback port serve is listening on. 1 to 65535.",
             DefaultValueFactory = _ => ServeOptions.DefaultPort
         };
         var command = new Command("open", CliExamples.With("Open one resolved symbol in the local serve web app.", "s1atlas open \"Demo.Widget\""));
