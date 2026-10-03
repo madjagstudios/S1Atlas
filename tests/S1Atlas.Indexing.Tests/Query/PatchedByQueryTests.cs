@@ -116,6 +116,27 @@ public sealed class PatchedByQueryTests
     }
 
     [Fact]
+    public async Task Patched_by_returns_marker_edges_for_the_patch_method_selector()
+    {
+        await using var atlas = await QueryAtlas.CreateAsync();
+        var service = new ReferenceModQueryService(atlas.Repository, atlas.DataRoot);
+
+        var symbols = await atlas.Repository.GetCompletedSymbolsAsync(
+            atlas.Seed.ReferenceIndexId, TestContext.Current.CancellationToken);
+        var prefix = symbols.Single(symbol => symbol.Signature.Contains("TargetMethodPatch::Prefix(", StringComparison.Ordinal));
+
+        var result = await service.PatchedByAsync(
+            prefix.Signature,
+            new IndexQueryOptions(CodebaseKind.ReferenceMod, Scope: IndexQueryScope.Reference, ReferenceCollection: HarmonyPatchAtlas.CollectionId),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
+        var row = Assert.Single(result.Relationships);
+        Assert.False(row.Target.Resolved);
+        Assert.Contains("runtime-computed-target", row.Target.RawText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Patched_by_without_a_collection_reports_no_completed_index()
     {
         await using var atlas = await QueryAtlas.CreateAsync();
@@ -145,6 +166,8 @@ public sealed class PatchedByQueryTests
 
         public string DataRoot { get; }
 
+        public HarmonyPatchSeed Seed { get; private set; } = null!;
+
         public static async Task<QueryAtlas> CreateAsync()
         {
             var root = Path.Combine(Path.GetTempPath(), "s1atlas-harmony-query-" + Guid.NewGuid().ToString("N"));
@@ -152,8 +175,9 @@ public sealed class PatchedByQueryTests
             Directory.CreateDirectory(dataRoot);
             var repository = new SqliteAtlasRepository(Path.Combine(dataRoot, "atlas.db"), Path.Combine(dataRoot, "backups"));
             await repository.InitializeAsync(TestContext.Current.CancellationToken);
-            await HarmonyPatchAtlas.SeedAsync(repository, dataRoot, TestContext.Current.CancellationToken);
-            return new QueryAtlas(root, repository);
+            var atlas = new QueryAtlas(root, repository);
+            atlas.Seed = await HarmonyPatchAtlas.SeedAsync(repository, dataRoot, TestContext.Current.CancellationToken);
+            return atlas;
         }
 
         public async ValueTask DisposeAsync()
