@@ -33,10 +33,12 @@ public sealed record ManagedMemberFacts(
     IReadOnlyList<string>? MethodImplDeclarations = null,
     bool IsCompilerGenerated = false,
     string? StateMachineTypeName = null,
-    bool IsAsyncStateMachine = false)
+    bool IsAsyncStateMachine = false,
+    IReadOnlyList<ManagedPatchFact>? Patches = null)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
     public IReadOnlyList<string> MethodImplDeclarationsOrEmpty => MethodImplDeclarations ?? [];
+    public IReadOnlyList<ManagedPatchFact> PatchesOrEmpty => Patches ?? [];
 }
 
 public sealed record ManagedMethodBodyFacts(
@@ -69,6 +71,47 @@ public sealed record ManagedReferenceFact(
     ManagedReferenceKind Kind,
     string Target,
     RelationshipEvidence Evidence = RelationshipEvidence.RecoveredIL);
+
+public enum HarmonyPatchKind
+{
+    Prefix,
+    Postfix,
+    Transpiler,
+    Finalizer
+}
+
+public static class HarmonyPatchReasons
+{
+    public const string RuntimeComputedTarget = "runtime-computed-target";
+    public const string NoTargetSpecified = "no-target-specified";
+    public const string UnknownDeclaringType = "unknown-declaring-type";
+    public const string UnknownMemberName = "unknown-member-name";
+    public const string UnsupportedMethodType = "unsupported-method-type";
+    public const string NoMatchingOverload = "no-matching-overload";
+    public const string AmbiguousOverload = "ambiguous-overload";
+    public const string AmbiguousPatchMethod = "ambiguous-patch-method";
+    public const string UnknownPatchMethod = "unknown-patch-method";
+    public const string NonConstantArguments = "non-constant-arguments";
+    public const string UnrecognizedManualShape = "unrecognized-manual-shape";
+
+    public static string Qualify(string reason, string text) => $"unresolved:{reason}:{text}";
+}
+
+/// <summary>
+/// One Harmony patch declaration found in a reference-mod member: the patch kind, a
+/// canonical target attempt ("Type::Member" or "Type::Member(params)", without a
+/// return type), and either a complete attempt or an unresolved reason. Manual
+/// patches name their patch method explicitly, since the containing member only hosts
+/// the call; attribute patches patch from the containing member itself.
+/// </summary>
+public sealed record ManagedPatchFact(
+    HarmonyPatchKind Kind,
+    string? TargetSignature,
+    string? Reason,
+    RelationshipEvidence Evidence,
+    string? PatchMethodType = null,
+    string? PatchMethodName = null,
+    IReadOnlyList<string>? PatchMethodArgumentTypes = null);
 
 public enum ManagedReferenceKind
 {

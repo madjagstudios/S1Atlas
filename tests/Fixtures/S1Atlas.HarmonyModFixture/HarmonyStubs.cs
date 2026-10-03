@@ -138,6 +138,10 @@ public class HarmonyMethod
     public HarmonyMethod(Type declaringType, string methodName, Type[]? argumentTypes)
     {
     }
+
+    public HarmonyMethod(System.Reflection.MethodInfo method)
+    {
+    }
 }
 
 public class Harmony

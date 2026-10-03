@@ -34,3 +34,107 @@ public class ManualOverloadPatch
 
     private static string HelperName() => "Run";
 }
+
+public class ManualEmptyTypesPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run", Type.EmptyTypes),
+            prefix: new HarmonyMethod(typeof(ManualEmptyTypesPatch), nameof(EmptyPrefix)));
+    }
+
+    public static void EmptyPrefix()
+    {
+    }
+}
+
+public class ManualAmbiguousMethodPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run"),
+            prefix: new HarmonyMethod(typeof(ManualAmbiguousMethodPatch), "Do"));
+    }
+
+    public static void Do(int x)
+    {
+    }
+
+    public static void Do(string s)
+    {
+    }
+}
+
+public class ManualUnknownMethodPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run"),
+            prefix: new HarmonyMethod(typeof(ManualUnknownMethodPatch), "Missing"));
+    }
+}
+
+public class ManualNonConstantMethodPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Untouched"),
+            prefix: GetPatch());
+    }
+
+    public static void Worker()
+    {
+    }
+
+    private static HarmonyMethod GetPatch() => new HarmonyMethod(typeof(ManualNonConstantMethodPatch), nameof(Worker));
+}
+
+public class ManualBranchPatch
+{
+    public static void Install(Harmony harmony, bool flag)
+    {
+        var original = flag
+            ? AccessTools.Method(typeof(Widget), "Run")
+            : AccessTools.Method(typeof(Widget), "Untouched");
+        harmony.Patch(original, prefix: new HarmonyMethod(typeof(ManualBranchPatch), nameof(Branched)));
+    }
+
+    public static void Branched()
+    {
+    }
+}
+
+public class ManualMethodInfoPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        var info = AccessTools.Method(typeof(ManualMethodInfoPatch), nameof(InfoPrefix));
+        harmony.Patch(AccessTools.Method(typeof(Widget), "Run"), prefix: new HarmonyMethod(info!));
+    }
+
+    public static void InfoPrefix()
+    {
+    }
+}
+
+public class ManualOverloadDisambiguationPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run"),
+            prefix: new HarmonyMethod(typeof(ManualOverloadDisambiguationPatch), "Do", new Type[] { typeof(int) }));
+    }
+
+    public static void Do(int x)
+    {
+    }
+
+    public static void Do(string s)
+    {
+    }
+}

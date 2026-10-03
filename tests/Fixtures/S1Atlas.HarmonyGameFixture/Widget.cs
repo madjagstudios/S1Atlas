@@ -24,6 +24,10 @@ public class Widget
     {
     }
 
+    public void Pristine()
+    {
+    }
+
     public int Compute(int x) => x;
 
     public int Compute(int x, string y) => x + y.Length;

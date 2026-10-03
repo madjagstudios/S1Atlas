@@ -116,3 +116,41 @@ public class LonelyPatch
     {
     }
 }
+
+[HarmonyPatch]
+public class PartialPatch
+{
+    [HarmonyPatch("Run")]
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+    }
+}
+
+[HarmonyPatch(typeof(Widget), "Missing")]
+public class MissingPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+    }
+}
+
+[HarmonyPatch(typeof(Widget), MethodType.Getter)]
+public class GetterNoNamePatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+    }
+}
+
+[HarmonyPatch(typeof(Widget), "Untouched")]
+public class DoublePatch
+{
+    [HarmonyPrefix]
+    [HarmonyPostfix]
+    public static void Both()
+    {
+    }
+}
