@@ -105,6 +105,9 @@ public static class McpToolErrorCodes
             ["IndexBuildMismatch"] = SnapshotNotFound,
             ["NoCurrentBuild"] = NoCurrentBuild,
             ["AtlasUnavailable"] = AtlasUnavailable,
+            ["AtlasSchemaBehind"] = AtlasUnavailable,
+            ["AtlasSchemaAhead"] = AtlasUnavailable,
+            ["AtlasSchemaUnrecognized"] = AtlasUnavailable,
             ["UnexpectedToolFailure"] = UnexpectedToolFailure,
             ["IncompleteSeamResult"] = UnexpectedToolFailure,
             ["InvalidCursor"] = InvalidCursor

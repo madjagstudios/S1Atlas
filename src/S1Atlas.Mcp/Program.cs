@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 using S1Atlas.Core.Deployment;
 using S1Atlas.Application.Configuration;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Mcp;
 using S1Atlas.Mcp.Serialization;
@@ -25,6 +26,8 @@ if (args is not ([] or ["mcp", "serve", ..]))
 
 var dataDirectory = AtlasDataPaths.FromEnvironment().RootDirectory;
 var services = McpServerComposition.BuildReadOnlyServices(dataDirectory);
+var schemaStatus = await services.SchemaGate.GetStatusAsync(CancellationToken.None);
+await Console.Error.WriteLineAsync(SchemaStatusWording.StartupLine(schemaStatus));
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -60,6 +63,7 @@ builder.Services
     .WithToolsFromAssembly(typeof(McpToolCatalog).Assembly, toolJsonOptions)
     .WithRequestFilters(filters =>
     {
+        filters.AddCallToolFilter(next => McpSchemaGateFilter.Wrap(services.SchemaGate, toolJsonOptions, next));
         filters.AddCallToolFilter(McpBindingErrorFilter.Wrap);
         filters.AddCallToolFilter(McpEnvelopeErrorFilter.Wrap);
     });

@@ -1,5 +1,6 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Configuration;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Extraction.Hashing;
 using S1Atlas.Extraction.Manifests;
 using S1Atlas.Indexing.Authority;
@@ -40,7 +41,8 @@ public static class ReadOnlyAtlasComposition
             indexQueryService,
             new BuildDiffService(repository),
             new SceneQueryService(repository, repository),
-            new InstalledBuildHistoryQueryService(repository, repository, indexQueryService, authorityResolver));
+            new InstalledBuildHistoryQueryService(repository, repository, indexQueryService, authorityResolver),
+            new AtlasSchemaGate(new SqliteAtlasSchemaInspector(paths.DatabasePath)));
     }
 }
 
@@ -51,4 +53,5 @@ public sealed record AtlasReadOnlyServices(
     IndexQueryService IndexQueryService,
     BuildDiffService BuildDiffService,
     SceneQueryService SceneQueryService,
-    InstalledBuildHistoryQueryService InstalledBuildHistoryQueryService);
+    InstalledBuildHistoryQueryService InstalledBuildHistoryQueryService,
+    AtlasSchemaGate SchemaGate);

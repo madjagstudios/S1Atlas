@@ -341,6 +341,33 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   then resolves a unique exact member name instead of returning an ambiguous
   list (several exact matches stay ambiguous, without substring rows),
   independent of result order on every resolution path.
+- **Read-only hosts check the atlas schema before serving** (AT-117): `serve`
+  and the MCP server used to query whatever schema they found, failing
+  mid-request on a database migrated by neither. Both hosts now log the
+  schema status at startup and check it before every request or tool call
+  (a current schema is checked once; anything else is re-checked, so
+  upgrading in another terminal recovers without a restart). A behind,
+  ahead, or unrecognized database answers 503 / `atlas_unavailable` with the
+  shared message and fix hint instead of running the query; the database
+  file is never written. A missing database keeps each host's existing
+  missing-store behavior.
+- **A cancelled diff no longer poisons serve's diff cache** (AT-114): the
+  cached computation was bound to the first waiter's cancellation token, so
+  cancelling one diff request cancelled the shared entry and every later
+  waiter failed on it. The computation now runs on a cache-owned token
+  while each waiter cancels only its own wait; entries run outside the
+  cache lock exactly once, faulted or cancelled entries evict themselves
+  even when no waiter observes the failure, and the bounded queue can no
+  longer evict a live re-added entry through a stale slot.
+
+### Upgrading
+
+- Serve and the MCP server now refuse to query a database whose schema is
+  behind, ahead, or unrecognized: every page and API route answers 503,
+  every MCP tool answers `atlas_unavailable`. Run `s1atlas status` to
+  migrate a behind database in place (a timestamped pre-migration backup is
+  written to the `backups` directory first); the hosts recover without a
+  restart once the upgrade lands.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 

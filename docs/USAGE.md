@@ -881,7 +881,7 @@ run it, or run CLI `s1atlas doctor` to see the full readiness checklist.
 | `source_integrity_failure` | A backing snapshot failed integrity verification. |
 | `snapshot_not_found` | No environment snapshot or build matches the request. |
 | `no_current_build` | No current environment snapshot exists. |
-| `atlas_unavailable` | The Atlas store itself is unavailable. |
+| `atlas_unavailable` | The Atlas store itself is unavailable, or its schema is behind, ahead, or unrecognized. A behind schema carries a `hint` with the `s1atlas status` upgrade command. |
 | `unexpected_tool_failure` | An internal failure; details are in the message, not the code. |
 | `invalid_cursor` | A page cursor was malformed or bound to a different query. |
 

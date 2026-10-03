@@ -593,6 +593,20 @@ public sealed class McpTestAtlas : IAsyncDisposable
         return new McpTestAtlas(root);
     }
 
+    public static async Task<McpTestAtlas> CreateBehindSchemaRootAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        await SchemaVersionFixtures.CreateBehindDatabaseAsync(
+            Path.Combine(root, "atlas.db"),
+            Path.Combine(root, "backups"),
+            SchemaVersionFixtures.LastVersionWithoutMemberNameColumns,
+            CancellationToken.None);
+        return new McpTestAtlas(root);
+    }
+
     public static async Task<McpTestAtlas> EmptyAsync()
     {
         var root = Path.Combine(
