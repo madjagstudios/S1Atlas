@@ -200,3 +200,17 @@ public class ManualNonConstantPatchTypesPatch
     {
     }
 }
+
+public class ManualTernaryPatch
+{
+    public static void Install(Harmony harmony, bool flag)
+    {
+        harmony.Patch(
+            AccessTools.Method(flag ? typeof(Widget) : typeof(string), "Run"),
+            prefix: new HarmonyMethod(typeof(ManualTernaryPatch), nameof(TernaryPrefix)));
+    }
+
+    public static void TernaryPrefix()
+    {
+    }
+}

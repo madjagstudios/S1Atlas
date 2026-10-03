@@ -376,7 +376,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var attributePatches = typePatches.GetValueOrDefault(methodHandle);
         var manualPatches = bodyAnalysis.Instructions.Count == 0
             ? []
-            : ManualPatchRecognizer.Recognize(bodyAnalysis.Instructions);
+            : ManualPatchRecognizer.Recognize(bodyAnalysis.Instructions, bodyAnalysis.BranchTargets);
         if (attributePatches is null or [])
             return manualPatches.Count == 0 ? null : manualPatches;
         if (manualPatches.Count == 0)
@@ -394,11 +394,13 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var references = new List<ManagedReferenceFact>();
         var opcodes = new List<OpCode>();
         var captured = new List<CapturedInstruction>();
+        var branchTargets = new HashSet<int>();
         var typeProvider = new MetadataTypeNameProvider();
         var offset = 0;
 
         while (offset < il.Length)
         {
+            var instructionOffset = offset;
             var opcode = ReadOpCode(il, ref offset);
             opcodes.Add(opcode);
             var operandOffset = offset;
@@ -418,7 +420,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                                         ? ManagedReferenceKind.ReferencesMethod
                                         : ManagedReferenceKind.Calls,
                             identity));
-                        captured.Add(new CapturedInstruction(opcode, identity, 0));
+                        captured.Add(new CapturedInstruction(opcode, identity, 0, instructionOffset));
                         break;
                     }
                 case OperandType.InlineField:
@@ -433,7 +435,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                                     ? ManagedReferenceKind.TakesFieldAddress
                                     : ManagedReferenceKind.ReadsField,
                             identity));
-                        captured.Add(new CapturedInstruction(opcode, identity, 0));
+                        captured.Add(new CapturedInstruction(opcode, identity, 0, instructionOffset));
                         break;
                     }
                 case OperandType.InlineTok:
@@ -450,14 +452,17 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                         captured.Add(new CapturedInstruction(
                             opcode,
                             TokenCaptureDetail(metadata, token) ?? identity,
-                            0));
+                            0,
+                            instructionOffset));
                         break;
                     }
                 default:
-                    captured.Add(CaptureOperand(metadata, opcode, il, operandOffset));
+                    captured.Add(CaptureOperand(metadata, opcode, il, operandOffset, instructionOffset));
                     offset = operandOffset + OperandSize(opcode.OperandType, il, operandOffset);
                     break;
             }
+
+            CollectBranchTargets(opcode, il, operandOffset, offset, branchTargets);
         }
 
         return new BodyAnalysis(
@@ -468,7 +473,39 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             references.Any(reference =>
                 reference.Kind == ManagedReferenceKind.Calls &&
                 IsInteropRuntimeInvokeTarget(reference.Target)),
-            captured);
+            captured,
+            branchTargets);
+    }
+
+    private static void CollectBranchTargets(
+        OpCode opcode,
+        byte[] il,
+        int operandOffset,
+        int instructionEnd,
+        HashSet<int> branchTargets)
+    {
+        try
+        {
+            if (opcode.OperandType == OperandType.ShortInlineBrTarget)
+            {
+                branchTargets.Add(instructionEnd + (sbyte)il[operandOffset]);
+            }
+            else if (opcode.OperandType == OperandType.InlineBrTarget)
+            {
+                branchTargets.Add(instructionEnd + BitConverter.ToInt32(il, operandOffset));
+            }
+            else if (opcode.OperandType == OperandType.InlineSwitch)
+            {
+                var count = BitConverter.ToInt32(il, operandOffset);
+                for (var i = 0; i < count; i++)
+                    branchTargets.Add(instructionEnd + BitConverter.ToInt32(il, operandOffset + 4 + (i * 4)));
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Truncated operands leave the target unknown; the branch instruction itself
+            // still clears the interpreter, so nothing precise can leak through.
+        }
     }
 
     private static bool IsInteropRuntimeInvokeTarget(string target)
@@ -581,7 +618,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         }
     }
 
-    private static CapturedInstruction CaptureOperand(MetadataReader metadata, OpCode opcode, byte[] il, int operandOffset)
+    private static CapturedInstruction CaptureOperand(MetadataReader metadata, OpCode opcode, byte[] il, int operandOffset, int instructionOffset)
     {
         try
         {
@@ -592,22 +629,23 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                     return new CapturedInstruction(
                         opcode,
                         metadata.GetUserString(MetadataTokens.UserStringHandle(stringToken)),
-                        0);
+                        0,
+                        instructionOffset);
                 case OperandType.InlineType:
                     var typeToken = BitConverter.ToInt32(il, operandOffset);
-                    return new CapturedInstruction(opcode, TokenCaptureDetail(metadata, typeToken), 0);
+                    return new CapturedInstruction(opcode, TokenCaptureDetail(metadata, typeToken), 0, instructionOffset);
                 case OperandType.ShortInlineI:
-                    return new CapturedInstruction(opcode, null, (sbyte)il[operandOffset]);
+                    return new CapturedInstruction(opcode, null, (sbyte)il[operandOffset], instructionOffset);
                 case OperandType.InlineI:
-                    return new CapturedInstruction(opcode, null, BitConverter.ToInt32(il, operandOffset));
+                    return new CapturedInstruction(opcode, null, BitConverter.ToInt32(il, operandOffset), instructionOffset);
                 case OperandType.InlineI8:
-                    return new CapturedInstruction(opcode, null, BitConverter.ToInt64(il, operandOffset));
+                    return new CapturedInstruction(opcode, null, BitConverter.ToInt64(il, operandOffset), instructionOffset);
                 case OperandType.ShortInlineVar:
-                    return new CapturedInstruction(opcode, null, il[operandOffset]);
+                    return new CapturedInstruction(opcode, null, il[operandOffset], instructionOffset);
                 case OperandType.InlineVar:
-                    return new CapturedInstruction(opcode, null, BitConverter.ToUInt16(il, operandOffset));
+                    return new CapturedInstruction(opcode, null, BitConverter.ToUInt16(il, operandOffset), instructionOffset);
                 default:
-                    return new CapturedInstruction(opcode, null, 0);
+                    return new CapturedInstruction(opcode, null, 0, instructionOffset);
             }
         }
         catch (Exception exception) when (exception is ArgumentOutOfRangeException
@@ -615,7 +653,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             or BadImageFormatException
             or DecoderFallbackException)
         {
-            return new CapturedInstruction(opcode, null, 0);
+            return new CapturedInstruction(opcode, null, 0, instructionOffset);
         }
     }
 
@@ -925,8 +963,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         IReadOnlyList<ManagedReferenceFact> References,
         bool MatchesVerifiedStubPattern,
         bool MatchesInteropWrapperPattern,
-        IReadOnlyList<CapturedInstruction> Instructions)
+        IReadOnlyList<CapturedInstruction> Instructions,
+        IReadOnlySet<int> BranchTargets)
     {
-        public static BodyAnalysis Empty { get; } = new(0, 0, [], false, false, []);
+        public static BodyAnalysis Empty { get; } = new(0, 0, [], false, false, [], new HashSet<int>());
     }
 }

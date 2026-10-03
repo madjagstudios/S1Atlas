@@ -190,6 +190,19 @@ public sealed class HarmonyPatchReaderTests
     }
 
     [Fact]
+    public async Task Ternary_target_types_are_not_resolved_from_one_arm()
+    {
+        var member = await FindMemberAsync("Mod.ManualTernaryPatch", "Install");
+
+        var fact = Assert.Single(member.Patches ?? []);
+        Assert.Equal(HarmonyPatchKind.Prefix, fact.Kind);
+        Assert.Null(fact.TargetSignature);
+        Assert.Equal(HarmonyPatchReasons.UnrecognizedManualShape, fact.Reason);
+        Assert.Equal("Mod.ManualTernaryPatch", fact.PatchMethodType);
+        Assert.Equal("TernaryPrefix", fact.PatchMethodName);
+    }
+
+    [Fact]
     public async Task Branched_manual_calls_are_not_guessed()
     {
         var member = await FindMemberAsync("Mod.ManualBranchPatch", "Install");

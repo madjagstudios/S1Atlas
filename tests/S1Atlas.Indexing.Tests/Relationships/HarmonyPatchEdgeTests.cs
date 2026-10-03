@@ -25,7 +25,7 @@ public sealed class HarmonyPatchEdgeTests
                 .ToArray();
 
             Assert.Equal(19, edges.Count(edge => edge.TargetSymbolId is not null));
-            Assert.Equal(14, edges.Count(edge => edge.TargetSymbolId is null));
+            Assert.Equal(15, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
                 .ToDictionary(symbol => symbol.SymbolId, symbol => symbol.Signature, StringComparer.Ordinal);
@@ -88,7 +88,7 @@ public sealed class HarmonyPatchEdgeTests
                 .Select(edge => edge.TargetText!)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
-            Assert.Equal(14, unresolvedReasons.Length);
+            Assert.Equal(15, unresolvedReasons.Length);
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:ambiguous-overload:", StringComparison.Ordinal));
             Assert.Equal(2, unresolvedReasons.Count(text => text.StartsWith("unresolved:runtime-computed-target:", StringComparison.Ordinal)));
             Assert.Equal(3, unresolvedReasons.Count(text => text.StartsWith("unresolved:non-constant-target:", StringComparison.Ordinal)));
@@ -99,7 +99,7 @@ public sealed class HarmonyPatchEdgeTests
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:no-matching-overload:", StringComparison.Ordinal));
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unknown-declaring-type:", StringComparison.Ordinal));
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unknown-member-name:", StringComparison.Ordinal));
-            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unrecognized-manual-shape:", StringComparison.Ordinal));
+            Assert.Equal(2, unresolvedReasons.Count(text => text.StartsWith("unresolved:unrecognized-manual-shape:", StringComparison.Ordinal)));
             Assert.DoesNotContain(unresolvedReasons, text => !text.StartsWith("unresolved:", StringComparison.Ordinal));
         }
         finally

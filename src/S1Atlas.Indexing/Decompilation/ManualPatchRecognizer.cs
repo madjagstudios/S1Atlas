@@ -6,16 +6,17 @@ using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Indexing.Decompilation;
 
-internal sealed record CapturedInstruction(OpCode Opcode, string? Detail, long Number);
+internal sealed record CapturedInstruction(OpCode Opcode, string? Detail, long Number, int Offset);
 
 /// <summary>
 /// Recognizes constant manual Harmony patches in one method body:
 /// harmony.Patch(AccessTools.Method(...), prefix/postfix/transpiler/finalizer:
 /// new HarmonyMethod(...), ...). A straight-line abstract interpreter tracks constant
 /// types, strings, and Type arrays; anything else stays unresolved with a reason and
-/// is never guessed. Control flow and untracked instructions degrade to
-/// unrecognized-manual-shape; non-constant inputs without them degrade to
-/// non-constant-arguments.
+/// is never guessed. Branch instructions and branch-target merge points clear the
+/// tracked state, so values from one arm can never leak into the merged flow.
+/// Control flow and untracked instructions degrade to unrecognized-manual-shape;
+/// non-constant inputs without them degrade to non-constant-arguments.
 /// </summary>
 internal static class ManualPatchRecognizer
 {
@@ -31,11 +32,14 @@ internal static class ManualPatchRecognizer
         HarmonyPatchKind.Finalizer,
     ];
 
-    public static IReadOnlyList<ManagedPatchFact> Recognize(IReadOnlyList<CapturedInstruction> instructions)
+    public static IReadOnlyList<ManagedPatchFact> Recognize(
+        IReadOnlyList<CapturedInstruction> instructions,
+        IReadOnlySet<int> branchTargets)
     {
         ArgumentNullException.ThrowIfNull(instructions);
+        ArgumentNullException.ThrowIfNull(branchTargets);
 
-        var state = new InterpreterState();
+        var state = new InterpreterState(branchTargets);
         foreach (var instruction in instructions)
             state.Step(instruction);
         return state.Facts;
@@ -78,14 +82,28 @@ internal static class ManualPatchRecognizer
         private readonly Dictionary<int, StackValue> _locals = [];
         private readonly Dictionary<int, TrackedArray> _arrays = [];
         private readonly List<ManagedPatchFact> _facts = [];
+        private readonly IReadOnlySet<int> _mergeOffsets;
         private int _nextArrayId;
         private bool _sawBranch;
         private bool _lostPrecision;
+
+        public InterpreterState(IReadOnlySet<int> mergeOffsets)
+        {
+            _mergeOffsets = mergeOffsets;
+        }
 
         public IReadOnlyList<ManagedPatchFact> Facts => _facts;
 
         public void Step(CapturedInstruction instruction)
         {
+            // Values must not flow across a branch merge: whichever arm the linear walk
+            // happens to visit last would otherwise win, recording one arm as certain.
+            if (_mergeOffsets.Contains(instruction.Offset))
+            {
+                Clear();
+                _lostPrecision = true;
+            }
+
             var opcode = instruction.Opcode;
             if (opcode == OpCodes.Nop || IsPrefix(opcode))
                 return;
