@@ -495,11 +495,22 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 ORDER BY
                     CASE
                         WHEN symbol.qualified_name = $query COLLATE NOCASE
-                          OR symbol.signature = $query COLLATE NOCASE THEN 0
+                          OR symbol.signature = $query COLLATE NOCASE
+                          OR symbol.simple_name = $query COLLATE NOCASE THEN 0
                         WHEN symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 1
                         WHEN symbol.qualified_name LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 2
                         WHEN symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE THEN 3
                         ELSE 4
+                    END,
+                    -- Inside tier 0, exact identities stay first so the
+                    -- resolver's exact tiers always see them, then .-terminal
+                    -- rows so a same-named type survives the candidate cap.
+                    CASE
+                        WHEN symbol.qualified_name = $query COLLATE NOCASE
+                          OR symbol.signature = $query COLLATE NOCASE THEN 0
+                        WHEN symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE
+                          AND symbol.simple_name = $query COLLATE NOCASE THEN 1
+                        ELSE 2
                     END,
                     symbol.qualified_name COLLATE BINARY,
                     symbol.signature COLLATE BINARY,
@@ -624,6 +635,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                     ORDER BY
                         CASE
                             WHEN symbol.qualified_name = $query COLLATE NOCASE
+                              OR symbol.simple_name = $query COLLATE NOCASE
                               OR symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 0
                             WHEN symbol.qualified_name LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 1
                             ELSE 2

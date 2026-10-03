@@ -27,7 +27,7 @@ public sealed class RankedSearchTests
 
         using var json = JsonDocument.Parse(body);
         var data = json.RootElement.GetProperty("data");
-        Assert.Equal(7, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(13, data.GetProperty("totalCount").GetInt32());
         var ids = data.GetProperty("results").EnumerateArray()
             .Select(result => result.GetProperty("symbolId").GetString())
             .ToArray();
@@ -44,7 +44,7 @@ public sealed class RankedSearchTests
         var body = await fixture.GetStringAsync("/search?q=idget", cancellationToken);
 
         Assert.Contains("Demo.Widget", body);
-        Assert.Contains("FACT: 7 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 13 matches in Schedule I (Installed).", body);
     }
 
     [Fact]
@@ -55,9 +55,10 @@ public sealed class RankedSearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Wi", cancellationToken);
 
-        Assert.Contains("FACT: 2 matches in Schedule I (Installed).", body);
+        Assert.Contains("FACT: 3 matches in Schedule I (Installed).", body);
         Assert.Contains("Demo.Widget", body);
         Assert.Contains("Demo.WidgetBase", body);
+        Assert.Contains("Demo.WidgetFactory", body);
         Assert.DoesNotContain("Paged.PagedType01", body);
         Assert.DoesNotContain("Evil.", body);
     }
@@ -84,9 +85,9 @@ public sealed class RankedSearchTests
 
         Assert.Contains("FACT: 4 matches in Schedule I (Installed).", body);
         Assert.Contains("Demo.Result", body);
-        Assert.Contains("Demo.Widget.Run", body);
-        Assert.Contains("Demo.Widget.Render", body);
-        Assert.Contains("Demo.WidgetBase.Render", body);
+        Assert.Contains("Demo.Widget::Run():System.Void", body);
+        Assert.Contains("Demo.Widget::Render():System.Void", body);
+        Assert.Contains("Demo.WidgetBase::Render():System.Void", body);
     }
 
     [Fact]
@@ -100,7 +101,7 @@ public sealed class RankedSearchTests
 
         using var json = JsonDocument.Parse(body);
         var data = json.RootElement.GetProperty("data");
-        Assert.Equal(4, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(6, data.GetProperty("totalCount").GetInt32());
         Assert.All(
             data.GetProperty("results").EnumerateArray(),
             result => Assert.Equal("Method", result.GetProperty("kind").GetString()));
@@ -163,7 +164,7 @@ public sealed class RankedSearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Foo", cancellationToken);
 
-        Assert.Contains("Demo.Credit.Foo", body);
+        Assert.Contains("Demo.Credit::Foo():System.Void", body);
         Assert.Contains(
             "1 generated result(s) hidden. Re-run with ?generated=1 to include them.",
             body);
@@ -178,7 +179,7 @@ public sealed class RankedSearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Foo&generated=1", cancellationToken);
 
-        Assert.Contains("Demo.Credit.Foo+&lt;&gt;c::&lt;Foo&gt;b__0_0", body);
+        Assert.Contains("Demo.Credit+&lt;&gt;c::&lt;Foo&gt;b__0_0():System.Void", body);
         Assert.DoesNotContain("result(s) hidden", body);
     }
 

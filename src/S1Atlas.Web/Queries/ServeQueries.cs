@@ -1,5 +1,6 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Composition;
+using S1Atlas.Core;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
@@ -139,8 +140,8 @@ public sealed class ServeQueries
         CancellationToken ct)
     {
         var result = index.ApiSelection is { } selection
-            ? await SearchApiAsync(selection, type.QualifiedName + ".", MemberSearchLimit, ct)
-            : await SearchGameAsync(index.Run, type.QualifiedName + ".", null, MemberSearchLimit, ct);
+            ? await SearchApiAsync(selection, type.QualifiedName + "::", MemberSearchLimit, ct)
+            : await SearchGameAsync(index.Run, type.QualifiedName + "::", null, MemberSearchLimit, ct);
         var members = result.Results.Where(candidate => IsMemberOf(candidate, type)).ToArray();
         return new MemberListResult(members, result.TotalCount, result.ReturnedCount < result.TotalCount);
     }
@@ -247,9 +248,8 @@ public sealed class ServeQueries
             return false;
         }
 
-        var prefix = type.QualifiedName + ".";
-        return candidate.QualifiedName.StartsWith(prefix, StringComparison.Ordinal)
-            && !candidate.QualifiedName.AsSpan(prefix.Length).Contains('.');
+        return SymbolNames.TrySplitMember(candidate.QualifiedName, out var declaringType, out _)
+            && declaringType.Equals(type.QualifiedName, StringComparison.Ordinal);
     }
 
     private static async Task<T> WithStoreAsync<T>(

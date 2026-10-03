@@ -8,6 +8,49 @@ namespace S1Atlas.Web.Tests;
 public sealed class SymbolTests
 {
     [Fact]
+    public async Task GameTypePageListsAllMemberKinds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var widget = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.WidgetTypeId}", cancellationToken);
+        Assert.Contains("FACT: 6 members.", widget);
+        Assert.Contains("Demo.Widget::Run():System.Void", widget);
+        Assert.Contains("Demo.Widget::Render():System.Void", widget);
+        Assert.Contains("Demo.Widget::CheckPhysics():System.Void", widget);
+        Assert.Contains("Demo.Widget::.ctor():System.Void", widget);
+        Assert.Contains("Demo.Widget::System.Int32 _state", widget);
+        Assert.Contains("Demo.Widget::System.String Name", widget);
+        Assert.DoesNotContain("Nested::Inner", widget);
+        Assert.DoesNotContain("WidgetFactory", widget);
+
+        var nested = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.NestedTypeId}", cancellationToken);
+        Assert.Contains("FACT: 1 members.", nested);
+        Assert.Contains("Demo.Widget+Nested::Inner():System.Void", nested);
+
+        var factory = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.FactoryTypeId}", cancellationToken);
+        Assert.Contains("FACT: 1 members.", factory);
+        Assert.Contains("Demo.WidgetFactory::Create():System.Void", factory);
+    }
+
+    [Fact]
+    public async Task MemberPagesShowBreadcrumbsWithResolvedTypeLink()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var method = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken);
+        Assert.Contains($"<a href=\"/symbol/{SyntheticAtlas.WidgetTypeId}\">Demo.Widget</a>", method);
+        Assert.Contains("› Run</nav>", method);
+        Assert.DoesNotContain("kind=type", method);
+
+        var field = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.StateFieldId}", cancellationToken);
+        Assert.Contains($"<a href=\"/symbol/{SyntheticAtlas.WidgetTypeId}\">Demo.Widget</a>", field);
+        Assert.Contains("› _state</nav>", field);
+        Assert.DoesNotContain("kind=type", field);
+    }
+
+    [Fact]
     public async Task GameTypePageShowsMembersSourceAndRelationships()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -20,11 +63,11 @@ public sealed class SymbolTests
         Assert.StartsWith("text/html", response.Content.Headers.ContentType?.ToString());
         Assert.Contains("<h1>Demo.Widget</h1>", body);
         Assert.Contains("FACT: Type Demo.Widget in Schedule I (Installed).", body);
-        Assert.Contains("FACT: 4 members.", body);
-        Assert.Contains("Demo.Widget.Run", body);
-        Assert.Contains("Demo.Widget.Render", body);
-        Assert.Contains("Demo.Widget.CheckPhysics", body);
-        Assert.Contains("Demo.Widget._state", body);
+        Assert.Contains("FACT: 6 members.", body);
+        Assert.Contains("Demo.Widget::Run():System.Void", body);
+        Assert.Contains("Demo.Widget::Render():System.Void", body);
+        Assert.Contains("Demo.Widget::CheckPhysics():System.Void", body);
+        Assert.Contains("Demo.Widget::System.Int32 _state", body);
         Assert.Contains("Assembly-CSharp.cs", body);
         Assert.Contains("public void Run()", body);
         Assert.Contains("<h2>Callers</h2>", body);
@@ -40,11 +83,11 @@ public sealed class SymbolTests
 
         var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken);
 
-        Assert.Contains("<h1>Demo.Widget.Run</h1>", body);
+        Assert.Contains("<h1>Demo.Widget::Run():System.Void</h1>", body);
         Assert.Contains("FACT: 1 callers in this index.", body);
-        Assert.Contains("Demo.Caller.Invoke", body);
+        Assert.Contains("Demo.Caller::Invoke():System.Void", body);
         Assert.Contains("FACT: 1 callees in this index.", body);
-        Assert.Contains("Demo.Service.Execute", body);
+        Assert.Contains("Demo.Service::Execute():System.Void", body);
         Assert.Contains("public void Run()", body);
     }
 
@@ -59,12 +102,12 @@ public sealed class SymbolTests
 
         Assert.Contains("<h2>Overrides</h2>", derived);
         Assert.Contains("FACT: 1 overrides in this index.", derived);
-        Assert.Contains("Demo.WidgetBase.Render", derived);
+        Assert.Contains("Demo.WidgetBase::Render():System.Void", derived);
         Assert.DoesNotContain("<h2>Derived types</h2>", derived);
 
         Assert.Contains("<h2>Overridden by</h2>", @base);
         Assert.Contains("FACT: 1 overriders in this index.", @base);
-        Assert.Contains("Demo.Widget.Render", @base);
+        Assert.Contains("Demo.Widget::Render():System.Void", @base);
         Assert.DoesNotContain("<h2>Derived types</h2>", @base);
     }
 
@@ -94,8 +137,8 @@ public sealed class SymbolTests
         Assert.Contains("<h1>ServeApi.Catalog</h1>", body);
         Assert.Contains("in S1API (Release).", body);
         Assert.Contains("FACT: 1 members.", body);
-        Assert.Contains("ServeApi.Catalog.Lookup", body);
-        Assert.DoesNotContain("ServeApi.Helper.Assist", body);
+        Assert.Contains("ServeApi.Catalog::Lookup():System.Void", body);
+        Assert.DoesNotContain("ServeApi.Helper::Assist():System.Void", body);
     }
 
     [Fact]
@@ -107,7 +150,7 @@ public sealed class SymbolTests
         var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.LookupMethodId}", cancellationToken);
 
         Assert.Contains("FACT: 1 callers in this index.", body);
-        Assert.Contains("ServeApi.Helper.Assist", body);
+        Assert.Contains("ServeApi.Helper::Assist():System.Void", body);
         Assert.Contains("S1Api.cs", body);
     }
 
@@ -181,7 +224,7 @@ public sealed class SymbolTests
         Assert.Equal("resolved", json.RootElement.GetProperty("status").GetString());
         var data = json.RootElement.GetProperty("data");
         Assert.Equal(SyntheticAtlas.RunMethodId, data.GetProperty("symbolId").GetString());
-        Assert.Equal("Demo.Widget.Run", data.GetProperty("qualifiedName").GetString());
+        Assert.Equal(SyntheticAtlas.RunSelector, data.GetProperty("qualifiedName").GetString());
         Assert.Equal(SyntheticAtlas.RunSelector, data.GetProperty("signature").GetString());
     }
 
@@ -298,9 +341,9 @@ public sealed class SymbolTests
 
         Assert.Contains("FACT: 2 callers in this index.", body);
         Assert.Contains("FACT: 1 exact, 1 may-dispatch callers.", body);
-        Assert.Contains("DERIVED: may dispatch (via Demo.WidgetBase.Render).", body);
-        Assert.Contains("Demo.Service.Execute", body);
-        Assert.Contains("Demo.Caller.Invoke", body);
+        Assert.Contains("DERIVED: may dispatch (via Demo.WidgetBase::Render():System.Void).", body);
+        Assert.Contains("Demo.Service::Execute():System.Void", body);
+        Assert.Contains("Demo.Caller::Invoke():System.Void", body);
     }
 
     [Fact]
@@ -313,7 +356,7 @@ public sealed class SymbolTests
 
         Assert.Contains("FACT: 1 callers in this index.", body);
         Assert.Contains("FACT: 1 exact, 0 may-dispatch callers.", body);
-        Assert.Contains("Demo.Service.Execute", body);
+        Assert.Contains("Demo.Service::Execute():System.Void", body);
         Assert.DoesNotContain("may dispatch", body);
     }
 
@@ -337,7 +380,7 @@ public sealed class SymbolTests
         Assert.False(rows[0].GetProperty("isDerived").GetBoolean());
         Assert.True(rows[1].GetProperty("isDerived").GetBoolean());
         Assert.Equal(
-            "via Demo.WidgetBase.Render",
+            "via Demo.WidgetBase::Render():System.Void",
             Assert.Single(rows[1].GetProperty("routes").EnumerateArray()).GetString());
 
         using var exactResponse = await fixture.GetAsync(
@@ -376,7 +419,7 @@ public sealed class SymbolTests
 
         var body = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.CreditLeafMethodId}", cancellationToken);
 
-        Assert.Contains("Demo.Credit.Foo", body);
+        Assert.Contains("Demo.Credit::Foo():System.Void", body);
         Assert.Contains("(in lambda)", body);
         Assert.DoesNotContain("b__0_0", body);
     }
@@ -390,7 +433,7 @@ public sealed class SymbolTests
         var body = await fixture.GetStringAsync(
             $"/symbol/{SyntheticAtlas.CreditLeafMethodId}?generated=1", cancellationToken);
 
-        Assert.Contains("Demo.Credit.Foo+&lt;&gt;c::&lt;Foo&gt;b__0_0", body);
+        Assert.Contains("Demo.Credit+&lt;&gt;c::&lt;Foo&gt;b__0_0():System.Void", body);
         Assert.DoesNotContain("(in lambda)", body);
     }
 
@@ -416,11 +459,11 @@ public sealed class SymbolTests
         var rawRow = Assert.Single(
             rawJson.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray());
         Assert.Equal(
-            "Demo.Credit.Foo",
+            "Demo.Credit::Foo():System.Void",
             creditedRow.GetProperty("source").GetProperty("qualifiedName").GetString());
         Assert.Equal("in lambda", creditedRow.GetProperty("generatedDetail").GetString());
         Assert.Equal(
-            "Demo.Credit.Foo+<>c::<Foo>b__0_0",
+            "Demo.Credit+<>c::<Foo>b__0_0():System.Void",
             rawRow.GetProperty("source").GetProperty("qualifiedName").GetString());
         Assert.False(rawRow.TryGetProperty("generatedDetail", out _));
     }
@@ -447,7 +490,7 @@ public sealed class SymbolTests
             $"/symbol/{SyntheticAtlas.DelegateTargetMethodId}?delegates=1", cancellationToken);
 
         Assert.Contains("FACT: 1 callers in this index.", body);
-        Assert.Contains("Demo.Delegate.Build", body);
+        Assert.Contains("Demo.Delegate::Build():System.Void", body);
         Assert.Contains("(delegate created (not called))", body);
     }
 

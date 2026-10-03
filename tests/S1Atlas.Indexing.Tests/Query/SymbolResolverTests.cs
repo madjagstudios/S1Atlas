@@ -672,6 +672,177 @@ public sealed class SymbolResolverTests : IAsyncDisposable
         Assert.Null(result.TotalCandidateCount);
     }
 
+    [Fact]
+    public async Task Resolve_PrefersTerminalTypeOverSameNamedMember_TypeSortsFirst()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("type-run", "Type", "Demo.Run"),
+                ("method-run", "Method", "Demo.Widget::Run():System.Void")
+            ],
+            TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal("type-run", result.Symbol?.SymbolId);
+    }
+
+    [Fact]
+    public async Task Resolve_PrefersTerminalTypeOverSameNamedMember_TypeSortsLast()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("type-zeta-run", "Type", "Demo.Zeta.Run"),
+                ("method-run", "Method", "Demo.Widget::Run():System.Void")
+            ],
+            TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal("type-zeta-run", result.Symbol?.SymbolId);
+    }
+
+    [Fact]
+    public async Task Resolve_SingleKindAndMultiKindPathsAgree()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("type-zeta-run", "Type", "Demo.Zeta.Run"),
+                ("method-run", "Method", "Demo.Widget::Run():System.Void")
+            ],
+            TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var single = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+        var multi = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken,
+            new HashSet<SymbolKind> { SymbolKind.Method, SymbolKind.Type });
+
+        Assert.Equal(single.Status, multi.Status);
+        Assert.Equal(single.Symbol?.SymbolId, multi.Symbol?.SymbolId);
+        Assert.Equal(SymbolResolutionStatus.Resolved, single.Status);
+        Assert.Equal("type-zeta-run", single.Symbol?.SymbolId);
+    }
+
+    [Fact]
+    public async Task Resolve_SingleExactMemberBeatsSubstringMember()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("method-run", "Method", "Qol.Aaa::Run():System.Void"),
+                ("method-runfast", "Method", "Qol.Aaa::RunFast():System.Void")
+            ],
+            TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal("method-run", result.Symbol?.SymbolId);
+    }
+
+    [Fact]
+    public async Task Resolve_AmbiguousListsOnlyExactMembers()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("method-run-a", "Method", "Qol.Aaa::Run():System.Void"),
+                ("method-run-b", "Method", "Qol.Bbb::Run():System.Void"),
+                ("method-runfast", "Method", "Qol.Aaa::RunFast():System.Void")
+            ],
+            TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Ambiguous, result.Status);
+        Assert.Equal(
+            new[] { "method-run-a", "method-run-b" },
+            result.Candidates.Select(candidate => candidate.SymbolId).ToArray());
+    }
+
+    [Fact]
+    public async Task Resolve_CandidateCapKeepsTerminalType()
+    {
+        var rows = Enumerable.Range(0, 60)
+            .Select(number => ($"method-run-{number:00}", "Method", $"M{number:00}::Run():System.Void"))
+            .Append(("type-zz-run", "Type", "Zz.Run"))
+            .ToArray();
+        var fixture = await SeedRankRowsAsync(rows, TestContext.Current.CancellationToken);
+        var resolver = new SymbolResolver(_repository);
+
+        var result = await resolver.ResolveAsync(
+            fixture.IndexId,
+            "Run",
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal("type-zz-run", result.Symbol?.SymbolId);
+    }
+
+    private async Task<RankRowsFixture> SeedRankRowsAsync(
+        (string Id, string Kind, string QualifiedName)[] rows,
+        CancellationToken cancellationToken)
+    {
+        await _repository.InitializeAsync(cancellationToken);
+        const string snapshotId = "snapshot-resolver-rank-rows";
+        const string indexId = "index-resolver-rank-rows";
+        var snapshot = new CodeSnapshotRecord(
+            snapshotId,
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "resolver-rank-rows-source",
+            "2026-08-14T03:18:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord(indexId, snapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+        await _repository.CompleteIndexRunAsync(
+            indexId,
+            new IndexWriteSet(
+                rows.Select(row => new IndexSymbolRecord(
+                    row.Id, snapshotId, "key-" + row.Id, row.Kind, row.QualifiedName, row.QualifiedName, false)).ToArray(),
+                [], [], [], []),
+            "2026-08-14T03:19:00Z",
+            cancellationToken);
+        return new RankRowsFixture(indexId);
+    }
+
     private async Task<PrefixFixture> SeedPrefixAsync(CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);
@@ -1026,4 +1197,6 @@ public sealed class SymbolResolverTests : IAsyncDisposable
     private sealed record TieFixture(string IndexId);
 
     private sealed record DuplicateSignatureFixture(string IndexId, string Signature);
+
+    private sealed record RankRowsFixture(string IndexId);
 }

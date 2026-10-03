@@ -62,7 +62,7 @@ public sealed class SearchBuildTests
         var body = await fixture.GetStringAsync(
             $"/search?q=Widget&build={SyntheticAtlas.BuildIdBValue}", cancellationToken);
 
-        Assert.Contains("FACT: 7 matches in Schedule I (Installed) for build build-serve-b.", body);
+        Assert.Contains("FACT: 13 matches in Schedule I (Installed) for build build-serve-b.", body);
         Assert.Contains($"/symbol/{SyntheticAtlas.RunMethodId}", body);
     }
 

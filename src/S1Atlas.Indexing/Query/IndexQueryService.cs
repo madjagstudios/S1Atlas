@@ -1,3 +1,4 @@
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 
@@ -1745,7 +1746,8 @@ public sealed class IndexQueryService
     private static int Rank(SymbolQueryResult result, string query)
     {
         if (string.Equals(result.QualifiedName, query, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(result.Signature, query, StringComparison.OrdinalIgnoreCase))
+            string.Equals(result.Signature, query, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(SymbolNames.SimpleName(result.QualifiedName), query, StringComparison.OrdinalIgnoreCase))
             return 0;
         if (result.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase))
             return 1;

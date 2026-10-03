@@ -14,9 +14,9 @@ public sealed class SearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Widget", cancellationToken);
 
-        Assert.Contains("FACT: 7 matches in Schedule I (Installed).", body);
-        Assert.Contains("DERIVED: showing 1&ndash;7 of 7 matches.", body);
-        Assert.Contains("Demo.Widget.Run", body);
+        Assert.Contains("FACT: 13 matches in Schedule I (Installed).", body);
+        Assert.Contains("DERIVED: showing 1&ndash;13 of 13 matches.", body);
+        Assert.Contains("Demo.Widget::Run():System.Void", body);
         Assert.Contains("/symbol/method-serve-run", body);
     }
 
@@ -28,10 +28,10 @@ public sealed class SearchTests
 
         var body = await fixture.GetStringAsync("/search?q=Widget&kind=method", cancellationToken);
 
-        Assert.Contains("FACT: 4 matches in Schedule I (Installed).", body);
-        Assert.Contains("Demo.Widget.Run", body);
-        Assert.Contains("Demo.Widget.CheckPhysics", body);
-        Assert.Contains("Demo.Widget.Render", body);
+        Assert.Contains("FACT: 6 matches in Schedule I (Installed).", body);
+        Assert.Contains("Demo.Widget::Run():System.Void", body);
+        Assert.Contains("Demo.Widget::CheckPhysics():System.Void", body);
+        Assert.Contains("Demo.Widget::Render():System.Void", body);
         Assert.DoesNotContain(">Demo.WidgetBase</a>", body);
     }
 
@@ -125,8 +125,8 @@ public sealed class SearchTests
         using var json = JsonDocument.Parse(body);
         Assert.Equal("resolved", json.RootElement.GetProperty("status").GetString());
         var data = json.RootElement.GetProperty("data");
-        Assert.Equal(7, data.GetProperty("totalCount").GetInt32());
-        Assert.Equal(7, data.GetProperty("returnedCount").GetInt32());
+        Assert.Equal(13, data.GetProperty("totalCount").GetInt32());
+        Assert.Equal(13, data.GetProperty("returnedCount").GetInt32());
         Assert.Equal("build-serve-1", json.RootElement.GetProperty("build").GetProperty("resolvedBuildId").GetString());
     }
 
@@ -225,7 +225,7 @@ public sealed class SearchTests
         var apiBody = await api.Content.ReadAsStringAsync(cancellationToken);
 
         Assert.Contains("FACT: 2 matches in S1API (Release).", page);
-        Assert.Contains("ServeApi.Catalog.Lookup", page);
+        Assert.Contains("ServeApi.Catalog::Lookup():System.Void", page);
         Assert.Equal(HttpStatusCode.OK, api.StatusCode);
         using var json = JsonDocument.Parse(apiBody);
         Assert.Equal("resolved", json.RootElement.GetProperty("status").GetString());

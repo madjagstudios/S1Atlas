@@ -20,7 +20,7 @@ public sealed class LandingTests
         Assert.StartsWith("text/html", response.Content.Headers.ContentType?.ToString());
         Assert.Contains("FACT: resolved build build-serve-1.", body);
         Assert.Contains("Schedule I", body);
-        Assert.Contains("FACT: 50 symbols in this index.", body);
+        Assert.Contains("FACT: 56 symbols in this index.", body);
         Assert.Contains("S1API", body);
         Assert.Contains("FACT: 3 symbols in this index.", body);
         Assert.Contains("<form", body);
@@ -62,7 +62,7 @@ public sealed class LandingTests
         Assert.Equal(2, indexes.Length);
         Assert.Equal("scheduleI", indexes[0].GetProperty("codebase").GetString());
         Assert.Equal("Installed", indexes[0].GetProperty("channel").GetString());
-        Assert.Equal(50, indexes[0].GetProperty("symbolCount").GetInt32());
+        Assert.Equal(56, indexes[0].GetProperty("symbolCount").GetInt32());
         Assert.Equal("s1api", indexes[1].GetProperty("codebase").GetString());
         Assert.Equal("Release", indexes[1].GetProperty("channel").GetString());
         Assert.Equal(3, indexes[1].GetProperty("symbolCount").GetInt32());

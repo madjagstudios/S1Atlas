@@ -74,6 +74,136 @@ public sealed class MemberSimpleNameSearchTests : IAsyncDisposable
         Assert.Empty(results);
     }
 
+    [Fact]
+    public async Task CompletedSearch_ExactMemberSimpleNameSharesTopTier()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTopTierIndexAsync(cancellationToken);
+
+        var results = await _repository.SearchCompletedSymbolsAsync(
+            "index-top-tier", "Run", 50, cancellationToken);
+
+        Assert.Equal(
+            new[] { "t-run", "m-run", "t-runfoo", "m-runfast", "m-go" },
+            results.Select(symbol => symbol.SymbolId).ToArray());
+    }
+
+    [Fact]
+    public async Task CompletedSearch_ReadOnlyExactMemberSimpleNameSharesTopTier()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTopTierIndexAsync(cancellationToken);
+        var readOnly = new ReadOnlySqliteAtlasRepository(
+            new ReadOnlySqliteConnectionFactory(_databasePath));
+
+        var results = await readOnly.SearchCompletedSymbolsAsync(
+            "index-top-tier", "Run", 50, cancellationToken);
+
+        Assert.Equal(
+            new[] { "t-run", "m-run", "t-runfoo", "m-runfast", "m-go" },
+            results.Select(symbol => symbol.SymbolId).ToArray());
+    }
+
+    [Fact]
+    public async Task RankedSearch_ExactMemberSimpleNameSharesTopTier()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTopTierIndexAsync(cancellationToken);
+
+        var total = await _repository.CountRankedSymbolMatchesAsync(
+            "index-top-tier", "Run", cancellationToken);
+        var results = await _repository.SearchRankedSymbolsAsync(
+            "index-top-tier", "Run", 50, cancellationToken);
+
+        Assert.Equal(5, total);
+        Assert.Equal(
+            new[] { "m-run", "t-run" },
+            results.Take(2).Select(symbol => symbol.SymbolId).OrderBy(id => id, StringComparer.Ordinal).ToArray());
+        Assert.Equal("t-runfoo", results[2].SymbolId);
+        Assert.Equal(
+            new[] { "m-go", "m-runfast" },
+            results.Skip(3).Select(symbol => symbol.SymbolId).OrderBy(id => id, StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public async Task RankedSearch_ReadOnlyExactMemberSimpleNameSharesTopTier()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTopTierIndexAsync(cancellationToken);
+        var readOnly = new ReadOnlySqliteAtlasRepository(
+            new ReadOnlySqliteConnectionFactory(_databasePath));
+
+        var results = await readOnly.SearchRankedSymbolsAsync(
+            "index-top-tier", "Run", 50, cancellationToken);
+
+        Assert.Equal(
+            new[] { "m-run", "t-run" },
+            results.Take(2).Select(symbol => symbol.SymbolId).OrderBy(id => id, StringComparer.Ordinal).ToArray());
+        Assert.Equal("t-runfoo", results[2].SymbolId);
+        Assert.Equal(
+            new[] { "m-go", "m-runfast" },
+            results.Skip(3).Select(symbol => symbol.SymbolId).OrderBy(id => id, StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public async Task CompletedSearch_TerminalTypeStaysAboveSubstringMembers()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTopTierIndexAsync(cancellationToken);
+
+        var results = await _repository.SearchCompletedSymbolsAsync(
+            "index-top-tier", "Run", 50, cancellationToken);
+        var ids = results.Select(symbol => symbol.SymbolId).ToArray();
+
+        Assert.True(Array.IndexOf(ids, "t-run") < Array.IndexOf(ids, "m-runfast"));
+        Assert.True(Array.IndexOf(ids, "t-run") < Array.IndexOf(ids, "m-go"));
+    }
+
+    [Fact]
+    public async Task RankedSearch_TerminalTypeStaysAboveSubstringMembers()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTopTierIndexAsync(cancellationToken);
+
+        var results = await _repository.SearchRankedSymbolsAsync(
+            "index-top-tier", "Run", 50, cancellationToken);
+        var ids = results.Select(symbol => symbol.SymbolId).ToArray();
+
+        Assert.True(Array.IndexOf(ids, "t-run") < Array.IndexOf(ids, "m-go"));
+        Assert.True(Array.IndexOf(ids, "t-run") < Array.IndexOf(ids, "m-runfast"));
+    }
+
+    private async Task SeedTopTierIndexAsync(CancellationToken cancellationToken)
+    {
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord(
+            "snapshot-top-tier",
+            CodebaseKind.ScheduleI,
+            CodeChannel.Installed,
+            "source-top-tier",
+            "2026-08-20T00:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(
+            new IndexRunRecord("index-top-tier", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc),
+            cancellationToken);
+
+        IndexSymbolRecord symbol(string id, string kind, string qualified) =>
+            new(id, snapshot.SnapshotId, "key-" + id, kind, qualified, qualified, false);
+        await _repository.CompleteIndexRunAsync(
+            "index-top-tier",
+            new IndexWriteSet(
+                [
+                    symbol("m-run", "Method", "Demo.Widget::Run():System.Void"),
+                    symbol("t-run", "Type", "Demo.Run"),
+                    symbol("m-runfast", "Method", "Demo.Aaa::RunFast():System.Void"),
+                    symbol("t-runfoo", "Type", "Run.Foo"),
+                    symbol("m-go", "Method", "Demo.Run::Go():System.Void")
+                ],
+                [], [], [], []),
+            "2026-08-20T00:01:00Z",
+            cancellationToken);
+    }
+
     private async Task SeedMemberIndexAsync(CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);

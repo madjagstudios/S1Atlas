@@ -47,9 +47,15 @@ public sealed class SyntheticAtlas : IAsyncDisposable
     public const string AssistMethodId = "method-serve-assist";
 
     public const string TypeSelector = "Demo.Widget";
-    public const string RunSelector = "System.Void Demo.Widget::Run()";
-    public const string LookupSelector = "System.Void ServeApi.Catalog::Lookup()";
-    public const string TurboQualifiedName = "Demo.Widget.Turbo";
+    public const string RunSelector = "Demo.Widget::Run():System.Void";
+    public const string LookupSelector = "ServeApi.Catalog::Lookup():System.Void";
+    public const string TurboQualifiedName = "Demo.Widget::Turbo():System.Void";
+    public const string WidgetCtorId = "method-serve-widget-ctor";
+    public const string WidgetNamePropertyId = "property-serve-widget-name";
+    public const string NestedTypeId = "type-serve-widget-nested";
+    public const string NestedInnerMethodId = "method-serve-nested-inner";
+    public const string FactoryTypeId = "type-serve-widget-factory";
+    public const string FactoryCreateMethodId = "method-serve-factory-create";
 
     public const string BuildIdAValue = "build-serve-a";
     public const string BuildIdBValue = "build-serve-b";
@@ -70,6 +76,16 @@ public sealed class SyntheticAtlas : IAsyncDisposable
         "    private int _state;\n" +
         "    public void Run() { }\n" +
         "    public void CheckPhysics() { Physics.IgnoreLayerCollision(0, 1); }\n" +
+        "    public Widget() { }\n" +
+        "    public string Name { get; set; }\n" +
+        "    public class Nested\n" +
+        "    {\n" +
+        "        public void Inner() { }\n" +
+        "    }\n" +
+        "}\n" +
+        "public class WidgetFactory\n" +
+        "{\n" +
+        "    public void Create() { }\n" +
         "}\n" +
         "public class Caller\n" +
         "{\n" +
@@ -299,6 +315,129 @@ public sealed class SyntheticAtlas : IAsyncDisposable
             new("a-", false, false, false, true, "fp-run-body-historical");
     }
 
+    // Member records use the real indexer's renderers, exactly as
+    // IndexingWorkflow.BuildSymbols does: the qualified name comes from
+    // ManagedMemberIdentity.Render, the key from SymbolIdentity.Create, and the
+    // signature is the member's own signature (which for methods is the full
+    // rendered identity, identical to the qualified name).
+    private static IndexSymbolRecord MethodSymbol(
+        string symbolId,
+        string snapshotId,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string containingType,
+        string name,
+        string returnType = "System.Void",
+        IReadOnlyList<string>? parameterTypes = null,
+        BodyRecoveryStatus? body = BodyRecoveryStatus.Recovered)
+    {
+        var member = new ManagedMemberFacts(
+            name,
+            ManagedMemberKind.Method,
+            CanonicalSignatureRenderer.RenderMethod(containingType, name, returnType, parameterTypes ?? []),
+            HasBody: body is not null,
+            References: [],
+            ParameterTypes: parameterTypes,
+            ReturnType: returnType);
+        var qualifiedName = ManagedMemberIdentity.Render(containingType, member);
+        return new IndexSymbolRecord(
+            symbolId,
+            snapshotId,
+            SymbolIdentity.Create(codebase, channel, SymbolKind.Method, qualifiedName).CanonicalKey,
+            "Method",
+            qualifiedName,
+            member.Signature,
+            false,
+            body,
+            IsGenerated: GeneratedBodyResolver.IsGeneratedSymbol(qualifiedName));
+    }
+
+    private static IndexSymbolRecord ConstructorSymbol(
+        string symbolId,
+        string snapshotId,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string containingType,
+        IReadOnlyList<string>? parameterTypes = null,
+        BodyRecoveryStatus? body = BodyRecoveryStatus.Recovered)
+    {
+        var member = new ManagedMemberFacts(
+            ".ctor",
+            ManagedMemberKind.Constructor,
+            CanonicalSignatureRenderer.RenderMethod(containingType, ".ctor", "System.Void", parameterTypes ?? []),
+            HasBody: body is not null,
+            References: [],
+            ParameterTypes: parameterTypes,
+            ReturnType: "System.Void");
+        var qualifiedName = ManagedMemberIdentity.Render(containingType, member);
+        return new IndexSymbolRecord(
+            symbolId,
+            snapshotId,
+            SymbolIdentity.Create(codebase, channel, SymbolKind.Constructor, qualifiedName).CanonicalKey,
+            "Constructor",
+            qualifiedName,
+            member.Signature,
+            false,
+            body,
+            IsGenerated: GeneratedBodyResolver.IsGeneratedSymbol(qualifiedName));
+    }
+
+    private static IndexSymbolRecord FieldSymbol(
+        string symbolId,
+        string snapshotId,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string containingType,
+        string valueType,
+        string name)
+    {
+        var member = new ManagedMemberFacts(
+            name,
+            ManagedMemberKind.Field,
+            CanonicalSignatureRenderer.RenderType(valueType) + " " + name,
+            HasBody: false,
+            References: [],
+            ValueType: valueType);
+        var qualifiedName = ManagedMemberIdentity.Render(containingType, member);
+        return new IndexSymbolRecord(
+            symbolId,
+            snapshotId,
+            SymbolIdentity.Create(codebase, channel, SymbolKind.Field, qualifiedName).CanonicalKey,
+            "Field",
+            qualifiedName,
+            member.Signature,
+            false,
+            IsGenerated: GeneratedBodyResolver.IsGeneratedSymbol(qualifiedName));
+    }
+
+    private static IndexSymbolRecord PropertySymbol(
+        string symbolId,
+        string snapshotId,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string containingType,
+        string valueType,
+        string name)
+    {
+        var member = new ManagedMemberFacts(
+            name,
+            ManagedMemberKind.Property,
+            CanonicalSignatureRenderer.RenderType(valueType) + " " + name,
+            HasBody: false,
+            References: [],
+            ValueType: valueType);
+        var qualifiedName = ManagedMemberIdentity.Render(containingType, member);
+        return new IndexSymbolRecord(
+            symbolId,
+            snapshotId,
+            SymbolIdentity.Create(codebase, channel, SymbolKind.Property, qualifiedName).CanonicalKey,
+            "Property",
+            qualifiedName,
+            member.Signature,
+            false,
+            IsGenerated: GeneratedBodyResolver.IsGeneratedSymbol(qualifiedName));
+    }
+
     private static async Task SeedGameIndexAsync(
         SqliteAtlasRepository repository,
         string dataRoot,
@@ -361,41 +500,30 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 TypeSelector,
                 TypeSelector,
                 false),
+            MethodSymbol(Sid(RunMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget", "Run"),
+            FieldSymbol(Sid(StateFieldId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget", "System.Int32", "_state"),
+            ConstructorSymbol(Sid(WidgetCtorId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget"),
+            PropertySymbol(Sid(WidgetNamePropertyId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget", "System.String", "Name"),
+            MethodSymbol(Sid(CallerMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Caller", "Invoke"),
+            MethodSymbol(Sid(ExecuteMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Service", "Execute"),
             new(
-                Sid(RunMethodId),
+                Sid(NestedTypeId),
                 snapshotId,
-                "ScheduleI:Installed:Method:Demo.Widget::Run()",
-                "Method",
-                "Demo.Widget.Run",
-                RunSelector,
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(StateFieldId),
-                snapshotId,
-                "ScheduleI:Installed:Field:Demo.Widget::System.Int32 _state",
-                "Field",
-                "Demo.Widget._state",
-                "System.Int32 Demo.Widget::_state",
+                "ScheduleI:Installed:Type:Demo.Widget+Nested",
+                "Type",
+                "Demo.Widget+Nested",
+                "Demo.Widget+Nested",
                 false),
+            MethodSymbol(Sid(NestedInnerMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget+Nested", "Inner"),
             new(
-                Sid(CallerMethodId),
+                Sid(FactoryTypeId),
                 snapshotId,
-                "ScheduleI:Installed:Method:Demo.Caller::Invoke()",
-                "Method",
-                "Demo.Caller.Invoke",
-                "System.Void Demo.Caller::Invoke()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(ExecuteMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Service::Execute()",
-                "Method",
-                "Demo.Service.Execute",
-                "System.Void Demo.Service::Execute()",
-                false,
-                BodyRecoveryStatus.Recovered),
+                "ScheduleI:Installed:Type:Demo.WidgetFactory",
+                "Type",
+                "Demo.WidgetFactory",
+                "Demo.WidgetFactory",
+                false),
+            MethodSymbol(Sid(FactoryCreateMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.WidgetFactory", "Create"),
             new(
                 Sid(BaseTypeId),
                 snapshotId,
@@ -404,24 +532,8 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 "Demo.WidgetBase",
                 "Demo.WidgetBase",
                 false),
-            new(
-                Sid(BaseRenderMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.WidgetBase::Render()",
-                "Method",
-                "Demo.WidgetBase.Render",
-                "System.Void Demo.WidgetBase::Render()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(RenderMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Widget::Render()",
-                "Method",
-                "Demo.Widget.Render",
-                "System.Void Demo.Widget::Render()",
-                false,
-                BodyRecoveryStatus.Recovered),
+            MethodSymbol(Sid(BaseRenderMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.WidgetBase", "Render"),
+            MethodSymbol(Sid(RenderMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget", "Render"),
             new(
                 Sid(PayloadTypeId),
                 snapshotId,
@@ -438,91 +550,18 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                 "Demo.Result",
                 "Demo.Result",
                 false),
-            new(
-                Sid(CreditFooMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Credit::Foo()",
-                "Method",
-                "Demo.Credit.Foo",
-                "System.Void Demo.Credit::Foo()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(CreditLambdaMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Credit::Foo+<>c::<Foo>b__0_0()",
-                "Method",
-                "Demo.Credit.Foo+<>c::<Foo>b__0_0",
-                "System.Void Demo.Credit::Foo+<>c::<Foo>b__0_0()",
-                false,
-                BodyRecoveryStatus.Recovered,
-                IsGenerated: true),
-            new(
-                Sid(CreditLeafMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Credit::Leaf()",
-                "Method",
-                "Demo.Credit.Leaf",
-                "System.Void Demo.Credit::Leaf()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(CreditCaptureFieldId),
-                snapshotId,
-                "ScheduleI:Installed:Field:Demo.Capture::System.Int32 Holder+<>c__DisplayClass0_0::x",
-                "Field",
-                "Demo.Capture.Holder+<>c__DisplayClass0_0::x",
-                "System.Int32 Demo.Capture::Holder+<>c__DisplayClass0_0::x",
-                false,
-                IsGenerated: true),
-            new(
-                Sid(DelegateBuildMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Delegate::Build()",
-                "Method",
-                "Demo.Delegate.Build",
-                "System.Void Demo.Delegate::Build()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(DelegateTargetMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Delegate::Handle()",
-                "Method",
-                "Demo.Delegate.Handle",
-                "System.Void Demo.Delegate::Handle()",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(DelegateCountFieldId),
-                snapshotId,
-                "ScheduleI:Installed:Field:Demo.Delegate::System.Int32 Count",
-                "Field",
-                "Demo.Delegate.Count",
-                "System.Int32 Demo.Delegate::Count",
-                false,
-                BodyRecoveryStatus.Recovered),
-            new(
-                Sid(DelegateTakeMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Delegate::Take()",
-                "Method",
-                "Demo.Delegate.Take",
-                "System.Void Demo.Delegate::Take()",
-                false,
-                BodyRecoveryStatus.Recovered),
+            MethodSymbol(Sid(CreditFooMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Credit", "Foo"),
+            MethodSymbol(Sid(CreditLambdaMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Credit+<>c", "<Foo>b__0_0"),
+            MethodSymbol(Sid(CreditLeafMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Credit", "Leaf"),
+            FieldSymbol(Sid(CreditCaptureFieldId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Capture+<>c__DisplayClass0_0", "System.Int32", "x"),
+            MethodSymbol(Sid(DelegateBuildMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Delegate", "Build"),
+            MethodSymbol(Sid(DelegateTargetMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Delegate", "Handle"),
+            FieldSymbol(Sid(DelegateCountFieldId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Delegate", "System.Int32", "Count"),
+            MethodSymbol(Sid(DelegateTakeMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Delegate", "Take"),
         };
         if (variant.IncludeCheckPhysics)
         {
-            symbols.Add(new IndexSymbolRecord(
-                Sid(CheckPhysicsMethodId),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Widget::CheckPhysics()",
-                "Method",
-                "Demo.Widget.CheckPhysics",
-                "System.Void Demo.Widget::CheckPhysics()",
-                false,
-                BodyRecoveryStatus.Recovered));
+            symbols.Add(MethodSymbol(Sid(CheckPhysicsMethodId), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget", "CheckPhysics"));
         }
 
         if (variant.IncludeHostile)
@@ -539,15 +578,7 @@ public sealed class SyntheticAtlas : IAsyncDisposable
 
         if (variant.IncludeTurbo)
         {
-            symbols.Add(new IndexSymbolRecord(
-                Sid("method-serve-turbo"),
-                snapshotId,
-                "ScheduleI:Installed:Method:Demo.Widget::Turbo()",
-                "Method",
-                TurboQualifiedName,
-                "System.Void Demo.Widget::Turbo()",
-                false,
-                BodyRecoveryStatus.Recovered));
+            symbols.Add(MethodSymbol(Sid("method-serve-turbo"), snapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "Demo.Widget", "Turbo"));
         }
 
         if (variant.IncludePaged)
@@ -753,24 +784,8 @@ public sealed class SyntheticAtlas : IAsyncDisposable
                         "ServeApi.Catalog",
                         "ServeApi.Catalog",
                         false),
-                    new IndexSymbolRecord(
-                        LookupMethodId,
-                        ApiSnapshotId,
-                        "S1Api:Release:Method:ServeApi.Catalog::Lookup()",
-                        "Method",
-                        "ServeApi.Catalog.Lookup",
-                        LookupSelector,
-                        false,
-                        BodyRecoveryStatus.Recovered),
-                    new IndexSymbolRecord(
-                        AssistMethodId,
-                        ApiSnapshotId,
-                        "S1Api:Release:Method:ServeApi.Helper::Assist()",
-                        "Method",
-                        "ServeApi.Helper.Assist",
-                        "System.Void ServeApi.Helper::Assist()",
-                        false,
-                        BodyRecoveryStatus.Recovered),
+                    MethodSymbol(LookupMethodId, ApiSnapshotId, CodebaseKind.S1Api, CodeChannel.Release, "ServeApi.Catalog", "Lookup"),
+                    MethodSymbol(AssistMethodId, ApiSnapshotId, CodebaseKind.S1Api, CodeChannel.Release, "ServeApi.Helper", "Assist"),
                 ],
                 [apiFile],
                 [
