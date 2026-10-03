@@ -6,7 +6,7 @@ namespace S1Atlas.Mcp;
 internal static class McpServerInstructions
 {
     public const string Text = """
-        S1Atlas is a read-only evidence source for Schedule I internals. Every tool returns a JSON envelope with a status: resolved (the answer is in data), ambiguous (pick from candidates), not_found, invalid, or unavailable. Failure statuses arrive with isError=true; the envelope text still carries the full detail including the error code.
+        S1Atlas is a read-only evidence source for Schedule I internals. Every tool returns a JSON envelope with a status: resolved (the answer is in data), ambiguous (pick from candidates), not_found, invalid, or unavailable. Failure statuses arrive with isError=true; the envelope text still carries the full detail including the error code. Setup errors such as NoCurrentBuild or NoCompletedIndex carry a hint field with the exact CLI fix command; run that command, or run s1atlas doctor to see the full readiness checklist.
 
         Evidence loop: search_symbols to locate candidates, then get_type, get_method, or get_source to resolve the exact symbol and inspect its decompiled span, then find_callers, find_callees, find_references, find_call_sites, find_field_references, find_related_types, find_overrides, find_overriders, or find_derived_types to trace relationships.
 

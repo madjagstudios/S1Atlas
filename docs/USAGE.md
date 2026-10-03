@@ -28,6 +28,40 @@ s1atlas tools status
 the network or the game. Building from source and running the test suite are
 covered in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+## First run
+
+Four commands take a fresh install from an empty atlas to a first answer:
+
+```powershell
+s1atlas setup
+s1atlas doctor
+s1atlas status
+s1atlas search "Player" --limit 20
+```
+
+`setup` plans the missing pipeline steps (scan, managed-tool installs,
+extract, index) from the same readiness report `doctor` renders, prints the
+numbered plan, and asks before changing anything. Tool downloads get a second
+confirmation because they reach the network; `--yes` answers both, and piped
+input without `--yes` fails fast instead of hanging. Each step re-checks
+readiness first, so work that is already satisfied is skipped, and the run
+stops at the first failure with the next step to take. `--include-optional`
+adds the scene snapshot; without it, an otherwise-ready atlas prints
+`Already ready` and touches nothing.
+
+`doctor` is the read-only version of the same checklist: it never writes the
+atlas, migrates the database, or touches the network, and it exits `0` only
+when the atlas is ready. `doctor --json` renders the machine-readable report.
+Consoles without Unicode support get `[ok]`/`[missing]` marks instead of
+glyphs. `status` keeps its scan lines and appends the same Ready-or-Next
+summary, plus a readiness object under `--json`.
+
+Setup errors carry the fix with them. CLI `--json` failures, MCP error
+envelopes, and serve error payloads include a `hint` field with the exact
+runnable command when one exists (`s1atlas scan`, `s1atlas extract`, and
+similar); a missing hint means the fix needs input only the operator can
+provide. Read the hint, or run `s1atlas doctor` to see the full checklist.
+
 ## Run the CLI
 
 Using an explicit game path is the most reliable first run:
@@ -779,7 +813,10 @@ IDs; `get_environment` reports only the current snapshot and returns
 `NoMatchingEnvironmentSnapshot` for a historical request. Facts are labeled
 `FACT`, while deterministic selections and counts are labeled `DERIVED`.
 Expected failures use stable domain codes; unexpected failures are logged to
-stderr and returned without stack traces or raw storage details.
+stderr and returned without stack traces or raw storage details. Setup errors
+such as `NoCurrentBuild` or `NoCompletedIndex` carry a `hint` field with the
+exact CLI fix command; run it, or run CLI `s1atlas doctor` to see the full
+readiness checklist.
 
 `find_call_sites` and `find_field_references` return recovered-IL static
 relationship evidence. `find_call_sites` falls back to raw-target matching when
@@ -965,7 +1002,9 @@ with counts and exact-ID hints.
 | Command | Purpose |
 |---|---|
 | `scan [--game-path <path>] [--performance]` | Discover and persist the current local environment |
-| `status [--json]` | Show the current indexed build and installation observation |
+| `setup [--yes] [--include-optional]` | Plan the missing scan, tools-install, extract, and index steps, confirm, then run them in order |
+| `doctor [--json]` | Show the read-only pipeline-readiness checklist and exit 0 only when ready |
+| `status [--json]` | Show the current indexed build, installation observation, and readiness summary |
 | `env [--json]` | Show the current build, installation paths, and tracked dependencies |
 | `builds [--json]` | List content-derived builds, newest first-seen first |
 | `tools status [tool-id] [--json]` | Inspect pinned managed-tool state offline |
