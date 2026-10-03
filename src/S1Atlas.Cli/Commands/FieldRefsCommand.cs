@@ -21,7 +21,7 @@ internal static class FieldRefsCommand
     {
         var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all. The all channel requires --codebase schedule-i and --scope game." };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all (every channel of the codebase). all is not valid with --scope reference or all." };
         var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.ScopedBuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {

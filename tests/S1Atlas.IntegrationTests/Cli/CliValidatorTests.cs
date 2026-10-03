@@ -1,4 +1,5 @@
 using System.Text.Json;
+using S1Atlas.Cli.Commands;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests.Cli;
@@ -48,6 +49,31 @@ public sealed class CliValidatorTests
             Assert.Equal(expectedMessage, message);
         else
             Assert.Contains(expectedMessage, message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("s1api")]
+    [InlineData("s1mapi")]
+    public void ParseOptions_accepts_all_channels_for_reference_codebases(string codebase)
+    {
+        var options = IndexQueryCommandFactory.ParseOptions(codebase, "all");
+
+        Assert.True(options.AllChannels);
+    }
+
+    [Fact]
+    public async Task Channel_all_with_a_reference_codebase_passes_option_validation()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("search", "Alpha", "--codebase", "s1api", "--channel", "all", "--json");
+
+        // Whether the query succeeds depends on machine-global API index state;
+        // option validation passes either way, so only the validation code is pinned.
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var root = document.RootElement;
+        if (!root.GetProperty("success").GetBoolean())
+            Assert.NotEqual("InvalidOptionCombination", root.GetProperty("error").GetProperty("code").GetString());
     }
 
     [Theory]

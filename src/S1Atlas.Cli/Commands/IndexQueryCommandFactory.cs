@@ -39,7 +39,7 @@ internal static class IndexQueryCommandFactory
         Func<string, IndexQueryOptions, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeWithGeneratedAndDelegates = null,
         Func<string, IndexRunRecord, int, CancellationToken, bool, bool, Task<IndexQueryOutput>>? executeInIndexWithGeneratedAndDelegates = null,
         string codebaseOptionDescription = "schedule-i, s1api, or s1mapi.",
-        string channelOptionDescription = "installed, release, preview, or all. The all channel requires --codebase schedule-i and --scope game.")
+        string channelOptionDescription = "installed, release, preview, or all (every channel of the codebase). all is not valid with --scope reference or all.")
     {
         var classic = execute is not null && executeInIndex is not null;
         var withGenerated = executeWithGenerated is not null && executeInIndexWithGenerated is not null;
