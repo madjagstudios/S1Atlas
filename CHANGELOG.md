@@ -33,9 +33,9 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   script that completes through `s1atlas` itself with no extra tooling.
   `type` and `method` accept `--scope`/`--collection` for reference and
   cross-origin queries like the other relationship commands (`callable`
-  stays installed-Schedule-I-only: its service cannot scope). The USAGE
-  command reference table is generated from the real command tree with a
-  drift test.
+  stays installed-Schedule-I-only: its service cannot scope). `type` and
+  `method` also gained `--include-generated`. The USAGE command reference
+  table is generated from the real command tree with a drift test.
 
 - **Guided setup, readiness doctor, and next-step hints** (AT-87):
   `s1atlas setup` plans the missing scan, tools-install, extract, and index
