@@ -25,9 +25,11 @@ public sealed class FixtureCaseAttribute : Attribute
     public Type[]? Types { get; set; }
 
     public int Count { get; set; }
+
+    public System.AttributeTargets Targets { get; set; }
 }
 
-[FixtureCase("decoder", Kind = SampleKind.Beta, Target = typeof(Game.Widget), Types = new Type[] { typeof(int), typeof(string) }, Count = 3)]
+[FixtureCase("decoder", Kind = SampleKind.Beta, Target = typeof(Game.Widget), Types = new Type[] { typeof(int), typeof(string) }, Count = 3, Targets = System.AttributeTargets.Class)]
 public class DecoderProbe
 {
 }
