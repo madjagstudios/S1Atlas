@@ -36,6 +36,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "search_symbols", Title = "Search symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search the integrity-verified Schedule I game index or an explicitly selected local reference collection for symbols.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchSymbolsAsync(
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional symbol kind filter.")] string? kind = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -44,6 +46,48 @@ public sealed class CodeSymbolTools
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<SymbolSearchResult>(query, null, out var queryError))
+            {
+                return queryError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<SymbolSearchResult> limitError))
+            {
+                return limitError;
+            }
+
+            if (!ToolArguments.TryParseKind(kind, null, out var parsedKind, out ToolEnvelope<SymbolSearchResult> kindError))
+            {
+                return kindError;
+            }
+
+            return await WithApiSelectionAsync<SymbolSearchResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.SearchSelectedAsync(
+                        selection,
+                        query,
+                        boundedLimit,
+                        ct,
+                        includeGenerated,
+                        parsedKind);
+                    return EnvelopeMapper.FromApiSearch(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<SymbolSearchResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -98,18 +142,22 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetTypeAsync(
         [Description("Exact or fuzzy type selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
-        await GetSymbolAsync(selector, buildId, TypeKinds, limit, ct);
+        await GetSymbolAsync(selector, codebase, channel, buildId, TypeKinds, limit, ct);
 
     [McpServerTool(Name = "get_method", Title = "Get method", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one method from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetMethodAsync(
         [Description("Exact or fuzzy method selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
-        await GetSymbolAsync(selector, buildId, MethodKinds, limit, ct);
+        await GetSymbolAsync(selector, codebase, channel, buildId, MethodKinds, limit, ct);
 
     [McpServerTool(Name = "get_callable_surface", Title = "Get callable surface", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve how one Schedule I game member is callable through its local Il2CppInterop projection.")]
     public async Task<ToolEnvelope<CallableSurfaceQueryResult>> GetCallableSurfaceAsync(
@@ -139,6 +187,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_source", Title = "Get source", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return integrity-checked source for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Source context lines before and after the selected span.")] int context = 5,
         CancellationToken ct = default,
@@ -147,6 +197,59 @@ public sealed class CodeSymbolTools
         [Description("Return the containing type's verified source span.")] bool fullType = false,
         [Description("Max caller/callee neighborhood rows per direction (0-50). Zero disables neighborhood lookup.")] int relatedLimit = 10)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<SourceSnippetQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundContext(context, null, out var boundedContext, out ToolEnvelope<SourceSnippetQueryResult> contextError))
+            {
+                return contextError;
+            }
+
+            if (!ToolArguments.TryBoundRelatedLimit(relatedLimit, null, out var boundedRelatedLimit, out ToolEnvelope<SourceSnippetQueryResult> relatedLimitError))
+            {
+                return relatedLimitError;
+            }
+
+            return await WithApiSelectionAsync<SourceSnippetQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    try
+                    {
+                        var result = await _services.ApiIndexQueryService.SourceSelectedAsync(
+                            selection,
+                            selector,
+                            boundedContext,
+                            boundedRelatedLimit,
+                            ct,
+                            fullType);
+                        return EnvelopeMapper.FromApiSource(catalog, selection, result);
+                    }
+                    catch (InvalidDataException)
+                    {
+                        return EnvelopeMapper.ApiSourceIntegrityFailure(catalog, selection);
+                    }
+                    catch (FileNotFoundException)
+                    {
+                        return EnvelopeMapper.ApiSourceUnavailable(catalog, selection);
+                    }
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<SourceSnippetQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -213,6 +316,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_callers", Title = "Find callers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCallersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
@@ -223,6 +328,8 @@ public sealed class CodeSymbolTools
         [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
         await FindRelationshipsAsync(
             selector,
+            codebase,
+            channel,
             buildId,
             limit,
             ct,
@@ -236,6 +343,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_callees", Title = "Find callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
@@ -243,11 +352,13 @@ public sealed class CodeSymbolTools
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
         [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
-        await FindRelationshipsAsync(selector, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
+        await FindRelationshipsAsync(selector, codebase, channel, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
 
     [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
@@ -256,6 +367,8 @@ public sealed class CodeSymbolTools
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false) =>
         await FindRelationshipsAsync(
             selector,
+            codebase,
+            channel,
             buildId,
             limit,
             ct,
@@ -267,12 +380,49 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_call_sites", Title = "Find call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
         [Description("Resolved game-member selector or canonical raw target text.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<CallSiteQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<CallSiteQueryResult> limitError))
+            {
+                return limitError;
+            }
+
+            return await WithApiSelectionAsync<CallSiteQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.CallSitesSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        ct);
+                    return EnvelopeMapper.FromApiCallSites(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<CallSiteQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -320,6 +470,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_field_references", Title = "Find field references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static field readers and writers for one resolved game or local reference field; results do not prove lifecycle ordering or runtime behavior.")]
     public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindFieldReferencesAsync(
         [Description("Exact or fuzzy field selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Return only field readers.")] bool readers = false,
         [Description("Return only field writers.")] bool writers = false,
@@ -329,6 +481,53 @@ public sealed class CodeSymbolTools
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<FieldReferenceQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (readers && writers)
+            {
+                return EnvelopeMapper.Invalid<FieldReferenceQueryResult>("InvalidFieldFilter", "Choose readers or writers, not both.");
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<FieldReferenceQueryResult> limitError))
+            {
+                return limitError;
+            }
+
+            var filter = readers
+                ? FieldReferenceFilter.Readers
+                : writers
+                    ? FieldReferenceFilter.Writers
+                    : FieldReferenceFilter.All;
+            return await WithApiSelectionAsync<FieldReferenceQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.FieldReferencesSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        filter,
+                        ct,
+                        includeGenerated);
+                    return EnvelopeMapper.FromApiFieldReferences(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<FieldReferenceQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -390,6 +589,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_related_types", Title = "Find related types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional type relationship kinds to include.")] string[]? relationKinds = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -397,6 +598,50 @@ public sealed class CodeSymbolTools
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<RelationshipQuerySetResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<RelationshipQuerySetResult> limitError))
+            {
+                return limitError;
+            }
+
+            if (relationKinds is not null && relationKinds.Any(kind => !RelatedTypeRelationshipKinds.Contains(kind)))
+            {
+                return EnvelopeMapper.Invalid<RelationshipQuerySetResult>("InvalidRelationshipKind", "Unsupported API type relationship kind.");
+            }
+
+            return await WithApiSelectionAsync<RelationshipQuerySetResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.RelationshipsSelectedAsync(
+                        selection,
+                        selector,
+                        relationKinds is null ? boundedLimit : 500,
+                        ApiRelationshipDirection.References,
+                        relationKinds is null
+                            ? null
+                            : new HashSet<string>(relationKinds, StringComparer.OrdinalIgnoreCase),
+                        ct);
+                    return EnvelopeMapper.FromApiRelationships(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<RelationshipQuerySetResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -462,12 +707,49 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_overrides", Title = "Find overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the base and interface slots one method fills, up to the root.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<HierarchyQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<HierarchyQueryResult> limitError))
+            {
+                return limitError;
+            }
+
+            return await WithApiSelectionAsync<HierarchyQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.OverridesSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        ct);
+                    return EnvelopeMapper.FromApiHierarchy(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<HierarchyQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -514,6 +796,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_overriders", Title = "Find overriders", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the methods that override or implement one method, transitively.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
@@ -521,6 +805,47 @@ public sealed class CodeSymbolTools
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<HierarchyQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<HierarchyQueryResult> limitError))
+            {
+                return limitError;
+            }
+
+            if (!ToolArguments.TryBoundDepth(depth, null, out var boundedDepth, out ToolEnvelope<HierarchyQueryResult> depthError))
+            {
+                return depthError;
+            }
+
+            return await WithApiSelectionAsync<HierarchyQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.OverridersSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        boundedDepth,
+                        ct);
+                    return EnvelopeMapper.FromApiHierarchy(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<HierarchyQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -574,6 +899,8 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_derived_types", Title = "Find derived types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the subclasses and implementers of one type, transitively.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindDerivedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
@@ -582,6 +909,53 @@ public sealed class CodeSymbolTools
         [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<HierarchyQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<HierarchyQueryResult> limitError))
+            {
+                return limitError;
+            }
+
+            if (!ToolArguments.TryBoundDepth(depth, null, out var boundedDepth, out ToolEnvelope<HierarchyQueryResult> depthError))
+            {
+                return depthError;
+            }
+
+            if (!ToolArguments.TryBoundOffset(offset, null, out var boundedOffset, out ToolEnvelope<HierarchyQueryResult> offsetError))
+            {
+                return offsetError;
+            }
+
+            return await WithApiSelectionAsync<HierarchyQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.DerivedSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        boundedDepth,
+                        boundedOffset,
+                        ct);
+                    return EnvelopeMapper.FromApiHierarchy(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<HierarchyQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -641,11 +1015,53 @@ public sealed class CodeSymbolTools
 
     private async Task<ToolEnvelope<SymbolQueryResult>> GetSymbolAsync(
         string selector,
+        McpCodebase codebase,
+        CodeChannel channel,
         string? buildId,
         IReadOnlySet<SymbolKind> kinds,
         int limit,
         CancellationToken ct)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<SymbolQueryResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<SymbolQueryResult> limitError))
+            {
+                return limitError;
+            }
+
+            return await WithApiSelectionAsync<SymbolQueryResult>(
+                codebase,
+                channel,
+                buildId,
+                null,
+                null,
+                async (catalog, selection) =>
+                {
+                    var resolution = await _services.ApiIndexQueryService.ResolveSelectedAsync(
+                        selection,
+                        selector,
+                        ct,
+                        kinds);
+                    if (resolution.Status == SymbolResolutionStatus.Ambiguous && resolution.Candidates.Count > boundedLimit)
+                    {
+                        resolution = resolution with { Candidates = resolution.Candidates.Take(boundedLimit).ToArray() };
+                    }
+
+                    return EnvelopeMapper.FromApiTypeMethod(catalog, selection, resolution, kinds);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<SymbolQueryResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -680,6 +1096,8 @@ public sealed class CodeSymbolTools
 
     private async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelationshipsAsync(
         string selector,
+        McpCodebase codebase,
+        CodeChannel channel,
         string? buildId,
         int limit,
         CancellationToken ct,
@@ -690,6 +1108,52 @@ public sealed class CodeSymbolTools
         bool includeGenerated = false,
         bool includeDelegates = false)
     {
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<RelationshipQuerySetResult>(selector, null, out var selectorError))
+            {
+                return selectorError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<RelationshipQuerySetResult> limitError))
+            {
+                return limitError;
+            }
+
+            var apiDirection = direction switch
+            {
+                RelationshipDirection.Callers => ApiRelationshipDirection.Callers,
+                RelationshipDirection.Callees => ApiRelationshipDirection.Callees,
+                _ => ApiRelationshipDirection.References
+            };
+            return await WithApiSelectionAsync<RelationshipQuerySetResult>(
+                codebase,
+                channel,
+                buildId,
+                scope,
+                collection,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.RelationshipsSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        apiDirection,
+                        null,
+                        ct,
+                        exact,
+                        includeGenerated,
+                        includeDelegates);
+                    return EnvelopeMapper.FromApiRelationships(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<RelationshipQuerySetResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
         return await EnvelopeMapper.WithAuthorityAsync(
             _services.AuthorityResolver,
             buildId,
@@ -731,6 +1195,46 @@ public sealed class CodeSymbolTools
                     };
                 return EnvelopeMapper.FromScopedRelationships(authority, result, options.ReferenceCollection);
             });
+    }
+
+    private static CodebaseKind MapCodebase(McpCodebase codebase) => codebase switch
+    {
+        McpCodebase.s1api => CodebaseKind.S1Api,
+        McpCodebase.s1mapi => CodebaseKind.S1MApi,
+        _ => CodebaseKind.ScheduleI
+    };
+
+    private async Task<ToolEnvelope<T>> WithApiSelectionAsync<T>(
+        McpCodebase codebase,
+        CodeChannel channel,
+        string? buildId,
+        string? scope,
+        string? collection,
+        Func<ApiIndexCatalogResult, ApiIndexSelection, Task<ToolEnvelope<T>>> query,
+        CancellationToken ct) where T : class
+    {
+        if (!ToolArguments.TryParseScope<T>(scope, collection, null, out var options, out var scopeError))
+        {
+            return scopeError;
+        }
+
+        if (options.Scope != IndexQueryScope.Game)
+        {
+            return EnvelopeMapper.Invalid<T>("InvalidScope", "Reference scope requires the scheduleI codebase.");
+        }
+
+        var code = MapCodebase(codebase);
+        return await EnvelopeMapper.WithAtlasAvailabilityAsync(async () =>
+        {
+            var catalog = await _services.ApiIndexQueryService.ListAsync(buildId, ct);
+            var selection = catalog.Selections.Single(selection => selection.Codebase == code && selection.Channel == channel);
+            if (selection.Availability != ApiIndexAvailability.Current)
+            {
+                return EnvelopeMapper.FromApiSelectionFailure<T>(catalog, selection);
+            }
+
+            return await query(catalog, selection);
+        });
     }
 
     private enum RelationshipDirection { References, Callers, Callees }
@@ -808,7 +1312,7 @@ public sealed class CodeSymbolTools
     {
         public static bool TryValidateSelector<T>(
             string? selector,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out ToolEnvelope<T> error) where T : class
         {
             if (!string.IsNullOrWhiteSpace(selector))
@@ -826,7 +1330,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryBoundContext<T>(
             int context,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out int bounded,
             out ToolEnvelope<T> error) where T : class
         {
@@ -844,7 +1348,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryBoundRelatedLimit<T>(
             int relatedLimit,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out int bounded,
             out ToolEnvelope<T> error) where T : class
         {
@@ -862,7 +1366,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryBoundLimit<T>(
             int limit,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out int bounded,
             out ToolEnvelope<T> error) where T : class
         {
@@ -880,7 +1384,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryBoundDepth<T>(
             int depth,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out int bounded,
             out ToolEnvelope<T> error) where T : class
         {
@@ -898,7 +1402,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryBoundOffset<T>(
             int offset,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out int bounded,
             out ToolEnvelope<T> error) where T : class
         {
@@ -916,7 +1420,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryParseKind<T>(
             string? kind,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out SymbolKind? parsed,
             out ToolEnvelope<T> error) where T : class
         {
@@ -945,7 +1449,7 @@ public sealed class CodeSymbolTools
         public static bool TryParseScope<T>(
             string? scope,
             string? collection,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out IndexQueryOptions options,
             out ToolEnvelope<T> error) where T : class
         {
@@ -993,7 +1497,7 @@ public sealed class CodeSymbolTools
 
         public static bool TryParseRelationshipKinds<T>(
             string[]? relationKinds,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out IReadOnlySet<string> parsed,
             out ToolEnvelope<T> error) where T : class
         {
@@ -1028,7 +1532,7 @@ public sealed class CodeSymbolTools
         public static bool TryParseFieldReferenceFilter<T>(
             bool readers,
             bool writers,
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out FieldReferenceFilter filter,
             out ToolEnvelope<T> error) where T : class
         {
@@ -1052,23 +1556,25 @@ public sealed class CodeSymbolTools
         }
 
         private static ToolEnvelope<T> Invalid<T>(
-            S1Atlas.Application.Authority.InstalledBuildAuthority authority,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             string code,
             string message) where T : class =>
-            ToolEnvelope<T>.Invalid(
-                new ToolError(code, message),
-                EnvelopeMapper.BuildFrom(authority),
-                new ProvenanceEntry(
-                    ProvenanceClassification.Fact,
-                    "installed-build-authority",
-                    authority.ResolvedBuildId,
-                    authority.ExtractionId,
-                    authority.IndexId),
-                new ProvenanceEntry(
-                    ProvenanceClassification.Derived,
-                    "tool-argument-validation",
-                    authority.ResolvedBuildId,
-                    authority.ExtractionId,
-                    authority.IndexId));
+            authority is null
+                ? EnvelopeMapper.Invalid<T>(code, message)
+                : ToolEnvelope<T>.Invalid(
+                    new ToolError(code, message),
+                    EnvelopeMapper.BuildFrom(authority),
+                    new ProvenanceEntry(
+                        ProvenanceClassification.Fact,
+                        "installed-build-authority",
+                        authority.ResolvedBuildId,
+                        authority.ExtractionId,
+                        authority.IndexId),
+                    new ProvenanceEntry(
+                        ProvenanceClassification.Derived,
+                        "tool-argument-validation",
+                        authority.ResolvedBuildId,
+                        authority.ExtractionId,
+                        authority.IndexId));
     }
 }

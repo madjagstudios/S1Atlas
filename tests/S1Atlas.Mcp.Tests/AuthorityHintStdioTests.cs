@@ -132,11 +132,19 @@ public sealed class AuthorityHintStdioTests
         IReadOnlyDictionary<string, object?> arguments)
     {
         var outcome = await McpTestHost.CallToolRawThroughStdioAsync(
-            dataRoot, "get_type", arguments);
+            dataRoot, "get_type", WithCodebase(arguments));
 
         Assert.True(outcome.IsError ?? false);
         var serialized = Assert.IsType<TextContentBlock>(Assert.Single(outcome.Content)).Text;
         using var document = JsonDocument.Parse(serialized);
         return document.RootElement.GetProperty("error").Clone();
+    }
+
+    private static IReadOnlyDictionary<string, object?> WithCodebase(
+        IReadOnlyDictionary<string, object?> arguments)
+    {
+        var merged = new Dictionary<string, object?>(arguments, StringComparer.Ordinal);
+        merged["codebase"] = "scheduleI";
+        return merged;
     }
 }

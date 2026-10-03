@@ -49,10 +49,7 @@ public sealed class SelectorStdioTests
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
         var calls = AmbiguousSelectors.ToDictionary(
             entry => entry.Key,
-            entry => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>
-            {
-                ["selector"] = entry.Value,
-            });
+            entry => WithCodebase(entry.Key, entry.Value));
 
         var results = await McpTestHost.CallToolsThroughStdioAsync(atlas.DataRoot, calls);
 
@@ -81,7 +78,7 @@ public sealed class SelectorStdioTests
             var result = await McpTestHost.CallToolRawThroughStdioAsync(
                 atlas.DataRoot,
                 tool,
-                new Dictionary<string, object?> { ["selector"] = selector });
+                WithCodebase(tool, selector));
 
             Assert.True(result.IsError ?? false, tool);
             var serialized = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(
@@ -91,5 +88,16 @@ public sealed class SelectorStdioTests
             Assert.Equal("not_found", root.GetProperty("status").GetString());
             Assert.True(root.GetProperty("suggestions").GetArrayLength() >= 1, tool);
         }
+    }
+
+    private static IReadOnlyDictionary<string, object?> WithCodebase(string tool, string selector)
+    {
+        var arguments = new Dictionary<string, object?> { ["selector"] = selector };
+        if (!string.Equals(tool, "get_callable_surface", StringComparison.Ordinal))
+        {
+            arguments["codebase"] = "scheduleI";
+        }
+
+        return arguments;
     }
 }

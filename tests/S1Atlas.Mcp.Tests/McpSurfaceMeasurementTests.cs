@@ -49,16 +49,19 @@ public sealed class McpSurfaceMeasurementTests : IClassFixture<SharedHealthyServ
         {
             ["search_symbols"] = new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["query"] = atlas.KnownSymbolFragment,
                 ["limit"] = 50
             },
             ["get_type"] = new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["selector"] = atlas.TypeSelector,
                 ["limit"] = 50
             },
             ["find_callers"] = new Dictionary<string, object?>
             {
+                ["codebase"] = "scheduleI",
                 ["selector"] = atlas.MethodSelector,
                 ["limit"] = 50
             }

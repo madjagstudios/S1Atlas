@@ -1,5 +1,6 @@
 using System.Text.Json;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Mcp;
 using S1Atlas.Mcp.Tools;
 using S1Atlas.TestSupport.Seeding;
@@ -31,7 +32,7 @@ public sealed class McpParityTests
 
         using var served = JsonDocument.Parse(
             await fixture.GetStringAsync("/api/search?q=Widget", cancellationToken));
-        var envelope = await tools.SearchSymbolsAsync("Widget", limit: 20, ct: cancellationToken);
+        var envelope = await tools.SearchSymbolsAsync("Widget", McpCodebase.scheduleI, CodeChannel.Installed, limit: 20, ct: cancellationToken);
         using var expected = JsonDocument.Parse(
             JsonSerializer.Serialize(envelope, ToolJsonOptions.Create()));
 
@@ -131,7 +132,7 @@ public sealed class McpParityTests
 
         using var served = JsonDocument.Parse(
             await fixture.GetStringAsync($"/api/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken));
-        var envelope = await tools.GetMethodAsync(SyntheticAtlas.RunSelector, ct: cancellationToken);
+        var envelope = await tools.GetMethodAsync(SyntheticAtlas.RunSelector, McpCodebase.scheduleI, CodeChannel.Installed, ct: cancellationToken);
         using var expected = JsonDocument.Parse(
             JsonSerializer.Serialize(envelope, ToolJsonOptions.Create()));
 
@@ -163,7 +164,7 @@ public sealed class McpParityTests
         using var served = JsonDocument.Parse(
             await fixture.GetStringAsync(
                 $"/api/symbol/{SyntheticAtlas.RunMethodId}/callers?limit=50", cancellationToken));
-        var envelope = await tools.FindCallersAsync(SyntheticAtlas.RunSelector, limit: 50, ct: cancellationToken);
+        var envelope = await tools.FindCallersAsync(SyntheticAtlas.RunSelector, McpCodebase.scheduleI, CodeChannel.Installed, limit: 50, ct: cancellationToken);
         using var expected = JsonDocument.Parse(
             JsonSerializer.Serialize(envelope, ToolJsonOptions.Create()));
 

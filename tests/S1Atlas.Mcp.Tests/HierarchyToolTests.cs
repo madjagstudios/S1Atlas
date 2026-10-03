@@ -1,4 +1,5 @@
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Indexing;
 using S1Atlas.Mcp.Mapping;
 using S1Atlas.Mcp.Tools;
 using Xunit;
@@ -15,6 +16,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridesAsync(
             atlas.HierarchyDerivedMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             CancellationToken.None);
@@ -38,6 +41,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridersAsync(
             atlas.HierarchyBaseMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
@@ -57,6 +62,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridersAsync(
             atlas.HierarchyBaseMethodSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 0,
@@ -74,6 +81,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindDerivedTypesAsync(
             atlas.HierarchyBaseTypeSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
@@ -96,6 +105,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindDerivedTypesAsync(
             atlas.HierarchyBaseTypeSelector,
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
@@ -114,6 +125,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridesAsync(
             "No.Such.Symbol",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             CancellationToken.None);
@@ -132,6 +145,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridesAsync(
             "Render",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             CancellationToken.None);
@@ -150,6 +165,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindOverridersAsync(
             "Render",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
@@ -169,6 +186,8 @@ public sealed class HierarchyToolTests
 
         var envelope = await tools.FindDerivedTypesAsync(
             "Render",
+            McpCodebase.scheduleI,
+            CodeChannel.Installed,
             buildId: null,
             limit: 50,
             depth: 10,
