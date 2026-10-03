@@ -130,7 +130,10 @@ public static class PatchTargetResolver
             return false;
         for (var i = 0; i < parameters.Count; i++)
         {
-            if (!string.Equals(candidateParameters[i], parameters[i], StringComparison.Ordinal))
+            if (!string.Equals(
+                    InteropTypeNames.Normalize(candidateParameters[i]),
+                    InteropTypeNames.Normalize(parameters[i]),
+                    StringComparison.Ordinal))
                 return false;
         }
 

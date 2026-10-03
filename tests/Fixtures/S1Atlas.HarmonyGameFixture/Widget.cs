@@ -2,6 +2,10 @@
 // member below exists to be (or deliberately not to be) a patch target.
 namespace Game;
 
+public class Gadget
+{
+}
+
 public class Widget
 {
     public static int Counter;
@@ -41,6 +45,10 @@ public class Widget
     public void Consume(out int x)
     {
         x = 0;
+    }
+
+    public void Calibrate(Gadget gadget)
+    {
     }
 
     public class Nested

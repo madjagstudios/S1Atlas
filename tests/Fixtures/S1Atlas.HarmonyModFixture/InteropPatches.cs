@@ -9,12 +9,25 @@ namespace Il2CppGame
     public class Widget
     {
     }
+
+    public class Gadget
+    {
+    }
 }
 
 namespace Mod
 {
     [HarmonyPatch(typeof(Il2CppGame.Widget), "Run")]
     public class InteropPrefixPatch
+    {
+        [HarmonyPrefix]
+        public static void Prefix()
+        {
+        }
+    }
+
+    [HarmonyPatch(typeof(Game.Widget), "Calibrate", new Type[] { typeof(Il2CppGame.Gadget) })]
+    public class InteropParamPatch
     {
         [HarmonyPrefix]
         public static void Prefix()

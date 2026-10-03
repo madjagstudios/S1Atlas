@@ -24,7 +24,7 @@ public sealed class HarmonyPatchEdgeTests
                 .Where(edge => edge.Kind == "Patches")
                 .ToArray();
 
-            Assert.Equal(17, edges.Count(edge => edge.TargetSymbolId is not null));
+            Assert.Equal(18, edges.Count(edge => edge.TargetSymbolId is not null));
             Assert.Equal(8, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
@@ -59,6 +59,9 @@ public sealed class HarmonyPatchEdgeTests
             Assert.Equal("Metadata", untouched.Evidence);
             var transpiler = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("Widget+Nested::Inner(", StringComparison.Ordinal));
             Assert.Equal("Transpiler", transpiler.GeneratedDetail);
+            var interopParam = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Calibrate(", StringComparison.Ordinal));
+            Assert.Equal("Prefix", interopParam.GeneratedDetail);
+            Assert.Equal("Metadata", interopParam.Evidence);
 
             var unresolvedReasons = edges
                 .Where(edge => edge.TargetSymbolId is null)
