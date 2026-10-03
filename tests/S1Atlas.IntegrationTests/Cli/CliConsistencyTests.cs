@@ -103,7 +103,7 @@ public sealed partial class CliConsistencyTests
         Assert.Empty(violations);
     }
 
-    private static RootCommand BuildTree()
+    internal static RootCommand BuildTree()
     {
         using var fixture = new CliTreeFixture();
         var application = new CliApplication(
