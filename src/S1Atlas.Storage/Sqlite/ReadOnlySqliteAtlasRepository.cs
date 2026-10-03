@@ -1286,9 +1286,10 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                   AND ($kind IS NULL OR scene.kind = $kind)
                   AND ($query IS NULL OR scene.name LIKE $query ESCAPE '\' COLLATE NOCASE)
                 ORDER BY scene.name COLLATE BINARY, scene.scene_id COLLATE BINARY
-                LIMIT $limit;
+                LIMIT $limit OFFSET $offset;
                 """;
             AddPageParameters(command, options.SceneSnapshotId, null, null, options.Kind?.ToString(), escaped, options.Limit);
+            command.Parameters.AddWithValue("$offset", options.Offset);
             var rows = new List<SceneDocumentRecord>(Math.Min(options.Limit, 256));
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync()) rows.Add(ReadDocument(reader));

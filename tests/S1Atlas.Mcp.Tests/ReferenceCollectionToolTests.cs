@@ -101,8 +101,8 @@ public sealed class ReferenceCollectionToolTests
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 
         var search = await tools.SearchSymbolsAsync("Qol.Mod::Run", McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, IndexQueryScope.Reference, reference.Collection);
-        var callees = await tools.FindCalleesAsync("qol/Qol.Mod::Run():System.Void", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, CancellationToken.None, IndexQueryScope.All, reference.Collection);
-        var allCallers = await tools.FindCallersAsync(atlas.MethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, CancellationToken.None, IndexQueryScope.All, reference.Collection);
+        var callees = await tools.FindCalleesAsync("qol/Qol.Mod::Run():System.Void", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, CancellationToken.None, null, IndexQueryScope.All, reference.Collection);
+        var allCallers = await tools.FindCallersAsync(atlas.MethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, CancellationToken.None, null, IndexQueryScope.All, reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, search.Status);
         Assert.Equal("reference", search.Data!.Results[0].Origin);

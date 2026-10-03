@@ -25,13 +25,19 @@ public sealed class SceneTools
         [Description("Optional document kind filter.")] SceneDocumentKind? kind = null,
         [Description("Optional case-insensitive name fragment.")] string? query = null,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null)
     {
         return await WithAuthorityAsync(buildId, ct, async authority =>
         {
             try
             {
                 var boundedLimit = BoundLimit(limit);
+                if (!CodeSymbolTools.ToolArguments.TryDecodeCursor<SceneListResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
                 var parsedKind = kind;
                 return await WithSnapshotForAuthorityAsync(
                 authority,
@@ -40,8 +46,17 @@ public sealed class SceneTools
                 async (authority, snapshot) =>
                 {
                     var result = await _services.SceneQueryService.ScenesAsync(
-                        new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit), ct);
-                    return FromResult(authority, result.Status, result, [], "scene-list");
+                        new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit, offset), ct);
+                    var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
+                        "list_scenes", authority.ResolvedBuildId, snapshot.SceneSnapshotId,
+                        buildId, sceneSnapshotId, parsedKind?.ToString(), query, boundedLimit.ToString());
+                    if (!CodeSymbolTools.ToolArguments.VerifyCursorHash<SceneListResult>(cursorHash, expectedHash, authority, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return FromResult(authority, result.Status, nextCursor is null ? result : result with { NextCursor = nextCursor }, [], "scene-list");
                 });
             }
             catch (ArgumentOutOfRangeException exception)

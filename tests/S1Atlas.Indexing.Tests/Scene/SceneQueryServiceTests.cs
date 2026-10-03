@@ -22,10 +22,10 @@ public sealed class SceneQueryServiceTests
         Assert.Equal(SceneQueryStatus.Resolved, result.Status);
         Assert.Equal(2, result.Page.TotalCount);
         Assert.Equal(1, result.Page.ReturnedCount);
-        Assert.Equal(1, repository.SceneLimits.Single());
+        Assert.Equal(2, repository.SceneLimits.Single());
 
         await service.ScenesAsync(new SceneListRequest(SceneSnapshotId: "snapshot-a"), TestContext.Current.CancellationToken);
-        Assert.Equal(50, repository.SceneLimits.Last());
+        Assert.Equal(51, repository.SceneLimits.Last());
     }
 
     [Fact]
@@ -397,11 +397,12 @@ public sealed class SceneQueryServiceTests
         public Task<ScenePageResult<SceneDocumentRecord>> ListScenesAsync(SceneListQueryOptions options, CancellationToken cancellationToken)
         {
             SceneLimits.Add(options.Limit);
-            var rows = Documents.Where(document => document.SceneSnapshotId == options.SceneSnapshotId)
+            var filtered = Documents.Where(document => document.SceneSnapshotId == options.SceneSnapshotId)
                 .Where(document => options.Kind is null || document.Kind == options.Kind)
                 .Where(document => options.Query is null || document.Name.Contains(options.Query, StringComparison.OrdinalIgnoreCase))
                 .OrderBy(document => document.Name, StringComparer.Ordinal).ThenBy(document => document.SceneId, StringComparer.Ordinal).ToArray();
-            return Task.FromResult(new ScenePageResult<SceneDocumentRecord>(rows.Length, Math.Min(rows.Length, options.Limit), rows.Take(options.Limit).ToArray()));
+            var page = filtered.Skip(options.Offset).Take(options.Limit).ToArray();
+            return Task.FromResult(new ScenePageResult<SceneDocumentRecord>(filtered.Length, page.Length, page));
         }
         public Task<SceneDocumentRecord?> GetSceneAsync(string sceneSnapshotId, string sceneId, CancellationToken cancellationToken) => Task.FromResult(Documents.SingleOrDefault(document => document.SceneSnapshotId == sceneSnapshotId && document.SceneId == sceneId));
         public Task<IReadOnlyList<SceneContainerRecord>> GetSceneContainersAsync(string sceneSnapshotId, IReadOnlyList<string> containerIds, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneContainerRecord>>(Containers.Where(container => container.SceneSnapshotId == sceneSnapshotId && containerIds.Contains(container.ContainerId, StringComparer.Ordinal)).ToArray());

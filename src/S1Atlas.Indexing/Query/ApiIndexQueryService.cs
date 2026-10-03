@@ -32,7 +32,9 @@ public sealed class ApiIndexQueryService
 
     public async Task<ApiIndexCatalogResult> ListAsync(
         string? buildId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int limit = int.MaxValue,
+        int offset = 0)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var authority = await ResolveBuildAsync(buildId, cancellationToken);
@@ -48,10 +50,12 @@ public sealed class ApiIndexQueryService
             selections.Add(resolved.Selection);
         }
 
+        var (rows, hasMore) = IndexPaging.TakePage(selections, offset, limit);
         return new ApiIndexCatalogResult(
-            selections,
+            rows,
             buildId,
-            authority.ResolvedBuildId);
+            authority.ResolvedBuildId,
+            HasMore: hasMore);
     }
 
     public async Task<SymbolSearchResult> SearchAsync(
@@ -220,7 +224,8 @@ public sealed class ApiIndexQueryService
         CancellationToken cancellationToken,
         bool exact = false,
         bool includeGenerated = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -248,13 +253,14 @@ public sealed class ApiIndexQueryService
                     selector,
                     limit,
                     relationshipKinds,
-                    cancellationToken),
+                    cancellationToken,
+                    offset),
             ApiRelationshipDirection.Callers => await _indexQueryService.CallersInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, exact, includeGenerated, includeDelegates),
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, exact, includeGenerated, includeDelegates, offset),
             ApiRelationshipDirection.Callees => await _indexQueryService.CalleesInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated, includeDelegates),
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated, includeDelegates, offset),
             _ => await _indexQueryService.RefsInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated)
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, includeGenerated, offset)
         };
     }
 
@@ -262,7 +268,8 @@ public sealed class ApiIndexQueryService
         ApiIndexSelection selection,
         string selector,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -273,7 +280,7 @@ public sealed class ApiIndexQueryService
         return run is null
             ? new CallSiteQueryResult(new RelationshipQueryPageResult(0, 0, []), string.Empty)
             : await _indexQueryService.CallSitesInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken);
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, offset);
     }
 
     public async Task<FieldReferenceQueryResult> FieldReferencesSelectedAsync(
@@ -282,7 +289,8 @@ public sealed class ApiIndexQueryService
         int limit,
         FieldReferenceFilter filter,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -295,7 +303,7 @@ public sealed class ApiIndexQueryService
                 new SymbolResolutionResult(SymbolResolutionStatus.NoCompletedIndex, null, []),
                 new RelationshipQueryPageResult(0, 0, []))
             : await _indexQueryService.FieldReferencesInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, filter, cancellationToken, includeGenerated);
+                run, selection.Codebase, selection.Channel, selector, limit, filter, cancellationToken, includeGenerated, offset);
     }
 
     public async Task<SymbolResolutionResult> ResolveSelectedAsync(
@@ -319,7 +327,8 @@ public sealed class ApiIndexQueryService
         ApiIndexSelection selection,
         string selector,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -330,7 +339,7 @@ public sealed class ApiIndexQueryService
         return run is null
             ? NoCompletedIndexHierarchy()
             : await _indexQueryService.OverridesInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken);
+                run, selection.Codebase, selection.Channel, selector, limit, cancellationToken, offset);
     }
 
     public async Task<HierarchyQueryResult> OverridersSelectedAsync(
@@ -338,7 +347,8 @@ public sealed class ApiIndexQueryService
         string selector,
         int limit,
         int depth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(selection);
         ValidateApiScope(selection.Codebase, selection.Channel);
@@ -349,7 +359,7 @@ public sealed class ApiIndexQueryService
         return run is null
             ? NoCompletedIndexHierarchy()
             : await _indexQueryService.OverriddenByInIndexAsync(
-                run, selection.Codebase, selection.Channel, selector, limit, depth, cancellationToken);
+                run, selection.Codebase, selection.Channel, selector, limit, depth, cancellationToken, offset);
     }
 
     public async Task<HierarchyQueryResult> DerivedSelectedAsync(

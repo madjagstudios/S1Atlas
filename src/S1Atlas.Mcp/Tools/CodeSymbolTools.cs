@@ -311,12 +311,14 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Return only exact (statically bound) callers; omit may-dispatch callers.")] bool exact = false,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
         [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
         await FindRelationshipsAsync(
+            "find_callers",
             selector,
             codebase,
             channel,
@@ -326,6 +328,7 @@ public sealed class CodeSymbolTools
             scope,
             collection,
             RelationshipDirection.Callers,
+            cursor,
             exact,
             includeGenerated,
             includeDelegates);
@@ -338,11 +341,12 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
         [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
-        await FindRelationshipsAsync(selector, codebase, channel, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
+        await FindRelationshipsAsync("find_callees", selector, codebase, channel, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, cursor, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
 
     [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
@@ -352,10 +356,12 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false) =>
         await FindRelationshipsAsync(
+            "find_references",
             selector,
             codebase,
             channel,
@@ -365,6 +371,7 @@ public sealed class CodeSymbolTools
             scope,
             collection,
             RelationshipDirection.References,
+            cursor,
             includeGenerated: includeGenerated);
 
     [McpServerTool(Name = "find_call_sites", Title = "Find call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
@@ -375,6 +382,7 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
@@ -390,6 +398,11 @@ public sealed class CodeSymbolTools
                 return limitError;
             }
 
+            if (!ToolArguments.TryDecodeCursor<CallSiteQueryResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+            {
+                return cursorError;
+            }
+
             return await WithApiSelectionAsync<CallSiteQueryResult>(
                 codebase,
                 channel,
@@ -402,8 +415,20 @@ public sealed class CodeSymbolTools
                         selection,
                         selector,
                         boundedLimit,
-                        ct);
-                    return EnvelopeMapper.FromApiCallSites(catalog, selection, result);
+                        ct,
+                        offset);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_call_sites", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection);
+                    if (!ToolArguments.VerifyCursorHash<CallSiteQueryResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiCallSites(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -429,7 +454,12 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<CallSiteQueryResult> scopeError))
+                if (!ToolArguments.TryDecodeCursor<CallSiteQueryResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<CallSiteQueryResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -447,13 +477,26 @@ public sealed class CodeSymbolTools
                         CodeChannel.Installed,
                         selector,
                         boundedLimit,
-                        ct)
+                        ct,
+                        offset)
                     : await _services.FederatedIndexQueryService.CallSitesAsync(
                         selector,
                         options,
                         ct,
                         pinned.ReferenceCollection?.ReferenceIndexId);
-                return EnvelopeMapper.FromScopedCallSites(authority, result, options.ReferenceCollection, pinned.ReferenceCollection?.ReferenceIndexId);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    "find_call_sites", authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<CallSiteQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedCallSites(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor },
+                    options.ReferenceCollection, pinned.ReferenceCollection?.ReferenceIndexId);
             });
     }
 
@@ -467,6 +510,7 @@ public sealed class CodeSymbolTools
         [Description("Return only field writers.")] bool writers = false,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
@@ -488,6 +532,11 @@ public sealed class CodeSymbolTools
                 return limitError;
             }
 
+            if (!ToolArguments.TryDecodeCursor<FieldReferenceQueryResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+            {
+                return cursorError;
+            }
+
             var filter = readers
                 ? FieldReferenceFilter.Readers
                 : writers
@@ -507,8 +556,20 @@ public sealed class CodeSymbolTools
                         boundedLimit,
                         filter,
                         ct,
-                        includeGenerated);
-                    return EnvelopeMapper.FromApiFieldReferences(catalog, selection, result);
+                        includeGenerated,
+                        offset);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_field_references", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, readers.ToString(), writers.ToString(), includeGenerated.ToString());
+                    if (!ToolArguments.VerifyCursorHash<FieldReferenceQueryResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiFieldReferences(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -544,7 +605,12 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<FieldReferenceQueryResult> scopeError))
+                if (!ToolArguments.TryDecodeCursor<FieldReferenceQueryResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<FieldReferenceQueryResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -564,7 +630,8 @@ public sealed class CodeSymbolTools
                         boundedLimit,
                         filter,
                         ct,
-                        includeGenerated)
+                        includeGenerated,
+                        offset)
                     : await _services.FederatedIndexQueryService.FieldReferencesAsync(
                         selector,
                         options,
@@ -572,7 +639,19 @@ public sealed class CodeSymbolTools
                         ct,
                         pinned.ReferenceCollection?.ReferenceIndexId,
                         includeGenerated);
-                return EnvelopeMapper.FromScopedFieldReferences(authority, result, options.ReferenceCollection, pinned.ReferenceCollection?.ReferenceIndexId);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    "find_field_references", authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection, readers.ToString(), writers.ToString(), includeGenerated.ToString());
+                if (!ToolArguments.VerifyCursorHash<FieldReferenceQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedFieldReferences(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor },
+                    options.ReferenceCollection, pinned.ReferenceCollection?.ReferenceIndexId);
             });
     }
 
@@ -585,6 +664,7 @@ public sealed class CodeSymbolTools
         [Description("Optional type relationship kinds to include.")] string[]? relationKinds = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
@@ -605,6 +685,14 @@ public sealed class CodeSymbolTools
                 return EnvelopeMapper.Invalid<RelationshipQuerySetResult>("InvalidRelationshipKind", "Unsupported API type relationship kind.");
             }
 
+            if (!ToolArguments.TryDecodeCursor<RelationshipQuerySetResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+            {
+                return cursorError;
+            }
+
+            var kindsHash = relationKinds is null
+                ? string.Join(",", RelatedTypeRelationshipKinds.OrderBy(kind => kind, StringComparer.Ordinal))
+                : string.Join(",", relationKinds.OrderBy(kind => kind, StringComparer.Ordinal));
             return await WithApiSelectionAsync<RelationshipQuerySetResult>(
                 codebase,
                 channel,
@@ -616,13 +704,25 @@ public sealed class CodeSymbolTools
                     var result = await _services.ApiIndexQueryService.RelationshipsSelectedAsync(
                         selection,
                         selector,
-                        relationKinds is null ? boundedLimit : 500,
+                        boundedLimit,
                         ApiRelationshipDirection.References,
                         relationKinds is null
                             ? null
                             : new HashSet<string>(relationKinds, StringComparer.OrdinalIgnoreCase),
-                        ct);
-                    return EnvelopeMapper.FromApiRelationships(catalog, selection, result);
+                        ct,
+                        offset: offset);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_related_types", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, kindsHash);
+                    if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiRelationships(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -657,7 +757,12 @@ public sealed class CodeSymbolTools
                     return kindError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<RelationshipQuerySetResult> scopeError))
+                if (!ToolArguments.TryDecodeCursor<RelationshipQuerySetResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<RelationshipQuerySetResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -677,20 +782,35 @@ public sealed class CodeSymbolTools
                         ct)
                     : await _services.FederatedIndexQueryService.RefsAsync(
                         selector,
-                        options with { Limit = 500 },
+                        options with { Limit = 500, Offset = 0 },
                         ct);
                 if (result.Resolution.Status == SymbolResolutionStatus.Resolved)
                 {
+                    var filtered = result.Relationships
+                        .Where(edge => selectedKinds.Contains(edge.Kind))
+                        .ToArray();
+                    var (rows, hasMore) = IndexPaging.TakePage(filtered, offset, boundedLimit);
                     result = result with
                     {
-                        Relationships = result.Relationships
-                            .Where(edge => selectedKinds.Contains(edge.Kind))
-                            .Take(boundedLimit)
-                            .ToArray()
+                        Relationships = rows,
+                        TotalCount = filtered.Length,
+                        HasMore = hasMore
                     };
                 }
 
-                return EnvelopeMapper.FromScopedRelationships(authority, result, options.ReferenceCollection);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    "find_related_types", authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection,
+                    string.Join(",", selectedKinds.OrderBy(kind => kind, StringComparer.Ordinal)));
+                if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedRelationships(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor }, options.ReferenceCollection);
             });
     }
 
@@ -702,6 +822,7 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
@@ -717,6 +838,11 @@ public sealed class CodeSymbolTools
                 return limitError;
             }
 
+            if (!ToolArguments.TryDecodeCursor<HierarchyQueryResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+            {
+                return cursorError;
+            }
+
             return await WithApiSelectionAsync<HierarchyQueryResult>(
                 codebase,
                 channel,
@@ -729,8 +855,20 @@ public sealed class CodeSymbolTools
                         selection,
                         selector,
                         boundedLimit,
-                        ct);
-                    return EnvelopeMapper.FromApiHierarchy(catalog, selection, result);
+                        ct,
+                        offset);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_overrides", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection);
+                    if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiHierarchy(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -756,7 +894,12 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError))
+                if (!ToolArguments.TryDecodeCursor<HierarchyQueryResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -773,13 +916,26 @@ public sealed class CodeSymbolTools
                         CodeChannel.Installed,
                         selector,
                         boundedLimit,
-                        ct)
+                        ct,
+                        offset)
                     : await _services.FederatedIndexQueryService.OverridesAsync(
                         selector,
                         options,
-                        ct);
+                        ct,
+                        offset: offset);
 
-                return EnvelopeMapper.FromScopedHierarchy(authority, result, options.ReferenceCollection);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    "find_overrides", authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedHierarchy(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor }, options.ReferenceCollection);
             });
     }
 
@@ -792,6 +948,7 @@ public sealed class CodeSymbolTools
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
@@ -812,6 +969,11 @@ public sealed class CodeSymbolTools
                 return depthError;
             }
 
+            if (!ToolArguments.TryDecodeCursor<HierarchyQueryResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+            {
+                return cursorError;
+            }
+
             return await WithApiSelectionAsync<HierarchyQueryResult>(
                 codebase,
                 channel,
@@ -825,8 +987,20 @@ public sealed class CodeSymbolTools
                         selector,
                         boundedLimit,
                         boundedDepth,
-                        ct);
-                    return EnvelopeMapper.FromApiHierarchy(catalog, selection, result);
+                        ct,
+                        offset);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_overriders", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        boundedDepth.ToString(), scope.ToString(), collection);
+                    if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiHierarchy(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -857,7 +1031,12 @@ public sealed class CodeSymbolTools
                     return depthError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError))
+                if (!ToolArguments.TryDecodeCursor<HierarchyQueryResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -875,14 +1054,27 @@ public sealed class CodeSymbolTools
                         selector,
                         boundedLimit,
                         boundedDepth,
-                        ct)
+                        ct,
+                        offset)
                     : await _services.FederatedIndexQueryService.OverriddenByAsync(
                         selector,
                         options,
                         boundedDepth,
-                        ct);
+                        ct,
+                        offset: offset);
 
-                return EnvelopeMapper.FromScopedHierarchy(authority, result, options.ReferenceCollection);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    "find_overriders", authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    boundedDepth.ToString(), scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedHierarchy(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor }, options.ReferenceCollection);
             });
     }
 
@@ -894,8 +1086,8 @@ public sealed class CodeSymbolTools
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
-        [Description("Number of results to skip.")] int offset = 0,
         CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
@@ -916,9 +1108,9 @@ public sealed class CodeSymbolTools
                 return depthError;
             }
 
-            if (!ToolArguments.TryBoundOffset(offset, null, out var boundedOffset, out ToolEnvelope<HierarchyQueryResult> offsetError))
+            if (!ToolArguments.TryDecodeCursor<HierarchyQueryResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
             {
-                return offsetError;
+                return cursorError;
             }
 
             return await WithApiSelectionAsync<HierarchyQueryResult>(
@@ -934,9 +1126,20 @@ public sealed class CodeSymbolTools
                         selector,
                         boundedLimit,
                         boundedDepth,
-                        boundedOffset,
+                        offset,
                         ct);
-                    return EnvelopeMapper.FromApiHierarchy(catalog, selection, result);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_derived_types", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        boundedDepth.ToString(), scope.ToString(), collection);
+                    if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiHierarchy(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -967,12 +1170,12 @@ public sealed class CodeSymbolTools
                     return depthError;
                 }
 
-                if (!ToolArguments.TryBoundOffset(offset, authority, out var boundedOffset, out ToolEnvelope<HierarchyQueryResult> offsetError))
+                if (!ToolArguments.TryDecodeCursor<HierarchyQueryResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
                 {
-                    return offsetError;
+                    return cursorError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError))
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<HierarchyQueryResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -990,16 +1193,27 @@ public sealed class CodeSymbolTools
                         selector,
                         boundedLimit,
                         boundedDepth,
-                        boundedOffset,
+                        offset,
                         ct)
                     : await _services.FederatedIndexQueryService.DerivedAsync(
                         selector,
                         options,
                         boundedDepth,
-                        boundedOffset,
+                        offset,
                         ct);
 
-                return EnvelopeMapper.FromScopedHierarchy(authority, result, options.ReferenceCollection);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    "find_derived_types", authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    boundedDepth.ToString(), scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedHierarchy(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor }, options.ReferenceCollection);
             });
     }
 
@@ -1085,6 +1299,7 @@ public sealed class CodeSymbolTools
     }
 
     private async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelationshipsAsync(
+        string toolName,
         string selector,
         McpCodebase codebase,
         CodeChannel channel,
@@ -1094,6 +1309,7 @@ public sealed class CodeSymbolTools
         IndexQueryScope scope,
         string? collection,
         RelationshipDirection direction,
+        string? cursor,
         bool exact = false,
         bool includeGenerated = false,
         bool includeDelegates = false)
@@ -1108,6 +1324,11 @@ public sealed class CodeSymbolTools
             if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<RelationshipQuerySetResult> limitError))
             {
                 return limitError;
+            }
+
+            if (!ToolArguments.TryDecodeCursor<RelationshipQuerySetResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+            {
+                return cursorError;
             }
 
             var apiDirection = direction switch
@@ -1133,8 +1354,20 @@ public sealed class CodeSymbolTools
                         ct,
                         exact,
                         includeGenerated,
-                        includeDelegates);
-                    return EnvelopeMapper.FromApiRelationships(catalog, selection, result);
+                        includeDelegates,
+                        offset);
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        toolName, catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
+                    if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
+                    var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                    return EnvelopeMapper.FromApiRelationships(
+                        catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
                 },
                 ct);
         }
@@ -1160,7 +1393,12 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<RelationshipQuerySetResult> scopeError))
+                if (!ToolArguments.TryDecodeCursor<RelationshipQuerySetResult>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+                {
+                    return cursorError;
+                }
+
+                if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<RelationshipQuerySetResult> scopeError, offset))
                 {
                     return scopeError;
                 }
@@ -1173,9 +1411,9 @@ public sealed class CodeSymbolTools
                 var result = options.Scope == IndexQueryScope.Game
                     ? direction switch
                     {
-                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, exact, includeGenerated, includeDelegates),
-                        RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated, includeDelegates),
-                        _ => await _services.IndexQueryService.RefsInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated)
+                        RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, exact, includeGenerated, includeDelegates, offset),
+                        RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated, includeDelegates, offset),
+                        _ => await _services.IndexQueryService.RefsInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated, offset)
                     }
                     : direction switch
                     {
@@ -1183,19 +1421,52 @@ public sealed class CodeSymbolTools
                         RelationshipDirection.Callees => await _services.FederatedIndexQueryService.CalleesAsync(selector, options, ct, includeGenerated: includeGenerated, includeDelegates: includeDelegates),
                         _ => await _services.FederatedIndexQueryService.RefsAsync(selector, options, ct, includeGenerated: includeGenerated)
                     };
-                return EnvelopeMapper.FromScopedRelationships(authority, result, options.ReferenceCollection);
+                var expectedHash = ToolArguments.CursorHashFor(
+                    toolName, authority.ResolvedBuildId, authority.IndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
+                if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
+                var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+                return EnvelopeMapper.FromScopedRelationships(
+                    authority, nextCursor is null ? result : result with { NextCursor = nextCursor }, options.ReferenceCollection);
             });
     }
 
     [McpServerTool(Name = "list_api_indexes", Title = "List API indexes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed S1API and S1MAPI indexes available to the read-only Atlas host.")]
     public async Task<ToolEnvelope<ApiIndexCatalogResult>> ListApiIndexesAsync(
         [Description("Optional Schedule I build ID used only to select installed API indexes.")] string? buildId = null,
-        CancellationToken ct = default) =>
-        await EnvelopeMapper.WithAtlasAvailabilityAsync(async () =>
+        [Description("Max results (1-500).")] int limit = 50,
+        CancellationToken ct = default,
+        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null)
+    {
+        if (!ToolArguments.TryBoundLimit<ApiIndexCatalogResult>(limit, null, out var boundedLimit, out var limitError))
         {
-            var result = await _services.ApiIndexQueryService.ListAsync(buildId, ct);
-            return EnvelopeMapper.FromApiCatalog(result);
+            return limitError;
+        }
+
+        if (!ToolArguments.TryDecodeCursor<ApiIndexCatalogResult>(cursor, null, out var cursorHash, out var offset, out var cursorError))
+        {
+            return cursorError;
+        }
+
+        return await EnvelopeMapper.WithAtlasAvailabilityAsync(async () =>
+        {
+            var result = await _services.ApiIndexQueryService.ListAsync(buildId, ct, boundedLimit, offset);
+            var expectedHash = ToolArguments.CursorHashFor(
+                "list_api_indexes", result.ResolvedBuildId, result.RequestedBuildId, buildId, boundedLimit.ToString());
+            if (!ToolArguments.VerifyCursorHash<ApiIndexCatalogResult>(cursorHash, expectedHash, null, out var hashError))
+            {
+                return hashError;
+            }
+
+            var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
+            return EnvelopeMapper.FromApiCatalog(nextCursor is null ? result : result with { NextCursor = nextCursor });
         });
+    }
 
     private static CodebaseKind MapCodebase(McpCodebase codebase) => codebase switch
     {
@@ -1308,8 +1579,57 @@ public sealed class CodeSymbolTools
         ToolEnvelope<T>? Error,
         ReferenceCollectionAuthorityQueryResult? ReferenceCollection = null) where T : class;
 
-    private static class ToolArguments
+    internal static class ToolArguments
     {
+        public const string InvalidCursorMessage =
+            "The page cursor is invalid or was created for different arguments, a different build, or a different index.";
+
+        public static bool TryDecodeCursor<T>(
+            string? cursor,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
+            out string? cursorHash,
+            out int offset,
+            out ToolEnvelope<T> error) where T : class
+        {
+            cursorHash = null;
+            offset = 0;
+            if (cursor is null)
+            {
+                error = null!;
+                return true;
+            }
+
+            if (!McpPageCursor.TryDecodeShape(cursor, out var hash, out var decoded))
+            {
+                error = Invalid<T>(authority, "InvalidCursor", InvalidCursorMessage);
+                return false;
+            }
+
+            cursorHash = hash;
+            offset = decoded;
+            error = null!;
+            return true;
+        }
+
+        public static bool VerifyCursorHash<T>(
+            string? cursorHash,
+            string expectedHash,
+            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
+            out ToolEnvelope<T> error) where T : class
+        {
+            if (cursorHash is null || string.Equals(cursorHash, expectedHash, StringComparison.Ordinal))
+            {
+                error = null!;
+                return true;
+            }
+
+            error = Invalid<T>(authority, "InvalidCursor", InvalidCursorMessage);
+            return false;
+        }
+
+        public static string CursorHashFor(string tool, string? buildId, string? indexId, params string?[] args) =>
+            McpPageCursor.HashFor(tool, args.Select(arg => arg ?? string.Empty), buildId, indexId);
+
         public static bool TryValidateSelector<T>(
             string? selector,
             S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
@@ -1423,7 +1743,8 @@ public sealed class CodeSymbolTools
             string? collection,
             S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out IndexQueryOptions options,
-            out ToolEnvelope<T> error) where T : class
+            out ToolEnvelope<T> error,
+            int offset = 0) where T : class
         {
             var normalizedCollection = string.IsNullOrWhiteSpace(collection) ? null : collection.Trim();
             if (scope == IndexQueryScope.Game && normalizedCollection is not null)
@@ -1446,7 +1767,8 @@ public sealed class CodeSymbolTools
                 false,
                 50,
                 scope,
-                normalizedCollection);
+                normalizedCollection,
+                offset);
             error = null!;
             return true;
         }

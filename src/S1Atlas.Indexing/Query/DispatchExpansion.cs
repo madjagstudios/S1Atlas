@@ -70,7 +70,8 @@ public static class DispatchExpansion
     public static MergedCallerPage MergeAndTake(
         IReadOnlyList<RelationshipQueryResult> exact,
         IReadOnlyList<RelationshipQueryResult> derived,
-        int limit)
+        int limit,
+        int offset = 0)
     {
         ArgumentNullException.ThrowIfNull(exact);
         ArgumentNullException.ThrowIfNull(derived);
@@ -95,7 +96,7 @@ public static class DispatchExpansion
             .ThenBy(row => row.RelationshipId, StringComparer.Ordinal)
             .ToArray();
         return new MergedCallerPage(
-            orderedExact.Concat(deduped).Take(limit).ToArray(),
+            orderedExact.Concat(deduped).Skip(offset).Take(limit).ToArray(),
             orderedExact.Length,
             deduped.Length);
     }

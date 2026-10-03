@@ -138,12 +138,12 @@ public sealed class McpTrustBoundaryTests
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
         AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query", "codebase"]);
-        AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
+        AssertSchema(schemas["list_api_indexes"], ["buildId", "limit", "cursor"], []);
         AssertSchema(
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
-        AssertSchema(schemas["list_reference_collections"], [], []);
+        AssertSchema(schemas["list_reference_collections"], ["limit", "cursor"], []);
         AssertSchema(schemas["get_type"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
         AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
         AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector", "codebase"]);
@@ -176,17 +176,17 @@ public sealed class McpTrustBoundaryTests
                 apiOutcome.IsError ?? false);
         }
 
-        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
         AssertSchema(
             schemas["find_field_references"],
-            ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "scope", "collection", "includeGenerated"],
+            ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "cursor", "scope", "collection", "includeGenerated"],
             ["selector", "codebase"]);
-        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
         AssertSchema(
             schemas["find_related_types"],
-            ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "scope", "collection"],
+            ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"],
             ["selector", "codebase"]);
 
         var serialized = await McpTestHost.CallToolAsync(
@@ -238,15 +238,15 @@ public sealed class McpTrustBoundaryTests
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
         Assert.Equal(26, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
-        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_derived_types"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "offset", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_field_references"], ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_overriders"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_overrides"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_derived_types"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_field_references"], ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_overriders"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_overrides"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
         AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
         AssertSchema(schemas["get_component"], ["selector", "buildId", "sceneSnapshotId", "includeReferences", "includeCode", "limit"], ["selector"]);
         AssertSchema(schemas["get_environment"], ["buildId"], []);
@@ -260,10 +260,10 @@ public sealed class McpTrustBoundaryTests
             schemas["investigate_seam"],
             ["behavioralQuestion", "selector", "buildId", "scope", "collection", "relationshipLimit", "ownerLimit", "context", "details", "nativeSymbolIds", "nativeTraversalBudget"],
             ["behavioralQuestion", "selector"]);
-        AssertSchema(schemas["list_api_indexes"], ["buildId"], []);
-        AssertSchema(schemas["list_builds"], ["limit"], []);
-        AssertSchema(schemas["list_reference_collections"], [], []);
-        AssertSchema(schemas["list_scenes"], ["buildId", "sceneSnapshotId", "kind", "query", "limit"], []);
+        AssertSchema(schemas["list_api_indexes"], ["buildId", "limit", "cursor"], []);
+        AssertSchema(schemas["list_builds"], ["limit", "cursor"], []);
+        AssertSchema(schemas["list_reference_collections"], ["limit", "cursor"], []);
+        AssertSchema(schemas["list_scenes"], ["buildId", "sceneSnapshotId", "kind", "query", "limit", "cursor"], []);
         AssertSchema(
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
@@ -899,8 +899,8 @@ internal static class McpTestHost
         await code.FindOverridesAsync(" ", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, ct);
         await code.FindOverridersAsync(atlas.HierarchyBaseMethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, ct);
         await code.FindOverridersAsync(" ", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, ct);
-        await code.FindDerivedTypesAsync(atlas.HierarchyBaseTypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, 0, ct);
-        await code.FindDerivedTypesAsync(" ", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, 0, ct);
+        await code.FindDerivedTypesAsync(atlas.HierarchyBaseTypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, ct);
+        await code.FindDerivedTypesAsync(" ", McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, ct);
         await new ReferenceCollectionTools(services).ListReferenceCollectionsAsync(ct);
 
         await compare.CompareSymbolAsync(atlas.CompareSelector, atlas.BuildIdA, atlas.BuildIdB, ct);
@@ -947,7 +947,7 @@ internal static class McpTestHost
         var relatedTypes = await tools.FindRelatedTypesAsync(atlas.MethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, ct);
         var overrides = await tools.FindOverridesAsync(atlas.HierarchyDerivedMethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, ct);
         var overriders = await tools.FindOverridersAsync(atlas.HierarchyBaseMethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, ct);
-        var derivedTypes = await tools.FindDerivedTypesAsync(atlas.HierarchyBaseTypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, 0, ct);
+        var derivedTypes = await tools.FindDerivedTypesAsync(atlas.HierarchyBaseTypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, 10, ct);
         return
         [
             Observe(search, search.Data!.Results.Select(result => result.IndexId)),

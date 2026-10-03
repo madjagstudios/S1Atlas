@@ -86,8 +86,8 @@ public sealed class HierarchyToolTests
             buildId: null,
             limit: 50,
             depth: 10,
-            offset: 0,
-            CancellationToken.None);
+            cursor: null,
+            ct: CancellationToken.None);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Equal(1, envelope.Data!.TotalCount);
@@ -95,26 +95,6 @@ public sealed class HierarchyToolTests
         Assert.True(node.IsDirect);
         Assert.Equal("Inherits", node.Edge.Kind);
         Assert.Equal("Demo.Widget", node.Edge.Source.QualifiedName);
-    }
-
-    [Fact]
-    public async Task FindDerivedTypes_InvalidOffset_ReturnsInvalid()
-    {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-        var tools = CreateTools(atlas);
-
-        var envelope = await tools.FindDerivedTypesAsync(
-            atlas.HierarchyBaseTypeSelector,
-            McpCodebase.scheduleI,
-            CodeChannel.Installed,
-            buildId: null,
-            limit: 50,
-            depth: 10,
-            offset: -1,
-            CancellationToken.None);
-
-        Assert.Equal(ToolStatus.Invalid, envelope.Status);
-        Assert.Equal("InvalidOffset", envelope.Error?.Code);
     }
 
     [Fact]
@@ -191,8 +171,8 @@ public sealed class HierarchyToolTests
             buildId: null,
             limit: 50,
             depth: 10,
-            offset: 0,
-            CancellationToken.None);
+            cursor: null,
+            ct: CancellationToken.None);
 
         Assert.Equal(ToolStatus.Ambiguous, envelope.Status);
         Assert.NotEmpty(envelope.Candidates);

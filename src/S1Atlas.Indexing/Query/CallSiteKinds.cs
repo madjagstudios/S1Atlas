@@ -8,10 +8,12 @@ internal static class CallSiteKinds
 
     public static IReadOnlyList<IndexRelationshipRecord> MergeAndTake(
         IEnumerable<IndexRelationshipRecord> edges,
-        int limit) =>
+        int limit,
+        int offset = 0) =>
         edges
             .OrderBy(edge => edge.TargetText ?? string.Empty, StringComparer.Ordinal)
             .ThenBy(edge => edge.RelationshipId, StringComparer.Ordinal)
+            .Skip(offset)
             .Take(limit)
             .ToArray();
 }

@@ -313,8 +313,8 @@ public sealed class ReferenceModQueryService
         var ordered = HierarchyTraversal.Order(
             mapped.Select(edge => new HierarchyNodeQueryResult(edge, depths[edge.RelationshipId], depths[edge.RelationshipId] == 1)).ToArray(),
             incoming);
-        var page = ordered.Skip(offset).Take(options.Limit).ToArray();
-        return new HierarchyQueryResult(resolution, page, ordered.Count, page.Length);
+        var (rows, hasMore) = IndexPaging.TakePage(ordered, offset, options.Limit);
+        return new HierarchyQueryResult(resolution, rows, ordered.Count, rows.Count, HasMore: hasMore);
     }
 
     public async Task<IReadOnlyList<ReferenceModQueryResult>> GetModsAsync(
@@ -330,7 +330,9 @@ public sealed class ReferenceModQueryService
     }
 
     public async Task<ReferenceCollectionListResult> ListCollectionsAsync(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int limit = int.MaxValue,
+        int offset = 0)
     {
         var collections = new List<ReferenceCollectionQueryResult>();
         foreach (var run in await _repository.GetCompletedReferenceIndexesAsync(cancellationToken))
@@ -371,7 +373,8 @@ public sealed class ReferenceModQueryService
             .Select(group => group.First())
             .OrderBy(collection => collection.Collection, StringComparer.Ordinal)
             .ToArray();
-        return new ReferenceCollectionListResult(unique.Length, unique);
+        var (rows, hasMore) = IndexPaging.TakePage(unique, offset, limit);
+        return new ReferenceCollectionListResult(unique.Length, rows, HasMore: hasMore);
     }
 
     public async Task<ReferenceCollectionAuthorityQueryResult?> GetCollectionAuthorityAsync(
@@ -464,17 +467,19 @@ public sealed class ReferenceModQueryService
             ? selectedRecord.BodyRecoveryStatus ?? BodyRecoveryStatus.Unknown
             : null;
         if (mode == RelationshipMode.Callers && !exact)
-            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated, includeDelegates);
+            return await ExpandedCallersAsync(selection, resolution, id, selectedIsGame, bodyStatus, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated, includeDelegates, options);
         var relationships = await MapRelationshipsAsync(selection, edges, options.Scope == IndexQueryScope.All, cancellationToken, includeGenerated, LabelContextFor(mode));
+        var (rows, hasMore) = IndexPaging.TakePage(relationships, options.Offset, options.Limit);
         return new RelationshipQuerySetResult(
             resolution,
-            relationships,
+            rows,
             bodyStatus,
             mode == RelationshipMode.Callers,
             mode == RelationshipMode.Refs ? string.Empty : "Reference relationships are limited to persisted target resolutions.",
             relationships.Count,
             ExactCount: mode == RelationshipMode.Callers ? relationships.Count : null,
-            DerivedCount: mode == RelationshipMode.Callers ? 0 : null);
+            DerivedCount: mode == RelationshipMode.Callers ? 0 : null,
+            HasMore: hasMore);
     }
 
     private async Task<RelationshipQuerySetResult> ExpandedCallersAsync(
@@ -486,7 +491,8 @@ public sealed class ReferenceModQueryService
         bool includeGameEndpoints,
         CancellationToken cancellationToken,
         bool includeGenerated = false,
-        bool includeDelegates = false)
+        bool includeDelegates = false,
+        IndexQueryOptions? options = null)
     {
         var exactRecords = await _repository.GetCompletedRelationshipsByTargetSymbolIdAsync(
             selection.Run.IndexId, id, cancellationToken);
@@ -517,16 +523,20 @@ public sealed class ReferenceModQueryService
         var flagged = derived
             .Select(row => row with { IsDerived = true, Routes = routesById[row.RelationshipId] })
             .ToArray();
-        var page = DispatchExpansion.MergeAndTake(exact, flagged, int.MaxValue);
+        var limit = options?.Limit ?? int.MaxValue;
+        var offset = options?.Offset ?? 0;
+        var page = DispatchExpansion.MergeAndTake(exact, flagged, IndexPaging.PageWindow(offset, limit), offset);
+        var (rows, hasMore) = IndexPaging.TakePage(page.Relationships, 0, limit);
         return new RelationshipQuerySetResult(
             resolution,
-            page.Relationships,
+            rows,
             bodyStatus,
             true,
             "Reference relationships are limited to persisted target resolutions.",
             page.ExactCount + page.DerivedCount,
             page.ExactCount,
-            page.DerivedCount);
+            page.DerivedCount,
+            HasMore: hasMore);
     }
 
     private async Task<SymbolResolutionResult> ResolveInIndexAsync(IndexSelection selection, string selector, CancellationToken cancellationToken)

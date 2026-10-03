@@ -37,7 +37,7 @@ public sealed class ApiCodebaseRoutingTests
             environmentSnapshotId: null,
             cancellationToken);
 
-        var result = await atlas.Tools.ListApiIndexesAsync(null, cancellationToken);
+        var result = await atlas.Tools.ListApiIndexesAsync(null, ct: cancellationToken);
 
         Assert.Equal(ToolStatus.Resolved, result.Status);
         var catalog = Assert.IsType<ApiIndexCatalogResult>(result.Data);
@@ -476,7 +476,7 @@ public sealed class ApiCodebaseRoutingTests
             symbols: [ApiSymbol("read-only-symbol", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ReadOnly")]);
         var before = FileTree.HashAll(atlas.Root);
 
-        await atlas.Tools.ListApiIndexesAsync(null, cancellationToken);
+        await atlas.Tools.ListApiIndexesAsync(null, ct: cancellationToken);
         await atlas.Tools.SearchSymbolsAsync(
             "Demo.ReadOnly", McpCodebase.s1api, CodeChannel.Release, buildId: null, limit: 10, ct: cancellationToken);
         await atlas.Tools.GetSourceAsync(

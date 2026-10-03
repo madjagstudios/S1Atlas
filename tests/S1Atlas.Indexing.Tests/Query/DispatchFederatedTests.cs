@@ -16,6 +16,7 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
     private const string GameOverride = "Demo.GameOverride::Run():System.Void";
     private const string GameCaller = "Demo.GameCaller::Run():System.Void";
     private const string GameDirect = "Demo.GameDirect::Run():System.Void";
+    private const string GameExtra = "Demo.GameExtra::Run():System.Void";
     private const string ModCaller = "Demo.ModCaller::Run():System.Void";
     private const string RefBase = "Demo.RefBase::Run():System.Void";
     private const string RefOverride = "Demo.RefOverride::Run():System.Void";
@@ -45,10 +46,10 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
 
         Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
         Assert.Equal(1, result.ExactCount);
-        Assert.Equal(2, result.DerivedCount);
-        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(3, result.DerivedCount);
+        Assert.Equal(4, result.TotalCount);
         Assert.Equal(
-            [GameDirect, GameCaller, ModCaller],
+            [GameDirect, GameCaller, GameExtra, ModCaller],
             result.Relationships.Select(edge => edge.Source.QualifiedName));
 
         var exact = result.Relationships[0];
@@ -61,7 +62,7 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
             Assert.True(edge.IsDerived);
             Assert.Equal([route], edge.Routes);
         });
-        Assert.Equal("reference", result.Relationships[2].Source.Origin);
+        Assert.Equal("reference", result.Relationships[3].Source.Origin);
     }
 
     [Fact]
@@ -94,10 +95,10 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
             TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.ExactCount);
-        Assert.Equal(1, result.DerivedCount);
-        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(2, result.DerivedCount);
+        Assert.Equal(3, result.TotalCount);
         Assert.Equal(
-            [GameDirect, GameCaller],
+            [GameDirect, GameCaller, GameExtra],
             result.Relationships.Select(edge => edge.Source.QualifiedName));
         Assert.True(result.Relationships[1].IsDerived);
     }
@@ -186,6 +187,7 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
         var row = Assert.Single(result.Relationships);
         Assert.Equal(GameDirect, row.Source.QualifiedName);
         Assert.False(row.IsDerived);
+        Assert.True(result.HasMore);
         Assert.Null(result.TotalCount);
         Assert.Null(result.ExactCount);
         Assert.Null(result.DerivedCount);
@@ -275,10 +277,11 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
         var overrideMethod = Method("symbol-game-override", snapshot.SnapshotId, GameOverride, CodebaseKind.ScheduleI, CodeChannel.Installed);
         var caller = Method("symbol-game-caller", snapshot.SnapshotId, GameCaller, CodebaseKind.ScheduleI, CodeChannel.Installed);
         var direct = Method("symbol-game-direct", snapshot.SnapshotId, GameDirect, CodebaseKind.ScheduleI, CodeChannel.Installed);
+        var extra = Method("symbol-game-extra", snapshot.SnapshotId, GameExtra, CodebaseKind.ScheduleI, CodeChannel.Installed);
         await repository.CompleteIndexRunAsync(
             run.IndexId,
             new IndexWriteSet(
-                [baseMethod, overrideMethod, caller, direct],
+                [baseMethod, overrideMethod, caller, direct, extra],
                 [],
                 [],
                 [],
@@ -291,7 +294,13 @@ public sealed class DispatchFederatedTests : IAsyncDisposable
                         baseMethod.QualifiedName, "CallsVirtual", "Body"),
                     new IndexRelationshipRecord(
                         "rel-game-direct", snapshot.SnapshotId, direct.SymbolId, overrideMethod.SymbolId,
-                        overrideMethod.QualifiedName, "Calls", "Body")
+                        overrideMethod.QualifiedName, "Calls", "Body"),
+                    // A third game caller keeps the game side wider than the
+                    // limit+1 merge window at limit 1, so paging tests still
+                    // exercise truncation with unknown totals.
+                    new IndexRelationshipRecord(
+                        "rel-game-extra", snapshot.SnapshotId, extra.SymbolId, baseMethod.SymbolId,
+                        baseMethod.QualifiedName, "CallsVirtual", "Body")
                 ]),
             "2026-09-01T12:00:00Z",
             cancellationToken);

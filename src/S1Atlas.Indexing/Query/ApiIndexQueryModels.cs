@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Indexing.Query;
@@ -23,4 +24,6 @@ public sealed record ApiIndexSelection(
 public sealed record ApiIndexCatalogResult(
     IReadOnlyList<ApiIndexSelection> Selections,
     string? RequestedBuildId,
-    string? ResolvedBuildId);
+    string? ResolvedBuildId,
+    string? NextCursor = null,
+    [property: JsonIgnore] bool HasMore = false);
