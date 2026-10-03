@@ -96,9 +96,11 @@ public sealed class PatchedByCliTests
         var unresolved = relationships.EnumerateArray()
             .Where(edge => !edge.GetProperty("target").GetProperty("resolved").GetBoolean())
             .ToArray();
-        var ambiguous = Assert.Single(unresolved);
-        Assert.Equal("Finalizer", ambiguous.GetProperty("generatedDetail").GetString());
+        Assert.Equal(2, unresolved.Length);
+        var ambiguous = Assert.Single(unresolved, edge => edge.GetProperty("generatedDetail").GetString() == "Finalizer");
         Assert.Contains("ambiguous-overload", ambiguous.GetProperty("target").GetProperty("rawText").GetString(), StringComparison.Ordinal);
+        var noOverload = Assert.Single(unresolved, edge => edge.GetProperty("generatedDetail").GetString() == "Prefix");
+        Assert.Contains("no-matching-overload", noOverload.GetProperty("target").GetProperty("rawText").GetString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -147,6 +149,35 @@ public sealed class PatchedByCliTests
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
         Assert.Equal(9, patches.GetProperty("totalCount").GetInt32());
+        var claims = document.RootElement.GetProperty("data").GetProperty("claims");
+        Assert.Contains(
+            claims.EnumerateArray(),
+            claim => claim.GetProperty("statement").GetString()!.Contains("patch", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Investigate_seam_counts_unresolved_reasons_as_prior_art()
+    {
+        await using var atlas = await HarmonyPatchCliAtlas.CreateAsync();
+
+        var result = atlas.Run(
+            "investigate-seam",
+            "Game.Widget::Compute(System.Int32,System.String)",
+            "--question",
+            "Which patches change Compute?",
+            "--scope",
+            "all",
+            "--collection",
+            HarmonyPatchAtlas.CollectionId,
+            "--details",
+            "--json");
+
+        Assert.Equal(0, result.ExitCode);
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var sections = document.RootElement.GetProperty("data").GetProperty("evidenceSections");
+        var patches = sections.EnumerateArray()
+            .Single(section => section.GetProperty("family").GetString() == "Patches");
+        Assert.Equal(4, patches.GetProperty("totalCount").GetInt32());
         var claims = document.RootElement.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),

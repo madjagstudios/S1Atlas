@@ -124,6 +124,38 @@ public sealed class FindPatchesTests
     }
 
     [Fact]
+    public async Task Find_patches_lists_unresolved_reasons_for_compute()
+    {
+        await using var atlas = await HarmonyPatchMcpAtlas.CreateAsync();
+        var server = await McpTestServer.StartAsync(atlas.DataRoot, TestContext.Current.CancellationToken);
+
+        var result = await server.Client.CallToolAsync(
+            "find_patches",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Game.Widget::Compute(System.Int32,System.String)",
+                ["codebase"] = "scheduleI",
+                ["limit"] = 50,
+                ["scope"] = "reference",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsError ?? false);
+        var text = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(result.Content)).Text;
+        using var document = JsonDocument.Parse(text);
+        var rows = document.RootElement.GetProperty("data").GetProperty("relationships").EnumerateArray().ToArray();
+        Assert.Equal(4, rows.Length);
+        Assert.Equal(2, rows.Count(row => row.GetProperty("target").GetProperty("resolved").GetBoolean()));
+        var unresolved = rows.Where(row => !row.GetProperty("target").GetProperty("resolved").GetBoolean()).ToArray();
+        Assert.Contains(unresolved, row => row.GetProperty("target").GetProperty("rawText").GetString()!.Contains("ambiguous-overload", StringComparison.Ordinal));
+        Assert.Contains(unresolved, row => row.GetProperty("target").GetProperty("rawText").GetString()!.Contains("no-matching-overload", StringComparison.Ordinal));
+
+        await server.DisposeAsync();
+        await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task Find_patches_rejects_a_foreign_cursor()
     {
         await using var atlas = await HarmonyPatchMcpAtlas.CreateAsync();

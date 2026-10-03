@@ -28,6 +28,8 @@ public sealed class HarmonyPatchReaderTests
     [InlineData("Mod.InteropPrefixPatch", "Prefix", HarmonyPatchKind.Prefix, "Il2CppGame.Widget::Run")]
     [InlineData("Mod.InteropParamPatch", "Prefix", HarmonyPatchKind.Prefix, "Game.Widget::Calibrate(Il2CppGame.Gadget)")]
     [InlineData("Mod.MissingPatch", "Prefix", HarmonyPatchKind.Prefix, "Game.Widget::Missing")]
+    [InlineData("Mod.MissingTypeTargetPatch", "Prefix", HarmonyPatchKind.Prefix, "Mod.ModOnlyType::Run")]
+    [InlineData("Mod.NoOverloadPatch", "Prefix", HarmonyPatchKind.Prefix, "Game.Widget::Compute(System.String)")]
     public async Task Attribute_patches_carry_canonical_target_attempts(
         string typeName,
         string methodName,

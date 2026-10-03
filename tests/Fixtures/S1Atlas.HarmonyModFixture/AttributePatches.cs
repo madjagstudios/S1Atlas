@@ -136,6 +136,30 @@ public class MissingPatch
     }
 }
 
+// Mod-only decoy: exists in this assembly but not in the game index, so patches
+// naming it as a declaring type must report target-type-not-found.
+public class ModOnlyType
+{
+}
+
+[HarmonyPatch(typeof(ModOnlyType), "Run")]
+public class MissingTypeTargetPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+    }
+}
+
+[HarmonyPatch(typeof(Widget), "Compute", new Type[] { typeof(string) })]
+public class NoOverloadPatch
+{
+    [HarmonyPrefix]
+    public static void Prefix()
+    {
+    }
+}
+
 [HarmonyPatch(typeof(Widget), MethodType.Getter)]
 public class GetterNoNamePatch
 {

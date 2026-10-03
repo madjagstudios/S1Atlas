@@ -14,13 +14,20 @@ public static class PatchTargetResolver
         IndexSymbolRecord hostSource,
         string modId,
         IReadOnlyDictionary<(string Type, string Name), List<IndexSymbolRecord>> gameMembers,
+        IReadOnlySet<string> gameTypes,
         IReadOnlyDictionary<(string Origin, string Type, string Name), List<IndexSymbolRecord>> modMembers)
     {
         ArgumentNullException.ThrowIfNull(fact);
         ArgumentNullException.ThrowIfNull(hostSource);
+        ArgumentNullException.ThrowIfNull(gameTypes);
         var source = ResolveSource(fact, hostSource, modId, modMembers);
         if (source is null)
+        {
+            // The one edgeless case: a manual-patch fact whose patch method cannot be
+            // identified at all leaves no source symbol to hang the edge on, so there is
+            // nothing to store. Every other recognised patch below yields an edge.
             return null;
+        }
 
         var kindName = fact.Kind.ToString();
         if (fact.Reason is not null)
@@ -30,18 +37,49 @@ public static class PatchTargetResolver
             !SymbolNames.TrySplitMember(fact.TargetSignature, out var typeName, out var memberTail) ||
             !TryParseMemberTail(memberTail, out var memberName, out var parameters))
         {
-            return null;
+            return UnresolvedEdge(
+                source,
+                fact,
+                kindName,
+                HarmonyPatchReasons.UnparsableTarget,
+                fact.TargetSignature ?? source.Signature);
         }
 
-        if (!gameMembers.TryGetValue((InteropTypeNames.Normalize(typeName), memberName), out var candidates))
-            return null;
+        var normalizedType = InteropTypeNames.Normalize(typeName);
+        if (!gameTypes.Contains(normalizedType))
+        {
+            return UnresolvedEdge(
+                source,
+                fact,
+                kindName,
+                HarmonyPatchReasons.TargetTypeNotFound,
+                fact.TargetSignature);
+        }
+
+        if (!gameMembers.TryGetValue((normalizedType, memberName), out var candidates))
+        {
+            return UnresolvedEdge(
+                source,
+                fact,
+                kindName,
+                HarmonyPatchReasons.TargetMemberNotFound,
+                fact.TargetSignature);
+        }
 
         var matching = candidates
             .DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal)
             .Where(symbol => parameters is null || MatchesParameters(symbol.Signature, parameters))
             .ToArray();
         if (matching.Length == 0)
-            return null;
+        {
+            return UnresolvedEdge(
+                source,
+                fact,
+                kindName,
+                HarmonyPatchReasons.NoMatchingOverload,
+                fact.TargetSignature);
+        }
+
         if (matching.Length > 1)
             return UnresolvedEdge(
                 source,
@@ -83,26 +121,14 @@ public static class PatchTargetResolver
         return matching.Length == 1 ? matching[0] : null;
     }
 
-    private static IndexRelationshipRecord? ResolveUnresolved(ManagedPatchFact fact, IndexSymbolRecord source, string kindName)
+    private static IndexRelationshipRecord ResolveUnresolved(ManagedPatchFact fact, IndexSymbolRecord source, string kindName)
     {
-        string reason;
-        if (string.Equals(fact.Reason, HarmonyPatchReasons.NonConstantArguments, StringComparison.Ordinal))
-        {
-            if (fact.Evidence != RelationshipEvidence.RecoveredIL)
-                return null;
-            reason = HarmonyPatchReasons.NonConstantTarget;
-        }
-        else if (fact.Reason is HarmonyPatchReasons.RuntimeComputedTarget
-            or HarmonyPatchReasons.NoTargetSpecified
-            or HarmonyPatchReasons.UnsupportedMethodType)
-        {
-            reason = fact.Reason;
-        }
-        else
-        {
-            return null;
-        }
-
+        // Every reason the readers emit is kept: a recognised patch with an unresolvable
+        // target is reported, never dropped. Only the NonConstantArguments marker is
+        // translated, into the stored non-constant-target reason.
+        var reason = string.Equals(fact.Reason, HarmonyPatchReasons.NonConstantArguments, StringComparison.Ordinal)
+            ? HarmonyPatchReasons.NonConstantTarget
+            : fact.Reason!;
         return UnresolvedEdge(source, fact, kindName, reason, fact.TargetSignature ?? source.Signature);
     }
 

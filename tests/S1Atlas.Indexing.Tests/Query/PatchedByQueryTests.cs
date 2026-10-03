@@ -53,11 +53,14 @@ public sealed class PatchedByQueryTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
-        Assert.Equal(3, result.TotalCount);
+        Assert.Equal(4, result.TotalCount);
         Assert.Equal(2, result.Relationships.Count(edge => edge.Target.Resolved));
-        var ambiguous = Assert.Single(result.Relationships, edge => !edge.Target.Resolved);
-        Assert.Equal("Finalizer", ambiguous.GeneratedDetail);
+        var unresolved = result.Relationships.Where(edge => !edge.Target.Resolved).ToArray();
+        Assert.Equal(2, unresolved.Length);
+        var ambiguous = Assert.Single(unresolved, edge => edge.GeneratedDetail == "Finalizer");
         Assert.Contains("ambiguous-overload", ambiguous.Target.RawText, StringComparison.Ordinal);
+        var noOverload = Assert.Single(unresolved, edge => edge.GeneratedDetail == "Prefix");
+        Assert.Contains("no-matching-overload", noOverload.Target.RawText, StringComparison.Ordinal);
     }
 
     [Fact]

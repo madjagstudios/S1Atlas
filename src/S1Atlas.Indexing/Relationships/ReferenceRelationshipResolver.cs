@@ -80,6 +80,7 @@ public sealed class ReferenceRelationshipResolver
         ArgumentNullException.ThrowIfNull(symbols);
         var targetLookup = new Dictionary<(string Type, string Name, int Arity, string Signature), List<IndexSymbolRecord>>();
         var gameMembers = new Dictionary<(string Type, string Name), List<IndexSymbolRecord>>();
+        var gameTypes = new HashSet<string>(StringComparer.Ordinal);
         var modMembers = new Dictionary<(string Origin, string Type, string Name), List<IndexSymbolRecord>>();
         foreach (var pair in symbols)
         {
@@ -92,9 +93,14 @@ public sealed class ReferenceRelationshipResolver
 
             candidates.Add(pair.Value);
             if (string.Equals(pair.Key.Origin, PatchTargetResolver.GameOrigin, StringComparison.Ordinal))
+            {
                 AddMemberCandidate(gameMembers, (InteropTypeNames.Normalize(pair.Key.Type), pair.Key.Name), pair.Value);
+                gameTypes.Add(InteropTypeNames.Normalize(pair.Key.Type));
+            }
             else
+            {
                 AddMemberCandidate(modMembers, (pair.Key.Origin, pair.Key.Type, pair.Key.Name), pair.Value);
+            }
         }
 
         var result = new List<IndexRelationshipRecord>();
@@ -123,7 +129,7 @@ public sealed class ReferenceRelationshipResolver
 
                     foreach (var patch in member.PatchesOrEmpty)
                     {
-                        var patchEdge = PatchTargetResolver.ResolvePatchEdge(patch, source, mod.ModId, gameMembers, modMembers);
+                        var patchEdge = PatchTargetResolver.ResolvePatchEdge(patch, source, mod.ModId, gameMembers, gameTypes, modMembers);
                         if (patchEdge is not null)
                             result.Add(patchEdge);
                     }

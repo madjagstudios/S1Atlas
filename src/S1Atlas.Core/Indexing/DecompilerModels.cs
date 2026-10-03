@@ -88,6 +88,10 @@ public static class HarmonyPatchReasons
     public const string UnknownMemberName = "unknown-member-name";
     public const string UnsupportedMethodType = "unsupported-method-type";
     public const string AmbiguousOverload = "ambiguous-overload";
+    public const string NoMatchingOverload = "no-matching-overload";
+    public const string TargetTypeNotFound = "target-type-not-found";
+    public const string TargetMemberNotFound = "target-member-not-found";
+    public const string UnparsableTarget = "unparsable-target";
     public const string NonConstantArguments = "non-constant-arguments";
     public const string NonConstantTarget = "non-constant-target";
     public const string UnrecognizedManualShape = "unrecognized-manual-shape";

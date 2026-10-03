@@ -25,7 +25,7 @@ public sealed class HarmonyPatchEdgeTests
                 .ToArray();
 
             Assert.Equal(19, edges.Count(edge => edge.TargetSymbolId is not null));
-            Assert.Equal(8, edges.Count(edge => edge.TargetSymbolId is null));
+            Assert.Equal(14, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
                 .ToDictionary(symbol => symbol.SymbolId, symbol => symbol.Signature, StringComparer.Ordinal);
@@ -70,18 +70,36 @@ public sealed class HarmonyPatchEdgeTests
                 modSymbols[edge.SourceSymbolId].Contains("ManualOverloadDisambiguationPatch::Do(System.Int32)", StringComparison.Ordinal));
             Assert.Equal("Prefix", disambiguated.GeneratedDetail);
             Assert.Equal("RecoveredIL", disambiguated.Evidence);
+            var missingType = Assert.Single(edges, edge =>
+                edge.TargetSymbolId is null &&
+                modSymbols[edge.SourceSymbolId].Contains("MissingTypeTargetPatch::Prefix(", StringComparison.Ordinal));
+            Assert.StartsWith("unresolved:target-type-not-found:", missingType.TargetText, StringComparison.Ordinal);
+            var missingMember = Assert.Single(edges, edge =>
+                edge.TargetSymbolId is null &&
+                modSymbols[edge.SourceSymbolId].Contains("MissingPatch::Prefix(", StringComparison.Ordinal));
+            Assert.StartsWith("unresolved:target-member-not-found:", missingMember.TargetText, StringComparison.Ordinal);
+            var noOverload = Assert.Single(edges, edge =>
+                edge.TargetSymbolId is null &&
+                modSymbols[edge.SourceSymbolId].Contains("NoOverloadPatch::Prefix(", StringComparison.Ordinal));
+            Assert.StartsWith("unresolved:no-matching-overload:", noOverload.TargetText, StringComparison.Ordinal);
 
             var unresolvedReasons = edges
                 .Where(edge => edge.TargetSymbolId is null)
                 .Select(edge => edge.TargetText!)
                 .Order(StringComparer.Ordinal)
                 .ToArray();
-            Assert.Equal(8, unresolvedReasons.Length);
+            Assert.Equal(14, unresolvedReasons.Length);
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:ambiguous-overload:", StringComparison.Ordinal));
             Assert.Equal(2, unresolvedReasons.Count(text => text.StartsWith("unresolved:runtime-computed-target:", StringComparison.Ordinal)));
             Assert.Equal(3, unresolvedReasons.Count(text => text.StartsWith("unresolved:non-constant-target:", StringComparison.Ordinal)));
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unsupported-method-type:", StringComparison.Ordinal));
             Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:no-target-specified:", StringComparison.Ordinal));
+            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:target-type-not-found:", StringComparison.Ordinal));
+            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:target-member-not-found:", StringComparison.Ordinal));
+            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:no-matching-overload:", StringComparison.Ordinal));
+            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unknown-declaring-type:", StringComparison.Ordinal));
+            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unknown-member-name:", StringComparison.Ordinal));
+            Assert.Contains(unresolvedReasons, text => text.StartsWith("unresolved:unrecognized-manual-shape:", StringComparison.Ordinal));
             Assert.DoesNotContain(unresolvedReasons, text => !text.StartsWith("unresolved:", StringComparison.Ordinal));
         }
         finally
