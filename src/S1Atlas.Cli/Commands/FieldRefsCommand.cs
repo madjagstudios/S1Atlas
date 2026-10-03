@@ -47,6 +47,20 @@ internal static class FieldRefsCommand
         command.Options.Add(writersOption);
         command.Options.Add(includeGeneratedOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            "field-refs",
+            codebaseOption,
+            channelOption,
+            limitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: true,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0,
+            validateBeforeParse: result => CliValidation.GetValue(result, readersOption) && CliValidation.GetValue(result, writersOption)
+                ? "--readers and --writers are mutually exclusive."
+                : null);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("field-refs", parseResult.GetValue(jsonOption), output, error);
@@ -57,29 +71,13 @@ internal static class FieldRefsCommand
                     if (limit <= 0)
                         return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
 
-                    if (parseResult.GetValue(readersOption) && parseResult.GetValue(writersOption))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidOptionCombination",
-                            "--readers and --writers are mutually exclusive.");
-                    }
-
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexQueryOptions options;
-                    try
-                    {
-                        options = IndexQueryCommandFactory.ParseOptions(
-                            parseResult.GetValue(codebaseOption),
-                            parseResult.GetValue(channelOption),
-                            limit,
-                            parseResult.GetValue(scopeOption),
-                            parseResult.GetValue(collectionOption));
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-                    }
+                    var options = IndexQueryCommandFactory.ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit,
+                        parseResult.GetValue(scopeOption),
+                        parseResult.GetValue(collectionOption));
 
                     var authority = IndexQueryCommandFactory.ResolveExecutionAuthority(
                         authorityResolver,

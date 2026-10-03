@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.CommandLine.Parsing;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
@@ -74,6 +75,18 @@ internal static class IndexQueryCommandFactory
         if (withDelegates)
             command.Options.Add(includeDelegatesOption);
         command.Options.Add(jsonOption);
+        AddOptionsValidator(
+            command,
+            name,
+            codebaseOption,
+            channelOption,
+            limitOption,
+            includeScopeOptions ? scopeOption : null,
+            includeScopeOptions ? collectionOption : null,
+            buildOption,
+            referenceService is not null,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0,
+            validateOptions: validateOptions);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput(name, parseResult.GetValue(jsonOption), output, error);
@@ -88,23 +101,12 @@ internal static class IndexQueryCommandFactory
                             "--limit must be greater than zero.");
 
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexQueryOptions options;
-                    try
-                    {
-                        options = ParseOptions(
-                            parseResult.GetValue(codebaseOption),
-                            parseResult.GetValue(channelOption),
-                            limit,
-                            includeScopeOptions ? parseResult.GetValue(scopeOption) : null,
-                            includeScopeOptions ? parseResult.GetValue(collectionOption) : null);
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-                    }
-                    var optionError = validateOptions?.Invoke(options);
-                    if (optionError is not null)
-                        return commandOutput.Failure(1, "InvalidOptionCombination", optionError);
+                    var options = ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit,
+                        includeScopeOptions ? parseResult.GetValue(scopeOption) : null,
+                        includeScopeOptions ? parseResult.GetValue(collectionOption) : null);
                     var buildId = parseResult.GetValue(buildOption);
                     var authority = ResolveExecutionAuthority(
                         authorityResolver,
@@ -431,6 +433,78 @@ internal static class IndexQueryCommandFactory
             : $"unresolved: {raw} [{endpoint.SymbolId}]";
     }
 
+    /// <summary>
+    /// Wires the shared query-option validator: pre-parse dependency checks,
+    /// then ParseOptions, then per-command option rules, then the --build rule,
+    /// in the order the actions used to report them. Validator bodies must not
+    /// throw InvalidOperationException: the guard treats it as a framework
+    /// binding failure (for example a mistyped --limit) that the framework
+    /// already recorded and reports itself.
+    /// </summary>
+    internal static void AddOptionsValidator(
+        Command command,
+        string commandName,
+        Option<string> codebaseOption,
+        Option<string> channelOption,
+        Option<int> limitOption,
+        Option<string?>? scopeOption,
+        Option<string?>? collectionOption,
+        Option<string?> buildOption,
+        bool hasReferenceService,
+        Func<CommandResult, bool>? defersToAction = null,
+        Func<CommandResult, string?>? validateBeforeParse = null,
+        Func<IndexQueryOptions, string?>? validateOptions = null,
+        Func<string?, IndexQueryOptions, string?>? validateBuild = null)
+    {
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                if (defersToAction is not null && defersToAction(result))
+                    return;
+                var preError = validateBeforeParse?.Invoke(result);
+                if (preError is not null)
+                    throw new CliValidationException(commandName, "InvalidOptionCombination", preError);
+                IndexQueryOptions options;
+                try
+                {
+                    options = ParseOptions(
+                        CliValidation.GetValue(result, codebaseOption),
+                        CliValidation.GetValue(result, channelOption),
+                        CliValidation.GetValue(result, limitOption),
+                        scopeOption is null ? null : CliValidation.GetValue(result, scopeOption),
+                        collectionOption is null ? null : CliValidation.GetValue(result, collectionOption));
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new CliValidationException(commandName, "InvalidOptionCombination", exception.Message);
+                }
+                var optionError = validateOptions?.Invoke(options);
+                if (optionError is not null)
+                    throw new CliValidationException(commandName, "InvalidOptionCombination", optionError);
+                var buildId = CliValidation.GetValue(result, buildOption);
+                var buildError = validateBuild is not null
+                    ? validateBuild(buildId, options)
+                    : ValidateBuildOption(buildId, options, hasReferenceService);
+                if (buildError is not null)
+                    throw new CliValidationException(commandName, "InvalidOptionCombination", buildError);
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
+    }
+
+    internal static string? ValidateBuildOption(string? buildId, IndexQueryOptions options, bool hasReferenceService) =>
+        !string.IsNullOrWhiteSpace(buildId) &&
+        !UsesInstalledScheduleIAuthority(options) &&
+        !(hasReferenceService && options.Scope is IndexQueryScope.Reference or IndexQueryScope.All)
+            ? hasReferenceService
+                ? "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all."
+                : "--build is only valid with --codebase schedule-i and --channel installed or all."
+            : null;
+
     public static IndexQueryOptions ParseOptions(
         string? codebase,
         string? channel,
@@ -498,16 +572,6 @@ internal static class IndexQueryCommandFactory
 
         var allowsScopedAuthority = referenceService is not null &&
             options.Scope is IndexQueryScope.Reference or IndexQueryScope.All;
-        if (!string.IsNullOrWhiteSpace(buildId) && !allowsScopedAuthority)
-        {
-            return new ExecutionAuthority(
-                null,
-                "InvalidOptionCombination",
-                referenceService is null
-                    ? "--build is only valid with --codebase schedule-i and --channel installed or all."
-                    : "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.");
-        }
-
         if (!allowsScopedAuthority)
             return new ExecutionAuthority(null, null, null);
 

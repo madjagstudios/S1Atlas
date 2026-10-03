@@ -62,6 +62,19 @@ internal static class HierarchyCommandRunner
         if (includeOffset)
             command.Options.Add(offsetOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            name,
+            codebaseOption,
+            channelOption,
+            limitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: true,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0 ||
+                (includeDepth && CliValidation.GetValue(result, depthOption) <= 0) ||
+                (includeOffset && CliValidation.GetValue(result, offsetOption) < 0));
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput(name, parseResult.GetValue(jsonOption), output, error);
@@ -79,20 +92,12 @@ internal static class HierarchyCommandRunner
                         return commandOutput.Failure(1, "InvalidOffset", "--offset must not be negative.");
 
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexQueryOptions options;
-                    try
-                    {
-                        options = IndexQueryCommandFactory.ParseOptions(
-                            parseResult.GetValue(codebaseOption),
-                            parseResult.GetValue(channelOption),
-                            limit,
-                            parseResult.GetValue(scopeOption),
-                            parseResult.GetValue(collectionOption));
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-                    }
+                    var options = IndexQueryCommandFactory.ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit,
+                        parseResult.GetValue(scopeOption),
+                        parseResult.GetValue(collectionOption));
 
                     var authority = IndexQueryCommandFactory.ResolveExecutionAuthority(
                         authorityResolver,

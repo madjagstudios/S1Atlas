@@ -529,11 +529,28 @@ public sealed class CliApplication
             cancellationToken));
 
         _lastBuiltRoot = root;
-        return root.Parse(args).Invoke(new InvocationConfiguration
+        var invocation = new InvocationConfiguration
         {
             Output = output,
             Error = error
-        });
+        };
+        try
+        {
+            return root.Parse(args).Invoke(invocation);
+        }
+        catch (CliValidationException) when (CliValidation.HelpRequested(args))
+        {
+            // Validators run during Parse, before help renders: a failing
+            // validation must not preempt --help. The tree is rebuilt on every
+            // invoke, so stripping validators and re-parsing is side-effect free.
+            CliValidation.ClearValidators(root);
+            return root.Parse(args).Invoke(invocation);
+        }
+        catch (CliValidationException exception)
+        {
+            return new CommandOutput(exception.Command, CliValidation.JsonRequested(args), output, error)
+                .Failure(1, exception.Code, exception.Message);
+        }
     }
 
     private static async Task<bool> IsExtractionActiveAsync(

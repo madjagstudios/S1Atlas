@@ -48,6 +48,17 @@ internal static class CallersCommand
         command.Options.Add(includeGeneratedOption);
         command.Options.Add(includeDelegatesOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            "callers",
+            codebaseOption,
+            channelOption,
+            limitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: false,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("callers", parseResult.GetValue(jsonOption), output, error);
@@ -59,20 +70,12 @@ internal static class CallersCommand
                         return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
 
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexQueryOptions options;
-                    try
-                    {
-                        options = IndexQueryCommandFactory.ParseOptions(
-                            parseResult.GetValue(codebaseOption),
-                            parseResult.GetValue(channelOption),
-                            limit,
-                            parseResult.GetValue(scopeOption),
-                            parseResult.GetValue(collectionOption));
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-                    }
+                    var options = IndexQueryCommandFactory.ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit,
+                        parseResult.GetValue(scopeOption),
+                        parseResult.GetValue(collectionOption));
 
                     var authority = IndexQueryCommandFactory.ResolveExecutionAuthority(
                         authorityResolver,
