@@ -8,6 +8,49 @@ namespace S1Atlas.Web.Tests;
 public sealed class SymbolTests
 {
     [Fact]
+    public async Task GameTypePageListsAllMemberKinds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var widget = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.WidgetTypeId}", cancellationToken);
+        Assert.Contains("FACT: 6 members.", widget);
+        Assert.Contains("Demo.Widget::Run():System.Void", widget);
+        Assert.Contains("Demo.Widget::Render():System.Void", widget);
+        Assert.Contains("Demo.Widget::CheckPhysics():System.Void", widget);
+        Assert.Contains("Demo.Widget::.ctor():System.Void", widget);
+        Assert.Contains("Demo.Widget::System.Int32 _state", widget);
+        Assert.Contains("Demo.Widget::System.String Name", widget);
+        Assert.DoesNotContain("Nested::Inner", widget);
+        Assert.DoesNotContain("WidgetFactory", widget);
+
+        var nested = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.NestedTypeId}", cancellationToken);
+        Assert.Contains("FACT: 1 members.", nested);
+        Assert.Contains("Demo.Widget+Nested::Inner():System.Void", nested);
+
+        var factory = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.FactoryTypeId}", cancellationToken);
+        Assert.Contains("FACT: 1 members.", factory);
+        Assert.Contains("Demo.WidgetFactory::Create():System.Void", factory);
+    }
+
+    [Fact]
+    public async Task MemberPagesShowBreadcrumbsWithResolvedTypeLink()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var fixture = await ServeFixture.CreateAsync(cancellationToken);
+
+        var method = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.RunMethodId}", cancellationToken);
+        Assert.Contains($"<a href=\"/symbol/{SyntheticAtlas.WidgetTypeId}\">Demo.Widget</a>", method);
+        Assert.Contains("› Run</nav>", method);
+        Assert.DoesNotContain("kind=type", method);
+
+        var field = await fixture.GetStringAsync($"/symbol/{SyntheticAtlas.StateFieldId}", cancellationToken);
+        Assert.Contains($"<a href=\"/symbol/{SyntheticAtlas.WidgetTypeId}\">Demo.Widget</a>", field);
+        Assert.Contains("› _state</nav>", field);
+        Assert.DoesNotContain("kind=type", field);
+    }
+
+    [Fact]
     public async Task GameTypePageShowsMembersSourceAndRelationships()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

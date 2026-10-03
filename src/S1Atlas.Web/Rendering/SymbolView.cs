@@ -1,4 +1,5 @@
 using System.Text;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Web.Queries;
 
@@ -70,18 +71,16 @@ internal static class SymbolView
                 null);
         }
 
-        var lastDot = qualifiedName.LastIndexOf('.');
-        if (lastDot <= 0)
+        if (!SymbolNames.TrySplitMember(qualifiedName, out var declaringType, out _))
         {
             return (string.Empty, qualifiedName, qualifiedName);
         }
 
-        var declaringType = qualifiedName[..lastDot].TrimEnd('.');
         var typeSeparator = declaringType.LastIndexOf('.');
         return (
             typeSeparator > 0 ? declaringType[..typeSeparator] : string.Empty,
             declaringType,
-            qualifiedName[(lastDot + 1)..]);
+            SymbolNames.SimpleName(qualifiedName));
     }
 
     private static string RenderBreadcrumb(ServeIndex index, SymbolQueryResult symbol, string? typeSymbolId)
