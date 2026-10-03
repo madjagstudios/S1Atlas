@@ -219,7 +219,10 @@ public sealed class ReferenceModIndexWorkflow
     {
         var entries = gameSymbols.Select(symbol => (Origin: "game", Symbol: symbol))
             .Concat(referenceSymbols.Select(symbol => (Origin: ExtractModId(symbol.QualifiedName), Symbol: symbol)));
-        return entries.ToDictionary(entry => ReferenceRelationshipResolver.CreateLookupKey(entry.Origin, entry.Symbol.Signature), entry => entry.Symbol);
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>();
+        foreach (var entry in entries)
+            lookup.TryAdd(ReferenceRelationshipResolver.CreateLookupKey(entry.Origin, entry.Symbol.Signature), entry.Symbol);
+        return lookup;
     }
 
     private static IReadOnlyList<IndexReferenceModRecord> BuildReferenceMods(
