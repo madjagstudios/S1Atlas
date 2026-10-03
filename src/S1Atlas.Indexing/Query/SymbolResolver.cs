@@ -49,8 +49,13 @@ public sealed class SymbolResolver
             return await ResolveCanonicalKeyAsync(indexId, selector, codebase, channel, kindNames, cancellationToken);
 
         var searchQuery = SearchQueryForSelector(selector, codebase, channel);
-        var records = await SearchKindsAsync(indexId, searchQuery, kindNames, cancellationToken, includeGenerated: true, limit: CandidateLimit + 1);
-        if (records.Count == 0)
+        var records = (await SearchKindsAsync(indexId, searchQuery, kindNames, cancellationToken, includeGenerated: true, limit: CandidateLimit + 1))
+            .OrderBy(record => Rank(record, searchQuery))
+            .ThenBy(record => record.QualifiedName, StringComparer.Ordinal)
+            .ThenBy(record => record.Signature, StringComparer.Ordinal)
+            .ThenBy(record => record.SymbolId, StringComparer.Ordinal)
+            .ToArray();
+        if (records.Length == 0)
             return NotFound(await SuggestAsync(indexId, codebase, channel, searchQuery, kindNames, cancellationToken));
 
         var exactCanonical = records
@@ -59,7 +64,7 @@ public sealed class SymbolResolver
         if (exactCanonical.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactCanonical[0], OriginFor(codebase)));
         if (exactCanonical.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactCanonical, TotalUnlessTruncated(records.Count, exactCanonical.Length));
+            return Ambiguous(indexId, codebase, channel, exactCanonical, TotalUnlessTruncated(records.Length, exactCanonical.Length));
 
         var exactSignature = records
             .Where(record => string.Equals(record.Signature, selector, StringComparison.OrdinalIgnoreCase))
@@ -67,7 +72,7 @@ public sealed class SymbolResolver
         if (exactSignature.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactSignature[0], OriginFor(codebase)));
         if (exactSignature.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactSignature, TotalUnlessTruncated(records.Count, exactSignature.Length));
+            return Ambiguous(indexId, codebase, channel, exactSignature, TotalUnlessTruncated(records.Length, exactSignature.Length));
 
         var exactQualifiedName = records
             .Where(record => string.Equals(record.QualifiedName, selector, StringComparison.OrdinalIgnoreCase))
@@ -75,7 +80,7 @@ public sealed class SymbolResolver
         if (exactQualifiedName.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, exactQualifiedName[0], OriginFor(codebase)));
         if (exactQualifiedName.Length > 1)
-            return Ambiguous(indexId, codebase, channel, exactQualifiedName, TotalUnlessTruncated(records.Count, exactQualifiedName.Length));
+            return Ambiguous(indexId, codebase, channel, exactQualifiedName, TotalUnlessTruncated(records.Length, exactQualifiedName.Length));
 
         var bestRank = Rank(records[0], searchQuery);
         var best = records
@@ -84,7 +89,7 @@ public sealed class SymbolResolver
         if (best.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, best[0], OriginFor(codebase)));
         var shown = best.Length > CandidateLimit ? best.Take(CandidateLimit).ToArray() : best;
-        return Ambiguous(indexId, codebase, channel, shown, TotalUnlessTruncated(records.Count, best.Length));
+        return Ambiguous(indexId, codebase, channel, shown, TotalUnlessTruncated(records.Length, best.Length));
     }
 
     private async Task<IReadOnlyList<IndexSymbolRecord>> SearchKindsAsync(
@@ -275,13 +280,15 @@ public sealed class SymbolResolver
             return 0;
         if (record.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase))
             return 1;
-        if (record.QualifiedName.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(SymbolNames.SimpleName(record.QualifiedName), query, StringComparison.OrdinalIgnoreCase))
             return 2;
-        if (record.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase))
+        if (record.QualifiedName.StartsWith(query, StringComparison.OrdinalIgnoreCase))
             return 3;
-        if (record.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))
+        if (record.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase))
             return 4;
-        return 5;
+        if (record.Signature.Contains(query, StringComparison.OrdinalIgnoreCase))
+            return 5;
+        return 6;
     }
 
     private static string SearchQueryForSelector(
