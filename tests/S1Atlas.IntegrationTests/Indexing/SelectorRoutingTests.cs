@@ -12,14 +12,14 @@ public sealed class SelectorRoutingTests
         { "callers", "Dup", "Widjet", [] },
         { "callees", "Dup", "Widjet", [] },
         { "refs", "Dup", "Widjet", [] },
-        { "fieldrefs", "Value", "Valiu", [] },
+        { "field-refs", "Value", "Valiu", [] },
         { "overrides", "Dup", "Widjet", [] },
         { "overridden-by", "Dup", "Widjet", [] },
         { "derived", "Dup", "Widjet", [] },
         { "callable", "Dup", "Widjet", [] },
         { "source", "Dup", "Widjet", [] },
         { "open", "Dup", "Widjet", [] },
-        { "investigate_seam", "Dup", "Widjet", ["--question", "Which seam owns it?"] },
+        { "investigate-seam", "Dup", "Widjet", ["--question", "Which seam owns it?"] },
     };
 
     [Theory]
@@ -85,7 +85,7 @@ public sealed class SelectorRoutingTests
     {
         await using var atlas = await SeamInvestigationCliAtlas.CreateRoutingAsync();
 
-        var result = atlas.Run(["callsites", "Game.Routing.Widget"]);
+        var result = atlas.Run(["call-sites", "Game.Routing.Widget"]);
 
         Assert.Equal(0, result.ExitCode);
     }

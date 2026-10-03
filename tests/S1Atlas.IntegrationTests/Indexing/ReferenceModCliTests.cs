@@ -217,8 +217,8 @@ public sealed class ReferenceModCliTests
     [InlineData("callers")]
     [InlineData("callees")]
     [InlineData("refs")]
-    [InlineData("callsites")]
-    [InlineData("fieldrefs")]
+    [InlineData("call-sites")]
+    [InlineData("field-refs")]
     public async Task Reference_scoped_queries_require_collection_and_game_scope_rejects_one(string command)
     {
         await using var atlas = await ReferenceCliFixture.CreateAsync();
@@ -240,7 +240,7 @@ public sealed class ReferenceModCliTests
         Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
 
         var result = atlas.Run(
-            "callsites",
+            "call-sites",
             "Game.Target::Run():System.Void",
             "--scope",
             "all",
@@ -258,8 +258,8 @@ public sealed class ReferenceModCliTests
     }
 
     [Theory]
-    [InlineData("callsites", "Game.Target::Run():System.Void")]
-    [InlineData("fieldrefs", "Demo.State.Value")]
+    [InlineData("call-sites", "Game.Target::Run():System.Void")]
+    [InlineData("field-refs", "Demo.State.Value")]
     public async Task Scoped_target_relationship_queries_reject_reference_collection_base_index_mismatch(
         string command,
         string query)
@@ -288,8 +288,8 @@ public sealed class ReferenceModCliTests
     }
 
     [Theory]
-    [InlineData("callsites")]
-    [InlineData("fieldrefs")]
+    [InlineData("call-sites")]
+    [InlineData("field-refs")]
     public async Task Scoped_target_relationship_queries_describe_build_validation_for_game_scope(string command)
     {
         await using var atlas = await ReferenceCliFixture.CreateAsync();

@@ -61,7 +61,7 @@ internal static class InvestigateSeamCommand
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("investigate_seam", "Investigate whether a resolved symbol is a supportable ownership seam.");
+        var command = new Command("investigate-seam", "Investigate whether a resolved symbol is a supportable ownership seam.");
         command.Arguments.Add(selectorArgument);
         command.Options.Add(questionOption);
         command.Options.Add(codebaseOption);
@@ -78,7 +78,7 @@ internal static class InvestigateSeamCommand
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
-            var commandOutput = new CommandOutput("investigate_seam", parseResult.GetValue(jsonOption), output, error);
+            var commandOutput = new CommandOutput("investigate-seam", parseResult.GetValue(jsonOption), output, error);
             return CommandExecution.Run(
                 () => Execute(
                     service,

@@ -35,7 +35,7 @@ internal static class FieldRefsCommand
         var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("fieldrefs", "Find field read/write relationships for one resolved symbol.");
+        var command = new Command("field-refs", "Find field read/write relationships for one resolved symbol.");
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
@@ -49,7 +49,7 @@ internal static class FieldRefsCommand
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
-            var commandOutput = new CommandOutput("fieldrefs", parseResult.GetValue(jsonOption), output, error);
+            var commandOutput = new CommandOutput("field-refs", parseResult.GetValue(jsonOption), output, error);
             return CommandExecution.Run(
                 () =>
                 {

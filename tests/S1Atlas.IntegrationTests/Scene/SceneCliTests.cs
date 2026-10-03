@@ -19,7 +19,7 @@ public sealed class SceneCliTests : IAsyncDisposable
     [Theory]
     [InlineData("scenes", "NoCompletedSceneIndex")]
     [InlineData("scene", "NoCompletedSceneIndex", "scene-a")]
-    [InlineData("gameobject", "NoCompletedSceneIndex", "object-a")]
+    [InlineData("game-object", "NoCompletedSceneIndex", "object-a")]
     [InlineData("prefab", "NoCompletedSceneIndex", "prefab-a")]
     [InlineData("component", "NoCompletedSceneIndex", "component-a")]
     public void Scene_query_commands_have_human_and_json_stable_failures(string command, string code, string? selector = null)
@@ -237,7 +237,7 @@ public sealed class SceneCliTests : IAsyncDisposable
 
     [Theory]
     [InlineData("scene", "scene-a", "--children", "--components", "--refs", "reference-a")]
-    [InlineData("gameobject", "object-a", "--components", "--refs", "", "component-a")]
+    [InlineData("game-object", "object-a", "--components", "--refs", "", "component-a")]
     [InlineData("prefab", "prefab-a", "--objects", "--components", "", "Prefab")]
     [InlineData("component", "component-a", "--refs", "--code", "", "Game.Widget")]
     public async Task Selector_commands_render_seeded_successes_in_human_and_json(string command, string selector, string firstOption, string secondOption, string thirdOption, string expected)
@@ -309,7 +309,7 @@ public sealed class SceneCliTests : IAsyncDisposable
         await InsertAsync("INSERT INTO game_objects(game_object_id,scene_id,scene_snapshot_id,container_id,local_file_id,name,active,layer,tag,recovery_status) VALUES ('object-b','scene-a','snapshot-a','container-a',12,'Root',1,0,'Untagged','FullyRecovered');");
         var application = new CliApplication(_dataDirectory, "0.1.0-test"); using var human = new StringWriter(); using var humanError = new StringWriter();
 
-        var exit = application.Invoke(["gameobject", "scene-a/Root"], human, humanError, TestContext.Current.CancellationToken);
+        var exit = application.Invoke(["game-object", "scene-a/Root"], human, humanError, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, exit);
         Assert.Contains("Found 2 candidates.", human.ToString(), StringComparison.Ordinal);

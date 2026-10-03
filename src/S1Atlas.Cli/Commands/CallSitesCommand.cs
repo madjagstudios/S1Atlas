@@ -18,7 +18,7 @@ internal static class CallSitesCommand
         TextWriter error,
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
-            "callsites",
+            "call-sites",
             service,
             authorityResolver,
             repository,

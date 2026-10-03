@@ -92,7 +92,7 @@ public sealed class DelegateAddressTakenCliTests
     {
         await using var atlas = await DelegateCliAtlas.CreateAsync();
 
-        var all = atlas.Run("fieldrefs", "Demo.DelegateCli.Count", "--json");
+        var all = atlas.Run("field-refs", "Demo.DelegateCli.Count", "--json");
 
         Assert.Equal(0, all.ExitCode);
         using var allDocument = JsonDocument.Parse(all.StandardOutput);
@@ -101,7 +101,7 @@ public sealed class DelegateAddressTakenCliTests
         var allTaker = Assert.Single(allRows, row => row.GetProperty("relationshipId").GetString() == "addr-001-game");
         Assert.Equal(PossibleWriteLabel, allTaker.GetProperty("label").GetString());
 
-        var writers = atlas.Run("fieldrefs", "Demo.DelegateCli.Count", "--writers", "--json");
+        var writers = atlas.Run("field-refs", "Demo.DelegateCli.Count", "--writers", "--json");
 
         Assert.Equal(0, writers.ExitCode);
         using var writersDocument = JsonDocument.Parse(writers.StandardOutput);
@@ -110,7 +110,7 @@ public sealed class DelegateAddressTakenCliTests
         var writeTaker = Assert.Single(writerRows, row => row.GetProperty("relationshipId").GetString() == "addr-001-game");
         Assert.Equal(PossibleWriteLabel, writeTaker.GetProperty("label").GetString());
 
-        var readers = atlas.Run("fieldrefs", "Demo.DelegateCli.Count", "--readers", "--json");
+        var readers = atlas.Run("field-refs", "Demo.DelegateCli.Count", "--readers", "--json");
 
         Assert.Equal(0, readers.ExitCode);
         using var readersDocument = JsonDocument.Parse(readers.StandardOutput);
@@ -119,7 +119,7 @@ public sealed class DelegateAddressTakenCliTests
         var readTaker = Assert.Single(readerRows, row => row.GetProperty("relationshipId").GetString() == "addr-001-game");
         Assert.Equal(PossibleReadLabel, readTaker.GetProperty("label").GetString());
 
-        var human = atlas.Run("fieldrefs", "Demo.DelegateCli.Count");
+        var human = atlas.Run("field-refs", "Demo.DelegateCli.Count");
 
         Assert.Equal(0, human.ExitCode);
         Assert.Contains($"TakesFieldAddress ({PossibleWriteLabel})", human.StandardOutput);
