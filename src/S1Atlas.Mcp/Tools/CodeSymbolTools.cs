@@ -33,18 +33,18 @@ public sealed class CodeSymbolTools
         _services = services;
     }
 
-    [McpServerTool(Name = "search_symbols", Title = "Search symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search the integrity-verified Schedule I game index or an explicitly selected local reference collection for symbols.")]
+    [McpServerTool(Name = "search_symbols", Title = "Search symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search the integrity-verified game index or a selected reference collection for symbols.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchSymbolsAsync(
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Symbol kind filter.")] SymbolKind? kind = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
+        [Description("Include compiler-generated members with raw sources.")] bool includeGenerated = false)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -129,30 +129,30 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the preferred, integrity-verified Schedule I code index.")]
+    [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the integrity-verified code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetTypeAsync(
         [Description("Exact or fuzzy type selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
         await GetSymbolAsync(selector, codebase, channel, buildId, TypeKinds, limit, ct);
 
-    [McpServerTool(Name = "get_method", Title = "Get method", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one method from the preferred, integrity-verified Schedule I code index.")]
+    [McpServerTool(Name = "get_method", Title = "Get method", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one method from the integrity-verified code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetMethodAsync(
         [Description("Exact or fuzzy method selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
         CancellationToken ct = default) =>
         await GetSymbolAsync(selector, codebase, channel, buildId, MethodKinds, limit, ct);
 
-    [McpServerTool(Name = "get_callable_surface", Title = "Get callable surface", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve how one Schedule I game member is callable through its local Il2CppInterop projection.")]
+    [McpServerTool(Name = "get_callable_surface", Title = "Get callable surface", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve how one game member is callable through its local Il2CppInterop projection.")]
     public async Task<ToolEnvelope<CallableSurfaceQueryResult>> GetCallableSurfaceAsync(
         [Description("Exact or fuzzy game-member selector.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         CancellationToken ct = default)
     {
         return await EnvelopeMapper.WithAuthorityAsync(
@@ -178,14 +178,14 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Source context lines before and after the selected span.")] int context = 5,
         CancellationToken ct = default,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
         [Description("Return the containing type's verified source span.")] bool fullType = false,
-        [Description("Max caller/callee neighborhood rows per direction (0-50). Zero disables neighborhood lookup.")] int relatedLimit = 10)
+        [Description("Neighborhood rows per direction (0-50); 0 disables.")] int relatedLimit = 10)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -307,16 +307,16 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCallersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
-        [Description("Return only exact (statically bound) callers; omit may-dispatch callers.")] bool exact = false,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
-        [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
+        [Description("Only exact callers; omit may-dispatch ones.")] bool exact = false,
+        [Description("Include compiler-generated members with raw sources.")] bool includeGenerated = false,
+        [Description("Include labeled delegate-creation references.")] bool includeDelegates = false) =>
         await FindRelationshipsAsync(
             "find_callers",
             selector,
@@ -337,29 +337,29 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
-        [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
+        [Description("Include compiler-generated members with raw sources.")] bool includeGenerated = false,
+        [Description("Include labeled delegate-creation references.")] bool includeDelegates = false) =>
         await FindRelationshipsAsync("find_callees", selector, codebase, channel, buildId, limit, ct, scope, collection, RelationshipDirection.Callees, cursor, includeGenerated: includeGenerated, includeDelegates: includeDelegates);
 
     [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false) =>
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
+        [Description("Include compiler-generated members with raw sources.")] bool includeGenerated = false) =>
         await FindRelationshipsAsync(
             "find_references",
             selector,
@@ -378,13 +378,13 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
         [Description("Resolved game-member selector or canonical raw target text.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -504,16 +504,16 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindFieldReferencesAsync(
         [Description("Exact or fuzzy field selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Return only field readers.")] bool readers = false,
         [Description("Return only field writers.")] bool writers = false,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
-        [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
+        [Description("Include compiler-generated members with raw sources.")] bool includeGenerated = false)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -659,14 +659,14 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional type relationship kinds to include.")] string[]? relationKinds = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -818,13 +818,13 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -943,14 +943,14 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -1082,14 +1082,14 @@ public sealed class CodeSymbolTools
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindDerivedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
         [Description("Codebase to query.")] McpCodebase codebase,
-        [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
         {
@@ -1436,12 +1436,12 @@ public sealed class CodeSymbolTools
             });
     }
 
-    [McpServerTool(Name = "list_api_indexes", Title = "List API indexes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed S1API and S1MAPI indexes available to the read-only Atlas host.")]
+    [McpServerTool(Name = "list_api_indexes", Title = "List API indexes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed S1API and S1MAPI indexes.")]
     public async Task<ToolEnvelope<ApiIndexCatalogResult>> ListApiIndexesAsync(
         [Description("Optional Schedule I build ID used only to select installed API indexes.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null)
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null)
     {
         if (!ToolArguments.TryBoundLimit<ApiIndexCatalogResult>(limit, null, out var boundedLimit, out var limitError))
         {

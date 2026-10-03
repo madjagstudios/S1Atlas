@@ -22,15 +22,15 @@ public sealed class SeamTools
     public async Task<ToolEnvelope<SeamInvestigationResult>> InvestigateSeamAsync(
         [Description("The behavioral question that frames the seam investigation.")] string behavioralQuestion,
         [Description("Exact or fuzzy symbol selector for the seam under investigation.")] string selector,
-        [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
-        [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null,
         [Description("Maximum relationship evidence rows to inspect (1-50).")] int relationshipLimit = 50,
         [Description("Maximum owner candidates to return (1-50).")] int ownerLimit = 10,
         [Description("Lines of source context to include around the selected seam.")] int context = 5,
         [Description("Preserve detailed claims and evidence sections in the result payload.")] bool details = false,
         CancellationToken ct = default,
-        [Description("Optional native symbol IDs for an explicitly requested, read-only native evidence lookup.")] IReadOnlyList<string>? nativeSymbolIds = null,
+        [Description("Native symbol IDs for an explicit read-only evidence lookup.")] IReadOnlyList<string>? nativeSymbolIds = null,
         [Description("Native traversal budget (0 disables native recovery; maximum 500 edges).")] int nativeTraversalBudget = 0)
     {
         return await EnvelopeMapper.WithAuthorityAsync(

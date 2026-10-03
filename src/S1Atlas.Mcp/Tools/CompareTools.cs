@@ -18,7 +18,7 @@ public sealed class CompareTools
         _services = services;
     }
 
-    [McpServerTool(Name = "compare_symbol", Title = "Compare symbol", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Compare one installed Schedule I symbol across two explicit builds.")]
+    [McpServerTool(Name = "compare_symbol", Title = "Compare symbol", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Compare one installed symbol across two explicit builds.")]
     public Task<ToolEnvelope<SymbolDiff>> CompareSymbolAsync(
         [Description("Exact or fuzzy symbol selector to compare.")] string selector,
         [Description("Explicit build ID for the left-hand build.")] string? buildIdA = null,

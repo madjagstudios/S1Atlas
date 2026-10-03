@@ -16,11 +16,11 @@ public sealed class ReferenceCollectionTools
         _services = services;
     }
 
-    [McpServerTool(Name = "list_reference_collections", Title = "List reference collections", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed local reference-mod collections and their recorded Schedule I base indexes.")]
+    [McpServerTool(Name = "list_reference_collections", Title = "List reference collections", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List completed reference-mod collections with their recorded base indexes.")]
     public async Task<ToolEnvelope<ReferenceCollectionListResult>> ListReferenceCollectionsAsync(
         CancellationToken ct = default,
         [Description("Max results (1-500).")] int limit = 50,
-        [Description("Opaque page cursor from a previous response; reuse with identical arguments.")] string? cursor = null)
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null)
     {
         if (!CodeSymbolTools.ToolArguments.TryBoundLimit<ReferenceCollectionListResult>(limit, null, out var boundedLimit, out var limitError))
         {
