@@ -95,8 +95,28 @@ public sealed class FindPatchesTests
         using var fourthDocument = JsonDocument.Parse(fourthText);
         var fourthRoot = fourthDocument.RootElement;
         Assert.Equal(2, fourthRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
+        Assert.False(string.IsNullOrWhiteSpace(fourthRoot.GetProperty("data").GetProperty("nextCursor").GetString()));
+
+        var fifth = await server.Client.CallToolAsync(
+            "find_patches",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Game.Widget::Run()",
+                ["codebase"] = "scheduleI",
+                ["limit"] = 2,
+                ["scope"] = "reference",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+                ["cursor"] = fourthRoot.GetProperty("data").GetProperty("nextCursor").GetString(),
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(fifth.IsError ?? false);
+        var fifthText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(fifth.Content)).Text;
+        using var fifthDocument = JsonDocument.Parse(fifthText);
+        var fifthRoot = fifthDocument.RootElement;
+        Assert.Single(fifthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray());
         Assert.False(
-            fourthRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
+            fifthRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
             nextCursor.ValueKind != JsonValueKind.Null);
 
         await server.DisposeAsync();
@@ -156,7 +176,7 @@ public sealed class FindPatchesTests
         var sections = root.GetProperty("data").GetProperty("evidenceSections");
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
-        Assert.Equal(8, patches.GetProperty("totalCount").GetInt32());
+        Assert.Equal(9, patches.GetProperty("totalCount").GetInt32());
         var claims = root.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),

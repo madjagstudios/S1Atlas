@@ -71,12 +71,15 @@ public static class PatchTargetResolver
     {
         if (fact.Evidence != RelationshipEvidence.RecoveredIL)
             return hostSource;
-        if (fact.PatchMethodType is null || fact.PatchMethodName is null || fact.PatchMethodArgumentTypes is not null)
+        if (fact.PatchMethodType is null || fact.PatchMethodName is null)
             return null;
         if (!modMembers.TryGetValue((modId, fact.PatchMethodType, fact.PatchMethodName), out var candidates))
             return null;
 
-        var matching = candidates.DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal).ToArray();
+        var matching = candidates
+            .DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal)
+            .Where(symbol => fact.PatchMethodArgumentTypes is null || MatchesParameters(symbol.Signature, fact.PatchMethodArgumentTypes))
+            .ToArray();
         return matching.Length == 1 ? matching[0] : null;
     }
 
