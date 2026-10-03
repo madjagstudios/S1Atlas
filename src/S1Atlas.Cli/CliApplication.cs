@@ -46,6 +46,7 @@ public sealed class CliApplication
     private readonly Func<IIl2CppExtractor> _processExtractorFactory;
     private readonly Func<int, bool> _isProcessAlive;
     private readonly IBrowserLauncher _browserLauncher;
+    private RootCommand? _lastBuiltRoot;
 
     /// <summary>
     /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/> for
@@ -97,6 +98,9 @@ public sealed class CliApplication
         _isProcessAlive = isProcessAlive ?? IsProcessAlive;
         _browserLauncher = browserLauncher ?? new SystemBrowserLauncher();
     }
+
+    internal RootCommand LastBuiltRoot =>
+        _lastBuiltRoot ?? throw new InvalidOperationException("Invoke must run before the command tree is available.");
 
     public int Invoke(
         string[] args,
@@ -524,6 +528,7 @@ public sealed class CliApplication
             error,
             cancellationToken));
 
+        _lastBuiltRoot = root;
         return root.Parse(args).Invoke(new InvocationConfiguration
         {
             Output = output,
