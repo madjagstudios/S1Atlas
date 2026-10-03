@@ -6,6 +6,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI and repository gates** (AT-121): pass workflow values through environment
+  variables so PR branch names cannot become PowerShell commands. CI now uses a
+  read-only repository token and pins each action to a release commit within its
+  existing major version. The public-content check catches JSON-escaped Windows
+  paths and paths with forward slashes or mixed separators. Repository hygiene
+  rejects tracked binaries and Unity assets by extension, with an empty list for
+  exact-path exceptions.
+
 ### Breaking
 
 - **Breaking: CLI** (AT-86): command and option names are kebab-case with no

@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -14,14 +17,14 @@ jobs:
   checks:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: '8.0.x'
       - name: Restore NuGet cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
@@ -92,11 +95,17 @@ jobs:
         run: ./scripts/verify-repository-hygiene.ps1
       - name: Public content
         shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BRANCH_NAME: ${{ github.head_ref }}
         run: |
-          if ('${{ github.event_name }}' -eq 'pull_request') {
-            ./scripts/verify-public-content.ps1 -BaseRef '${{ github.event.pull_request.base.sha }}' -BranchName '${{ github.head_ref }}'
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            Write-Output "branch_name=$env:BRANCH_NAME"
+            ./scripts/verify-public-content.ps1 -BaseRef $env:BASE_SHA -BranchName $env:BRANCH_NAME
           } else {
-            ./scripts/verify-public-content.ps1 -BaseRef '${{ github.event.before }}'
+            ./scripts/verify-public-content.ps1 -BaseRef $env:BEFORE_SHA
           }
 
   tests:
@@ -123,12 +132,12 @@ jobs:
           - name: S1Atlas.Web.Tests
             project: tests/S1Atlas.Web.Tests
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: '8.0.x'
       - name: Restore NuGet cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '**/*.csproj') }}
@@ -136,12 +145,15 @@ jobs:
             nuget-${{ runner.os }}-
       - name: Report disk layout
         shell: pwsh
+        env:
+          WORKSPACE: ${{ github.workspace }}
+          RUNNER_TEMP: ${{ runner.temp }}
         run: |
           # AT-61: test temp I/O cost depends on which volume backs each
           # directory. TEMP/TMP default to the C: user profile; RUNNER_TEMP
           # and the workspace live on the runner's temp disk.
-          Write-Output "workspace=${{ github.workspace }}"
-          Write-Output "runner_temp=${{ runner.temp }}"
+          Write-Output "workspace=$env:WORKSPACE"
+          Write-Output "runner_temp=$env:RUNNER_TEMP"
           Write-Output "default_temp=$env:TEMP"
           Get-Volume | Format-Table DriveLetter, FileSystemLabel, DriveType
       - name: Prepare test temp directory
@@ -150,26 +162,28 @@ jobs:
       - name: Test
         shell: pwsh
         env:
+          TEST_PROJECT: ${{ matrix.project }}
+          TEST_NAME: ${{ matrix.name }}
           # AT-61: tests build their SQLite atlases under Path.GetTempPath(),
           # which reads TMP/TEMP. Point them at the runner temp disk instead
           # of the default C: user profile temp directory.
           TEMP: ${{ runner.temp }}/s1atlas-test-temp
           TMP: ${{ runner.temp }}/s1atlas-test-temp
-        run: dotnet test ${{ matrix.project }} --configuration Release -p:RestoreLockedMode=true --verbosity normal --logger "trx;LogFileName=${{ matrix.name }}.trx" --results-directory TestResults
+        run: dotnet test "$env:TEST_PROJECT" --configuration Release -p:RestoreLockedMode=true --verbosity normal --logger "trx;LogFileName=$env:TEST_NAME.trx" --results-directory TestResults
       - name: Timing summary
         if: always()
         shell: pwsh
         run: ./scripts/summarize-test-timings.ps1 -ResultsDirectory TestResults
       - name: Upload test results
         if: always() && hashFiles('TestResults/*.trx') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-results-${{ matrix.name }}
           path: TestResults
           retention-days: 14
       - name: Upload relationship parity report
         if: always() && matrix.name == 'S1Atlas.Indexing.Tests' && hashFiles('TestResults/relationship-parity.md') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: relationship-parity-report
           path: |
@@ -182,9 +196,9 @@ jobs:
     needs: [checks, tests]
     if: always()
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Download test results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: test-results-*
           path: TestResults
@@ -196,8 +210,11 @@ jobs:
       - name: Verify pipeline
         if: always()
         shell: pwsh
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          TESTS_RESULT: ${{ needs.tests.result }}
         run: |
-          $checks = '${{ needs.checks.result }}'
-          $tests = '${{ needs.tests.result }}'
+          $checks = $env:CHECKS_RESULT
+          $tests = $env:TESTS_RESULT
           Write-Output "checks=$checks tests=$tests"
           if ($checks -ne 'success' -or $tests -ne 'success') { exit 1 }

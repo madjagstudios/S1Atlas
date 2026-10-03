@@ -47,7 +47,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Fingerprints/ | 1 |
 | tests/S1Atlas.Indexing.Tests/NativeRecovery/ | 1 |
 | tests/S1Atlas.Indexing.Tests/Paths/ | 2 |
-| tests/S1Atlas.Indexing.Tests/Query/ | 19 |
+| tests/S1Atlas.Indexing.Tests/Query/ | 20 |
 | tests/S1Atlas.Indexing.Tests/Readiness/ | 4 |
 | tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 3 |
 | tests/S1Atlas.Indexing.Tests/Relationships/ | 5 |
@@ -77,5 +77,5 @@ Roots: tests
 | tests/S1Atlas.Storage.Tests/Migrations/ | 13 |
 | tests/S1Atlas.Storage.Tests/Scene/ | 3 |
 | tests/S1Atlas.Storage.Tests/Sqlite/ | 11 |
-| tests/S1Atlas.Web.Tests/ | 24 |
+| tests/S1Atlas.Web.Tests/ | 25 |
 
