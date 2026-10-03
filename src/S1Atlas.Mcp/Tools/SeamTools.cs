@@ -23,7 +23,7 @@ public sealed class SeamTools
         [Description("The behavioral question that frames the seam investigation.")] string behavioralQuestion,
         [Description("Exact or fuzzy symbol selector for the seam under investigation.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Maximum relationship evidence rows to inspect (1-50).")] int relationshipLimit = 50,
         [Description("Maximum owner candidates to return (1-50).")] int ownerLimit = 10,
@@ -475,37 +475,21 @@ public sealed class SeamTools
         }
 
         public static bool TryParseScope<T>(
-            string? scope,
+            IndexQueryScope scope,
             string? collection,
             S1Atlas.Application.Authority.InstalledBuildAuthority authority,
             out IndexQueryOptions options,
             out ToolEnvelope<T> error) where T : class
         {
-            var parsedScope = string.IsNullOrWhiteSpace(scope)
-                ? IndexQueryScope.Game
-                : scope.Trim().ToLowerInvariant() switch
-                {
-                    "game" => IndexQueryScope.Game,
-                    "reference" => IndexQueryScope.Reference,
-                    "all" => IndexQueryScope.All,
-                    _ => (IndexQueryScope?)null
-                };
-            if (parsedScope is null)
-            {
-                options = null!;
-                error = Invalid<T>(authority, "InvalidScope", "Scope must be game, reference, or all.");
-                return false;
-            }
-
             var normalizedCollection = string.IsNullOrWhiteSpace(collection) ? null : collection.Trim();
-            if (parsedScope == IndexQueryScope.Game && normalizedCollection is not null)
+            if (scope == IndexQueryScope.Game && normalizedCollection is not null)
             {
                 options = null!;
                 error = Invalid<T>(authority, "InvalidCollection", "A collection is valid only for reference or all scope.");
                 return false;
             }
 
-            if (parsedScope is IndexQueryScope.Reference or IndexQueryScope.All && normalizedCollection is null)
+            if (scope is IndexQueryScope.Reference or IndexQueryScope.All && normalizedCollection is null)
             {
                 options = null!;
                 error = Invalid<T>(authority, "CollectionRequired", "Reference and all scope require an explicit collection.");
@@ -517,7 +501,7 @@ public sealed class SeamTools
                 CodeChannel.Installed,
                 false,
                 50,
-                parsedScope.Value,
+                scope,
                 normalizedCollection);
             error = null!;
             return true;

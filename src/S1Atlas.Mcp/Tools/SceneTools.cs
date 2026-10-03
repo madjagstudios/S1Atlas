@@ -22,7 +22,7 @@ public sealed class SceneTools
     public async Task<ToolEnvelope<SceneListResult>> ListScenesAsync(
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
-        [Description("Optional document kind: Scene or Prefab.")] string? kind = null,
+        [Description("Optional document kind filter.")] SceneDocumentKind? kind = null,
         [Description("Optional case-insensitive name fragment.")] string? query = null,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
         CancellationToken ct = default)
@@ -32,7 +32,7 @@ public sealed class SceneTools
             try
             {
                 var boundedLimit = BoundLimit(limit);
-                var parsedKind = ParseKind(kind);
+                var parsedKind = kind;
                 return await WithSnapshotForAuthorityAsync(
                 authority,
                 sceneSnapshotId,
@@ -60,7 +60,7 @@ public sealed class SceneTools
         [Description("Exact or fuzzy scene selector.")] string selector,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
-        [Description("Document kind: Scene (default) or Prefab.")] string? kind = null,
+        [Description("Document kind: Scene (default) or Prefab.")] SceneDocumentKind? kind = null,
         [Description("Include child game objects.")] bool includeChildren = false,
         [Description("Include components.")] bool includeComponents = false,
         [Description("Include references.")] bool includeReferences = false,
@@ -150,7 +150,7 @@ public sealed class SceneTools
     }
 
     private async Task<ToolEnvelope<SceneDocumentQueryResult>> GetDocumentAsync(
-        string selector, string? buildId, string? sceneSnapshotId, string? kind,
+        string selector, string? buildId, string? sceneSnapshotId, SceneDocumentKind? kind,
         bool includeChildren, bool includeComponents, bool includeReferences, int limit,
         CancellationToken ct)
     {
@@ -160,7 +160,7 @@ public sealed class SceneTools
             try
             {
                 var boundedLimit = BoundLimit(limit);
-                var parsedKind = ParseSceneKind(kind);
+                var parsedKind = kind ?? SceneDocumentKind.Scene;
                 return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
                 {
                     var result = await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
@@ -277,28 +277,6 @@ public sealed class SceneTools
     {
         if (limit <= 0) throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
         return Math.Min(limit, 500);
-    }
-
-    private static SceneDocumentKind? ParseKind(string? kind)
-    {
-        if (string.IsNullOrWhiteSpace(kind)) return null;
-        if (Enum.TryParse<SceneDocumentKind>(kind, ignoreCase: true, out var parsed)) return parsed;
-        throw new ArgumentException("Scene kind must be Scene or Prefab.", nameof(kind));
-    }
-
-    private static SceneDocumentKind ParseSceneKind(string? kind)
-    {
-        if (string.IsNullOrWhiteSpace(kind))
-        {
-            return SceneDocumentKind.Scene;
-        }
-
-        if (Enum.TryParse<SceneDocumentKind>(kind, ignoreCase: true, out var parsed))
-        {
-            return parsed;
-        }
-
-        throw new ArgumentException("Scene kind must be Scene or Prefab.", nameof(kind));
     }
 
     private static ToolEnvelope<T> Invalid<T>(InstalledBuildAuthority authority, string code, string message) where T : class =>

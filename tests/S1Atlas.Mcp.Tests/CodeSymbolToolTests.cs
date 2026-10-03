@@ -90,26 +90,6 @@ public sealed class CodeSymbolToolTests
     }
 
     [Fact]
-    public async Task SearchSymbols_InvalidKind_ReturnsSelectedBuild()
-    {
-        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
-        var tools = CreateTools(atlas);
-
-        var envelope = await tools.SearchSymbolsAsync(
-            atlas.KnownSymbolFragment,
-            McpCodebase.scheduleI,
-            CodeChannel.Installed,
-            buildId: null,
-            kind: "not-a-kind",
-            limit: 50,
-            CancellationToken.None);
-
-        Assert.Equal(ToolStatus.Invalid, envelope.Status);
-        Assert.Equal("InvalidKind", envelope.Error?.Code);
-        Assert.Equal(atlas.IndexId, envelope.Build?.IndexId);
-    }
-
-    [Fact]
     public async Task GetType_UnknownSelector_ReturnsNotFound()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
@@ -435,7 +415,7 @@ public sealed class CodeSymbolToolTests
             kind: null,
             limit: 50,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection);
 
         var source = await tools.GetSourceAsync(
@@ -445,7 +425,7 @@ public sealed class CodeSymbolToolTests
             buildId: null,
             context: 0,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection,
             relatedLimit: 1);
 
@@ -741,7 +721,7 @@ public sealed class CodeSymbolToolTests
             buildId: null,
             limit: 50,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
@@ -832,7 +812,7 @@ public sealed class CodeSymbolToolTests
             writers: true,
             limit: 50,
             ct: CancellationToken.None,
-            scope: "reference",
+            scope: IndexQueryScope.Reference,
             collection: reference.Collection);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);

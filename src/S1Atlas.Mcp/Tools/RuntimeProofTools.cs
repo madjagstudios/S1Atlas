@@ -11,7 +11,7 @@ public sealed class RuntimeProofTools
     [McpServerTool(Name = "plan_runtime_proof", Title = "Plan runtime proof", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Generate a bounded, read-only runtime diagnostic plan without launching a game or inventing telemetry.")]
     public Task<ToolEnvelope<RuntimeProofPlan>> PlanRuntimeProofAsync(
         [Description("The behavioral question the diagnostic plan must resolve.")] string behavioralQuestion,
-        [Description("Execution boundary: singlePlayer, listenHost, dedicatedServer, or client.")] string executionBoundary,
+        [Description("Execution boundary the plan must respect.")] RuntimeExecutionBoundary executionBoundary,
         [Description("Canonical identity to pin during the experiment.")] string canonicalIdentity,
         [Description("Authority or host role that owns the selected behavior.")] string authority,
         [Description("Static facts already established for this selected build.")] string[]? knownStaticFacts = null,
@@ -19,18 +19,11 @@ public sealed class RuntimeProofTools
         [Description("Runtime observables unavailable for this build and execution boundary.")] string[]? unavailableObservables = null,
         [Description("Whether the behavior-ownership policy gate is satisfied.")] bool policyGateSatisfied = false)
     {
-        if (!Enum.TryParse<RuntimeExecutionBoundary>(executionBoundary, ignoreCase: true, out var boundary))
-        {
-            return Task.FromResult(
-                ToolEnvelope<RuntimeProofPlan>.Invalid(
-                    new ToolError("InvalidExecutionBoundary", "Execution boundary must be singlePlayer, listenHost, dedicatedServer, or client.")));
-        }
-
         try
         {
             var plan = RuntimeProofPlanner.Create(new RuntimeProofRequest(
                 behavioralQuestion,
-                boundary,
+                executionBoundary,
                 canonicalIdentity,
                 authority,
                 knownStaticFacts ?? [],

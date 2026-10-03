@@ -81,7 +81,7 @@ public sealed class ApiCodebaseRoutingTests
             var invalidRelatedLimit = await tools.GetSourceAsync("Demo.Api", McpCodebase.s1mapi, CodeChannel.Preview, relatedLimit: 51, ct: cancellationToken);
             var invalidKinds = await tools.FindRelatedTypesAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, relationKinds: ["Calls"], ct: cancellationToken);
             var invalidFilter = await tools.FindFieldReferencesAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, readers: true, writers: true, ct: cancellationToken);
-            var invalidScope = await tools.SearchSymbolsAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, scope: "reference", collection: "any", ct: cancellationToken);
+            var invalidScope = await tools.SearchSymbolsAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, scope: IndexQueryScope.Reference, collection: "any", ct: cancellationToken);
             var invalidCollection = await tools.SearchSymbolsAsync("Demo.Api", McpCodebase.s1api, CodeChannel.Release, collection: "any", ct: cancellationToken);
 
             AssertInvalid(blankSelector, "InvalidArguments");

@@ -186,7 +186,7 @@ public sealed class SceneToolTests
             selector: atlas.PrefabSelector,
             buildId: atlas.BuildIdA,
             sceneSnapshotId: null,
-            kind: "Prefab",
+            kind: SceneDocumentKind.Prefab,
             includeChildren: false,
             includeComponents: false,
             includeReferences: false,

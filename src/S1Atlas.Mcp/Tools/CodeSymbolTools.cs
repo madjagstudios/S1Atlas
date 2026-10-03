@@ -36,13 +36,13 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "search_symbols", Title = "Search symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search the integrity-verified Schedule I game index or an explicitly selected local reference collection for symbols.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchSymbolsAsync(
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
-        [Description("Optional symbol kind filter.")] string? kind = null,
+        [Description("Symbol kind filter.")] SymbolKind? kind = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
     {
@@ -56,11 +56,6 @@ public sealed class CodeSymbolTools
             if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<SymbolSearchResult> limitError))
             {
                 return limitError;
-            }
-
-            if (!ToolArguments.TryParseKind(kind, null, out var parsedKind, out ToolEnvelope<SymbolSearchResult> kindError))
-            {
-                return kindError;
             }
 
             return await WithApiSelectionAsync<SymbolSearchResult>(
@@ -77,7 +72,7 @@ public sealed class CodeSymbolTools
                         boundedLimit,
                         ct,
                         includeGenerated,
-                        parsedKind);
+                        kind);
                     return EnvelopeMapper.FromApiSearch(catalog, selection, result);
                 },
                 ct);
@@ -104,11 +99,6 @@ public sealed class CodeSymbolTools
                     return limitError;
                 }
 
-                if (!ToolArguments.TryParseKind(kind, authority, out var parsedKind, out ToolEnvelope<SymbolSearchResult> kindError))
-                {
-                    return kindError;
-                }
-
                 if (!ToolArguments.TryParseScope(scope, collection, authority, out var options, out ToolEnvelope<SymbolSearchResult> scopeError))
                 {
                     return scopeError;
@@ -126,14 +116,14 @@ public sealed class CodeSymbolTools
                         CodeChannel.Installed,
                         query,
                         boundedLimit,
-                        parsedKind,
+                        kind,
                         ct,
                         includeGenerated)
                     : await _services.FederatedIndexQueryService.SearchAsync(
                         query,
                         options,
                         ct,
-                        parsedKind,
+                        kind,
                         includeGenerated);
                 return EnvelopeMapper.FromScopedSearch(authority, result, options.ReferenceCollection);
             });
@@ -142,7 +132,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetTypeAsync(
         [Description("Exact or fuzzy type selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
@@ -152,7 +142,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_method", Title = "Get method", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one method from the preferred, integrity-verified Schedule I code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetMethodAsync(
         [Description("Exact or fuzzy method selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
@@ -187,12 +177,12 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_source", Title = "Get source", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return integrity-checked source for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Source context lines before and after the selected span.")] int context = 5,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Return the containing type's verified source span.")] bool fullType = false,
         [Description("Max caller/callee neighborhood rows per direction (0-50). Zero disables neighborhood lookup.")] int relatedLimit = 10)
@@ -316,12 +306,12 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_callers", Title = "Find callers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCallersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Return only exact (statically bound) callers; omit may-dispatch callers.")] bool exact = false,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
@@ -343,12 +333,12 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_callees", Title = "Find callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false,
         [Description("Include delegate-creation references; they are labeled and never counted as calls.")] bool includeDelegates = false) =>
@@ -357,12 +347,12 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false) =>
         await FindRelationshipsAsync(
@@ -380,12 +370,12 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_call_sites", Title = "Find call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
         [Description("Resolved game-member selector or canonical raw target text.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
@@ -470,14 +460,14 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_field_references", Title = "Find field references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static field readers and writers for one resolved game or local reference field; results do not prove lifecycle ordering or runtime behavior.")]
     public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindFieldReferencesAsync(
         [Description("Exact or fuzzy field selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Return only field readers.")] bool readers = false,
         [Description("Return only field writers.")] bool writers = false,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null,
         [Description("Include compiler-generated members; show their raw sources instead of credited ones.")] bool includeGenerated = false)
     {
@@ -589,13 +579,13 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_related_types", Title = "Find related types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Optional type relationship kinds to include.")] string[]? relationKinds = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
@@ -707,12 +697,12 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_overrides", Title = "Find overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the base and interface slots one method fills, up to the root.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
@@ -796,13 +786,13 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_overriders", Title = "Find overriders", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the methods that override or implement one method, transitively.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
@@ -899,14 +889,14 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_derived_types", Title = "Find derived types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the subclasses and implementers of one type, transitively.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindDerivedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query: scheduleI, s1api, or s1mapi.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase,
         [Description("Channel to query. Only Installed exists for scheduleI.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Optional build ID; omitted resolves the current build.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
         [Description("Maximum hierarchy depth to traverse.")] int depth = 10,
         [Description("Number of results to skip.")] int offset = 0,
         CancellationToken ct = default,
-        [Description("Optional scope: game (default), reference, or all.")] string? scope = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
         [Description("Required for reference or all scope; accepts a collection ID or completed reference index ID.")] string? collection = null)
     {
         if (codebase is not McpCodebase.scheduleI)
@@ -1038,7 +1028,7 @@ public sealed class CodeSymbolTools
                 codebase,
                 channel,
                 buildId,
-                null,
+                IndexQueryScope.Game,
                 null,
                 async (catalog, selection) =>
                 {
@@ -1101,7 +1091,7 @@ public sealed class CodeSymbolTools
         string? buildId,
         int limit,
         CancellationToken ct,
-        string? scope,
+        IndexQueryScope scope,
         string? collection,
         RelationshipDirection direction,
         bool exact = false,
@@ -1218,7 +1208,7 @@ public sealed class CodeSymbolTools
         McpCodebase codebase,
         CodeChannel channel,
         string? buildId,
-        string? scope,
+        IndexQueryScope scope,
         string? collection,
         Func<ApiIndexCatalogResult, ApiIndexSelection, Task<ToolEnvelope<T>>> query,
         CancellationToken ct) where T : class
@@ -1428,66 +1418,22 @@ public sealed class CodeSymbolTools
             return true;
         }
 
-        public static bool TryParseKind<T>(
-            string? kind,
-            S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
-            out SymbolKind? parsed,
-            out ToolEnvelope<T> error) where T : class
-        {
-            if (string.IsNullOrWhiteSpace(kind))
-            {
-                parsed = null;
-                error = null!;
-                return true;
-            }
-
-            if (Enum.TryParse<SymbolKind>(kind, ignoreCase: true, out var parsedKind))
-            {
-                parsed = parsedKind;
-                error = null!;
-                return true;
-            }
-
-            parsed = null;
-            error = Invalid<T>(
-                authority,
-                "InvalidKind",
-                "Symbol kind must be Type, Constructor, Method, Field, Property, or Event.");
-            return false;
-        }
-
         public static bool TryParseScope<T>(
-            string? scope,
+            IndexQueryScope scope,
             string? collection,
             S1Atlas.Application.Authority.InstalledBuildAuthority? authority,
             out IndexQueryOptions options,
             out ToolEnvelope<T> error) where T : class
         {
-            var parsedScope = string.IsNullOrWhiteSpace(scope)
-                ? IndexQueryScope.Game
-                : scope.Trim().ToLowerInvariant() switch
-                {
-                    "game" => IndexQueryScope.Game,
-                    "reference" => IndexQueryScope.Reference,
-                    "all" => IndexQueryScope.All,
-                    _ => (IndexQueryScope?)null
-                };
-            if (parsedScope is null)
-            {
-                options = null!;
-                error = Invalid<T>(authority, "InvalidScope", "Scope must be game, reference, or all.");
-                return false;
-            }
-
             var normalizedCollection = string.IsNullOrWhiteSpace(collection) ? null : collection.Trim();
-            if (parsedScope == IndexQueryScope.Game && normalizedCollection is not null)
+            if (scope == IndexQueryScope.Game && normalizedCollection is not null)
             {
                 options = null!;
                 error = Invalid<T>(authority, "InvalidCollection", "A collection is valid only for reference or all scope.");
                 return false;
             }
 
-            if (parsedScope is IndexQueryScope.Reference or IndexQueryScope.All && normalizedCollection is null)
+            if (scope is IndexQueryScope.Reference or IndexQueryScope.All && normalizedCollection is null)
             {
                 options = null!;
                 error = Invalid<T>(authority, "CollectionRequired", "Reference and all scope require an explicit collection.");
@@ -1499,7 +1445,7 @@ public sealed class CodeSymbolTools
                 CodeChannel.Installed,
                 false,
                 50,
-                parsedScope.Value,
+                scope,
                 normalizedCollection);
             error = null!;
             return true;

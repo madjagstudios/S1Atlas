@@ -1,6 +1,8 @@
 using S1Atlas.Application.Envelope;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Scenes;
 using S1Atlas.Core.Storage;
+using S1Atlas.Indexing.Query;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using S1Atlas.Mcp;
@@ -433,8 +435,8 @@ public sealed class McpTrustBoundaryTests
         var tools = new CodeSymbolTools(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 
         var defaultResult = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None);
-        var gameWithCollection = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, "game", "qol");
-        var referenceWithoutCollection = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, "reference", null);
+        var gameWithCollection = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, IndexQueryScope.Game, "qol");
+        var referenceWithoutCollection = await tools.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, CancellationToken.None, IndexQueryScope.Reference, null);
 
         Assert.Equal(ToolStatus.Resolved, defaultResult.Status);
         Assert.Equal(atlas.IndexId, defaultResult.Build!.IndexId);
@@ -865,7 +867,7 @@ internal static class McpTestHost
         await code.ListApiIndexesAsync(ct: ct);
         await runtimeProof.PlanRuntimeProofAsync(
             "Which authority owns the Demo.Widget run path?",
-            "singlePlayer",
+            RuntimeExecutionBoundary.SinglePlayer,
             "Demo.Widget.Run",
             "Demo.Widget",
             ["lifecycle state is persisted"],
@@ -874,7 +876,6 @@ internal static class McpTestHost
             policyGateSatisfied: true);
 
         await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, ct);
-        await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, "not-a-kind", 50, ct);
         await code.GetTypeAsync(atlas.TypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, ct: ct);
         await code.GetTypeAsync(" ", McpCodebase.scheduleI, CodeChannel.Installed, null, ct: ct);
         await code.GetMethodAsync(atlas.MethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, ct: ct);
@@ -910,20 +911,19 @@ internal static class McpTestHost
         await build.GetEnvironmentAsync("missing-build", ct);
 
         await scene.ListScenesAsync(atlas.BuildIdA, null, null, null, 50, ct);
-        await scene.ListScenesAsync(atlas.BuildIdA, null, "not-a-kind", null, 50, ct);
         await scene.GetSceneAsync(atlas.SceneNameA, atlas.BuildIdA, null, null, false, false, false, 50, ct);
         await scene.GetSceneAsync(" ", atlas.BuildIdA, null, null, false, false, false, 50, ct);
         await scene.GetGameObjectAsync(atlas.GameObjectSelector, atlas.BuildIdA, null, false, false, false, 50, ct);
         await scene.GetGameObjectAsync(" ", atlas.BuildIdA, null, false, false, false, 50, ct);
-        await scene.GetSceneAsync(atlas.PrefabSelector, atlas.BuildIdA, null, "Prefab", false, false, false, 50, ct);
-        await scene.GetSceneAsync(" ", atlas.BuildIdA, null, "Prefab", false, false, false, 50, ct);
+        await scene.GetSceneAsync(atlas.PrefabSelector, atlas.BuildIdA, null, SceneDocumentKind.Prefab, false, false, false, 50, ct);
+        await scene.GetSceneAsync(" ", atlas.BuildIdA, null, SceneDocumentKind.Prefab, false, false, false, 50, ct);
         await scene.GetComponentAsync(atlas.ComponentSelector, atlas.BuildIdA, null, false, true, 50, ct);
         await scene.GetComponentAsync(" ", atlas.BuildIdA, null, false, true, 50, ct);
         await seam.InvestigateSeamAsync(
             "Which seam owns the Demo.Widget run path?",
             atlas.MethodSelector,
             atlas.BuildIdA,
-            null,
+            IndexQueryScope.Game,
             null,
             10,
             5,
