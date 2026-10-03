@@ -129,6 +129,42 @@ public sealed class FindPatchesTests
         await server.DisposeAsync();
         await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
+
+    [Fact]
+    public async Task Investigate_seam_lists_patches_as_prior_art()
+    {
+        await using var atlas = await HarmonyPatchMcpAtlas.CreateAsync();
+        var server = await McpTestServer.StartAsync(atlas.DataRoot, TestContext.Current.CancellationToken);
+
+        var result = await server.Client.CallToolAsync(
+            "investigate_seam",
+            new Dictionary<string, object?>
+            {
+                ["behavioralQuestion"] = "Which patches change Run?",
+                ["selector"] = "Game.Widget::Run()",
+                ["scope"] = "all",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+                ["details"] = true,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsError ?? false);
+        var text = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(result.Content)).Text;
+        using var document = JsonDocument.Parse(text);
+        var root = document.RootElement;
+        Assert.Equal("resolved", root.GetProperty("status").GetString());
+        var sections = root.GetProperty("data").GetProperty("evidenceSections");
+        var patches = sections.EnumerateArray()
+            .Single(section => section.GetProperty("family").GetString() == "Patches");
+        Assert.Equal(7, patches.GetProperty("totalCount").GetInt32());
+        var claims = root.GetProperty("data").GetProperty("claims");
+        Assert.Contains(
+            claims.EnumerateArray(),
+            claim => claim.GetProperty("statement").GetString()!.Contains("patch", StringComparison.OrdinalIgnoreCase));
+
+        await server.DisposeAsync();
+        await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
 }
 
 internal sealed class HarmonyPatchMcpAtlas : IAsyncDisposable

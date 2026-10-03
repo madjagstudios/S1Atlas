@@ -136,6 +136,7 @@ public sealed class PatchedByCliTests
             "all",
             "--collection",
             HarmonyPatchAtlas.CollectionId,
+            "--details",
             "--json");
 
         Assert.Equal(0, result.ExitCode);
