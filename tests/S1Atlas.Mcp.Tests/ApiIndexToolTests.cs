@@ -603,6 +603,375 @@ public sealed class ApiIndexToolTests
         Assert.Equal("ApiIndexUnavailable", result.Error?.Code);
     }
 
+    [Fact]
+    public async Task Shared_search_matches_search_api_symbols()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-search",
+            new string('a', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [ApiSymbol("parity-search", CodebaseKind.S1Api, CodeChannel.Release, "Demo.Parity")]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "search_api_symbols",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["query"] = "Demo.Parity",
+                ["limit"] = 10
+            },
+            "search_symbols",
+            new Dictionary<string, object?>
+            {
+                ["query"] = "Demo.Parity",
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_get_source_matches_get_api_source()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var sourceIdentity = new string('b', 40);
+        var sourceText = "namespace Demo;\npublic sealed class Parity\n{\n    public void Run() { }\n}\n";
+        var symbol = ApiSymbol(
+            "parity-source-symbol",
+            CodebaseKind.S1MApi,
+            CodeChannel.Release,
+            "Demo.Parity.Run",
+            "System.Void Demo.Parity::Run()");
+        var sourceFile = new IndexSourceFileRecord(
+            "parity-source-file",
+            string.Empty,
+            "Parity.cs",
+            Sha256(sourceText),
+            Encoding.UTF8.GetByteCount(sourceText));
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1MApi,
+            CodeChannel.Release,
+            "api-parity-source",
+            sourceIdentity,
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [symbol],
+            sourceFiles: [sourceFile],
+            sourceLocations: [new IndexSourceLocationRecord(symbol.SymbolId, sourceFile.SourceFileId, 4, 5, 4, 26)],
+            sourceText: sourceText);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "get_api_source",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1mapi",
+                ["channel"] = "release",
+                ["selector"] = symbol.QualifiedName,
+                ["context"] = 0,
+                ["relatedLimit"] = 0
+            },
+            "get_source",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = symbol.QualifiedName,
+                ["context"] = 0,
+                ["relatedLimit"] = 0,
+                ["codebase"] = "s1mapi",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_find_callers_matches_find_api_callers()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var target = ApiSymbol("parity-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityTarget");
+        var caller = ApiSymbol("parity-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCaller");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-callers",
+            new string('c', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [target, caller],
+            relationships:
+            [
+                new("parity-calls", string.Empty, caller.SymbolId, target.SymbolId, null, "Calls", "metadata")
+            ]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_callers",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = target.QualifiedName,
+                ["limit"] = 10
+            },
+            "find_callers",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = target.QualifiedName,
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_callers",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = target.QualifiedName,
+                ["limit"] = 10,
+                ["exact"] = true
+            },
+            "find_callers",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = target.QualifiedName,
+                ["limit"] = 10,
+                ["exact"] = true,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_find_callees_matches_find_api_callees()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var caller = ApiSymbol("parity-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCaller");
+        var callee = ApiSymbol("parity-callee", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCallee");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-callees",
+            new string('d', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [caller, callee],
+            relationships:
+            [
+                new("parity-calls", string.Empty, caller.SymbolId, callee.SymbolId, null, "Calls", "metadata")
+            ]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_callees",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = caller.QualifiedName,
+                ["limit"] = 10
+            },
+            "find_callees",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = caller.QualifiedName,
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_find_references_matches_find_api_references()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var target = ApiSymbol("parity-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityTarget");
+        var referrer = ApiSymbol("parity-referrer", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityReferrer");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-references",
+            new string('e', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [target, referrer],
+            relationships:
+            [
+                new("parity-refers", string.Empty, referrer.SymbolId, target.SymbolId, null, "Calls", "metadata")
+            ]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_references",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = target.QualifiedName,
+                ["limit"] = 10
+            },
+            "find_references",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = target.QualifiedName,
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_find_related_types_matches_find_api_related_types()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var target = ApiSymbol("parity-target", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityTarget", kind: "Type");
+        var baseType = ApiSymbol("parity-base", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityBase", kind: "Type");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-related",
+            new string('f', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [target, baseType],
+            relationships:
+            [
+                new("parity-inherits", string.Empty, target.SymbolId, baseType.SymbolId, null, "Inherits", "metadata")
+            ]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_related_types",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = target.QualifiedName,
+                ["relationKinds"] = new[] { "Inherits" },
+                ["limit"] = 10
+            },
+            "find_related_types",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = target.QualifiedName,
+                ["relationKinds"] = new[] { "Inherits" },
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_find_call_sites_matches_find_api_call_sites()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var caller = ApiSymbol("parity-caller", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityCaller");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-call-sites",
+            new string('g', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [caller],
+            relationships:
+            [
+                new("parity-callsite", string.Empty, caller.SymbolId, null, "Demo.Api.Target()", "Calls", "metadata")
+            ]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_call_sites",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = "Demo.Api.Target",
+                ["limit"] = 10
+            },
+            "find_call_sites",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Demo.Api.Target",
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    [Fact]
+    public async Task Shared_find_field_references_matches_find_api_field_references()
+    {
+        await using var atlas = await ApiToolAtlas.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var reader = ApiSymbol("parity-reader", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityReader");
+        var field = ApiSymbol("parity-field", CodebaseKind.S1Api, CodeChannel.Release, "Demo.ParityWidget::value", kind: "Field");
+        await atlas.SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Release,
+            "api-parity-fields",
+            new string('h', 40),
+            environmentSnapshotId: null,
+            cancellationToken,
+            symbols: [reader, field],
+            relationships:
+            [
+                new("parity-reads", string.Empty, reader.SymbolId, field.SymbolId, null, "ReadsField", "Body")
+            ]);
+
+        await AssertSharedToolMatchesApiToolAsync(
+            atlas.Root,
+            "find_api_field_references",
+            new Dictionary<string, object?>
+            {
+                ["codebase"] = "s1api",
+                ["channel"] = "release",
+                ["selector"] = field.QualifiedName,
+                ["readers"] = true,
+                ["writers"] = false,
+                ["limit"] = 10
+            },
+            "find_field_references",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = field.QualifiedName,
+                ["readers"] = true,
+                ["writers"] = false,
+                ["limit"] = 10,
+                ["codebase"] = "s1api",
+                ["channel"] = "release"
+            });
+    }
+
+    private static async Task AssertSharedToolMatchesApiToolAsync(
+        string root,
+        string apiTool,
+        IReadOnlyDictionary<string, object?> apiArguments,
+        string sharedTool,
+        IReadOnlyDictionary<string, object?> sharedArguments)
+    {
+        var responses = await McpTestHost.CallToolsThroughStdioAsync(
+            root,
+            new Dictionary<string, IReadOnlyDictionary<string, object?>>
+            {
+                [apiTool] = apiArguments,
+                [sharedTool] = sharedArguments
+            });
+        Assert.Equal(responses[apiTool], responses[sharedTool]);
+    }
+
     private static void AssertInvalid<T>(ToolEnvelope<T> envelope, string errorCode) where T : class
     {
         Assert.Equal(ToolStatus.Invalid, envelope.Status);
