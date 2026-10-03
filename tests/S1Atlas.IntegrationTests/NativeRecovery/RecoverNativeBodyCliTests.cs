@@ -35,7 +35,7 @@ public sealed class RecoverNativeBodyCliTests
             "recover-native-body",
             "--symbol-id",
             "native-target",
-            "--traversal-budget",
+            "--native-traversal-budget",
             budget,
             "--json");
 
@@ -53,7 +53,7 @@ public sealed class RecoverNativeBodyCliTests
             "recover-native-body",
             "--symbol-id",
             "native-target",
-            "--traversal-budget",
+            "--native-traversal-budget",
             "500",
             "--json");
 
@@ -73,7 +73,7 @@ public sealed class RecoverNativeBodyCliTests
             "recover-native-body",
             "--symbol-id",
             "ABCDEF12",
-            "--traversal-budget",
+            "--native-traversal-budget",
             "100",
             "--json");
 
@@ -193,7 +193,7 @@ public sealed class RecoverNativeBodyCliTests
         using var output = new StringWriter();
         using var error = new StringWriter();
         var exitCode = application.Invoke(
-            ["recover-native-body", "--symbol-id", symbolId, "--traversal-budget", "100", "--json"],
+            ["recover-native-body", "--symbol-id", symbolId, "--native-traversal-budget", "100", "--json"],
             output,
             error,
             TestContext.Current.CancellationToken);

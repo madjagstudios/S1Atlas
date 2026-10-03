@@ -26,7 +26,7 @@ internal static class SourceCommand
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
         var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
         var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
-        var limitOption = new Option<int>("--limit")
+        var limitOption = new Option<int>("--candidate-limit")
         {
             Description = "Maximum number of resolution candidates to consider.",
             DefaultValueFactory = _ => 50
@@ -123,7 +123,7 @@ internal static class SourceCommand
         CancellationToken cancellationToken)
     {
         if (limit <= 0)
-            return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
+            return commandOutput.Failure(1, "InvalidLimit", "--candidate-limit must be greater than zero.");
         if (context < 0)
             return commandOutput.Failure(1, "InvalidContext", "--context cannot be negative.");
         if (relatedLimit is < 0 or > 50)

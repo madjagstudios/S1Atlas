@@ -14,7 +14,7 @@ internal static class ServeCommand
     {
         var portOption = new Option<int>("--port")
         {
-            Description = $"The loopback port to listen on. 0 picks an ephemeral port. [default: {ServeOptions.DefaultPort}]",
+            Description = "The loopback port to listen on. 0 picks an ephemeral port.",
             DefaultValueFactory = _ => ServeOptions.DefaultPort
         };
         var openOption = new Option<bool>("--open")

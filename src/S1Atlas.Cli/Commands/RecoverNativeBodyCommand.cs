@@ -26,12 +26,12 @@ internal static class RecoverNativeBodyCommand
         {
             Description = "A native symbol ID or unique short-ID prefix to recover; repeat for multiple IDs."
         };
-        var traversalBudgetOption = new Option<int>("--traversal-budget")
+        var traversalBudgetOption = new Option<int>("--native-traversal-budget")
         {
             Description = "Native evidence traversal budget (1-500).",
             DefaultValueFactory = _ => 100
         };
-        var buildOption = new Option<string?>("--build-id")
+        var buildOption = new Option<string?>("--build")
         {
             Description = "Select a Schedule I Installed build ID or unique short-ID prefix; defaults to the current installed build."
         };
@@ -88,7 +88,7 @@ internal static class RecoverNativeBodyCommand
             return commandOutput.Failure(
                 1,
                 "InvalidNativeTraversalBudget",
-                $"--traversal-budget must be between {MinimumTraversalBudget} and {MaximumTraversalBudget}.");
+                $"--native-traversal-budget must be between {MinimumTraversalBudget} and {MaximumTraversalBudget}.");
         }
 
         atlasRepository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();

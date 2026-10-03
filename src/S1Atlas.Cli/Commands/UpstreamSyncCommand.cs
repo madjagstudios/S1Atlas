@@ -8,17 +8,17 @@ internal static class UpstreamSyncCommand
 {
     public static Command Create(string dataRoot, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var codebaseArgument = new Argument<string?>("codebase") { Description = "s1api or s1mapi." };
+        var codebaseOption = new Option<string?>("--codebase") { Description = "s1api or s1mapi; defaults to s1api." };
         var commitOption = new Option<string>("--commit") { Description = "The exact 40-character commit SHA to cache." };
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command("sync", "Fetch and cache one exact upstream commit.");
-        command.Arguments.Add(codebaseArgument); command.Options.Add(commitOption); command.Options.Add(jsonOption);
+        command.Options.Add(codebaseOption); command.Options.Add(commitOption); command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("upstream sync", parseResult.GetValue(jsonOption), output, error);
             return CommandExecution.Run(() =>
             {
-                var codebase = UpstreamStatusCommand.ParseCodebase(parseResult.GetValue(codebaseArgument));
+                var codebase = UpstreamStatusCommand.ParseCodebase(parseResult.GetValue(codebaseOption));
                 var commit = parseResult.GetValue(commitOption);
                 if (string.IsNullOrWhiteSpace(commit)) return commandOutput.Failure(1, "CommitRequired", "upstream sync requires --commit so the cache is keyed by an exact commit SHA.");
                 var repository = codebase == S1Atlas.Core.Indexing.CodebaseKind.S1Api

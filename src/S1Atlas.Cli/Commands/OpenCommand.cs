@@ -26,7 +26,7 @@ internal static class OpenCommand
         var selectorArgument = new Argument<string>("selector") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var portOption = new Option<int>("--port")
         {
-            Description = $"The loopback port serve is listening on. [default: {ServeOptions.DefaultPort}]",
+            Description = "The loopback port serve is listening on.",
             DefaultValueFactory = _ => ServeOptions.DefaultPort
         };
         var command = new Command("open", "Open one resolved symbol in the local serve web app.");
