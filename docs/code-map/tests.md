@@ -75,3 +75,4 @@ Roots: tests
 | tests/S1Atlas.Storage.Tests/Scene/ | 3 |
 | tests/S1Atlas.Storage.Tests/Sqlite/ | 11 |
 | tests/S1Atlas.Web.Tests/ | 24 |
+
