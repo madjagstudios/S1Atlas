@@ -55,14 +55,20 @@ internal sealed class AuthorityHarness : IAsyncDisposable
         return harness;
     }
 
-    public InstalledBuildAuthorityResolver CreateResolver()
-    {
-        var preferredResolver = new PreferredVerifiedExtractionResolver(
+    public SqliteAtlasRepository Repository => _repository;
+
+    public string DatabasePath => Path.Combine(_root, "atlas.db");
+
+    public PreferredVerifiedExtractionResolver CreatePreferredResolver() =>
+        new(
             _dataRoot,
             _repository,
             _integrityVerifier);
+
+    public InstalledBuildAuthorityResolver CreateResolver()
+    {
         return new InstalledBuildAuthorityResolver(
-            preferredResolver,
+            CreatePreferredResolver(),
             _repository,
             _repository,
             _repository);

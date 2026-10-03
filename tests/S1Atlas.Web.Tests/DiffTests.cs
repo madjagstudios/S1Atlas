@@ -219,5 +219,11 @@ public sealed class DiffTests
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         using var json = JsonDocument.Parse(body);
         Assert.Equal("not_found", json.RootElement.GetProperty("status").GetString());
+        Assert.Equal(
+            "BuildNotFound",
+            json.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal(
+            "s1atlas builds",
+            json.RootElement.GetProperty("error").GetProperty("hint").GetString());
     }
 }

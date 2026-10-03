@@ -82,6 +82,14 @@ MCP results or silently treat an unavailable server as an empty index. Neither
 interface writes Atlas data as part of querying, and “cite” means cite in your
 own answer or decision record, never write a citation back to Atlas.
 
+### Setup errors carry the fix
+
+Querying before the pipeline is ready fails with a setup error such as
+`NoCurrentBuild` or `NoCompletedIndex` instead of an empty result. Read the
+error's `hint` field and run that exact CLI command, or run `s1atlas doctor`
+for the full readiness checklist and `s1atlas setup` for the guided fix. Never
+treat a setup error as an empty index.
+
 ## The evidence loop
 
 1. **Pin the scope.** Prefer the current indexed Schedule I build. For

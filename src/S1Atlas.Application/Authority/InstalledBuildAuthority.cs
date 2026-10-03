@@ -21,4 +21,5 @@ public sealed record InstalledBuildAuthority(
     string? ExtractionId,
     string? IndexId,
     IndexRunRecord? IndexRun,
-    string? Message);
+    string? Message,
+    string? Hint = null);

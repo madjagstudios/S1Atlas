@@ -170,7 +170,8 @@ internal static class SourceCommand
                     return commandOutput.Failure(
                         1,
                         authority.Status.ToString(),
-                        authority.Message ?? "The requested Schedule I build is unavailable.");
+                        authority.Message ?? "The requested Schedule I build is unavailable.",
+                        hint: authority.Hint);
                 }
 
                 resolution = service.SourceInIndexAsync(
@@ -206,7 +207,8 @@ internal static class SourceCommand
         var resolutionFailure = IndexQueryCommandFactory.FailureForResolution(
             commandOutput,
             resolution.Resolution,
-            query);
+            query,
+            IndexQueryCommandFactory.ScopeIndexHint(options));
         if (resolutionFailure is not null)
         {
             return resolutionFailure.Value;

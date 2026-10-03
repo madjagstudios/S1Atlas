@@ -1,5 +1,6 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Indexing.Query;
 
@@ -98,7 +99,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SymbolQueryResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ => ToolEnvelope<SymbolQueryResult>.Resolved(
                 build,
@@ -184,7 +185,7 @@ public static class EnvelopeMapper
                 provenance),
             ApiIndexAvailability.Unavailable when selection.IndexId is null && IsMissingApiIndex(selection) => ToolEnvelope<T>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", selection.Message ?? "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", selection.Message ?? "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance),
             ApiIndexAvailability.Unavailable => ToolEnvelope<T>.Unavailable(
                 new ToolError("ApiIndexUnavailable", selection.Message ?? "The API index cannot be used with the selected authority."),
@@ -211,7 +212,7 @@ public static class EnvelopeMapper
         {
             return ToolEnvelope<SymbolSearchResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance);
         }
 
@@ -246,7 +247,7 @@ public static class EnvelopeMapper
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance),
             _ when result.Snippet is null => ToolEnvelope<SourceSnippetQueryResult>.Unavailable(
                 new ToolError("SourceUnavailable", "The selected API symbol has no integrity-checked source location."),
@@ -294,7 +295,7 @@ public static class EnvelopeMapper
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance),
             _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(
                 build,
@@ -336,7 +337,7 @@ public static class EnvelopeMapper
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance),
             _ => ToolEnvelope<FieldReferenceQueryResult>.Resolved(build, result, provenance)
         };
@@ -402,7 +403,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ when result.Snippet is null => ToolEnvelope<SourceSnippetQueryResult>.NotFound(
                 BuildFrom(authority),
@@ -446,7 +447,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(
                 BuildFrom(authority),
@@ -476,7 +477,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<HierarchyQueryResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ => ToolEnvelope<HierarchyQueryResult>.Resolved(
                 BuildFrom(authority),
@@ -593,7 +594,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<FieldReferenceQueryResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ => ToolEnvelope<FieldReferenceQueryResult>.Resolved(
                 BuildFrom(authority),
@@ -634,7 +635,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ when result.CallableSurface is null => ToolEnvelope<CallableSurfaceQueryResult>.NotFound(
                 BuildFrom(authority),
@@ -668,7 +669,7 @@ public static class EnvelopeMapper
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<SeamInvestigationResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ when !HasRequiredSeamGateRecords(result) => ToolEnvelope<SeamInvestigationResult>.Unavailable(
                 new ToolError("IncompleteSeamResult", "The resolved seam result is missing required gate records."),

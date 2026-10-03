@@ -1,5 +1,6 @@
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Indexing.Query;
 
@@ -44,7 +45,7 @@ internal static class ServeEnvelopes
         {
             return ToolEnvelope<SymbolSearchResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance);
         }
 
@@ -106,7 +107,7 @@ internal static class ServeEnvelopes
                 Derived(authority, "symbol-selection")),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 BuildFrom(authority),
-                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction."),
+                new ToolError("NoCompletedIndex", "No completed Schedule I Installed index exists for the verified extraction.", ReadinessFixCommands.Index),
                 Derived(authority, "symbol-selection")),
             _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(
                 BuildFrom(authority),
@@ -137,7 +138,7 @@ internal static class ServeEnvelopes
                 provenance),
             SymbolResolutionStatus.NoCompletedIndex => ToolEnvelope<RelationshipQuerySetResult>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance),
             _ => ToolEnvelope<RelationshipQuerySetResult>.Resolved(build, result, provenance)
         };
@@ -164,7 +165,7 @@ internal static class ServeEnvelopes
                 provenance),
             ApiIndexAvailability.Unavailable when selection.IndexId is null && IsMissingApiIndex(selection) => ToolEnvelope<T>.NotFound(
                 build,
-                new ToolError("NoCompletedIndex", selection.Message ?? "No completed API index exists for the requested scope."),
+                new ToolError("NoCompletedIndex", selection.Message ?? "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
                 provenance),
             ApiIndexAvailability.Unavailable => ToolEnvelope<T>.Unavailable(
                 new ToolError("ApiIndexUnavailable", selection.Message ?? "The API index cannot be used with the selected authority."),

@@ -39,8 +39,8 @@ internal static class CommandExecution
                 exitCode,
                 exception.Code.ToString(),
                 message,
-                exception.AttemptId,
-                exception.Stage.ToString());
+                attemptId: exception.AttemptId,
+                stage: exception.Stage.ToString());
         }
         catch (ToolOperationException exception)
         {

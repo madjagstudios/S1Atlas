@@ -99,7 +99,8 @@ internal static class RecoverNativeBodyCommand
             return commandOutput.Failure(
                 1,
                 authority.Status.ToString(),
-                authority.Message ?? "The requested Schedule I build is unavailable.");
+                authority.Message ?? "The requested Schedule I build is unavailable.",
+                hint: authority.Hint);
         }
 
         if (authority.IndexId is not null)

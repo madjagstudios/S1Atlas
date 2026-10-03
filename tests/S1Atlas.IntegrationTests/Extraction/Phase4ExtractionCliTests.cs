@@ -267,6 +267,43 @@ public sealed class Phase4ExtractionCliTests
     }
 
     [Fact]
+    public async Task Extract_RetryAfterCorruption_FailsIntegrityMismatchWithoutRepairing()
+    {
+        await using var fixture = new Phase4ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
+        fixture.InstallManagedTool();
+        var buildId = await fixture.SeedBuildAsync();
+
+        var first = fixture.Invoke("extract", "--json");
+        Assert.Equal(0, first.ExitCode);
+        using var firstDocument = JsonDocument.Parse(first.StandardOutput);
+        var extractionId = firstDocument.RootElement
+            .GetProperty("data").GetProperty("extractionId").GetString()!;
+
+        var artifact = Path.Combine(
+            fixture.ValidatedExtractionRoot(buildId, extractionId),
+            "reconstructed",
+            "Assembly-CSharp.dll");
+        await File.AppendAllTextAsync(
+            artifact, "corruption", TestContext.Current.CancellationToken);
+
+        var retry = fixture.Invoke("extract", "--retry", "--json");
+
+        Assert.Equal(1, retry.ExitCode);
+        using var retryDocument = JsonDocument.Parse(retry.StandardOutput);
+        AssertFailureEnvelope(retryDocument.RootElement, "extract", 1);
+        Assert.Equal(
+            "IntegrityMismatch",
+            retryDocument.RootElement.GetProperty("error").GetProperty("code").GetString());
+
+        var repository = await fixture.OpenRepositoryAsync();
+        var preferred = await repository.GetPreferredExtractionAsync(
+            buildId, TestContext.Current.CancellationToken);
+        Assert.NotNull(preferred);
+        Assert.Equal(extractionId, preferred.ExtractionId);
+    }
+
+    [Fact]
     public async Task ExtractionsShow_UnknownId_ExitsOne()
     {
         await using var fixture = new Phase4ExtractionCliFixture(

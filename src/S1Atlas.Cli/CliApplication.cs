@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.CommandLine;
 using S1Atlas.Application.Authority;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Commands;
 using S1Atlas.Cli.Configuration;
+using S1Atlas.Cli.Output;
+using S1Atlas.Core.Discovery;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Storage;
 using S1Atlas.Core.Tools;
@@ -336,6 +339,20 @@ public sealed class CliApplication
             sqliteRepository,
             sqliteRepository,
             sqliteRepository);
+        var readinessService = new AtlasReadinessService(
+            new SqliteAtlasSchemaInspector(_paths.DatabasePath),
+            new DotNetRuntimeProbe(),
+            new WindowsScheduleOneLocator(),
+            new WindowsInstallationMetadataReader(),
+            repository,
+            sqliteRepository,
+            new PreferredVerifiedExtractionResolver(_paths.RootDirectory, sqliteRepository, integrityVerifier),
+            sqliteRepository,
+            new ReadOnlyManagedToolStatusReader(
+                definitionProvider,
+                validator.InspectAsync,
+                ToolPlatform.GetCurrent()),
+            new UpstreamCommitCache(_paths.RootDirectory));
         // Consumed by the `recover-native-body` command. Constructing this holder is cheap (no I/O),
         // so it is safe to build unconditionally on every invocation.
         NativeRecoveryComposition = new NativeRecoveryComposition(
@@ -367,7 +384,62 @@ public sealed class CliApplication
                 error,
                 cancellationToken));
         root.Subcommands.Add(
-            StatusCommand.Create(repository, output, error, cancellationToken));
+            StatusCommand.Create(repository, readinessService, output, error, cancellationToken));
+        root.Subcommands.Add(
+            DoctorCommand.Create(readinessService, output, error, cancellationToken));
+        root.Subcommands.Add(
+            SetupCommand.Create(
+                readinessService,
+                new SetupStepRunners(
+                    cancellation =>
+                        Task.FromResult(ScanCommand.Execute(
+                            discovery,
+                            repository,
+                            _atlasVersion,
+                            null,
+                            new CommandOutput("scan", json: false, output, error),
+                            null,
+                            cancellation)),
+                    (toolId, cancellation) =>
+                        Task.FromResult(ToolsInstallCommand.Execute(
+                            toolService,
+                            repository,
+                            toolId,
+                            false,
+                            new CommandOutput("tools install", json: false, output, error),
+                            cancellation)),
+                    (options, cancellation) =>
+                        Task.FromResult(ExtractCommand.Execute(
+                            workflow,
+                            options,
+                            new CommandOutput("extract", json: false, output, error),
+                            null,
+                            cancellation)),
+                    (options, cancellation) =>
+                        Task.FromResult(IndexCommand.Execute(
+                            indexingWorkflow,
+                            apiIndexingWorkflow,
+                            sceneIndexingWorkflow,
+                            repository,
+                            options,
+                            new CommandOutput("index", json: false, output, error),
+                            null,
+                            cancellation)),
+                    cancellation =>
+                        Task.FromResult(IndexCommand.Execute(
+                            indexingWorkflow,
+                            apiIndexingWorkflow,
+                            sceneIndexingWorkflow,
+                            repository,
+                            new IndexCommandOptions(Scene: true),
+                            new CommandOutput("index", json: false, output, error),
+                            null,
+                            cancellation))),
+                Console.In,
+                Console.IsInputRedirected,
+                output,
+                error,
+                cancellationToken));
         root.Subcommands.Add(
             EnvironmentCommand.Create(repository, output, error, cancellationToken));
         root.Subcommands.Add(

@@ -90,8 +90,9 @@ internal sealed class CommandOutput
         string code,
         string message,
         string? attemptId = null,
-        string? stage = null) =>
-        Failure<object?>(exitCode, code, message, null, attemptId, stage);
+        string? stage = null,
+        string? hint = null) =>
+        Failure<object?>(exitCode, code, message, null, attemptId, stage, hint);
 
     public int Failure<T>(
         int exitCode,
@@ -99,7 +100,8 @@ internal sealed class CommandOutput
         string message,
         T data,
         string? attemptId = null,
-        string? stage = null)
+        string? stage = null,
+        string? hint = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(exitCode);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
@@ -113,7 +115,7 @@ internal sealed class CommandOutput
                 Success: false,
                 ExitCode: exitCode,
                 Data: data,
-                Error: new CliError(attemptId, stage, code, message)));
+                Error: new CliError(attemptId, stage, code, message, hint)));
         }
         else
         {
@@ -123,6 +125,10 @@ internal sealed class CommandOutput
                 _standardError.WriteLine($"Stage:   {stage}");
             }
             _standardError.WriteLine($"Code:    {code}");
+            if (hint is not null)
+            {
+                _standardError.WriteLine($"Next:    {hint}");
+            }
             if (attemptId is not null)
             {
                 _standardError.WriteLine($"Attempt: {attemptId}");

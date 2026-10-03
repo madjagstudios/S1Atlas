@@ -16,4 +16,6 @@ internal sealed record CliError(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Stage,
     string Code,
-    string Message);
+    string Message,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? Hint = null);

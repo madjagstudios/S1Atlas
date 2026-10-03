@@ -25,6 +25,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
     private const string ToolInstanceId = "tool-instance-1";
     private const string BuildIdASeed = "build-a";
     private const string BuildIdBSeed = "build-b";
+    public const string NonCurrentBuildIdSeed =
+        "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
     private const string RecipeIdA = "1111111111111111111111111111111111111111111111111111111111111111";
     private const string RecipeIdB = "2222222222222222222222222222222222222222222222222222222222222222";
     private const string ProfileDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -385,6 +387,100 @@ public sealed class McpTestAtlas : IAsyncDisposable
             CancellationToken.None);
         atlas.ExtractionIdA = seeded.Extraction.ExtractionId;
         atlas.InputSnapshotIdA = seeded.InputSnapshot.InputSnapshotId;
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedCurrentBuildOnlyAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(BuildIdASeed);
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedNonCurrentBuildWithoutExtractionAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(NonCurrentBuildIdSeed);
+        await atlas.SeedCurrentBuildAsync(BuildIdASeed);
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedCorruptedPreferenceAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(BuildIdASeed);
+        var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
+            atlas._repository,
+            atlas.DataRoot,
+            BuildIdASeed,
+            RecipeIdA,
+            ToolInstanceId,
+            ProfileDigest,
+            PolicyDigest,
+            BaseTime,
+            CancellationToken.None);
+        await atlas._repository.SetPreferredExtractionAsync(
+            new PreferredExtraction(
+                BuildIdASeed,
+                seeded.Extraction.ExtractionId,
+                seeded.Report.ValidatedAtUtc,
+                ExtractionPreferenceReason.ManualPromotion),
+            CancellationToken.None);
+        await File.AppendAllTextAsync(
+            Path.Combine(seeded.Extraction.RootPath, "validation.json"),
+            "\n",
+            CancellationToken.None);
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedAmbiguousBuildsAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync("abcdef12" + new string('0', 56));
+        await atlas.SeedCurrentBuildAsync("abcdef12" + new string('1', 56));
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedIndexBuildMismatchAsync()
+    {
+        var atlas = await SeedHealthyInstalledBuildAsync();
+        await atlas.SeedCurrentBuildAsync(BuildIdBSeed);
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            $"Data Source={Path.Combine(atlas.DataRoot, "atlas.db")}");
+        await connection.OpenAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE code_snapshots SET environment_snapshot_id = (" +
+            "SELECT snapshot_id FROM environment_snapshots WHERE build_id = $build LIMIT 1) " +
+            "WHERE snapshot_id = $code;";
+        command.Parameters.AddWithValue("$build", BuildIdBSeed);
+        command.Parameters.AddWithValue("$code", "snapshot-" + atlas.ExtractionIdA);
+        await command.ExecuteNonQueryAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(BuildIdASeed);
         return atlas;
     }
 

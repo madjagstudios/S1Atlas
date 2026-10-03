@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using S1Atlas.Application.Readiness;
+
 namespace S1Atlas.Cli.Output;
 
 internal sealed record StatusOutput(
@@ -8,7 +11,24 @@ internal sealed record StatusOutput(
     string? SteamBuildId,
     DateTimeOffset? CapturedAtUtc,
     int InstalledDependencyCount,
-    int DependencyCount);
+    int DependencyCount,
+    StatusReadinessOutput Readiness);
+
+internal sealed record StatusReadinessOutput(
+    bool IsReady,
+    string Summary,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? NextCommand)
+{
+    public static StatusReadinessOutput FromReport(ReadinessReport report)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        return new StatusReadinessOutput(
+            report.IsReady,
+            report.NextStep.Summary,
+            report.NextStep.Command);
+    }
+}
 
 internal sealed record EnvironmentOutput(
     string BuildId,

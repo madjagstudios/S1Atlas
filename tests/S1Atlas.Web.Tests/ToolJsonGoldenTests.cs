@@ -37,6 +37,27 @@ public sealed class ToolJsonGoldenTests
     }
 
     [Fact]
+    public void ErrorHintSerializesOnTheWire()
+    {
+        var envelope = ToolEnvelope<object>.NotFound(
+            build: null,
+            new ToolError(
+                "NoCurrentBuild",
+                "No current environment snapshot is available.",
+                "s1atlas scan"));
+
+        var json = JsonSerializer.Serialize(envelope, ToolJsonOptions.Create());
+
+        Assert.Equal(
+            "{\"status\":\"not_found\"," +
+            "\"candidates\":[]," +
+            "\"provenance\":[]," +
+            "\"error\":{\"code\":\"NoCurrentBuild\",\"message\":\"No current environment snapshot is available.\",\"hint\":\"s1atlas scan\"}," +
+            "\"suggestions\":[]}",
+            json);
+    }
+
+    [Fact]
     public void AmbiguousEnvelopeReportsSuggestionsAndTotal()
     {
         var envelope = ToolEnvelope<object>.Ambiguous(

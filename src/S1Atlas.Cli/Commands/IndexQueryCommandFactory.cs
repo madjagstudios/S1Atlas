@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Application.Authority;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
@@ -111,7 +112,7 @@ internal static class IndexQueryCommandFactory
                         buildId,
                         cancellationToken);
                     if (authority.ErrorCode is not null)
-                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
+                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!, hint: authority.BuildAuthority?.Hint);
 
                     var includeGenerated = (withGenerated || withDelegates) && parseResult.GetValue(includeGeneratedOption);
                     var includeDelegates = withDelegates && parseResult.GetValue(includeDelegatesOption);
@@ -150,7 +151,7 @@ internal static class IndexQueryCommandFactory
                                 ? executeWithReferenceIndex(query, options, authority.ReferenceIndexId, cancellationToken).GetAwaiter().GetResult()
                                 : execute!(query, options, cancellationToken).GetAwaiter().GetResult();
                     }
-                    return Complete(commandOutput, data, parseResult.GetValue(queryArgument)!);
+                    return Complete(commandOutput, data, parseResult.GetValue(queryArgument)!, ScopeIndexHint(options));
                 },
                 commandOutput,
                 cancellationToken);
@@ -158,9 +159,13 @@ internal static class IndexQueryCommandFactory
         return command;
     }
 
-    internal static int Complete(CommandOutput commandOutput, IndexQueryOutput data, string selector)
+    internal static int Complete(
+        CommandOutput commandOutput,
+        IndexQueryOutput data,
+        string selector,
+        string? indexHint = null)
     {
-        var failure = FailureForResolution(commandOutput, data.Resolution, selector);
+        var failure = FailureForResolution(commandOutput, data.Resolution, selector, indexHint);
         if (failure is not null)
         {
             return failure.Value;
@@ -168,6 +173,9 @@ internal static class IndexQueryCommandFactory
 
         return commandOutput.Success(data, writer => WriteHuman(data, writer));
     }
+
+    internal static string? ScopeIndexHint(IndexQueryOptions options) =>
+        ReadinessFixCommands.HintForNoCompletedIndex(options.Codebase, options.Channel);
 
     /// <summary>
     /// Shared selector-failure presenter for every symbol-taking command. Ambiguous
@@ -180,7 +188,8 @@ internal static class IndexQueryCommandFactory
     internal static int? FailureForResolution(
         CommandOutput commandOutput,
         SymbolResolutionResult? resolution,
-        string selector)
+        string selector,
+        string? indexHint = null)
     {
         if (resolution is { Status: SymbolResolutionStatus.Ambiguous } ambiguous)
         {
@@ -200,7 +209,8 @@ internal static class IndexQueryCommandFactory
                 1,
                 "NoCompletedIndex",
                 "No completed index exists for the requested codebase and channel.",
-                new IndexQueryFailureData([], [], null));
+                new IndexQueryFailureData([], [], null),
+                hint: indexHint);
         }
 
         if (resolution is { Status: SymbolResolutionStatus.NotFound } notFound)
@@ -482,7 +492,7 @@ internal static class IndexQueryCommandFactory
             var authority = authorityResolver.ResolveAsync(buildId, cancellationToken).GetAwaiter().GetResult();
             return authority.Status == InstalledBuildAuthorityStatus.Resolved
                 ? new ExecutionAuthority(authority.IndexRun, null, null, BuildAuthority: authority)
-                : new ExecutionAuthority(null, authority.Status.ToString(), authority.Message ?? "The requested Schedule I build is unavailable.");
+                : new ExecutionAuthority(null, authority.Status.ToString(), authority.Message ?? "The requested Schedule I build is unavailable.", BuildAuthority: authority);
         }
 
         var allowsScopedAuthority = referenceService is not null &&
@@ -517,7 +527,8 @@ internal static class IndexQueryCommandFactory
             return new ExecutionAuthority(
                 null,
                 baseAuthority.Status.ToString(),
-                baseAuthority.Message ?? "The requested Schedule I build is unavailable.");
+                baseAuthority.Message ?? "The requested Schedule I build is unavailable.",
+                BuildAuthority: baseAuthority);
         }
 
         if (!string.IsNullOrWhiteSpace(buildId) &&

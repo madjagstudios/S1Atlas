@@ -8,6 +8,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Guided setup, readiness doctor, and next-step hints** (AT-87):
+  `s1atlas setup` plans the missing scan, tools-install, extract, and index
+  steps from one shared readiness report, prints the plan, and asks before
+  changing anything, with a second confirmation for network tool downloads
+  (`--yes` answers both; `--include-optional` adds the scene snapshot). Each
+  step re-checks readiness so newly satisfied work is skipped, and the run
+  stops at the first failure with the next step. `s1atlas doctor` renders the
+  same checklist read-only (exit `0` only when ready, `--json` supported),
+  `status` appends the Ready-or-Next summary, and setup errors on the CLI,
+  MCP, and serve envelopes carry a `hint` field with the exact fix command.
+
 - **Selector UX: candidate tables, near matches, short IDs** (AT-78): every
   symbol-taking command and MCP tool resolves the same selector forms (full
   ID, unique 8-63 hex short-ID prefix of either case, canonical key,

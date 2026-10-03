@@ -101,7 +101,7 @@ internal static class HierarchyCommandRunner
                         parseResult.GetValue(buildOption),
                         cancellationToken);
                     if (authority.ErrorCode is not null)
-                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!);
+                        return commandOutput.Failure(1, authority.ErrorCode, authority.ErrorMessage!, hint: authority.BuildAuthority?.Hint);
 
                     var query = parseResult.GetValue(queryArgument)!;
                     HierarchyQueryResult result;
@@ -118,7 +118,7 @@ internal static class HierarchyCommandRunner
                         result = executeFederated(federatedService, query, options, depth, offset, cancellationToken, authority.ReferenceIndexId).GetAwaiter().GetResult();
                     }
 
-                    return IndexQueryCommandFactory.Complete(commandOutput, IndexQueryCommandFactory.ToOutput(result), query);
+                    return IndexQueryCommandFactory.Complete(commandOutput, IndexQueryCommandFactory.ToOutput(result), query, IndexQueryCommandFactory.ScopeIndexHint(options));
                 },
                 commandOutput,
                 cancellationToken);

@@ -37,31 +37,52 @@ internal static class ToolsInstallCommand
                 parseResult.GetValue(jsonOption),
                 output,
                 error);
-            return CommandExecution.Run(
-                () =>
-                {
-                    repository.InitializeAsync(cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
-                    var result = service.InstallAsync(
-                            parseResult.GetRequiredValue(toolIdArgument),
-                            parseResult.GetValue(repairOption),
-                            cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
-                    var data = new ToolInstallOutput(
-                        ToolsStatusCommand.ToOutput(result.Installation),
-                        result.WasAlreadyVerified,
-                        result.Repaired,
-                        result.QuarantinePath);
-                    return commandOutput.Success(
-                        data,
-                        writer => WriteHuman(writer, result));
-                },
+            return Execute(
+                service,
+                repository,
+                parseResult.GetRequiredValue(toolIdArgument),
+                parseResult.GetValue(repairOption),
                 commandOutput,
                 cancellationToken);
         });
         return command;
+    }
+
+    internal static int Execute(
+        ManagedToolService service,
+        IAtlasRepository repository,
+        string toolId,
+        bool repair,
+        CommandOutput commandOutput,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(service);
+        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolId);
+        ArgumentNullException.ThrowIfNull(commandOutput);
+        return CommandExecution.Run(
+            () =>
+            {
+                repository.InitializeAsync(cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                var result = service.InstallAsync(
+                        toolId,
+                        repair,
+                        cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                var data = new ToolInstallOutput(
+                    ToolsStatusCommand.ToOutput(result.Installation),
+                    result.WasAlreadyVerified,
+                    result.Repaired,
+                    result.QuarantinePath);
+                return commandOutput.Success(
+                    data,
+                    writer => WriteHuman(writer, result));
+            },
+            commandOutput,
+            cancellationToken);
     }
 
     private static void WriteHuman(TextWriter writer, ToolInstallResult result)

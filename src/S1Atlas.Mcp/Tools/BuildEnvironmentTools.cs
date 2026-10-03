@@ -2,6 +2,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Mcp.Mapping;
@@ -73,7 +74,7 @@ public sealed class BuildEnvironmentTools
         if (snapshot is null)
         {
             return ToolEnvelope<EnvironmentFacts>.Unavailable(
-                new ToolError("NoCurrentBuild", "No current environment snapshot is available."));
+                new ToolError("NoCurrentBuild", "No current environment snapshot is available.", ReadinessFixCommands.Scan));
         }
 
         if (!string.IsNullOrWhiteSpace(buildId) &&
