@@ -331,6 +331,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   columns but dropped them when mapping rows, so `generatedDetail` always
   came back null. Both columns are now mapped like the read-only
   repository already did.
+- **Serve and search handle real member names** (AT-115, AT-116):
+  member identities use `Type::Member(Params):Return`, but serve assumed
+  dotted names, so type pages listed no members and breadcrumbs split at the
+  wrong separator. Type pages now list every member of the exact declaring
+  type, member breadcrumbs render the simple name with a resolved
+  declaring-type link, and an exact member-name match ranks in the top
+  search tier. Name lookup still prefers `.-terminal` types and namespaces,
+  then resolves a unique exact member name instead of returning an ambiguous
+  list (several exact matches stay ambiguous, without substring rows),
+  independent of result order on every resolution path.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 
