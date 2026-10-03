@@ -14,7 +14,7 @@ internal static class ReferenceCollectionsListCommand
         CancellationToken cancellationToken)
     {
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("list", "List completed local reference-mod collections.");
+        var command = new Command("list", CliExamples.With("List completed local reference-mod collections.", "s1atlas reference collections list --json"));
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>
         {

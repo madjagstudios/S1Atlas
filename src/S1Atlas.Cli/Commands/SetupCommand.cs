@@ -30,7 +30,7 @@ internal static class SetupCommand
         {
             Description = "Include optional steps such as the scene snapshot."
         };
-        var command = new Command("setup", "Run the missing pipeline steps in order.");
+        var command = new Command("setup", CliExamples.With("Run the missing pipeline steps in order.", "s1atlas setup --yes"));
         command.Options.Add(yesOption);
         command.Options.Add(includeOptionalOption);
         command.SetAction(parseResult =>

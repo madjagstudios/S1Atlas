@@ -24,7 +24,7 @@ public sealed class TargetRelationshipCliTests
         await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
 
         var result = atlas.Run(
-            "callsites",
+            "call-sites",
             "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink",
             "--scope",
             "all",
@@ -60,7 +60,7 @@ public sealed class TargetRelationshipCliTests
         await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
 
         var readers = atlas.Run(
-            "fieldrefs",
+            "field-refs",
             "Demo.State.Value",
             "--scope",
             "all",
@@ -69,7 +69,7 @@ public sealed class TargetRelationshipCliTests
             "--readers",
             "--json");
         var writers = atlas.Run(
-            "fieldrefs",
+            "field-refs",
             "Demo.State.Value",
             "--scope",
             "all",
@@ -78,7 +78,7 @@ public sealed class TargetRelationshipCliTests
             "--writers",
             "--json");
         var invalid = atlas.Run(
-            "fieldrefs",
+            "field-refs",
             "Demo.State.Value",
             "--scope",
             "all",
@@ -376,8 +376,8 @@ public sealed class TargetRelationshipCliTests
     {
         await using var atlas = await TargetRelationshipCliAtlas.CreateAsync();
 
-        var hidden = atlas.Run("fieldrefs", "Demo.Capture.Widget+<>c__DisplayClass0_0::x", "--json");
-        var raw = atlas.Run("fieldrefs", "Demo.Capture.Widget+<>c__DisplayClass0_0::x", "--include-generated", "--json");
+        var hidden = atlas.Run("field-refs", "Demo.Capture.Widget+<>c__DisplayClass0_0::x", "--json");
+        var raw = atlas.Run("field-refs", "Demo.Capture.Widget+<>c__DisplayClass0_0::x", "--include-generated", "--json");
 
         Assert.Equal(0, hidden.ExitCode);
         Assert.Equal(0, raw.ExitCode);

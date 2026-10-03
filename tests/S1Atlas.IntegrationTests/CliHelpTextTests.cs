@@ -26,8 +26,8 @@ public sealed class CliHelpTextTests : IAsyncDisposable
 
     public static TheoryData<string> SymbolQueryCommands => new()
     {
-        "callers", "callees", "refs", "fieldrefs", "callsites", "search", "type", "method",
-        "callable", "source", "open", "investigate_seam", "derived", "overrides", "overridden-by"
+        "callers", "callees", "refs", "field-refs", "call-sites", "search", "type", "method",
+        "callable", "source", "open", "investigate-seam", "derived", "overrides", "overridden-by"
     };
 
     [Theory]
@@ -41,8 +41,8 @@ public sealed class CliHelpTextTests : IAsyncDisposable
 
     public static TheoryData<string> InstalledBuildCommands => new()
     {
-        "callers", "callees", "refs", "fieldrefs", "callsites", "search", "type", "method",
-        "callable", "source", "investigate_seam", "derived", "overrides", "overridden-by"
+        "callers", "callees", "refs", "field-refs", "call-sites", "search", "type", "method",
+        "callable", "source", "investigate-seam", "derived", "overrides", "overridden-by"
     };
 
     [Theory]

@@ -18,7 +18,7 @@ internal static class ReferenceCollectionsValidateCommand
     {
         var manifestArgument = new Argument<string>("manifest") { Description = "A local reference-mod collection manifest." };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("validate", "Validate and hash a local reference-mod collection manifest.");
+        var command = new Command("validate", CliExamples.With("Validate and hash a local reference-mod collection manifest.", "s1atlas reference collections validate <manifest-path>"));
         command.Arguments.Add(manifestArgument);
         command.Options.Add(jsonOption);
         command.SetAction(parseResult =>

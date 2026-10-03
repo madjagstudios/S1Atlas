@@ -18,6 +18,7 @@ internal static class CallableCommand
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
             "callable",
+            CliExamples.With("Show the callable surface of a resolved symbol.", "s1atlas callable \"Demo.Widget\" --json"),
             service,
             authorityResolver,
             repository,
@@ -43,5 +44,7 @@ internal static class CallableCommand
                        options.Channel == CodeChannel.Installed &&
                        !options.AllChannels
                 ? null
-                : "callable queries require --codebase schedule-i and --channel installed.");
+                : "callable queries require --codebase schedule-i and --channel installed.",
+            codebaseOptionDescription: "schedule-i only.",
+            channelOptionDescription: "installed only.");
 }

@@ -26,12 +26,25 @@ internal static class OpenCommand
         var selectorArgument = new Argument<string>("selector") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var portOption = new Option<int>("--port")
         {
-            Description = $"The loopback port serve is listening on. [default: {ServeOptions.DefaultPort}]",
+            Description = "The loopback port serve is listening on. 1 to 65535.",
             DefaultValueFactory = _ => ServeOptions.DefaultPort
         };
-        var command = new Command("open", "Open one resolved symbol in the local serve web app.");
+        var command = new Command("open", CliExamples.With("Open one resolved symbol in the local serve web app.", "s1atlas open \"Demo.Widget\""));
         command.Arguments.Add(selectorArgument);
         command.Options.Add(portOption);
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                var port = CliValidation.GetValue(result, portOption);
+                if (port is < 1 or > 65535)
+                    throw new CliValidationException("open", "InvalidPort", $"Invalid port '{port}'. Use 1 to 65535.");
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("open", false, output, error);
@@ -65,9 +78,6 @@ internal static class OpenCommand
         TextWriter error,
         CancellationToken cancellationToken)
     {
-        if (port is < 1 or > 65535)
-            return commandOutput.Failure(1, "InvalidPort", $"Invalid port '{port}'. Use 1 to 65535.");
-
         repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
         var authority = authorityResolver.ResolveAsync(null, cancellationToken).GetAwaiter().GetResult();
         if (authority.Status != InstalledBuildAuthorityStatus.Resolved)

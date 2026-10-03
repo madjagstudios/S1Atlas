@@ -19,7 +19,7 @@ internal static class OverridesCommand
         CancellationToken cancellationToken) =>
         HierarchyCommandRunner.Create(
             "overrides",
-            "Show the base and interface slots a method fills, up to the root.",
+            CliExamples.With("Show the base and interface slots a method fills, up to the root.", "s1atlas overrides \"Demo.Widget::Run()\" --json"),
             false,
             false,
             service,

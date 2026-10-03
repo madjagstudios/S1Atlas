@@ -21,21 +21,21 @@ internal static class FieldRefsCommand
     {
         var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all (every channel of the codebase). all is not valid with --scope reference or all." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.ScopedBuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",
             DefaultValueFactory = _ => 50
         };
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
-        var readersOption = new Option<bool>("--readers") { Description = "Return only field reads." };
-        var writersOption = new Option<bool>("--writers") { Description = "Return only field writes." };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
+        var readersOption = new Option<bool>("--readers") { Description = "Return only field reads. Mutually exclusive with --writers." };
+        var writersOption = new Option<bool>("--writers") { Description = "Return only field writes. Mutually exclusive with --readers." };
         var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("fieldrefs", "Find field read/write relationships for one resolved symbol.");
+        var command = new Command("field-refs", CliExamples.With("Find field read/write relationships for one resolved symbol.", "s1atlas field-refs \"Demo.Widget::count\" --writers"));
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
@@ -47,9 +47,23 @@ internal static class FieldRefsCommand
         command.Options.Add(writersOption);
         command.Options.Add(includeGeneratedOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            "field-refs",
+            codebaseOption,
+            channelOption,
+            limitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: true,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0,
+            validateBeforeParse: result => CliValidation.GetValue(result, readersOption) && CliValidation.GetValue(result, writersOption)
+                ? "--readers and --writers are mutually exclusive."
+                : null);
         command.SetAction(parseResult =>
         {
-            var commandOutput = new CommandOutput("fieldrefs", parseResult.GetValue(jsonOption), output, error);
+            var commandOutput = new CommandOutput("field-refs", parseResult.GetValue(jsonOption), output, error);
             return CommandExecution.Run(
                 () =>
                 {
@@ -57,29 +71,13 @@ internal static class FieldRefsCommand
                     if (limit <= 0)
                         return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
 
-                    if (parseResult.GetValue(readersOption) && parseResult.GetValue(writersOption))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidOptionCombination",
-                            "--readers and --writers are mutually exclusive.");
-                    }
-
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexQueryOptions options;
-                    try
-                    {
-                        options = IndexQueryCommandFactory.ParseOptions(
-                            parseResult.GetValue(codebaseOption),
-                            parseResult.GetValue(channelOption),
-                            limit,
-                            parseResult.GetValue(scopeOption),
-                            parseResult.GetValue(collectionOption));
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-                    }
+                    var options = IndexQueryCommandFactory.ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit,
+                        parseResult.GetValue(scopeOption),
+                        parseResult.GetValue(collectionOption));
 
                     var authority = IndexQueryCommandFactory.ResolveExecutionAuthority(
                         authorityResolver,

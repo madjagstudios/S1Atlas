@@ -26,7 +26,7 @@ internal static class ToolsInstallCommand
         var jsonOption = CommandOutput.CreateJsonOption();
         var command = new Command(
             "install",
-            "Download, verify, and register a repository-pinned tool.");
+            CliExamples.With("Download, verify, and register a repository-pinned tool.", "s1atlas tools install cpp2il"));
         command.Arguments.Add(toolIdArgument);
         command.Options.Add(repairOption);
         command.Options.Add(jsonOption);

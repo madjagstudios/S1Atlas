@@ -19,7 +19,7 @@ internal static class DerivedCommand
         CancellationToken cancellationToken) =>
         HierarchyCommandRunner.Create(
             "derived",
-            "Show the subclasses and implementers of a type, transitively.",
+            CliExamples.With("Show the subclasses and implementers of a type, transitively.", "s1atlas derived \"Demo.Widget\" --json"),
             true,
             true,
             service,

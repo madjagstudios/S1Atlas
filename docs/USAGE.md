@@ -178,8 +178,8 @@ s1atlas source "<TypeName.MethodName>" --file --output symbol.cs
 s1atlas refs "<TypeName.MethodName>" --json
 s1atlas callers "<TypeName.MethodName>"
 s1atlas callees "<TypeName.MethodName>"
-s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
-s1atlas fieldrefs "Demo.State.Value" --readers
+s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
+s1atlas field-refs "Demo.State.Value" --readers
 s1atlas overrides "<TypeName.MethodName>"
 s1atlas overridden-by "<TypeName.MethodName>" --depth 5
 s1atlas derived "<Namespace.TypeName>" --limit 20 --offset 20
@@ -235,9 +235,9 @@ The optional `--interop-path` override is valid only for the default installed
 Schedule I index; otherwise the standard path is derived from the persisted
 installation root.
 
-`callsites` finds static recovered-IL call-site edges for either a resolved
+`call-sites` finds static recovered-IL call-site edges for either a resolved
 game member selector or canonical raw target text such as
-`UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()`. `fieldrefs` resolves one
+`UnityEngine.AI.NavMeshAgent::CompleteOffMeshLink()`. `field-refs` resolves one
 field and reports incoming `ReadsField` and/or `WritesField` relationships; use
 `--readers` or `--writers` to filter, and never both together. Both commands are
 bounded, deterministic, and preserve unresolved raw target text and
@@ -258,12 +258,12 @@ assemblies without method bodies.
 
 ## Investigate seams
 
-Use `investigate_seam` when the question is which exact code seam owns a
+Use `investigate-seam` when the question is which exact code seam owns a
 behavior, not whether that behavior has already been proved at runtime:
 
 ```powershell
-s1atlas investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
-s1atlas investigate_seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
+s1atlas investigate-seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?"
+s1atlas investigate-seam "Game.Seams.Target.Run" --question "Which seam owns settlement clearing?" --relationship-limit 3 --owner-limit 5 --context 0 --native-symbol-id <native-id> --native-traversal-budget 25 --json
 ```
 
 The CLI surface requires `<selector>` and `--question`, and also accepts
@@ -306,7 +306,7 @@ records the selected reference index. MCP carries that base authority in its
 top-level `build` and `provenance` entries instead of duplicating the CLI-only
 field inside `data`.
 
-`investigate_seam` is a read-only investigation: it does not patch code, run
+`investigate-seam` is a read-only investigation: it does not patch code, run
 native recovery automatically, or prove runtime behavior. When explicitly
 requested, it may attach a matching stored native-evidence summary containing
 status, mapping evidence, direct native edges, field accesses, tool identity,
@@ -321,12 +321,12 @@ CLI-only step that maps such a method to its native `GameAssembly.dll` address
 and decodes bounded, static evidence around it:
 
 ```powershell
-s1atlas recover-native-body --symbol-id <symbol-id> --traversal-budget 100
+s1atlas recover-native-body --symbol-id <symbol-id> --native-traversal-budget 100
 ```
 
 It accepts one or more repeated `--symbol-id` values (at least one is
-required; full IDs or unique short-ID prefixes), `--traversal-budget` from
-`1` to `500` (default `100`), an optional `--build-id` (full ID or unique
+required; full IDs or unique short-ID prefixes), `--native-traversal-budget` from
+`1` to `500` (default `100`), an optional `--build` (full ID or unique
 short-ID prefix), and `--json`. It resolves the current (or selected) build
 authority, locates the Schedule I installation, and requires a completed
 Schedule I `Installed` index; it fails with a precise error rather than a
@@ -367,7 +367,7 @@ pinned libraries rather than an executable. See
 for the full evidence and sanitization contract.
 
 `recover-native-body` is the only write path for native evidence; reading it
-back afterward goes through `investigate_seam` (see above), which surfaces the
+back afterward goes through `investigate-seam` (see above), which surfaces the
 persisted record as read-only `nativeEvidence` on both the CLI and the MCP
 tool, using the same bounded evidence model.
 
@@ -377,7 +377,7 @@ networked upstream command:
 
 ```powershell
 s1atlas upstream status --codebase s1api
-s1atlas upstream sync s1api --commit <40-character-sha>
+s1atlas upstream sync --codebase s1api --commit <40-character-sha>
 s1atlas index --codebase s1api --channel release --commit <40-character-sha>
 ```
 
@@ -391,7 +391,7 @@ s1atlas index --scene --build <64-character-build-id> --json
 s1atlas scenes --kind scene --limit 50
 s1atlas scenes --kind prefab --limit 50 --json
 s1atlas scene <scene-id-or-exact-name> --children --components --refs
-s1atlas gameobject <game-object-id-or-scene-id/name> --children --components --refs
+s1atlas game-object <game-object-id-or-scene-id/name> --children --components --refs
 s1atlas prefab <prefab-id-or-exact-name> --objects --components
 s1atlas component <component-id-or-exact-type> --refs --code --json
 s1atlas scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
@@ -457,7 +457,7 @@ The class database is a hash-pinned download that never ships in this
 repository; the parser re-verifies its SHA-256 before reading it and resolves the
 class layouts for the container's Unity version. Every snapshot records which
 source decoded it in `typeTreeSource`, shown by `index --scene`, `scenes`,
-`scene`, `gameobject`, `prefab`, `component`, and the MCP scene tools:
+`scene`, `game-object`, `prefab`, `component`, and the MCP scene tools:
 `embedded`, or
 `class-database unity-classdata <version> sha256:<hash> (<dump> layouts for <unity>; nearest earlier dump)`
 when the package holds no dump for the exact Unity version and the newest earlier
@@ -516,7 +516,7 @@ Field: Icon (PPtr<$Sprite>) = 3:12 -> unresolved (fileId=3;localFileId=12;extern
 
 The target kind is `GameObject`, `Component`, `ScriptableAsset`, `MonoScript`,
 or `Asset` (any other Unity object, named by class ID). An indexed target carries
-its record ID, which `gameobject`, `component` and `scriptable-object` accept;
+its record ID, which `game-object`, `component` and `scriptable-object` accept;
 anything else carries its container and local file ID. A target is `unresolved`
 when its external file is not one of the indexed containers or the object does
 not exist there. JSON and MCP output carry the same data as a `target` object on
@@ -637,7 +637,7 @@ s1atlas reference collections list --json
 
 Reference indexing is an explicit offline CLI operation. Query commands accept
 `--scope game|reference|all` and `--collection <name-or-id>` for `search`,
-`source`, `refs`, `callers`, `callees`, `callsites`, `fieldrefs`,
+`source`, `refs`, `callers`, `callees`, `call-sites`, `field-refs`,
 `overrides`, `overridden-by`, and `derived`:
 
 ```powershell
@@ -645,8 +645,8 @@ s1atlas search "ModEntry" --scope reference --collection qol
 s1atlas source "ModEntry.Run" --scope all --collection qol
 s1atlas callers "Game.Target.Run" --scope all --collection qol
 s1atlas callees "ModEntry.Run" --scope reference --collection qol
-s1atlas callsites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
-s1atlas fieldrefs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
+s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink" --scope reference --collection qol
+s1atlas field-refs "qol/Qol.Config.Setting" --scope reference --collection qol --writers
 s1atlas refs "ModEntry.Run" --scope reference --collection qol
 ```
 
@@ -973,7 +973,7 @@ stay unmapped with a reason.
 
 Every relationship surface can show the raw generated rows instead:
 
-- CLI: `--include-generated` on `callers`, `callees`, `refs`, `fieldrefs`,
+- CLI: `--include-generated` on `callers`, `callees`, `refs`, `field-refs`,
   and `search`. Relationship IDs are unchanged: the same edge keeps its ID
   whether it renders credited or raw.
 - MCP: `includeGenerated` on the relationship and search tools.
@@ -981,7 +981,7 @@ Every relationship surface can show the raw generated rows instead:
   relationship/search APIs.
 
 Symbol search hides compiler-generated members by default and reports `<n>
-generated result(s) hidden` with the switch that reveals them. `fieldrefs`
+generated result(s) hidden` with the switch that reveals them. `field-refs`
 likewise excludes compiler-captured fields unless asked.
 
 ## Delegate creation and field addresses
@@ -1000,7 +1000,7 @@ Delegate references stay out of `callers`/`callees` unless asked:
 
 Included delegate rows are labeled `delegate created (not called)`.
 
-`fieldrefs` always shows address-taken sites in both readers and writers:
+`field-refs` always shows address-taken sites in both readers and writers:
 `possible write (address taken)` in writers (and in the combined view) and
 `possible read (address taken)` in readers. `refs` always shows both new
 kinds. `ldtoken` of a method or field records a metadata reference, never a
@@ -1009,9 +1009,9 @@ records nothing.
 
 ## Symbol selectors
 
-Every symbol-taking command (`callers`, `callees`, `refs`, `fieldrefs`,
-`callsites`, `overrides`, `overridden-by`, `derived`, `callable`, `source`,
-`open`, `investigate_seam`, plus the MCP `get_*` and `find_*` tools) accepts
+Every symbol-taking command (`callers`, `callees`, `refs`, `field-refs`,
+`call-sites`, `overrides`, `overridden-by`, `derived`, `callable`, `source`,
+`open`, `investigate-seam`, plus the MCP `get_*` and `find_*` tools) accepts
 the same selector forms, resolved in this order:
 
 1. Full 64-character symbol ID (lowercase).
@@ -1039,7 +1039,7 @@ MCP `not_found` envelopes carry the same near matches in `suggestions`;
 `ambiguous` envelopes carry candidates with `totalCandidateCount`.
 
 Build, extraction, and attempt IDs accept unique short-ID prefixes anywhere
-they are accepted: `--build`/`--build-id`, `diff` build arguments,
+they are accepted: `--build`, `diff` build arguments,
 `extractions show`, and `recover-native-body --symbol-id`. Ambiguous prefixes
 fail listing labeled short IDs (builds show their first-seen time, history
 entries their kind and creation time, symbols their signature) that can be
@@ -1048,45 +1048,81 @@ build IDs do too; full symbol and extraction IDs must be lowercase. Scene,
 GameObject, component, and asset ambiguity renders numbered candidate rows
 with counts and exact-ID hints.
 
+## Shell completion
+
+`s1atlas completion <pwsh|bash|zsh>` prints a completion script for the named
+shell. The script calls back into `s1atlas` itself, so completion needs no
+extra tooling once `s1atlas` is on your `PATH`:
+
+```powershell
+# PowerShell: append once, then restart the shell (or run `. $PROFILE`).
+s1atlas completion pwsh >> $PROFILE
+```
+
+```bash
+# bash: evaluate from ~/.bashrc.
+eval "$(s1atlas completion bash)"
+```
+
+```zsh
+# zsh: evaluate from ~/.zshrc, after compinit.
+eval "$(s1atlas completion zsh)"
+```
+
 ## Command reference
+
+<!-- cli-table:begin -->
+| Command | Purpose |
+|---|---|
+| `s1atlas builds [--json]` | List all indexed Schedule I builds. |
+| `s1atlas call-sites <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Find static call-site edges for a resolved target symbol or raw target text. |
+| `s1atlas callable <query> [--codebase] [--channel] [--build] [--limit] [--json]` | Show the callable surface of a resolved symbol. |
+| `s1atlas callees <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--include-delegates] [--json]` | List indexed callees of a resolved method. |
+| `s1atlas callers <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--exact] [--include-generated] [--include-delegates] [--json]` | Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations. |
+| `s1atlas completion <shell>` | Print a shell completion script that completes s1atlas commands and options. |
+| `s1atlas component <component-id|exact-type-selector> [--refs] [--code] [--limit] [--json]` | Query one indexed component. |
+| `s1atlas derived <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--offset] [--json]` | Show the subclasses and implementers of a type, transitively. |
+| `s1atlas diff <id-a> <id-b> [--codebase] [--channel] [--kind] [--limit] [--json]` | Compare two indexed builds and report per-symbol changes. |
+| `s1atlas doctor [--json]` | Check atlas pipeline readiness. |
+| `s1atlas env [--json]` | Show the current game and modding dependency environment. |
+| `s1atlas extract [--build] [--game-path] [--cpp2il-path] [--profile] [--retry] [--snapshot-inputs] [--input-snapshot] [--keep-failed-artifacts] [--performance] [--json]` | Extract, validate, and promote an authoritative reconstructed assembly set. |
+| `s1atlas extractions cleanup [--older-than] [--apply] [--json]` | Preview or delete only proven Atlas-owned, age-eligible failure and staging data. Preview is the default. |
+| `s1atlas extractions list [--build] [--include-failed] [--json]` | List validated extractions newest first, optionally with failed attempts. |
+| `s1atlas extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build. |
+| `s1atlas extractions show <id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts. |
+| `s1atlas field-refs <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--readers] [--writers] [--include-generated] [--json]` | Find field read/write relationships for one resolved symbol. |
+| `s1atlas game-object <game-object-id|scene-id/name> [--children] [--components] [--refs] [--limit] [--json]` | Query one indexed game object. |
+| `s1atlas index [--force] [--scene] [--build] [--codebase] [--channel] [--commit] [--interop-path] [--performance] [--json]` | Build the installed Schedule I source and symbol index. |
+| `s1atlas investigate-seam <selector> --question [--codebase] [--channel] [--build] [--scope] [--collection] [--relationship-limit] [--owner-limit] [--context] [--details] [--native-symbol-id] [--native-traversal-budget] [--json]` | Investigate whether a resolved symbol is a supportable ownership seam. |
+| `s1atlas method <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | Resolve and inspect indexed method definitions. |
+| `s1atlas open <selector> [--port]` | Open one resolved symbol in the local serve web app. |
+| `s1atlas overridden-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--json]` | Show the methods that override or implement a method, transitively. |
+| `s1atlas overrides <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Show the base and interface slots a method fills, up to the root. |
+| `s1atlas prefab <prefab-id|exact-name> [--objects] [--components] [--refs] [--limit] [--json]` | Query one proven prefab document. |
+| `s1atlas recover-native-body [--symbol-id] [--native-traversal-budget] [--build] [--json]` | Recover native method bodies for the selected symbols and persist the result. |
+| `s1atlas reference collections list [--json]` | List completed local reference-mod collections. |
+| `s1atlas reference collections validate <manifest> [--json]` | Validate and hash a local reference-mod collection manifest. |
+| `s1atlas reference index <manifest> [--force] [--json]` | Build a local reference-mod index. |
+| `s1atlas refs <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | List indexed references to a resolved symbol. |
+| `s1atlas scan [--game-path] [--performance]` | Discover the local Schedule I environment and save a build snapshot. |
+| `s1atlas scene <scene-id|exact-name> [--children] [--components] [--refs] [--limit] [--json]` | Query one indexed scene document. |
+| `s1atlas scenes [--build] [--snapshot] [--kind] [--query] [--limit] [--json]` | List indexed scene and proven prefab documents. |
+| `s1atlas scriptable-object <asset-id|exact-name|namespace.class> [--json]` | Query one indexed scriptable asset (ScriptableObject) and its decoded fields. |
+| `s1atlas search <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | Query the normalized code index across symbols, types, and methods. |
+| `s1atlas serve [--port] [--open]` | Start the local read-only web app on loopback. |
+| `s1atlas setup [--yes] [--include-optional]` | Run the missing pipeline steps in order. |
+| `s1atlas source <query> [--codebase] [--channel] [--build] [--scope] [--collection] [--candidate-limit] [--context] [--file] [--output] [--full-type] [--related-limit] [--json]` | Show integrity-checked source for one resolved symbol. |
+| `s1atlas status [--json]` | Show the current Atlas build status. |
+| `s1atlas tools install <tool-id> [--repair] [--json]` | Download, verify, and register a repository-pinned tool. |
+| `s1atlas tools status [<tool-id>] [--json]` | Inspect managed tool installations without network access. |
+| `s1atlas type <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | Resolve and inspect indexed type definitions. |
+| `s1atlas upstream status [--codebase] [--json]` | Show cached upstream status without network access. |
+| `s1atlas upstream sync [--codebase] [--commit] [--json]` | Fetch and cache one exact upstream commit. |
+<!-- cli-table:end -->
+
+Additional forms:
 
 | Command | Purpose |
 |---|---|
-| `scan [--game-path <path>] [--performance]` | Discover and persist the current local environment |
-| `setup [--yes] [--include-optional]` | Plan the missing scan, tools-install, extract, and index steps, confirm, then run them in order |
-| `doctor [--json]` | Show the read-only pipeline-readiness checklist and exit 0 only when ready |
-| `status [--json]` | Show the current indexed build, installation observation, and readiness summary |
-| `env [--json]` | Show the current build, installation paths, and tracked dependencies |
-| `builds [--json]` | List content-derived builds, newest first-seen first |
-| `tools status [tool-id] [--json]` | Inspect pinned managed-tool state offline |
-| `tools install <tool-id> [--repair] [--json]` | Explicitly download, verify, install, or repair a managed tool |
-| `extract [--build <id>] [--game-path <path>] [--cpp2il-path <path>] [--profile <id>] [--retry] [--snapshot-inputs] [--input-snapshot <id>] [--keep-failed-artifacts] [--performance] [--json]` | Run offline extraction (from live input or an archived snapshot), then validate and immutably promote an authoritative extraction (or reuse an existing one) |
-| `extractions list [--build <id>] [--include-failed] [--json]` | List validated extractions newest first, optionally with failed attempts |
-| `extractions show <extraction-or-attempt-id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts |
-| `extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build |
-| `extractions cleanup [--older-than <duration>] [--apply] [--json]` | Preview (default) or, with `--apply`, delete only proven Atlas-owned, age-eligible failure, staging, and quarantine data |
-| `index [--codebase <id>] [--channel <id>] [--commit <sha>] [--force] [--performance] [--json]` | Build the installed Schedule I code index (no options) or an S1API/S1MAPI code index |
-| `search <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | Query the normalized code index across symbols, types, and methods (generated members hidden unless asked) |
-| `type <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed type definitions |
-| `method <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--json]` | Resolve and inspect indexed method definitions |
-| `source <query> [--codebase <id>] [--channel <id>] [--context <n>] [--file] [--output <path>] [--full-type] [--related-limit <0-50>] [--limit <n>] [--json]` | Show focused, integrity-checked decompiled source and optional callable neighborhood for one resolved symbol |
-| `refs <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-generated] [--json]` | List indexed references to a resolved symbol |
-| `callers <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--exact] [--include-delegates] [--include-generated] [--json]` | List indexed callers of a resolved method, including may-dispatch callers via overrides and interface implementations (`--exact` for statically bound callers only; delegate creation included only with `--include-delegates`) |
-| `callees <query> [--codebase <id>] [--channel <id>] [--limit <n>] [--include-delegates] [--include-generated] [--json]` | List indexed callees of a resolved method, including calls made from compiler-generated bodies (delegate creation included only with `--include-delegates`) |
-| `callsites <query> [--build <id>] [--limit <n>] [--scope game\|reference\|all] [--collection <name-or-id>] [--json]` | Find static recovered-IL call-site edges for a resolved target symbol or canonical raw target text |
-| `fieldrefs <query> [--build <id>] [--limit <n>] [--readers\|--writers] [--scope game\|reference\|all] [--collection <name-or-id>] [--include-generated] [--json]` | Find static recovered-IL field readers and writers for one resolved field (compiler-captured fields excluded unless asked) |
-| `investigate_seam <selector> --question <text> [--codebase <id>] [--channel <id>] [--build <id>] [--scope game\|reference\|all] [--collection <name-or-id>] [--relationship-limit <1-50>] [--owner-limit <1-50>] [--context <n>] [--native-symbol-id <id>] [--native-traversal-budget <0-500>] [--details] [--json]` | Investigate a supportable ownership seam with deterministic candidate ordering, coverage warnings, unknown dimensions, and bounded next actions |
-| `recover-native-body --symbol-id <id> [--symbol-id <id> ...] [--traversal-budget <1-500>] [--build-id <id>] [--json]` | Map a stubbed managed method to its native `GameAssembly.dll` address, decode bounded direct-call and field-access evidence, and persist the provenance-stamped, idempotent result (does not modify the game) |
-| `upstream status [--codebase <s1api\|s1mapi>] [--json]` | Show cached upstream API status without network access |
-| `upstream sync <s1api\|s1mapi> --commit <sha> [--json]` | Fetch and cache one exact upstream commit for later indexing |
 | `index --scene [--build <id>] [--force] [--json]` | Build or reuse an offline, integrity-verified scene snapshot for the selected build |
-| `scenes [--build <id>] [--snapshot <id>] [--kind scene\|prefab] [--query <text>] [--limit <n>] [--json]` | List counted, bounded scene or proven-prefab documents |
-| `scene <id\|exact-name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one scene and optionally its bounded graph pages |
-| `gameobject <id\|scene-id/name> [--children] [--components] [--refs] [--limit <n>] [--json]` | Inspect one GameObject and optionally its bounded graph pages |
-| `prefab <id\|exact-name> [--objects] [--components] [--limit <n>] [--json]` | Inspect one parser-proven prefab document |
-| `component <id\|exact-type> [--refs] [--code] [--limit <n>] [--json]` | Inspect one component, its decoded serialized fields, serialized references, and an exact code-symbol handoff |
-| `scriptable-object <id\|exact-name\|Namespace.Class> [--json]` | Inspect one ScriptableObject asset (an asset-level MonoBehaviour such as `SpecialCustomerData`) and its decoded serialized fields |
-| `diff <id-a> <id-b> [--codebase <id>] [--channel <id>] [--kind <kind>] [--limit <n>] [--json]` | Compare two indexed builds and report per-symbol changes |
-| `serve [--port <n>] [--open]` | Start the loopback-only, read-only local web app (default port 5217; 0 picks an ephemeral port) |
-| `open <selector> [--port <n>]` | Resolve one symbol and open its serve page in the browser (default port 5217; prints the URL with a hint when serve is not running) |
 | `s1atlas-mcp` | Launch the read-only Schedule I Installed MCP server over stdio (no arguments; `mcp serve` is an alias, `--version` prints the version) |

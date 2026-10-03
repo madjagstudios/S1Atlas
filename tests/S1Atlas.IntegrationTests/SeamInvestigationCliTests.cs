@@ -33,7 +33,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             selector,
             "--question",
             question,
@@ -54,7 +54,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -73,7 +73,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -92,7 +92,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var invalid = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -118,7 +118,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
         var args = new List<string>
         {
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -145,7 +145,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -191,7 +191,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var first = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -203,7 +203,7 @@ public sealed class SeamInvestigationCliTests
             "0",
             "--json");
         var second = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -228,7 +228,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var summary = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -240,7 +240,7 @@ public sealed class SeamInvestigationCliTests
             "0",
             "--json");
         var details = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -263,8 +263,8 @@ public sealed class SeamInvestigationCliTests
         var summaryData = summaryDocument.RootElement.GetProperty("data");
         var detailsData = detailsDocument.RootElement.GetProperty("data");
 
-        Assert.Equal("investigate_seam", summaryDocument.RootElement.GetProperty("command").GetString());
-        Assert.Equal("investigate_seam", detailsDocument.RootElement.GetProperty("command").GetString());
+        Assert.Equal("investigate-seam", summaryDocument.RootElement.GetProperty("command").GetString());
+        Assert.Equal("investigate-seam", detailsDocument.RootElement.GetProperty("command").GetString());
         AssertJsonObjectsEquivalent(
             summaryData,
             detailsData,
@@ -300,7 +300,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -319,7 +319,7 @@ public sealed class SeamInvestigationCliTests
         var root = document.RootElement;
         Assert.True(root.GetProperty("success").GetBoolean());
         Assert.Equal(0, root.GetProperty("exitCode").GetInt32());
-        Assert.Equal("investigate_seam", root.GetProperty("command").GetString());
+        Assert.Equal("investigate-seam", root.GetProperty("command").GetString());
 
         var data = root.GetProperty("data");
         Assert.Equal("Which seam owns settlement clearing?", data.GetProperty("behavioralQuestion").GetString());
@@ -373,7 +373,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateNoSupportableSeamAsync();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns the complete-evidence target?",
@@ -407,7 +407,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateAmbiguousAsync();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             "Game.Seams.Ambiguous.Run",
             "--question",
             "Which seam owns the ambiguous path?",
@@ -431,7 +431,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateAmbiguousAsync();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             "Game.Seams.Ambiguous.Run",
             "--question",
             "Which seam owns the ambiguous path?");
@@ -448,7 +448,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateNoCompletedIndexAsync();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             "Game.Seams.Missing.Run",
             "--question",
             "Which seam owns the missing path?",
@@ -469,7 +469,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -492,7 +492,7 @@ public sealed class SeamInvestigationCliTests
         await using var atlas = await SeamInvestigationCliAtlas.CreateOc32Async();
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             atlas.TargetSymbolId,
             "--question",
             "Which seam owns settlement clearing?",
@@ -531,7 +531,7 @@ public sealed class SeamInvestigationCliTests
         Assert.NotNull(expectedIndex);
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             "selected/S1Atlas.InteropAssemblyFixture.InteropFixtureRoot::InteropWrapper(System.Int32):System.Int32",
             "--question",
             "Which seam owns the wrapper?",
@@ -570,7 +570,7 @@ public sealed class SeamInvestigationCliTests
         Assert.True(indexed.ExitCode == 0, indexed.StandardOutput + indexed.StandardError);
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             "InteropWrapper",
             "--question",
             "Which seam owns the wrapper?",
@@ -598,7 +598,7 @@ public sealed class SeamInvestigationCliTests
         await atlas.SetReferenceBaseIndexAsync(referenceIndexId, "index-newer", "snapshot-index-newer");
 
         var result = atlas.Run(
-            "investigate_seam",
+            "investigate-seam",
             "InteropWrapper",
             "--question",
             "Which seam owns the wrapper?",

@@ -66,7 +66,7 @@ internal static class ExtractCommand
 
         var command = new Command(
             "extract",
-            "Extract, validate, and promote an authoritative reconstructed assembly set.");
+            CliExamples.With("Extract, validate, and promote an authoritative reconstructed assembly set.", "s1atlas extract --retry"));
         command.Options.Add(buildOption);
         command.Options.Add(gamePathOption);
         command.Options.Add(cpp2IlPathOption);
@@ -77,6 +77,36 @@ internal static class ExtractCommand
         command.Options.Add(keepFailedArtifactsOption);
         command.Options.Add(performanceOption);
         command.Options.Add(jsonOption);
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                var inputSnapshot = CliValidation.GetValue(result, inputSnapshotOption);
+                if (inputSnapshot is null || !IsLowerSha256(inputSnapshot))
+                    return;
+                if (!CliValidation.GetValue(result, retryOption))
+                {
+                    throw new CliValidationException(
+                        "extract",
+                        "InputSnapshotRequiresRetry",
+                        "An explicit --input-snapshot run requires --retry so it always runs a new " +
+                        "process from the archived snapshot.");
+                }
+                if (!string.IsNullOrWhiteSpace(CliValidation.GetValue(result, gamePathOption)) ||
+                    CliValidation.GetValue(result, snapshotInputsOption))
+                {
+                    throw new CliValidationException(
+                        "extract",
+                        "InputSnapshotConflict",
+                        "The --input-snapshot option cannot be combined with --game-path or " +
+                        "--snapshot-inputs.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput(
@@ -122,11 +152,8 @@ internal static class ExtractCommand
         return CommandExecution.Run(
             () =>
             {
-                var validationFailure = ValidateInputSnapshotOption(
+                var validationFailure = ValidateInputSnapshotFormat(
                     options.InputSnapshotId,
-                    options.GamePath,
-                    options.Retry,
-                    options.SnapshotInputs,
                     commandOutput);
                 if (validationFailure is int failureExitCode)
                 {
@@ -192,46 +219,18 @@ internal static class ExtractCommand
             performance);
     }
 
-    private static int? ValidateInputSnapshotOption(
-        string? inputSnapshot,
-        string? gamePath,
-        bool retry,
-        bool snapshotInputs,
-        CommandOutput commandOutput)
+    private static int? ValidateInputSnapshotFormat(string? inputSnapshot, CommandOutput commandOutput)
     {
-        if (inputSnapshot is null)
+        if (inputSnapshot is null || IsLowerSha256(inputSnapshot))
         {
             return null;
         }
 
-        if (!IsLowerSha256(inputSnapshot))
-        {
-            return commandOutput.Failure(
-                1,
-                "InvalidInputSnapshot",
-                "The --input-snapshot value must be a 64-character lower-case hexadecimal " +
-                "snapshot ID.");
-        }
-
-        if (!retry)
-        {
-            return commandOutput.Failure(
-                1,
-                "InputSnapshotRequiresRetry",
-                "An explicit --input-snapshot run requires --retry so it always runs a new " +
-                "process from the archived snapshot.");
-        }
-
-        if (!string.IsNullOrWhiteSpace(gamePath) || snapshotInputs)
-        {
-            return commandOutput.Failure(
-                1,
-                "InputSnapshotConflict",
-                "The --input-snapshot option cannot be combined with --game-path or " +
-                "--snapshot-inputs.");
-        }
-
-        return null;
+        return commandOutput.Failure(
+            1,
+            "InvalidInputSnapshot",
+            "The --input-snapshot value must be a 64-character lower-case hexadecimal " +
+            "snapshot ID.");
     }
 
     private static bool IsLowerSha256(string value) =>

@@ -9,8 +9,8 @@ internal static class SceneCommand
 {
     public static Command Create(SceneQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var selector = new Argument<string>("scene-id|exact-name"); var children = new Option<bool>("--children"); var components = new Option<bool>("--components"); var refs = new Option<bool>("--refs"); var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
-        var command = new Command("scene", "Query one indexed scene document."); command.Arguments.Add(selector); command.Options.Add(children); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(json);
+        var selector = new Argument<string>("scene-id|exact-name") { Description = "Scene ID or exact scene name." }; var children = new Option<bool>("--children") { Description = "Include child game objects." }; var components = new Option<bool>("--components") { Description = "Include components." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
+        var command = new Command("scene", CliExamples.With("Query one indexed scene document.", "s1atlas scene Main --children --limit 20")); command.Arguments.Add(selector); command.Options.Add(children); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(json);
         command.SetAction(result => SceneCommandSupport.Run("scene", result.GetValue(json), output, error, cancellationToken, repository, () =>
         {
             if (result.GetValue(limit) <= 0) return new CommandOutput("scene", result.GetValue(json), output, error).Failure(1, "InvalidLimit", "--limit must be greater than zero.");

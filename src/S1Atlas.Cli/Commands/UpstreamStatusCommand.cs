@@ -11,8 +11,19 @@ internal static class UpstreamStatusCommand
     {
         var codebaseOption = new Option<string>("--codebase") { Description = "s1api or s1mapi." };
         var jsonOption = CommandOutput.CreateJsonOption();
-        var command = new Command("status", "Show cached upstream status without network access.");
+        var command = new Command("status", CliExamples.With("Show cached upstream status without network access.", "s1atlas upstream status --codebase s1api"));
         command.Options.Add(codebaseOption); command.Options.Add(jsonOption);
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                ValidateCodebase("upstream status", CliValidation.GetValue(result, codebaseOption));
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("upstream status", parseResult.GetValue(jsonOption), output, error);
@@ -44,4 +55,16 @@ internal static class UpstreamStatusCommand
         "s1mapi" => CodebaseKind.S1MApi,
         _ => throw new ArgumentException("Upstream codebase must be s1api or s1mapi.", nameof(value))
     };
+
+    internal static void ValidateCodebase(string commandName, string? value)
+    {
+        try
+        {
+            ParseCodebase(value);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new CliValidationException(commandName, "InvalidCodebase", exception.Message);
+        }
+    }
 }

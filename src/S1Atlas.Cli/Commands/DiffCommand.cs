@@ -22,12 +22,12 @@ internal static class DiffCommand
         var idAArgument = new Argument<string>("id-a") { Description = "Build ID or unique short-ID prefix for the baseline (before)." };
         var idBArgument = new Argument<string>("id-b") { Description = "Build ID or unique short-ID prefix for the target (after)." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed (default). Release and preview are not supported." };
+        var channelOption = new Option<string>("--channel") { Description = "Only installed (default) is supported for diffing." };
         var kindOption = new Option<string>("--kind") { Description = "Filter by symbol kind: type, method, constructor, field, property, event." };
-        var limitOption = new Option<int>("--limit") { Description = "Maximum changed symbols to list.", DefaultValueFactory = _ => 50 };
+        var limitOption = new Option<int>("--limit") { Description = "Maximum changed symbols to list. Must be greater than zero.", DefaultValueFactory = _ => 50 };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("diff", "Compare two indexed builds and report per-symbol changes.");
+        var command = new Command("diff", CliExamples.With("Compare two indexed builds and report per-symbol changes.", "s1atlas diff <id-a> <id-b> --json"));
         command.Arguments.Add(idAArgument);
         command.Arguments.Add(idBArgument);
         command.Options.Add(codebaseOption);
@@ -35,6 +35,42 @@ internal static class DiffCommand
         command.Options.Add(kindOption);
         command.Options.Add(limitOption);
         command.Options.Add(jsonOption);
+
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                if (CliValidation.GetValue(result, limitOption) <= 0)
+                    throw new CliValidationException("diff", "InvalidLimit", "--limit must be greater than zero.");
+                try
+                {
+                    IndexQueryCommandFactory.ParseOptions(CliValidation.GetValue(result, codebaseOption), null);
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new CliValidationException("diff", "InvalidCodebase", exception.Message);
+                }
+                var channelRaw = (CliValidation.GetValue(result, channelOption) ?? "installed").ToLowerInvariant();
+                if (channelRaw is "release" or "preview")
+                {
+                    throw new CliValidationException(
+                        "diff",
+                        "UnsupportedChannel",
+                        "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.");
+                }
+                if (channelRaw != "installed")
+                {
+                    throw new CliValidationException(
+                        "diff",
+                        "InvalidChannel",
+                        "Channel must be installed. Release and preview are not supported for diffing.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
 
         command.SetAction(parseResult =>
         {
@@ -47,20 +83,8 @@ internal static class DiffCommand
                     var limit = parseResult.GetValue(limitOption);
                     var kindFilter = parseResult.GetValue(kindOption);
 
-                    if (limit <= 0)
-                        return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
-
                     var codebase = IndexQueryCommandFactory.ParseOptions(
                         parseResult.GetValue(codebaseOption), null).Codebase;
-
-                    var channelRaw = (parseResult.GetValue(channelOption) ?? "installed").ToLowerInvariant();
-                    if (channelRaw is "release" or "preview")
-                        return commandOutput.Failure(1, "UnsupportedChannel",
-                            "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.");
-
-                    if (channelRaw != "installed")
-                        return commandOutput.Failure(1, "InvalidChannel",
-                            "Channel must be installed. Release and preview are not supported for diffing.");
 
                     var channel = CodeChannel.Installed;
 

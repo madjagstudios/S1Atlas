@@ -27,10 +27,10 @@ internal static class InvestigateSeamCommand
             Required = true
         };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all (every channel of the codebase). all is not valid with --scope reference or all." };
+        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.ScopedBuildOptionDescription };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         var relationshipLimitOption = new Option<int>("--relationship-limit")
         {
             Description = "Maximum relationship evidence rows to inspect (1-50).",
@@ -61,7 +61,7 @@ internal static class InvestigateSeamCommand
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("investigate_seam", "Investigate whether a resolved symbol is a supportable ownership seam.");
+        var command = new Command("investigate-seam", CliExamples.With("Investigate whether a resolved symbol is a supportable ownership seam.", "s1atlas investigate-seam \"Demo.Widget\" --question \"Who owns it?\""));
         command.Arguments.Add(selectorArgument);
         command.Options.Add(questionOption);
         command.Options.Add(codebaseOption);
@@ -76,9 +76,25 @@ internal static class InvestigateSeamCommand
         command.Options.Add(nativeSymbolIdOption);
         command.Options.Add(nativeTraversalBudgetOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            "investigate-seam",
+            codebaseOption,
+            channelOption,
+            relationshipLimitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: true,
+            defersToAction: result => string.IsNullOrWhiteSpace(result.GetValue(selectorArgument)) ||
+                string.IsNullOrWhiteSpace(CliValidation.GetValue(result, questionOption)) ||
+                CliValidation.GetValue(result, relationshipLimitOption) is < 1 or > 50 ||
+                CliValidation.GetValue(result, ownerLimitOption) is < 1 or > 50 ||
+                CliValidation.GetValue(result, contextOption) < 0 ||
+                CliValidation.GetValue(result, nativeTraversalBudgetOption) is < 0 or > 500);
         command.SetAction(parseResult =>
         {
-            var commandOutput = new CommandOutput("investigate_seam", parseResult.GetValue(jsonOption), output, error);
+            var commandOutput = new CommandOutput("investigate-seam", parseResult.GetValue(jsonOption), output, error);
             return CommandExecution.Run(
                 () => Execute(
                     service,
@@ -145,20 +161,12 @@ internal static class InvestigateSeamCommand
             return commandOutput.Failure(1, "InvalidNativeTraversalBudget", "--native-traversal-budget must be between 0 and 500.");
 
         atlasRepository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-        IndexQueryOptions options;
-        try
-        {
-            options = IndexQueryCommandFactory.ParseOptions(
-                codebase,
-                channel,
-                relationshipLimit,
-                scope,
-                collection);
-        }
-        catch (ArgumentException exception)
-        {
-            return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-        }
+        var options = IndexQueryCommandFactory.ParseOptions(
+            codebase,
+            channel,
+            relationshipLimit,
+            scope,
+            collection);
 
         SeamInvestigationResult result;
         IndexQueryCommandFactory.ExecutionAuthority authority = default;

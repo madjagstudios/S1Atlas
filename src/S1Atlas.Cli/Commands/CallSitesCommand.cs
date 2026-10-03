@@ -18,7 +18,8 @@ internal static class CallSitesCommand
         TextWriter error,
         CancellationToken cancellationToken) =>
         IndexQueryCommandFactory.Create(
-            "callsites",
+            "call-sites",
+            CliExamples.With("Find static call-site edges for a resolved target symbol or raw target text.", "s1atlas call-sites \"Demo.Widget::Run()\" --limit 10"),
             service,
             authorityResolver,
             repository,

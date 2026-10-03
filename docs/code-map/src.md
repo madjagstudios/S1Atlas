@@ -13,7 +13,7 @@ Roots: src
 | src/S1Atlas.Application/Envelope/ | 4 |
 | src/S1Atlas.Application/Readiness/ | 5 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 54 |
+| src/S1Atlas.Cli/Commands/ | 57 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 16 |
 | src/S1Atlas.Cli/Performance/ | 1 |

@@ -24,9 +24,9 @@ internal static class SourceCommand
     {
         var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
-        var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
-        var limitOption = new Option<int>("--limit")
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all (every channel of the codebase). all is not valid with --scope reference or all." };
+        var buildOption = new Option<string?>("--build") { Description = "Select a Schedule I Installed build ID or unique short-ID prefix. Valid only with --codebase schedule-i and --channel installed." };
+        var limitOption = new Option<int>("--candidate-limit")
         {
             Description = "Maximum number of resolution candidates to consider.",
             DefaultValueFactory = _ => 50
@@ -38,15 +38,15 @@ internal static class SourceCommand
         };
         var fileOption = new Option<bool>("--file")
         {
-            Description = "Return the complete hash-verified source file instead of a focused snippet."
+            Description = "Return the complete hash-verified source file instead of a focused snippet. Cannot be combined with --full-type."
         };
         var outputOption = new Option<string?>("--output")
         {
-            Description = "Write the complete hash-verified source file to this path."
+            Description = "Write the complete hash-verified source file to this path. Cannot be combined with --full-type."
         };
         var fullTypeOption = new Option<bool>("--full-type")
         {
-            Description = "Return the containing type's verified source span for a member selection."
+            Description = "Return the containing type's verified source span for a member selection. Cannot be combined with --file or --output."
         };
         var relatedLimitOption = new Option<int>("--related-limit")
         {
@@ -55,13 +55,13 @@ internal static class SourceCommand
         };
         var jsonOption = CommandOutput.CreateJsonOption();
 
-        var command = new Command("source", "Show integrity-checked source for one resolved symbol.");
+        var command = new Command("source", CliExamples.With("Show integrity-checked source for one resolved symbol.", "s1atlas source \"Demo.Widget::Run()\" --context 3"));
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
         command.Options.Add(buildOption);
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         command.Options.Add(scopeOption);
         command.Options.Add(collectionOption);
         command.Options.Add(limitOption);
@@ -71,6 +71,27 @@ internal static class SourceCommand
         command.Options.Add(fullTypeOption);
         command.Options.Add(relatedLimitOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            "source",
+            codebaseOption,
+            channelOption,
+            limitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: false,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0 ||
+                CliValidation.GetValue(result, contextOption) < 0 ||
+                CliValidation.GetValue(result, relatedLimitOption) is < 0 or > 50,
+            validateBeforeParse: result => CliValidation.GetValue(result, fullTypeOption) &&
+                (CliValidation.GetValue(result, fileOption) || !string.IsNullOrWhiteSpace(CliValidation.GetValue(result, outputOption)))
+                ? "--full-type cannot be combined with --file or --output."
+                : null,
+            validateBuild: (buildId, options) =>
+                !string.IsNullOrWhiteSpace(buildId) && !IndexQueryCommandFactory.UsesInstalledScheduleIAuthority(options)
+                    ? "--build is only valid with --codebase schedule-i and --channel installed."
+                    : null);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("source", parseResult.GetValue(jsonOption), output, error);
@@ -123,41 +144,19 @@ internal static class SourceCommand
         CancellationToken cancellationToken)
     {
         if (limit <= 0)
-            return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
+            return commandOutput.Failure(1, "InvalidLimit", "--candidate-limit must be greater than zero.");
         if (context < 0)
             return commandOutput.Failure(1, "InvalidContext", "--context cannot be negative.");
         if (relatedLimit is < 0 or > 50)
             return commandOutput.Failure(1, "InvalidRelatedLimit", "--related-limit must be between 0 and 50.");
-        if (fullType && (fullFile || !string.IsNullOrWhiteSpace(destination)))
-        {
-            return commandOutput.Failure(
-                1,
-                "InvalidOptionCombination",
-                "--full-type cannot be combined with --file or --output.");
-        }
 
         repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-        IndexQueryOptions options;
-        try
-        {
-            options = IndexQueryCommandFactory.ParseOptions(
-                codebase,
-                channel,
-                limit,
-                scope,
-                collection);
-        }
-        catch (ArgumentException exception)
-        {
-            return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-        }
-        if (!string.IsNullOrWhiteSpace(buildId) && !IndexQueryCommandFactory.UsesInstalledScheduleIAuthority(options))
-        {
-            return commandOutput.Failure(
-                1,
-                "InvalidOptionCombination",
-                "--build is only valid with --codebase schedule-i and --channel installed.");
-        }
+        var options = IndexQueryCommandFactory.ParseOptions(
+            codebase,
+            channel,
+            limit,
+            scope,
+            collection);
 
         SourceSnippetResolutionResult resolution;
         try

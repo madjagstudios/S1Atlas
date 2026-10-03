@@ -46,6 +46,7 @@ public sealed class CliApplication
     private readonly Func<IIl2CppExtractor> _processExtractorFactory;
     private readonly Func<int, bool> _isProcessAlive;
     private readonly IBrowserLauncher _browserLauncher;
+    private RootCommand? _lastBuiltRoot;
 
     /// <summary>
     /// The composed native-recovery workflow pieces, built during <see cref="InvokeCore"/> for
@@ -97,6 +98,9 @@ public sealed class CliApplication
         _isProcessAlive = isProcessAlive ?? IsProcessAlive;
         _browserLauncher = browserLauncher ?? new SystemBrowserLauncher();
     }
+
+    internal RootCommand LastBuiltRoot =>
+        _lastBuiltRoot ?? throw new InvalidOperationException("Invoke must run before the command tree is available.");
 
     public int Invoke(
         string[] args,
@@ -489,8 +493,8 @@ public sealed class CliApplication
             error,
             cancellationToken));
         root.Subcommands.Add(SearchCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
-        root.Subcommands.Add(TypeCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
-        root.Subcommands.Add(MethodCommand.Create(indexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(TypeCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(MethodCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(OpenCommand.Create(indexQueryService, authorityResolver, repository, _browserLauncher, output, error, cancellationToken));
         root.Subcommands.Add(InvestigateSeamCommand.Create(seamInvestigationService, referenceQueryService, authorityResolver, repository, sqliteRepository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(SourceCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, _paths.RootDirectory, output, error, cancellationToken));
@@ -523,12 +527,44 @@ public sealed class CliApplication
             output,
             error,
             cancellationToken));
+        root.Subcommands.Add(CompletionCommand.Create(output, error, cancellationToken));
 
-        return root.Parse(args).Invoke(new InvocationConfiguration
+        _lastBuiltRoot = root;
+        var invocation = new InvocationConfiguration
         {
             Output = output,
             Error = error
-        });
+        };
+        if (CliValidation.SuggestRequested(args))
+        {
+            // Completion parses possibly-invalid partial lines inside Invoke,
+            // where a validator throw would escape as an unhandled exception
+            // instead of reaching the catch below. Completion never validates.
+            CliValidation.ClearValidators(root);
+        }
+        try
+        {
+            return root.Parse(args).Invoke(invocation);
+        }
+        catch (CliValidationException) when (CliValidation.HelpRequested(args))
+        {
+            // Validators run during Parse, before help renders: a failing
+            // validation must not preempt --help. The tree is rebuilt on every
+            // invoke, so stripping validators and re-parsing is side-effect free.
+            CliValidation.ClearValidators(root);
+            return root.Parse(args).Invoke(invocation);
+        }
+        catch (CliValidationException exception)
+        {
+            // A framework parse error (unknown option, missing argument) wins
+            // over the option rule, as before validators existed.
+            CliValidation.ClearValidators(root);
+            var reparse = root.Parse(args);
+            if (reparse.Errors.Count > 0)
+                return reparse.Invoke(invocation);
+            return new CommandOutput(exception.Command, CliValidation.JsonRequested(args), output, error)
+                .Failure(1, exception.Code, exception.Message);
+        }
     }
 
     private static async Task<bool> IsExtractionActiveAsync(

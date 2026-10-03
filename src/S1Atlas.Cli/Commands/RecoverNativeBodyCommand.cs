@@ -24,14 +24,14 @@ internal static class RecoverNativeBodyCommand
     {
         var symbolIdOption = new Option<string[]>("--symbol-id")
         {
-            Description = "A native symbol ID or unique short-ID prefix to recover; repeat for multiple IDs."
+            Description = "A native symbol ID or unique short-ID prefix to recover; repeat for multiple IDs. At least one is required."
         };
-        var traversalBudgetOption = new Option<int>("--traversal-budget")
+        var traversalBudgetOption = new Option<int>("--native-traversal-budget")
         {
             Description = "Native evidence traversal budget (1-500).",
             DefaultValueFactory = _ => 100
         };
-        var buildOption = new Option<string?>("--build-id")
+        var buildOption = new Option<string?>("--build")
         {
             Description = "Select a Schedule I Installed build ID or unique short-ID prefix; defaults to the current installed build."
         };
@@ -39,11 +39,23 @@ internal static class RecoverNativeBodyCommand
 
         var command = new Command(
             "recover-native-body",
-            "Recover native method bodies for the selected symbols and persist the result.");
+            CliExamples.With("Recover native method bodies for the selected symbols and persist the result.", "s1atlas recover-native-body --symbol-id <id>"));
         command.Options.Add(symbolIdOption);
         command.Options.Add(traversalBudgetOption);
         command.Options.Add(buildOption);
         command.Options.Add(jsonOption);
+        command.Validators.Add(result =>
+        {
+            try
+            {
+                if ((CliValidation.GetValue(result, symbolIdOption) ?? []).Length == 0)
+                    throw new CliValidationException("recover-native-body", "MissingSymbolId", "At least one --symbol-id must be provided.");
+            }
+            catch (InvalidOperationException)
+            {
+                // A framework binding failure; the framework reports it.
+            }
+        });
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput(
@@ -81,14 +93,12 @@ internal static class RecoverNativeBodyCommand
         CommandOutput commandOutput,
         CancellationToken cancellationToken)
     {
-        if (symbolIds.Count == 0)
-            return commandOutput.Failure(1, "MissingSymbolId", "At least one --symbol-id must be provided.");
         if (traversalBudget is < MinimumTraversalBudget or > MaximumTraversalBudget)
         {
             return commandOutput.Failure(
                 1,
                 "InvalidNativeTraversalBudget",
-                $"--traversal-budget must be between {MinimumTraversalBudget} and {MaximumTraversalBudget}.");
+                $"--native-traversal-budget must be between {MinimumTraversalBudget} and {MaximumTraversalBudget}.");
         }
 
         atlasRepository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();

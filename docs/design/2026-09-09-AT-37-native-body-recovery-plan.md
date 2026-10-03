@@ -2,7 +2,7 @@
 
 **Goal:** Give S1Atlas a bounded, read-only native-body recovery path that maps a stubbed IL2CPP managed method to its native `GameAssembly.dll` address and returns focused, provenance-stamped direct-call and field-access evidence — or a precise reason recovery is unavailable.
 
-**Architecture:** Implement the already-defined `INativeBodyRecoveryProvider` seam with an in-process provider built on the pinned `Samboy063.LibCpp2IL` library (managed-symbol ↔ native-pointer mapping) and `Iced` (bounded x86-64 decode). The existing `NativeRecoveryWorkflow` validates, normalizes, sanitizes, and integrity-stamps the result; a new CLI command drives live recovery and persists it, and the existing `investigate_seam` surfaces persist-then-read evidence on both CLI and MCP. No subprocess, no raw disassembly persisted, no game binary copied.
+**Architecture:** Implement the already-defined `INativeBodyRecoveryProvider` seam with an in-process provider built on the pinned `Samboy063.LibCpp2IL` library (managed-symbol ↔ native-pointer mapping) and `Iced` (bounded x86-64 decode). The existing `NativeRecoveryWorkflow` validates, normalizes, sanitizes, and integrity-stamps the result; a new CLI command drives live recovery and persists it, and existing seam investigation (CLI `investigate-seam`, MCP `investigate_seam`) surfaces persist-then-read evidence on both surfaces. No subprocess, no raw disassembly persisted, no game binary copied.
 
 **Tech Stack:** C# / .NET 8, `Samboy063.LibCpp2IL` 2022.1.0-pre-release.21 (MIT), `Iced` 1.21.0 (MIT), SQLite (existing storage), existing extraction/discovery/authority services.
 
@@ -54,7 +54,7 @@ Real-build verification against the installed Schedule I game surfaced four bugs
 - **Persistence linkage via `validated_extractions`:** `SaveNativeRecoveryAsync`'s precondition originally could not join a native recovery record back to its Schedule I extraction; it now links through `validated_extractions` so the persistence precondition resolves for the `ScheduleI` codebase (`114b1dc`).
 - **Call-site edge distinguisher:** multiple direct-call edges from the same source method were being rejected as duplicate IDs; edges are now distinguished by call site so distinct call instructions to different (or the same) targets each get a stable, non-colliding `EdgeId` (`67986b8`).
 - **Idempotent save:** re-running `recover-native-body` with identical inputs originally attempted a duplicate insert; persistence is now idempotent — an identical re-run reproduces the same `RecoveryId` without erroring or duplicating rows (`6307e2b`).
-- **Codebase-aware read linkage:** the `investigate_seam` native-evidence read path resolved the wrong index build when linking back to a ScheduleI index; it now resolves the build via extraction linkage scoped to the correct codebase (`b6121af`).
+- **Codebase-aware read linkage:** the seam-investigation native-evidence read path resolved the wrong index build when linking back to a ScheduleI index; it now resolves the build via extraction linkage scoped to the correct codebase (`b6121af`).
 
 Two structural decisions also differed from the original interface sketch:
 
@@ -62,4 +62,4 @@ Two structural decisions also differed from the original interface sketch:
 - Composition was consolidated into a single `NativeRecoveryComposition` (`src/S1Atlas.NativeRecovery/NativeRecoveryComposition.cs`) rather than spreading provider/workflow/execution-context wiring inline in `CliApplication.cs`; the CLI command depends on `NativeRecoveryComposition` and `NativeRecoveryExecutionContextFactory` directly.
 - The pinned-library tool definition lives at `config/native-recovery/libraries.json`, moved out of the typed `config/tools/` directory (which models executable tool pins) since a pinned-library identity has a different shape (`8578ce5`).
 
-No dedicated MCP write tool for native recovery was added: `investigate_seam` already surfaces the same `NativeRecoveryRecord`/`NativeEvidenceEdge` model read-only on both CLI and MCP once the CLI write path persists a row, confirmed by an end-to-end parity test (`9779cce`).
+No dedicated MCP write tool for native recovery was added: seam investigation already surfaces the same `NativeRecoveryRecord`/`NativeEvidenceEdge` model read-only on both CLI (`investigate-seam`) and MCP (`investigate_seam`) once the CLI write path persists a row, confirmed by an end-to-end parity test (`9779cce`).

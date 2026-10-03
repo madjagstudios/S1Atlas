@@ -10,7 +10,7 @@ namespace S1Atlas.Cli.Commands;
 internal static class CalleesCommand
 {
     public static Command Create(IndexQueryService service, FederatedIndexQueryService federatedService, InstalledBuildAuthorityResolver authorityResolver, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken) =>
-        IndexQueryCommandFactory.Create("callees", service, authorityResolver, repository, output, error, cancellationToken,
+        IndexQueryCommandFactory.Create("callees", CliExamples.With("List indexed callees of a resolved method.", "s1atlas callees \"Demo.Widget::Run()\" --json"), service, authorityResolver, repository, output, error, cancellationToken,
         executeWithGeneratedAndDelegates: async (query, options, ct, includeGenerated, includeDelegates) =>
         {
             var result = options.Scope == IndexQueryScope.Game

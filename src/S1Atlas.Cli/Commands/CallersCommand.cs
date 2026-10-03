@@ -20,15 +20,15 @@ internal static class CallersCommand
     {
         var queryArgument = new Argument<string>("query") { Description = IndexQueryCommandFactory.QueryArgumentDescription };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all." };
+        var channelOption = new Option<string>("--channel") { Description = "installed, release, preview, or all (every channel of the codebase). all is not valid with --scope reference or all." };
         var buildOption = new Option<string?>("--build") { Description = IndexQueryCommandFactory.BuildOptionDescription };
         var limitOption = new Option<int>("--limit")
         {
             Description = "Maximum number of query results to return.",
             DefaultValueFactory = _ => 50
         };
-        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all." };
-        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection." };
+        var scopeOption = new Option<string?>("--scope") { Description = "game, reference, or all. Reference and all require --collection and --codebase schedule-i." };
+        var collectionOption = new Option<string?>("--collection") { Description = "A named or indexed reference collection. Valid only with --scope reference or all." };
         var exactOption = new Option<bool>("--exact") { Description = "Return only exact (statically bound) callers; omit may-dispatch callers." };
         var includeGeneratedOption = IndexQueryCommandFactory.CreateIncludeGeneratedOption();
         var includeDelegatesOption = IndexQueryCommandFactory.CreateIncludeDelegatesOption();
@@ -36,7 +36,7 @@ internal static class CallersCommand
 
         var command = new Command(
             "callers",
-            "Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations.");
+            CliExamples.With("Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations.", "s1atlas callers \"Demo.Widget::Run()\" --exact"));
         command.Arguments.Add(queryArgument);
         command.Options.Add(codebaseOption);
         command.Options.Add(channelOption);
@@ -48,6 +48,17 @@ internal static class CallersCommand
         command.Options.Add(includeGeneratedOption);
         command.Options.Add(includeDelegatesOption);
         command.Options.Add(jsonOption);
+        IndexQueryCommandFactory.AddOptionsValidator(
+            command,
+            "callers",
+            codebaseOption,
+            channelOption,
+            limitOption,
+            scopeOption,
+            collectionOption,
+            buildOption,
+            hasReferenceService: false,
+            defersToAction: result => CliValidation.GetValue(result, limitOption) <= 0);
         command.SetAction(parseResult =>
         {
             var commandOutput = new CommandOutput("callers", parseResult.GetValue(jsonOption), output, error);
@@ -59,20 +70,12 @@ internal static class CallersCommand
                         return commandOutput.Failure(1, "InvalidLimit", "--limit must be greater than zero.");
 
                     repository.InitializeAsync(cancellationToken).GetAwaiter().GetResult();
-                    IndexQueryOptions options;
-                    try
-                    {
-                        options = IndexQueryCommandFactory.ParseOptions(
-                            parseResult.GetValue(codebaseOption),
-                            parseResult.GetValue(channelOption),
-                            limit,
-                            parseResult.GetValue(scopeOption),
-                            parseResult.GetValue(collectionOption));
-                    }
-                    catch (ArgumentException exception)
-                    {
-                        return commandOutput.Failure(1, "InvalidOptionCombination", exception.Message);
-                    }
+                    var options = IndexQueryCommandFactory.ParseOptions(
+                        parseResult.GetValue(codebaseOption),
+                        parseResult.GetValue(channelOption),
+                        limit,
+                        parseResult.GetValue(scopeOption),
+                        parseResult.GetValue(collectionOption));
 
                     var authority = IndexQueryCommandFactory.ResolveExecutionAuthority(
                         authorityResolver,
