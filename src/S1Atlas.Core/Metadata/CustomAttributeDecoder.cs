@@ -87,7 +87,7 @@ public static class CustomAttributeDecoder
     internal static string TypeReferenceName(MetadataReader reader, TypeReferenceHandle handle)
     {
         var reference = reader.GetTypeReference(handle);
-        var name = reader.GetString(reference.Namespace) is { Length: > 0 }ns
+        var name = reader.GetString(reference.Namespace) is { Length: > 0 } ns
             ? ns + "." + reader.GetString(reference.Name)
             : reader.GetString(reference.Name);
         return reference.ResolutionScope.Kind == HandleKind.TypeReference
