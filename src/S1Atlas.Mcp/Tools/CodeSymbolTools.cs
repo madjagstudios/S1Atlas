@@ -36,7 +36,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "search_symbols", Title = "Search symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search the integrity-verified game index or a selected reference collection for symbols.")]
     public async Task<ToolEnvelope<SymbolSearchResult>> SearchSymbolsAsync(
         [Description("Case-insensitive symbol name fragment or qualified name.")] string query,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Symbol kind filter.")] SymbolKind? kind = null,
@@ -132,7 +132,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the integrity-verified code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetTypeAsync(
         [Description("Exact or fuzzy type selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
@@ -142,7 +142,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_method", Title = "Get method", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one method from the integrity-verified code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetMethodAsync(
         [Description("Exact or fuzzy method selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max candidates (1-500).")] int limit = 50,
@@ -177,7 +177,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "get_source", Title = "Get source", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Return integrity-checked source for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<SourceSnippetQueryResult>> GetSourceAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Source context lines before and after the selected span.")] int context = 5,
@@ -306,7 +306,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_callers", Title = "Find callers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCallersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -336,7 +336,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_callees", Title = "Find callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find outgoing call-like relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindCalleesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -351,7 +351,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_references", Title = "Find references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find incoming and outgoing relationships for one resolved game or local reference symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindReferencesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -377,7 +377,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_call_sites", Title = "Find call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
         [Description("Resolved game-member selector or canonical raw target text.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -503,7 +503,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_field_references", Title = "Find field references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static field readers and writers for one resolved game or local reference field; results do not prove lifecycle ordering or runtime behavior.")]
     public async Task<ToolEnvelope<FieldReferenceQueryResult>> FindFieldReferencesAsync(
         [Description("Exact or fuzzy field selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Return only field readers.")] bool readers = false,
@@ -658,7 +658,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_related_types", Title = "Find related types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find type-oriented relationships for one resolved Schedule I symbol.")]
     public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelatedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Optional type relationship kinds to include.")] string[]? relationKinds = null,
@@ -820,7 +820,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_overrides", Title = "Find overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the base and interface slots one method fills, up to the root.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -945,7 +945,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_overriders", Title = "Find overriders", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the methods that override or implement one method, transitively.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindOverridersAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,
@@ -1084,7 +1084,7 @@ public sealed class CodeSymbolTools
     [McpServerTool(Name = "find_derived_types", Title = "Find derived types", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the subclasses and implementers of one type, transitively.")]
     public async Task<ToolEnvelope<HierarchyQueryResult>> FindDerivedTypesAsync(
         [Description("Exact or fuzzy symbol selector.")] string selector,
-        [Description("Codebase to query.")] McpCodebase codebase,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
         [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
         [Description("Build ID; omit for current.")] string? buildId = null,
         [Description("Max results (1-500).")] int limit = 50,

@@ -184,8 +184,9 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 ### Changed
 
 - **MCP tool surface consolidated from 35 tools to 26** (AT-81): the eight
-  API-only tools retire in favor of shared code tools with a required
-  `codebase` (`scheduleI`, `s1api`, `s1mapi`) and an optional `channel`
+  API-only tools retire in favor of shared code tools with an optional
+  `codebase` (`scheduleI`, `s1api`, `s1mapi`; `scheduleI` by default) and an
+  optional `channel`
   (`Installed` by default): `search_api_symbols` becomes `search_symbols`,
   `get_api_source` becomes `get_source`, `find_api_callers` becomes
   `find_callers`, `find_api_callees` becomes `find_callees`,
@@ -208,7 +209,7 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   that duplicate the build context, and return slimmer candidate rows.
   MCP error codes unify into ten snake_case wire codes; see the usage
   guide for the retired-tool map and the code table. Measured on the
-  deterministic test atlas, `tools/list` shrinks from 24838 to 23681 bytes
+  deterministic test atlas, `tools/list` shrinks from 24838 to 23824 bytes
   and the four probe responses shrink 22.6% in aggregate (6793 to 5258
   bytes).
 

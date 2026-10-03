@@ -137,16 +137,16 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query", "codebase"]);
+        AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query"]);
         AssertSchema(schemas["list_api_indexes"], ["buildId", "limit", "cursor"], []);
         AssertSchema(
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
         AssertSchema(schemas["list_reference_collections"], ["limit", "cursor"], []);
-        AssertSchema(schemas["get_type"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
-        AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
-        AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector", "codebase"]);
+        AssertSchema(schemas["get_type"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector"]);
+        AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector"]);
+        AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector"]);
         using var sourceSchema = JsonDocument.Parse(schemas["get_source"]);
         var sourceProperties = sourceSchema.RootElement.GetProperty("properties");
         Assert.False(sourceProperties.GetProperty("fullType").GetProperty("default").GetBoolean());
@@ -176,23 +176,23 @@ public sealed class McpTrustBoundaryTests
                 apiOutcome.IsError ?? false);
         }
 
-        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector"]);
+        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector"]);
+        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(
             schemas["find_field_references"],
             ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "cursor", "scope", "collection", "includeGenerated"],
-            ["selector", "codebase"]);
-        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
+            ["selector"]);
+        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(
             schemas["find_related_types"],
             ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"],
-            ["selector", "codebase"]);
+            ["selector"]);
 
         var serialized = await McpTestHost.CallToolAsync(
             _scenes.Client,
             "get_type",
-            new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.TypeSelector });
+            new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector });
         using var result = JsonDocument.Parse(serialized);
         Assert.Contains(
             result.RootElement.GetProperty("status").GetString(),
@@ -238,24 +238,24 @@ public sealed class McpTrustBoundaryTests
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
         Assert.Equal(26, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
-        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_derived_types"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_field_references"], ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_overriders"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_overrides"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector", "codebase"]);
-        AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"], ["selector", "codebase"]);
+        AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector"]);
+        AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector"]);
+        AssertSchema(schemas["find_derived_types"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_field_references"], ["selector", "codebase", "channel", "buildId", "readers", "writers", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector"]);
+        AssertSchema(schemas["find_overriders"], ["selector", "codebase", "channel", "buildId", "limit", "depth", "cursor", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_overrides"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
+        AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector"]);
+        AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
         AssertSchema(schemas["get_component"], ["selector", "buildId", "sceneSnapshotId", "includeReferences", "includeCode", "limit"], ["selector"]);
         AssertSchema(schemas["get_environment"], ["buildId"], []);
         AssertSchema(schemas["get_gameobject"], ["selector", "buildId", "sceneSnapshotId", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
-        AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
+        AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector"]);
         AssertSchema(schemas["get_scene"], ["selector", "buildId", "sceneSnapshotId", "kind", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
         AssertSchema(schemas["get_scriptable_object"], ["selector", "buildId", "sceneSnapshotId"], ["selector"]);
-        AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector", "codebase"]);
-        AssertSchema(schemas["get_type"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
+        AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector"]);
+        AssertSchema(schemas["get_type"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector"]);
         AssertSchema(
             schemas["investigate_seam"],
             ["behavioralQuestion", "selector", "buildId", "scope", "collection", "relationshipLimit", "ownerLimit", "context", "details", "nativeSymbolIds", "nativeTraversalBudget"],
@@ -268,31 +268,31 @@ public sealed class McpTrustBoundaryTests
             schemas["plan_runtime_proof"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority", "knownStaticFacts", "availableObservables", "unavailableObservables", "policyGateSatisfied"],
             ["behavioralQuestion", "executionBoundary", "canonicalIdentity", "authority"]);
-        AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query", "codebase"]);
+        AssertSchema(schemas["search_symbols"], ["query", "codebase", "channel", "buildId", "kind", "limit", "scope", "collection", "includeGenerated"], ["query"]);
 
         Dictionary<string, IReadOnlyDictionary<string, object?>> minimalCalls = new()
         {
             ["compare_symbol"] = new Dictionary<string, object?> { ["selector"] = atlas.CompareSelector },
 
-            ["find_call_sites"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.EngineCallSiteSelector },
-            ["find_callees"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
-            ["find_callers"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
-            ["find_derived_types"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.HierarchyBaseTypeSelector },
-            ["find_field_references"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.GameFieldSelector },
-            ["find_overriders"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.HierarchyBaseMethodSelector },
-            ["find_overrides"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.HierarchyDerivedMethodSelector },
-            ["find_references"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
-            ["find_related_types"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
+            ["find_call_sites"] = new Dictionary<string, object?> { ["selector"] = atlas.EngineCallSiteSelector },
+            ["find_callees"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_callers"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_derived_types"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyBaseTypeSelector },
+            ["find_field_references"] = new Dictionary<string, object?> { ["selector"] = atlas.GameFieldSelector },
+            ["find_overriders"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyBaseMethodSelector },
+            ["find_overrides"] = new Dictionary<string, object?> { ["selector"] = atlas.HierarchyDerivedMethodSelector },
+            ["find_references"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["find_related_types"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
 
             ["get_callable_surface"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["get_component"] = new Dictionary<string, object?> { ["selector"] = atlas.ComponentSelector },
             ["get_environment"] = new Dictionary<string, object?>(),
             ["get_gameobject"] = new Dictionary<string, object?> { ["selector"] = atlas.GameObjectSelector },
-            ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
+            ["get_method"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["get_scene"] = new Dictionary<string, object?> { ["selector"] = atlas.SceneNameA },
             ["get_scriptable_object"] = new Dictionary<string, object?> { ["selector"] = atlas.ScriptableAssetSelector },
-            ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
-            ["get_type"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.TypeSelector },
+            ["get_source"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
+            ["get_type"] = new Dictionary<string, object?> { ["selector"] = atlas.TypeSelector },
             ["investigate_seam"] = new Dictionary<string, object?>
             {
                 ["behavioralQuestion"] = "Which seam owns the Demo.Widget run path?",
@@ -310,7 +310,7 @@ public sealed class McpTrustBoundaryTests
                 ["authority"] = "Demo.Widget"
             },
 
-            ["search_symbols"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["query"] = atlas.KnownSymbolFragment }
+            ["search_symbols"] = new Dictionary<string, object?> { ["query"] = atlas.KnownSymbolFragment }
         };
 
         var envelopes = await McpTestHost.CallToolsRawAsync(_scenes.Client, minimalCalls);
@@ -330,6 +330,32 @@ public sealed class McpTrustBoundaryTests
     }
 
     [Fact]
+    public async Task StdioHost_OmittedCodebaseMatchesExplicitScheduleI()
+    {
+        var atlas = _healthy.Atlas;
+
+        var explicitCallers = await McpTestHost.CallToolAsync(
+            _healthy.Client,
+            "find_callers",
+            new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector, ["codebase"] = "scheduleI" });
+        var omittedCallers = await McpTestHost.CallToolAsync(
+            _healthy.Client,
+            "find_callers",
+            new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector });
+        Assert.Equal(explicitCallers, omittedCallers);
+
+        var explicitSearch = await McpTestHost.CallToolAsync(
+            _healthy.Client,
+            "search_symbols",
+            new Dictionary<string, object?> { ["query"] = atlas.KnownSymbolFragment, ["codebase"] = "scheduleI" });
+        var omittedSearch = await McpTestHost.CallToolAsync(
+            _healthy.Client,
+            "search_symbols",
+            new Dictionary<string, object?> { ["query"] = atlas.KnownSymbolFragment });
+        Assert.Equal(explicitSearch, omittedSearch);
+    }
+
+    [Fact]
     public async Task StdioHost_BindingFailuresNameTheOffendingParameter()
     {
         var atlas = _scenes.Atlas;
@@ -344,7 +370,7 @@ public sealed class McpTrustBoundaryTests
         var wrongItemType = await McpTestHost.CallToolRawAsync(
             _scenes.Client,
             "find_related_types",
-            new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector, ["relationKinds"] = new[] { 7 } });
+            new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector, ["relationKinds"] = new[] { 7 } });
         Assert.True(wrongItemType.IsError);
         Assert.Contains("'relationKinds'", Assert.IsType<TextContentBlock>(Assert.Single(wrongItemType.Content)).Text);
 
@@ -364,7 +390,7 @@ public sealed class McpTrustBoundaryTests
         var serialized = await McpTestHost.CallToolAsync(
             _healthy.Client,
             "get_method",
-            new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector });
+            new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector });
 
         using var document = JsonDocument.Parse(serialized);
         var data = document.RootElement.GetProperty("data");

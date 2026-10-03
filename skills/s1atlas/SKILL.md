@@ -15,9 +15,10 @@ and provenance basics; follow them, and use this skill for the CLI fallback,
 the ownership gate, and the decision rules.
 
 The API parity MCP tools are the shared code tools with
-`codebase: s1api` or `s1mapi` and an optional `channel`; they remain
-read-only and preserve exact codebase/channel/index authority. Use
-`plan_runtime_proof` after the static ownership gate for bounded runtime
+`codebase: s1api` or `s1mapi` and an optional `channel`; `codebase` itself
+is optional and defaults to `scheduleI`. They remain read-only and preserve
+exact codebase/channel/index authority. Use `plan_runtime_proof` after the
+static ownership gate for bounded runtime
 planning. Its execution boundary must be one of `SinglePlayer`,
 `ListenHost`, `DedicatedServer`, or `Client`; never transfer authority or
 observability assumptions between those roles.

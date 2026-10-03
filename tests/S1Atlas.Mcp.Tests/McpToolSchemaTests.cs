@@ -69,6 +69,31 @@ public sealed class McpToolSchemaTests : IClassFixture<SharedHealthyServerFixtur
     }
 
     [Fact]
+    public async Task Codebase_parameter_is_optional_on_every_code_tool()
+    {
+        var schemas = await McpTestHost.GetToolSchemasAsync(_fixture.Client);
+
+        var toolsWithCodebase = new List<string>();
+        foreach (var (tool, schemaText) in schemas.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+        {
+            using var schema = JsonDocument.Parse(schemaText);
+            if (!schema.RootElement.GetProperty("properties").TryGetProperty("codebase", out _))
+                continue;
+
+            toolsWithCodebase.Add(tool);
+            var required = schema.RootElement.TryGetProperty("required", out var requiredElement)
+                ? requiredElement.EnumerateArray().Select(value => value.GetString()).ToArray()
+                : [];
+            Assert.DoesNotContain("codebase", required);
+            Assert.Equal(
+                "scheduleI",
+                schema.RootElement.GetProperty("properties").GetProperty("codebase").GetProperty("default").GetString());
+        }
+
+        Assert.Equal(13, toolsWithCodebase.Count);
+    }
+
+    [Fact]
     public async Task Every_parameter_has_a_description()
     {
         var schemas = await McpTestHost.GetToolSchemasAsync(_fixture.Client);

@@ -763,10 +763,11 @@ tools:
 | Builds and collections | `list_builds`, `get_environment`, `list_api_indexes`, `list_reference_collections` |
 | Analysis | `compare_symbol`, `investigate_seam`, `plan_runtime_proof` |
 
-Thirteen code tools take a required `codebase` (`scheduleI`, `s1api`, or
-`s1mapi`) and an optional `channel` (default `Installed`); Schedule I has
-only the Installed channel. `get_callable_surface` is game-only and takes
-neither. Fixed vocabularies are advertised as schema enums: `codebase`,
+Thirteen code tools take an optional `codebase` (`scheduleI`, `s1api`, or
+`s1mapi`; default `scheduleI`) and an optional `channel` (default
+`Installed`); Schedule I has only the Installed channel.
+`get_callable_surface` is game-only and takes neither. Fixed vocabularies
+are advertised as schema enums: `codebase`,
 `channel`, `scope` (`Game`, `Reference`, `All`), and the symbol-kind and
 scene-kind filters. Binding is case-insensitive, and an invalid enum value
 fails with a readable error naming the parameter and the allowed values.
