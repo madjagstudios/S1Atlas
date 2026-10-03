@@ -25,6 +25,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
     private const string ToolInstanceId = "tool-instance-1";
     private const string BuildIdASeed = "build-a";
     private const string BuildIdBSeed = "build-b";
+    public const string NonCurrentBuildIdSeed =
+        "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
     private const string RecipeIdA = "1111111111111111111111111111111111111111111111111111111111111111";
     private const string RecipeIdB = "2222222222222222222222222222222222222222222222222222222222222222";
     private const string ProfileDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -397,6 +399,20 @@ public sealed class McpTestAtlas : IAsyncDisposable
 
         var atlas = new McpTestAtlas(root);
         await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(BuildIdASeed);
+        return atlas;
+    }
+
+    public static async Task<McpTestAtlas> SeedNonCurrentBuildWithoutExtractionAsync()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-mcp-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        var atlas = new McpTestAtlas(root);
+        await atlas.InitializeAsync(CancellationToken.None);
+        await atlas.SeedCurrentBuildAsync(NonCurrentBuildIdSeed);
         await atlas.SeedCurrentBuildAsync(BuildIdASeed);
         return atlas;
     }

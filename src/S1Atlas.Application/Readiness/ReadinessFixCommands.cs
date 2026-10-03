@@ -1,4 +1,5 @@
 using S1Atlas.Application.Authority;
+using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
 
 namespace S1Atlas.Application.Readiness;
@@ -58,19 +59,48 @@ public static class ReadinessFixCommands
         return $"s1atlas index --codebase {ApiCodebaseName(codebase)} --channel {channel.ToString().ToLowerInvariant()} --commit {commitSha}";
     }
 
-    public static string? HintForAuthorityStatus(InstalledBuildAuthorityStatus status) =>
-        status switch
+    public static string ExtractBuild(string buildId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
+        return $"s1atlas extract --build {ShortId.Display(buildId)}";
+    }
+
+    public static string? HintForAuthorityStatus(
+        InstalledBuildAuthorityStatus status,
+        string? resolvedBuildId,
+        string? currentBuildId)
+    {
+        // A hint must act on the build the user asked about. The resolved and
+        // current builds are equal whenever no explicit --build was given, so
+        // only an explicit request for a different build takes the targeted
+        // branch. A missing requested build cannot be targeted at all.
+        var targetsCurrentBuild =
+            resolvedBuildId is null ||
+            string.Equals(resolvedBuildId, currentBuildId, StringComparison.Ordinal);
+        return status switch
         {
             InstalledBuildAuthorityStatus.Resolved => null,
             InstalledBuildAuthorityStatus.NoCurrentBuild => Scan,
             InstalledBuildAuthorityStatus.BuildNotFound => Builds,
             InstalledBuildAuthorityStatus.AmbiguousBuildPrefix => null,
-            InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction => Extract,
+            InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction =>
+                resolvedBuildId is not null && !targetsCurrentBuild
+                    ? ExtractBuild(resolvedBuildId)
+                    : Extract,
             InstalledBuildAuthorityStatus.ExtractionIntegrityFailure => null,
-            InstalledBuildAuthorityStatus.NoCompletedIndex => Index,
+            // A code index always targets the current build: index --build is
+            // scene-only, so no command can build the requested build's missing
+            // index. The plain index command would silently act on a different
+            // build, and naming builds would only restate known builds without
+            // advancing a fix, so there is no hint.
+            InstalledBuildAuthorityStatus.NoCompletedIndex =>
+                resolvedBuildId is not null && !targetsCurrentBuild
+                    ? null
+                    : Index,
             InstalledBuildAuthorityStatus.IndexBuildMismatch => null,
             _ => null
         };
+    }
 
     private static string ApiCodebaseName(CodebaseKind codebase) =>
         codebase switch

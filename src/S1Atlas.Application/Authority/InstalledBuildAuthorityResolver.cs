@@ -97,17 +97,21 @@ public sealed class InstalledBuildAuthorityResolver
         if (preferred is null)
         {
             var preferenceRow = await _validated.GetPreferredExtractionAsync(resolvedBuildId, ct);
-            return preferenceRow is null
-                ? Fail(
+            if (preferenceRow is null)
+            {
+                return Fail(
                     InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction,
                     requestedBuildId,
                     resolvedBuildId,
-                    "No preferred verified extraction exists for the build.")
-                : Fail(
-                    InstalledBuildAuthorityStatus.ExtractionIntegrityFailure,
-                    requestedBuildId,
-                    resolvedBuildId,
-                    "The preferred extraction failed integrity verification.");
+                    "No preferred verified extraction exists for the build.",
+                    await CurrentBuildIdAsync(ct));
+            }
+
+            return Fail(
+                InstalledBuildAuthorityStatus.ExtractionIntegrityFailure,
+                requestedBuildId,
+                resolvedBuildId,
+                "The preferred extraction failed integrity verification.");
         }
 
         if (!string.Equals(preferred.Extraction.BuildId, resolvedBuildId, StringComparison.Ordinal))
@@ -131,7 +135,8 @@ public sealed class InstalledBuildAuthorityResolver
                 InstalledBuildAuthorityStatus.NoCompletedIndex,
                 requestedBuildId,
                 resolvedBuildId,
-                "No completed Schedule I Installed index exists for the verified extraction.");
+                "No completed Schedule I Installed index exists for the verified extraction.",
+                await CurrentBuildIdAsync(ct));
         }
 
         var snapshot = await _index.GetCodeSnapshotAsync(run.SnapshotId, ct);
@@ -168,11 +173,15 @@ public sealed class InstalledBuildAuthorityResolver
             null);
     }
 
+    private async Task<string?> CurrentBuildIdAsync(CancellationToken cancellationToken) =>
+        (await _atlas.GetCurrentSnapshotAsync(cancellationToken))?.Build.BuildId;
+
     private static InstalledBuildAuthority Fail(
         InstalledBuildAuthorityStatus status,
         string? requestedBuildId,
         string? resolvedBuildId,
-        string message) =>
+        string message,
+        string? currentBuildId = null) =>
         new(
             status,
             requestedBuildId,
@@ -181,5 +190,5 @@ public sealed class InstalledBuildAuthorityResolver
             null,
             null,
             message,
-            Readiness.ReadinessFixCommands.HintForAuthorityStatus(status));
+            Readiness.ReadinessFixCommands.HintForAuthorityStatus(status, resolvedBuildId, currentBuildId));
 }

@@ -57,6 +57,25 @@ public sealed class AuthorityHintStdioTests
     }
 
     [Fact]
+    public async Task NonCurrentBuildWithoutExtraction_TargetsHintAtRequestedBuild()
+    {
+        await using var atlas = await McpTestAtlas.SeedNonCurrentBuildWithoutExtractionAsync();
+
+        var error = await CallGetTypeAsync(
+            atlas.DataRoot,
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Demo.Widget",
+                ["buildId"] = McpTestAtlas.NonCurrentBuildIdSeed
+            });
+
+        Assert.Equal("NoPreferredVerifiedExtraction", error.GetProperty("code").GetString());
+        Assert.Equal(
+            "s1atlas extract --build 1234567890ab",
+            error.GetProperty("hint").GetString());
+    }
+
+    [Fact]
     public async Task NoPreferredVerifiedExtraction_NamesExtractOverStdio()
     {
         await using var atlas = await McpTestAtlas.SeedCurrentBuildOnlyAsync();

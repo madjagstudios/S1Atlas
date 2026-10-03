@@ -54,6 +54,8 @@ public sealed class AuthorityHintCliTests : IAsyncDisposable
 
     private const string ToolInstanceId = "tool-instance-1";
     private const string BuildId = "build-hint";
+    private const string OtherBuildId =
+        "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
     private const string RecipeId = "1111111111111111111111111111111111111111111111111111111111111111";
     private const string ProfileDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string PolicyDigest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -146,6 +148,47 @@ public sealed class AuthorityHintCliTests : IAsyncDisposable
         await AssertJsonHintAsync(
             [],
             "ExtractionIntegrityFailure",
+            null);
+    }
+
+    [Fact]
+    public async Task Search_NonCurrentBuildWithoutExtraction_TargetsHintAtRequestedBuild()
+    {
+        await _harness.SeedAsync(async repository =>
+        {
+            var ct = TestContext.Current.CancellationToken;
+            await repository.SaveSnapshotAsync(ExtractionSeed.CreateSnapshot(OtherBuildId, BaseTime), ct);
+            await repository.SaveSnapshotAsync(ExtractionSeed.CreateSnapshot(BuildId, BaseTime), ct);
+        });
+
+        const string expected = "s1atlas extract --build abcdef123456";
+        await AssertHumanHintAsync(
+            ["search", "Widget", "--build", OtherBuildId],
+            "NoPreferredVerifiedExtraction",
+            expected);
+        await AssertJsonHintAsync(
+            ["search", "Widget", "--build", OtherBuildId],
+            "NoPreferredVerifiedExtraction",
+            expected);
+    }
+
+    [Fact]
+    public async Task Search_NonCurrentBuildWithoutIndex_OmitsHint()
+    {
+        await _harness.SeedAsync(async repository =>
+        {
+            var ct = TestContext.Current.CancellationToken;
+            await SeedPreferredExtractionAsync(repository, OtherBuildId);
+            await repository.SaveSnapshotAsync(ExtractionSeed.CreateSnapshot(BuildId, BaseTime), ct);
+        });
+
+        await AssertHumanHintAsync(
+            ["search", "Widget", "--build", OtherBuildId],
+            "NoCompletedIndex",
+            null);
+        await AssertJsonHintAsync(
+            ["search", "Widget", "--build", OtherBuildId],
+            "NoCompletedIndex",
             null);
     }
 
