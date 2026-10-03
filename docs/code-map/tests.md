@@ -6,19 +6,21 @@ Roots: tests
 
 | Directory | Files |
 |---|---|
+| tests/Fixtures/S1Atlas.HarmonyGameFixture/ | 2 |
+| tests/Fixtures/S1Atlas.HarmonyModFixture/ | 7 |
 | tests/Fixtures/S1Atlas.InteropAssemblyFixture/ | 3 |
 | tests/Fixtures/S1Atlas.ManagedAssemblyFixture/ | 2 |
 | tests/Fixtures/S1Atlas.ParityFixture/ | 13 |
 | tests/Fixtures/S1Atlas.ScriptLayoutFixture/ | 3 |
 | tests/Fixtures/S1Atlas.TestSupport/ | 3 |
-| tests/Fixtures/S1Atlas.TestSupport/Seeding/ | 2 |
+| tests/Fixtures/S1Atlas.TestSupport/Seeding/ | 3 |
 | tests/S1Atlas.Core.Tests/ | 5 |
 | tests/S1Atlas.Core.Tests/Builds/ | 1 |
 | tests/S1Atlas.Core.Tests/Display/ | 1 |
 | tests/S1Atlas.Core.Tests/Environment/ | 1 |
 | tests/S1Atlas.Core.Tests/Extraction/ | 8 |
 | tests/S1Atlas.Core.Tests/Identity/ | 1 |
-| tests/S1Atlas.Core.Tests/Indexing/ | 8 |
+| tests/S1Atlas.Core.Tests/Indexing/ | 9 |
 | tests/S1Atlas.Core.Tests/Scenes/ | 2 |
 | tests/S1Atlas.Core.Tests/Tools/ | 2 |
 | tests/S1Atlas.Extraction.Tests/ | 4 |
@@ -40,15 +42,15 @@ Roots: tests
 | tests/S1Atlas.FakeCpp2Il/ | 2 |
 | tests/S1Atlas.Indexing.Tests/ | 7 |
 | tests/S1Atlas.Indexing.Tests/Authority/ | 1 |
-| tests/S1Atlas.Indexing.Tests/Decompilation/ | 7 |
+| tests/S1Atlas.Indexing.Tests/Decompilation/ | 9 |
 | tests/S1Atlas.Indexing.Tests/Diff/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Fingerprints/ | 1 |
 | tests/S1Atlas.Indexing.Tests/NativeRecovery/ | 1 |
 | tests/S1Atlas.Indexing.Tests/Paths/ | 2 |
-| tests/S1Atlas.Indexing.Tests/Query/ | 18 |
+| tests/S1Atlas.Indexing.Tests/Query/ | 19 |
 | tests/S1Atlas.Indexing.Tests/Readiness/ | 4 |
 | tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 3 |
-| tests/S1Atlas.Indexing.Tests/Relationships/ | 4 |
+| tests/S1Atlas.Indexing.Tests/Relationships/ | 5 |
 | tests/S1Atlas.Indexing.Tests/Relationships/Parity/ | 5 |
 | tests/S1Atlas.Indexing.Tests/Scene/ | 6 |
 | tests/S1Atlas.Indexing.Tests/Source/ | 2 |
@@ -56,7 +58,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Workflow/ | 3 |
 | tests/S1Atlas.IntegrationTests/ | 13 |
 | tests/S1Atlas.IntegrationTests/Authority/ | 1 |
-| tests/S1Atlas.IntegrationTests/Cli/ | 5 |
+| tests/S1Atlas.IntegrationTests/Cli/ | 6 |
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |
@@ -67,7 +69,7 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Repository/ | 4 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
-| tests/S1Atlas.Mcp.Tests/ | 29 |
+| tests/S1Atlas.Mcp.Tests/ | 30 |
 | tests/S1Atlas.NativeRecovery.Tests/ | 14 |
 | tests/S1Atlas.NativeRecovery.Tests/Spikes/ | 3 |
 | tests/S1Atlas.Storage.Tests/ | 5 |
