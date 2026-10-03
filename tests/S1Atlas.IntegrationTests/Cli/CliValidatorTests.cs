@@ -12,14 +12,17 @@ public sealed class CliValidatorTests
     [InlineData("search", "Alpha", "--scope bogus", "InvalidOptionCombination", "Scope must be game, reference, or all.", false)]
     [InlineData("search", "Alpha", "--scope game --collection qol", "InvalidOptionCombination", "--collection is valid only for reference or all scope.", false)]
     [InlineData("search", "Alpha", "--scope reference", "InvalidOptionCombination", "--scope reference and --scope all require --collection.", false)]
+    [InlineData("search", "Alpha", "--scope all", "InvalidOptionCombination", "--scope reference and --scope all require --collection.", false)]
     [InlineData("search", "Alpha", "--scope reference --collection qol --codebase s1api", "InvalidOptionCombination", "Reference scopes require --codebase schedule-i.", false)]
     [InlineData("search", "Alpha", "--scope reference --collection qol --channel all", "InvalidOptionCombination", "Reference scopes require --channel installed.", false)]
     [InlineData("search", "Alpha", "--build build-1 --codebase s1api", "InvalidOptionCombination", "--build is only valid with --codebase schedule-i and --channel installed.", true)]
     [InlineData("search", "Alpha", "--build build-1 --channel all", "InvalidOptionCombination", "--build is only valid with --codebase schedule-i and --channel installed.", true)]
     [InlineData("callable", "Alpha", "--channel release", "InvalidOptionCombination", "callable queries require --codebase schedule-i and --channel installed.", true)]
+    [InlineData("callable", "Alpha", "--codebase s1api", "InvalidOptionCombination", "callable queries require --codebase schedule-i and --channel installed.", true)]
     [InlineData("field-refs", "Alpha", "--readers --writers", "InvalidOptionCombination", "--readers and --writers are mutually exclusive.", true)]
     [InlineData("field-refs", "Alpha", "--build build-1 --codebase s1api", "InvalidOptionCombination", "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.", true)]
     [InlineData("source", "Alpha", "--full-type --file", "InvalidOptionCombination", "--full-type cannot be combined with --file or --output.", true)]
+    [InlineData("source", "Alpha", "--full-type --output out.txt", "InvalidOptionCombination", "--full-type cannot be combined with --file or --output.", true)]
     [InlineData("source", "Alpha", "--build build-1 --codebase s1api", "InvalidOptionCombination", "--build is only valid with --codebase schedule-i and --channel installed.", true)]
     [InlineData("overrides", "Alpha", "--build build-1 --codebase s1api", "InvalidOptionCombination", "--build is only valid with --codebase schedule-i and --channel installed for game scope, or with --scope reference/all.", true)]
     [InlineData("investigate-seam", "Alpha", "--question Why --codebase bogus", "InvalidOptionCombination", "Codebase must be schedule-i, s1api, or s1mapi.", false)]
@@ -178,6 +181,8 @@ public sealed class CliValidatorTests
     [InlineData("upstream sync", "upstream sync --codebase s1api --json", "CommitRequired", "upstream sync requires --commit so the cache is keyed by an exact commit SHA.", true)]
     [InlineData("upstream sync", "upstream sync --codebase bogus --json", "InvalidCodebase", "Upstream codebase must be s1api or s1mapi.", false)]
     [InlineData("index", "index --scene --codebase s1api --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
+    [InlineData("index", "index --scene --channel installed --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
+    [InlineData("index", "index --scene --commit deadbeef --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
     [InlineData("index", "index --build b --json", "InvalidOptionCombination", "--build is valid only with --scene.", true)]
     [InlineData("index", "index --interop-path p --codebase s1api --channel installed --json", "InvalidOptionCombination", "--interop-path is valid only for the default installed Schedule I code index.", true)]
     [InlineData("index", "index --codebase bogus --json", "InvalidCodebaseChannel", "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.", true)]
@@ -185,6 +190,7 @@ public sealed class CliValidatorTests
     [InlineData("diff", "diff a b --limit 0 --json", "InvalidLimit", "--limit must be greater than zero.", true)]
     [InlineData("diff", "diff a b --channel release --json", "UnsupportedChannel", "Build diffing requires installed-channel indexes. Release and preview channels are not supported in V1.", true)]
     [InlineData("diff", "diff a b --channel bogus --json", "InvalidChannel", "Channel must be installed. Release and preview are not supported for diffing.", true)]
+    [InlineData("diff", "diff a b --channel all --json", "InvalidChannel", "Channel must be installed. Release and preview are not supported for diffing.", true)]
     [InlineData("diff", "diff a b --codebase bogus --json", "InvalidCodebase", "Codebase must be schedule-i, s1api, or s1mapi.", false)]
     public async Task Operational_option_rules_fail_with_the_stable_json_triple(
         string expectedCommand,
@@ -224,16 +230,18 @@ public sealed class CliValidatorTests
         Assert.Contains("Code:    InvalidCodebase", result.StandardError, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Open_rejects_an_out_of_range_port_on_stderr()
+    [Theory]
+    [InlineData("0")]
+    [InlineData("65536")]
+    public async Task Open_rejects_an_out_of_range_port_on_stderr(string port)
     {
         await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
 
-        var result = atlas.Run("open", "Alpha", "--port", "0");
+        var result = atlas.Run("open", "Alpha", "--port", port);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Equal(string.Empty, result.StandardOutput);
-        Assert.Contains("Invalid port '0'. Use 1 to 65535.", result.StandardError, StringComparison.Ordinal);
+        Assert.Contains($"Invalid port '{port}'. Use 1 to 65535.", result.StandardError, StringComparison.Ordinal);
         Assert.Contains("Code:    InvalidPort", result.StandardError, StringComparison.Ordinal);
     }
 
