@@ -161,6 +161,32 @@ public sealed class HarmonyPatchReaderTests
     }
 
     [Fact]
+    public async Task Non_constant_target_types_are_not_wildcards()
+    {
+        var member = await FindMemberAsync("Mod.ManualNonConstantTypesPatch", "Install");
+
+        var fact = Assert.Single(member.Patches ?? []);
+        Assert.Equal(HarmonyPatchKind.Prefix, fact.Kind);
+        Assert.Null(fact.TargetSignature);
+        Assert.Equal(HarmonyPatchReasons.NonConstantArguments, fact.Reason);
+        Assert.Equal("Mod.ManualNonConstantTypesPatch", fact.PatchMethodType);
+        Assert.Equal("TypesPrefix", fact.PatchMethodName);
+    }
+
+    [Fact]
+    public async Task Non_constant_patch_types_forget_the_patch_method()
+    {
+        var member = await FindMemberAsync("Mod.ManualNonConstantPatchTypesPatch", "Install");
+
+        var fact = Assert.Single(member.Patches ?? []);
+        Assert.Equal(HarmonyPatchKind.Prefix, fact.Kind);
+        Assert.Equal("Game.Widget::Run", fact.TargetSignature);
+        Assert.Equal(HarmonyPatchReasons.NonConstantArguments, fact.Reason);
+        Assert.Null(fact.PatchMethodType);
+        Assert.Null(fact.PatchMethodName);
+    }
+
+    [Fact]
     public async Task Branched_manual_calls_are_not_guessed()
     {
         var member = await FindMemberAsync("Mod.ManualBranchPatch", "Install");

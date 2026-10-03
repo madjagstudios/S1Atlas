@@ -307,9 +307,16 @@ internal static class ManualPatchRecognizer
                 var types = TryPop();
                 var name = TryPop();
                 var type = TryPop();
-                if (type is TypeValue target && name is StringValue method)
-                    return new MethodReferenceValue(target.TypeName, method.Text, ResolveTypeArray(types));
-                return StackValue.Unknown;
+                if (type is not TypeValue target || name is not StringValue method)
+                    return StackValue.Unknown;
+                // Only an explicit null widens to an unparameterized target; an
+                // unreadable array stays unknown so it can never resolve by luck.
+                if (types == StackValue.Null)
+                    return new MethodReferenceValue(target.TypeName, method.Text, null);
+                var argumentTypes = ResolveTypeArray(types);
+                return argumentTypes is null
+                    ? StackValue.Unknown
+                    : new MethodReferenceValue(target.TypeName, method.Text, argumentTypes);
             }
 
             for (var i = 0; i < parameters.Count; i++)
@@ -342,10 +349,18 @@ internal static class ManualPatchRecognizer
 
             if (parameters.Count == 3)
             {
+                IReadOnlyList<string>? argumentTypes = null;
+                if (popped[2] != StackValue.Null)
+                {
+                    argumentTypes = ResolveTypeArray(popped[2]);
+                    if (argumentTypes is null)
+                        return new PatchMethodValue(null, null, null);
+                }
+
                 return new PatchMethodValue(
                     popped[0] is TypeValue target ? target.TypeName : null,
                     popped[1] is StringValue method ? method.Text : null,
-                    ResolveTypeArray(popped[2]));
+                    argumentTypes);
             }
 
             return new PatchMethodValue(null, null, null);

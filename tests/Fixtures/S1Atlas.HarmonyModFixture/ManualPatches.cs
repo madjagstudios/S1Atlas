@@ -172,3 +172,31 @@ public class ManualFloatConstantPatch
     {
     }
 }
+
+public class ManualNonConstantTypesPatch
+{
+    public static void Install(Harmony harmony, Type[] types)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run", types),
+            prefix: new HarmonyMethod(typeof(ManualNonConstantTypesPatch), nameof(TypesPrefix)));
+    }
+
+    public static void TypesPrefix()
+    {
+    }
+}
+
+public class ManualNonConstantPatchTypesPatch
+{
+    public static void Install(Harmony harmony, Type[] types)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run"),
+            prefix: new HarmonyMethod(typeof(ManualNonConstantPatchTypesPatch), nameof(UniqueWorker), types));
+    }
+
+    public static void UniqueWorker()
+    {
+    }
+}
