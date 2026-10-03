@@ -1,4 +1,5 @@
 using S1Atlas.Application.Envelope;
+using S1Atlas.Core.Scenes;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Mcp;
 using S1Atlas.Mcp.Tools;
@@ -176,7 +177,7 @@ public sealed class SceneToolTests
     }
 
     [Fact]
-    public async Task GetScene_PrefabKind_ReturnsInvalidKind()
+    public async Task GetScene_PrefabKind_ReturnsPrefab()
     {
         await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
         var tools = CreateTools(atlas);
@@ -192,9 +193,9 @@ public sealed class SceneToolTests
             limit: 50,
             ct: CancellationToken.None);
 
-        Assert.Equal(ToolStatus.Invalid, envelope.Status);
-        Assert.Equal("InvalidKind", envelope.Error!.Code);
-        Assert.Equal(atlas.BuildIdA, envelope.Build!.ResolvedBuildId);
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(atlas.PrefabSelector, envelope.Data!.Scene!.Name);
+        Assert.Equal(SceneDocumentKind.Prefab, envelope.Data.Scene.Kind);
     }
 
     [Fact]

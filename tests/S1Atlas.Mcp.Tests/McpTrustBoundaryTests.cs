@@ -49,7 +49,6 @@ public sealed class McpTrustBoundaryTests
                 "get_environment",
                 "get_gameobject",
                 "get_method",
-                "get_prefab",
                 "get_scene",
                 "get_scriptable_object",
                 "get_source",
@@ -235,7 +234,7 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        Assert.Equal(27, schemas.Count);
+        Assert.Equal(26, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection"], ["selector", "codebase"]);
         AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector", "codebase"]);
@@ -251,7 +250,6 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["get_environment"], ["buildId"], []);
         AssertSchema(schemas["get_gameobject"], ["selector", "buildId", "sceneSnapshotId", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
         AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector", "codebase"]);
-        AssertSchema(schemas["get_prefab"], ["selector", "buildId", "sceneSnapshotId", "includeObjects", "includeComponents", "includeReferences", "limit"], ["selector"]);
         AssertSchema(schemas["get_scene"], ["selector", "buildId", "sceneSnapshotId", "kind", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
         AssertSchema(schemas["get_scriptable_object"], ["selector", "buildId", "sceneSnapshotId"], ["selector"]);
         AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector", "codebase"]);
@@ -289,7 +287,6 @@ public sealed class McpTrustBoundaryTests
             ["get_environment"] = new Dictionary<string, object?>(),
             ["get_gameobject"] = new Dictionary<string, object?> { ["selector"] = atlas.GameObjectSelector },
             ["get_method"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
-            ["get_prefab"] = new Dictionary<string, object?> { ["selector"] = atlas.PrefabSelector },
             ["get_scene"] = new Dictionary<string, object?> { ["selector"] = atlas.SceneNameA },
             ["get_scriptable_object"] = new Dictionary<string, object?> { ["selector"] = atlas.ScriptableAssetSelector },
             ["get_source"] = new Dictionary<string, object?> { ["codebase"] = "scheduleI", ["selector"] = atlas.MethodSelector },
@@ -918,8 +915,8 @@ internal static class McpTestHost
         await scene.GetSceneAsync(" ", atlas.BuildIdA, null, null, false, false, false, 50, ct);
         await scene.GetGameObjectAsync(atlas.GameObjectSelector, atlas.BuildIdA, null, false, false, false, 50, ct);
         await scene.GetGameObjectAsync(" ", atlas.BuildIdA, null, false, false, false, 50, ct);
-        await scene.GetPrefabAsync(atlas.PrefabSelector, atlas.BuildIdA, null, false, false, false, 50, ct);
-        await scene.GetPrefabAsync(" ", atlas.BuildIdA, null, false, false, false, 50, ct);
+        await scene.GetSceneAsync(atlas.PrefabSelector, atlas.BuildIdA, null, "Prefab", false, false, false, 50, ct);
+        await scene.GetSceneAsync(" ", atlas.BuildIdA, null, "Prefab", false, false, false, 50, ct);
         await scene.GetComponentAsync(atlas.ComponentSelector, atlas.BuildIdA, null, false, true, 50, ct);
         await scene.GetComponentAsync(" ", atlas.BuildIdA, null, false, true, 50, ct);
         await seam.InvestigateSeamAsync(
