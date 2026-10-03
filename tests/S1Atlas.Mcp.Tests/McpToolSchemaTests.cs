@@ -110,6 +110,8 @@ public sealed class McpToolSchemaTests : IClassFixture<SharedHealthyServerFixtur
         var text = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(outcome.Content)).Text;
 
         Assert.True(outcome.IsError ?? false);
-        Assert.Contains("An error occurred invoking", text, StringComparison.Ordinal);
+        Assert.Contains($"argument '{parameter}'", text, StringComparison.Ordinal);
+        Assert.Contains("must be one of", text, StringComparison.Ordinal);
+        Assert.Contains(value, text, StringComparison.Ordinal);
     }
 }
