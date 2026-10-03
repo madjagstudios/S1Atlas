@@ -13,7 +13,7 @@ public sealed class AuthorityEnvelopeHintTests
         { InstalledBuildAuthorityStatus.BuildNotFound, ReadinessFixCommands.Builds },
         { InstalledBuildAuthorityStatus.AmbiguousBuildPrefix, null },
         { InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction, ReadinessFixCommands.Extract },
-        { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, ReadinessFixCommands.ExtractRetry },
+        { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, null },
         { InstalledBuildAuthorityStatus.NoCompletedIndex, ReadinessFixCommands.Index },
         { InstalledBuildAuthorityStatus.IndexBuildMismatch, null }
     };

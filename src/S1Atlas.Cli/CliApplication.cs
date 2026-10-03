@@ -408,20 +408,20 @@ public sealed class CliApplication
                             false,
                             new CommandOutput("tools install", json: false, output, error),
                             cancellation)),
-                    cancellation =>
+                    (options, cancellation) =>
                         Task.FromResult(ExtractCommand.Execute(
                             workflow,
-                            ExtractCommand.DefaultOptions,
+                            options,
                             new CommandOutput("extract", json: false, output, error),
                             null,
                             cancellation)),
-                    cancellation =>
+                    (options, cancellation) =>
                         Task.FromResult(IndexCommand.Execute(
                             indexingWorkflow,
                             apiIndexingWorkflow,
                             sceneIndexingWorkflow,
                             repository,
-                            new IndexCommandOptions(),
+                            options,
                             new CommandOutput("index", json: false, output, error),
                             null,
                             cancellation)),

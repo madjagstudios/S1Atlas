@@ -1,6 +1,7 @@
 using System.CommandLine;
 using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Commands;
+using S1Atlas.Extraction;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests;
@@ -309,12 +310,12 @@ public sealed class SetupCommandTests
                 calls.Add("install");
                 return Task.FromResult(1);
             },
-            Extract: _ =>
+            Extract: (_, _) =>
             {
                 calls.Add("extract");
                 return Task.FromResult(0);
             },
-            Index: _ =>
+            Index: (_, _) =>
             {
                 calls.Add("index");
                 return Task.FromResult(0);
@@ -456,12 +457,133 @@ public sealed class SetupCommandTests
         Assert.Contains("2. s1atlas tools install unity-classdata", output.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ForceIndex_PlanShowsForceAndRunnerReceivesForce()
+    {
+        var report = new ReadinessReport(
+            [
+                new ReadinessItem(
+                    ReadinessItemIds.Index, "Schedule I index",
+                    ReadinessState.Missing, "The completed index does not match the preferred extraction.",
+                    ReadinessFixCommands.IndexForce, false)
+            ],
+            new ReadinessNextStep(false, "Next: s1atlas index --force", ReadinessFixCommands.IndexForce),
+            false,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+        var readiness = new ScriptedReadinessService(report);
+        IndexCommandOptions? received = null;
+        var runners = new SetupStepRunners(
+            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
+            Extract: (_, _) => throw new InvalidOperationException("Extract must not run."),
+            Index: (options, _) =>
+            {
+                received = options;
+                return Task.FromResult(0);
+            },
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("1. s1atlas index --force", output.ToString(), StringComparison.Ordinal);
+        Assert.True(Assert.IsType<IndexCommandOptions>(received).Force);
+    }
+
+    [Fact]
+    public void RetryExtract_PlanShowsRetryAndRunnerReceivesRetry()
+    {
+        var report = new ReadinessReport(
+            [
+                new ReadinessItem(
+                    ReadinessItemIds.Extraction, "Preferred extraction",
+                    ReadinessState.Missing, "The preferred extraction failed integrity verification.",
+                    ReadinessFixCommands.ExtractRetry, false)
+            ],
+            new ReadinessNextStep(false, "Next: s1atlas extract --retry", ReadinessFixCommands.ExtractRetry),
+            false,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+        var readiness = new ScriptedReadinessService(report);
+        ExtractionOptions? received = null;
+        var runners = new SetupStepRunners(
+            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
+            Extract: (options, _) =>
+            {
+                received = options;
+                return Task.FromResult(0);
+            },
+            Index: (_, _) => throw new InvalidOperationException("Index must not run."),
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("1. s1atlas extract --retry", output.ToString(), StringComparison.Ordinal);
+        Assert.True(Assert.IsType<ExtractionOptions>(received).Retry);
+    }
+
+    [Fact]
+    public void MissingFixCommand_RunsDefaultExtractAndShowsDefault()
+    {
+        var report = new ReadinessReport(
+            [
+                new ReadinessItem(
+                    ReadinessItemIds.Extraction, "Preferred extraction",
+                    ReadinessState.Missing, "The preferred extraction failed integrity verification.",
+                    null, false)
+            ],
+            new ReadinessNextStep(false, "Next: s1atlas extract", ReadinessFixCommands.Extract),
+            false,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+        var readiness = new ScriptedReadinessService(report);
+        ExtractionOptions? received = null;
+        var runners = new SetupStepRunners(
+            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
+            Extract: (options, _) =>
+            {
+                received = options;
+                return Task.FromResult(0);
+            },
+            Index: (_, _) => throw new InvalidOperationException("Index must not run."),
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("1. s1atlas extract", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("--retry", output.ToString(), StringComparison.Ordinal);
+        Assert.False(Assert.IsType<ExtractionOptions>(received).Retry);
+    }
+
     private static SetupStepRunners ExplodingRunners() =>
         new(
             Scan: _ => throw new InvalidOperationException("Scan must not run."),
             InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
-            Extract: _ => throw new InvalidOperationException("Extract must not run."),
-            Index: _ => throw new InvalidOperationException("Index must not run."),
+            Extract: (_, _) => throw new InvalidOperationException("Extract must not run."),
+            Index: (_, _) => throw new InvalidOperationException("Index must not run."),
             IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
 
     private static SetupStepRunners RecordingRunners(
@@ -480,13 +602,13 @@ public sealed class SetupCommandTests
                 readiness?.Complete("tools");
                 return Task.FromResult(0);
             },
-            Extract: _ =>
+            Extract: (_, _) =>
             {
                 calls.Add("extract");
                 readiness?.Complete("extract");
                 return Task.FromResult(0);
             },
-            Index: _ =>
+            Index: (_, _) =>
             {
                 calls.Add("index");
                 readiness?.Complete("index");

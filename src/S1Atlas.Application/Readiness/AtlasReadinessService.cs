@@ -134,8 +134,11 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                         ReadinessItemIds.Extraction,
                         "Preferred extraction",
                         ReadinessState.Missing,
-                        "The preferred extraction failed integrity verification.",
-                        ReadinessFixCommands.ExtractRetry,
+                        $"Preferred extraction {ShortId.Display(preference.ExtractionId)} failed integrity " +
+                        "verification. No command rebuilds it in place: promote another validated " +
+                        "extraction with 's1atlas extractions promote <extraction-id>', or delete the " +
+                        "atlas data and run 's1atlas setup' again.",
+                        null,
                         false);
             }
         }

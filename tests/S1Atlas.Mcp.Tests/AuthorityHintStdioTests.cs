@@ -70,7 +70,7 @@ public sealed class AuthorityHintStdioTests
     }
 
     [Fact]
-    public async Task ExtractionIntegrityFailure_NamesExtractRetryOverStdio()
+    public async Task ExtractionIntegrityFailure_OmitsHintOverStdio()
     {
         await using var atlas = await McpTestAtlas.SeedCorruptedPreferenceAsync();
 
@@ -79,7 +79,7 @@ public sealed class AuthorityHintStdioTests
             new Dictionary<string, object?> { ["selector"] = "Demo.Widget" });
 
         Assert.Equal("ExtractionIntegrityFailure", error.GetProperty("code").GetString());
-        Assert.Equal(ReadinessFixCommands.ExtractRetry, error.GetProperty("hint").GetString());
+        Assert.False(error.TryGetProperty("hint", out _), error.GetRawText());
     }
 
     [Fact]

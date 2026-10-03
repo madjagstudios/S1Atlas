@@ -1,13 +1,14 @@
 using System.CommandLine;
 using S1Atlas.Application.Readiness;
+using S1Atlas.Extraction;
 
 namespace S1Atlas.Cli.Commands;
 
 internal sealed record SetupStepRunners(
     Func<CancellationToken, Task<int>> Scan,
     Func<string, CancellationToken, Task<int>> InstallTool,
-    Func<CancellationToken, Task<int>> Extract,
-    Func<CancellationToken, Task<int>> Index,
+    Func<ExtractionOptions, CancellationToken, Task<int>> Extract,
+    Func<IndexCommandOptions, CancellationToken, Task<int>> Index,
     Func<CancellationToken, Task<int>> IndexScene);
 
 internal static class SetupCommand
@@ -196,23 +197,40 @@ internal static class SetupCommand
         if (items.TryGetValue(ReadinessItemIds.Extraction, out var extraction) &&
             extraction.State != ReadinessState.Ok)
         {
+            // The retry flag is matched against the canonical fix command, never
+            // parsed out of the string: the same match decides both the displayed
+            // command and the executed options, so the plan cannot promise --retry
+            // while running the defaults.
+            var retry = string.Equals(
+                extraction.FixCommand, ReadinessFixCommands.ExtractRetry, StringComparison.Ordinal);
+            var display = retry ? ReadinessFixCommands.ExtractRetry : ReadinessFixCommands.Extract;
+            var options = retry
+                ? ExtractCommand.DefaultOptions with { Retry = true }
+                : ExtractCommand.DefaultOptions;
             plan.Add(new SetupPlanStep(
                 ReadinessItemIds.Extraction,
-                extraction.FixCommand ?? ReadinessFixCommands.Extract,
+                display,
                 false,
                 null,
-                runners.Extract));
+                cancellationToken => runners.Extract(options, cancellationToken)));
         }
 
         if (items.TryGetValue(ReadinessItemIds.Index, out var index) &&
             index.State != ReadinessState.Ok)
         {
+            // Same single-match rule as extraction: a mismatched index advertises
+            // --force because only a forced rebuild skips the reuse path that
+            // would return the mismatched completed index as success.
+            var force = string.Equals(
+                index.FixCommand, ReadinessFixCommands.IndexForce, StringComparison.Ordinal);
+            var display = force ? ReadinessFixCommands.IndexForce : ReadinessFixCommands.Index;
+            var options = new IndexCommandOptions(Force: force);
             plan.Add(new SetupPlanStep(
                 ReadinessItemIds.Index,
-                index.FixCommand ?? ReadinessFixCommands.Index,
+                display,
                 false,
                 null,
-                runners.Index));
+                cancellationToken => runners.Index(options, cancellationToken)));
         }
 
         if (plan.Count > 0 &&

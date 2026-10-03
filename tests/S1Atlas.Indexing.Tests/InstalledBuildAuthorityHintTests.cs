@@ -58,7 +58,7 @@ public sealed class InstalledBuildAuthorityHintTests
     }
 
     [Fact]
-    public async Task Resolve_CorruptedPreferredExtraction_NamesExtractRetry()
+    public async Task Resolve_CorruptedPreferredExtraction_HasNoHint()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();
         await harness.SeedCorruptedPreferenceAsync();
@@ -67,7 +67,7 @@ public sealed class InstalledBuildAuthorityHintTests
         var result = await resolver.ResolveAsync(requestedBuildId: null, CancellationToken.None);
 
         Assert.Equal(InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, result.Status);
-        Assert.Equal(ReadinessFixCommands.ExtractRetry, result.Hint);
+        Assert.Null(result.Hint);
     }
 
     [Fact]

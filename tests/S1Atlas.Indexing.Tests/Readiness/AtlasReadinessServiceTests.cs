@@ -433,7 +433,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Evaluate_CorruptPreferredExtraction_ReportsExtractionRetry()
+    public async Task Evaluate_CorruptPreferredExtraction_ReportsGuidanceWithoutFixCommand()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();
         await harness.SeedCorruptedPreferenceAsync(BuildId);
@@ -443,8 +443,9 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
 
         var extraction = Item(report, ReadinessItemIds.Extraction);
         Assert.Equal(ReadinessState.Missing, extraction.State);
-        Assert.Equal(ReadinessFixCommands.ExtractRetry, extraction.FixCommand);
+        Assert.Null(extraction.FixCommand);
         Assert.Contains("integrity", extraction.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No command rebuilds it in place", extraction.Detail, StringComparison.Ordinal);
     }
 
     [Fact]

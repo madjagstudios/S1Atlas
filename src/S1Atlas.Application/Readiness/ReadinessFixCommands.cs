@@ -66,7 +66,7 @@ public static class ReadinessFixCommands
             InstalledBuildAuthorityStatus.BuildNotFound => Builds,
             InstalledBuildAuthorityStatus.AmbiguousBuildPrefix => null,
             InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction => Extract,
-            InstalledBuildAuthorityStatus.ExtractionIntegrityFailure => ExtractRetry,
+            InstalledBuildAuthorityStatus.ExtractionIntegrityFailure => null,
             InstalledBuildAuthorityStatus.NoCompletedIndex => Index,
             InstalledBuildAuthorityStatus.IndexBuildMismatch => null,
             _ => null

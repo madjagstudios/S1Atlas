@@ -128,7 +128,7 @@ public sealed class AuthorityHintCliTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Search_CorruptedPreferredExtraction_NamesExtractRetryInBothFormats()
+    public async Task Search_CorruptedPreferredExtraction_OmitsHintInBothFormats()
     {
         await _harness.SeedAsync(async repository =>
         {
@@ -142,11 +142,11 @@ public sealed class AuthorityHintCliTests : IAsyncDisposable
         await AssertHumanHintAsync(
             [],
             "ExtractionIntegrityFailure",
-            ReadinessFixCommands.ExtractRetry);
+            null);
         await AssertJsonHintAsync(
             [],
             "ExtractionIntegrityFailure",
-            ReadinessFixCommands.ExtractRetry);
+            null);
     }
 
     [Fact]
