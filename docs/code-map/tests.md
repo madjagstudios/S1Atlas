@@ -56,6 +56,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Workflow/ | 3 |
 | tests/S1Atlas.IntegrationTests/ | 13 |
 | tests/S1Atlas.IntegrationTests/Authority/ | 1 |
+| tests/S1Atlas.IntegrationTests/Cli/ | 4 |
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |
