@@ -293,7 +293,7 @@ public sealed class IndexingWorkflow
             .ToArray();
     }
 
-    private static IReadOnlyList<IndexSymbolRecord> BuildSymbols(ManagedDecompilation decompilation, string snapshotId)
+    internal static IReadOnlyList<IndexSymbolRecord> BuildSymbols(ManagedDecompilation decompilation, string snapshotId)
     {
         var symbols = new List<IndexSymbolRecord>();
         foreach (var type in decompilation.Types)
@@ -330,7 +330,7 @@ public sealed class IndexingWorkflow
 
     internal static string HashId(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
 
-    private static IReadOnlyList<IndexSourceLocationRecord> BuildSourceLocations(
+    internal static IReadOnlyList<IndexSourceLocationRecord> BuildSourceLocations(
         IReadOnlyList<NormalizedSymbol> sourceSymbols,
         IReadOnlyList<IndexSymbolRecord> symbols,
         IndexSourceFileRecord sourceFile)
