@@ -35,7 +35,8 @@ public sealed class AgentUsageContractTests
         Assert.Contains("Negative-seam result", skill, StringComparison.Ordinal);
         Assert.Contains("Runtime-proof plan", skill, StringComparison.Ordinal);
         Assert.Contains("both surfaces expose the S1API/S1MAPI query path", normalizedSkill, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("find_api_callers", skill, StringComparison.Ordinal);
+        Assert.Contains("The API parity MCP tools are the shared code tools", normalizedSkill, StringComparison.Ordinal);
+        Assert.Contains("`codebase: s1api`", skill, StringComparison.Ordinal);
         Assert.Contains("plan_runtime_proof", skill, StringComparison.Ordinal);
         Assert.Contains("command = \"s1atlas-mcp\"", skill, StringComparison.Ordinal);
         Assert.Contains("{ \"command\": \"s1atlas-mcp\", \"args\": [] }", skill, StringComparison.Ordinal);
@@ -188,7 +189,7 @@ public sealed class AgentUsageContractTests
         Assert.Contains("MCP adapter statuses are `resolved`, `not_found`, `ambiguous`, `unavailable`, and `invalid`", normalizedReference, StringComparison.Ordinal);
         Assert.Contains("CLI failures remain nonzero error envelopes and never become resolved research packets.", normalizedReference, StringComparison.Ordinal);
         Assert.Contains("`NoSupportableSeam` is reserved for", reference, StringComparison.Ordinal);
-        Assert.Contains("`find_api_callers`, `find_api_callees`, `find_api_references`", normalizedReference, StringComparison.Ordinal);
+        Assert.Contains("The API parity MCP surface is the shared code tools", normalizedReference, StringComparison.Ordinal);
         Assert.Contains("`plan_runtime_proof` is a bounded planning surface", normalizedReference, StringComparison.Ordinal);
         Assert.Contains("`singlePlayer`, `listenHost`, `dedicatedServer`, or `client`", normalizedReference, StringComparison.Ordinal);
     }

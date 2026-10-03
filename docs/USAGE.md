@@ -993,8 +993,8 @@ edge; neither is a call, a read, or a write.
 Delegate references stay out of `callers`/`callees` unless asked:
 
 - CLI: `--include-delegates` on `callers` and `callees`.
-- MCP: `includeDelegates` on `find_callers`, `find_callees`,
-  `find_api_callers`, and `find_api_callees`.
+- MCP: `includeDelegates` on `find_callers` and `find_callees`, including
+  `codebase: s1api` and `s1mapi` queries.
 - Serve: `?delegates=1` on symbol pages and on the callers/callees APIs.
 
 Included delegate rows are labeled `delegate created (not called)`.
