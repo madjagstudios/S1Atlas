@@ -22,7 +22,7 @@ internal static class DiffCommand
         var idAArgument = new Argument<string>("id-a") { Description = "Build ID or unique short-ID prefix for the baseline (before)." };
         var idBArgument = new Argument<string>("id-b") { Description = "Build ID or unique short-ID prefix for the target (after)." };
         var codebaseOption = new Option<string>("--codebase") { Description = "schedule-i, s1api, or s1mapi." };
-        var channelOption = new Option<string>("--channel") { Description = "installed (default). Release and preview are not supported." };
+        var channelOption = new Option<string>("--channel") { Description = "Only installed (default) is supported for diffing." };
         var kindOption = new Option<string>("--kind") { Description = "Filter by symbol kind: type, method, constructor, field, property, event." };
         var limitOption = new Option<int>("--limit") { Description = "Maximum changed symbols to list. Must be greater than zero.", DefaultValueFactory = _ => 50 };
         var jsonOption = CommandOutput.CreateJsonOption();

@@ -26,7 +26,7 @@ internal static class IndexCommand
         var forceOption = new Option<bool>("--force") { Description = "Rebuild a completed index as a new candidate." };
         var sceneOption = new Option<bool>("--scene") { Description = "Build the verified Unity scene intelligence index. Accepts --build and --force only." };
         var buildOption = new Option<string?>("--build") { Description = "A completed build ID for scene indexing. Valid only with --scene." };
-        var codebaseOption = new Option<string?>("--codebase") { Description = "schedule-i, s1api, or s1mapi. Not with --scene." };
+        var codebaseOption = new Option<string?>("--codebase") { Description = "s1api or s1mapi. Not with --scene." };
         var channelOption = new Option<string?>("--channel") { Description = "installed, release, or preview. Not with --scene." };
         var commitOption = new Option<string?>("--commit") { Description = "An exact cached upstream commit SHA. Required with --channel release or preview. Not with --scene." };
         var interopPathOption = new Option<string?>("--interop-path") { Description = "A generated Il2CppInterop Assembly-CSharp.dll or its directory. Valid only for the default installed Schedule I code index." };

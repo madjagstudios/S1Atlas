@@ -45,6 +45,6 @@ internal static class CallableCommand
                        !options.AllChannels
                 ? null
                 : "callable queries require --codebase schedule-i and --channel installed.",
-            codebaseOptionDescription: "schedule-i, s1api, or s1mapi.",
-            channelOptionDescription: "installed, release, preview, or all.");
+            codebaseOptionDescription: "schedule-i only.",
+            channelOptionDescription: "installed only.");
 }
