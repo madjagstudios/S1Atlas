@@ -66,7 +66,7 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Repository/ | 4 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
-| tests/S1Atlas.Mcp.Tests/ | 23 |
+| tests/S1Atlas.Mcp.Tests/ | 29 |
 | tests/S1Atlas.NativeRecovery.Tests/ | 14 |
 | tests/S1Atlas.NativeRecovery.Tests/Spikes/ | 3 |
 | tests/S1Atlas.Storage.Tests/ | 5 |
