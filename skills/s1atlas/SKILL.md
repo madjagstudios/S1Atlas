@@ -18,8 +18,8 @@ The API parity MCP tools are the shared code tools with
 `codebase: s1api` or `s1mapi` and an optional `channel`; they remain
 read-only and preserve exact codebase/channel/index authority. Use
 `plan_runtime_proof` after the static ownership gate for bounded runtime
-planning. Its execution boundary must be one of `singlePlayer`,
-`listenHost`, `dedicatedServer`, or `client`; never transfer authority or
+planning. Its execution boundary must be one of `SinglePlayer`,
+`ListenHost`, `DedicatedServer`, or `Client`; never transfer authority or
 observability assumptions between those roles.
 
 ## Install and prerequisites
@@ -141,9 +141,9 @@ treat a setup error as an empty index.
    verified source result available.
 5. **Check higher-level evidence.** For scene questions use CLI `scenes`,
    `scene`, `gameobject`, `prefab`, `component`, and `scriptable-object`, or MCP
-   `list_scenes`, `get_scene` (which also resolves prefabs by name),
-   `get_gameobject`, `get_component`, and `get_scriptable_object`. For
-   game-balance values (prices, wages,
+   `list_scenes`, `get_scene` (`kind: Prefab` for prefabs; omitting `kind`
+   resolves scenes), `get_gameobject`, `get_component`, and
+   `get_scriptable_object`. For game-balance values (prices, wages,
    capacities, order sizes) read the serialized fields these return: a decoded
    field set is FACT (provenance `serialized-script-fields`) for the serialized
    default only, so values computed at load time still need in-game

@@ -186,7 +186,7 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - **MCP tool surface consolidated from 35 tools to 26** (AT-81): the eight
   API-only tools retire in favor of shared code tools with a required
   `codebase` (`scheduleI`, `s1api`, `s1mapi`) and an optional `channel`
-  (`installed` by default): `search_api_symbols` becomes `search_symbols`,
+  (`Installed` by default): `search_api_symbols` becomes `search_symbols`,
   `get_api_source` becomes `get_source`, `find_api_callers` becomes
   `find_callers`, `find_api_callees` becomes `find_callees`,
   `find_api_references` becomes `find_references`,
@@ -194,13 +194,14 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   `find_api_call_sites` becomes `find_call_sites`, and
   `find_api_field_references` becomes `find_field_references`, each with
   the matching `codebase` and `channel` and identical results. `get_prefab`
-  merges into `get_scene`, which now resolves scenes and prefabs by name,
-  and `find_derived_types` pages with `cursor` instead of `offset`.
+  merges into `get_scene` with `kind: Prefab`; omitting `kind` resolves
+  scenes. `find_derived_types` pages with `cursor` instead of `offset`.
   Fixed vocabularies (`codebase`, `scope`, `kind`, `channel`, scene kind,
-  execution boundary) are advertised as schema enums with per-value
-  descriptions; an invalid enum value fails with a readable error naming
-  the parameter and its allowed values, and responses report the same
-  spellings the schemas advertise. Paged list and relationship tools return
+  execution boundary) are advertised as schema enums with a description on
+  every parameter, and the usage guide documents each value; an invalid
+  enum value fails with a readable error naming the parameter and its
+  allowed values, and responses report the same spellings the schemas
+  advertise. Paged list and relationship tools return
   `nextCursor`/`hasMore`, with the cursor bound to the exact query and
   index: reuse with different arguments fails with `invalid_cursor`.
   Envelopes omit empty `candidates`/`suggestions`, drop provenance IDs

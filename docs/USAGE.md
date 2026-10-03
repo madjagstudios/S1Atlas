@@ -775,8 +775,8 @@ fails with a readable error naming the parameter and the allowed values.
 `find_call_sites`, `find_field_references`, `find_references`,
 `find_related_types`, `find_overrides`, `find_overriders`, and
 `find_derived_types` accept optional `scope` and `collection` arguments.
-`scope` defaults to `game`; `reference` and `all` require `collection`, while
-`game` rejects it. `find_field_references` also accepts `readers` and `writers`
+`scope` defaults to `Game`; `Reference` and `All` require `collection`, while
+`Game` rejects it. `find_field_references` also accepts `readers` and `writers`
 filters, which are mutually exclusive. `find_overriders` and
 `find_derived_types` accept `depth` (default `10`). `find_callers` accepts
 `exact` (default `false`): by default it also returns may-dispatch callers
@@ -890,16 +890,16 @@ Retired tools map to shared replacements with no behavior change:
 `find_api_references` to `find_references`, `find_api_related_types` to
 `find_related_types`, `find_api_call_sites` to `find_call_sites`, and
 `find_api_field_references` to `find_field_references`, each with the
-matching `codebase` and `channel`. `get_prefab` merged into `get_scene`,
-which resolves scenes and prefabs by name, and `find_derived_types` pages
-with `cursor` instead of `offset`.
+matching `codebase` and `channel`. `get_prefab` merged into `get_scene`
+with `kind: Prefab`; omitting `kind` resolves scenes. `find_derived_types`
+pages with `cursor` instead of `offset`.
 
 For runtime questions, use the read-only MCP `plan_runtime_proof` tool after the
 static ownership gate. It produces competing hypotheses, positive and negative
 controls, declared observables, lifecycle checks, bounded duration/sample-rate
 limits, cleanup requirements, and `PASS`/`INCONCLUSIVE`/`STOP` outcomes. The
-plan is scoped to exactly one `singlePlayer`, `listenHost`, `dedicatedServer`,
-or `client` execution boundary; authority and observability assumptions must
+plan is scoped to exactly one `SinglePlayer`, `ListenHost`, `DedicatedServer`,
+or `Client` execution boundary; authority and observability assumptions must
 not be transferred between host roles. S1Atlas does not launch the game or
 claim runtime proof automatically.
 

@@ -191,7 +191,7 @@ public sealed class AgentUsageContractTests
         Assert.Contains("`NoSupportableSeam` is reserved for", reference, StringComparison.Ordinal);
         Assert.Contains("The API parity MCP surface is the shared code tools", normalizedReference, StringComparison.Ordinal);
         Assert.Contains("`plan_runtime_proof` is a bounded planning surface", normalizedReference, StringComparison.Ordinal);
-        Assert.Contains("`singlePlayer`, `listenHost`, `dedicatedServer`, or `client`", normalizedReference, StringComparison.Ordinal);
+        Assert.Contains("`SinglePlayer`, `ListenHost`, `DedicatedServer`, or `Client`", normalizedReference, StringComparison.Ordinal);
     }
 
     private static string NormalizeWhitespace(string document)

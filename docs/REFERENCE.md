@@ -273,8 +273,8 @@ These remain read-only and use the same completed-index and exact
 environment-snapshot authority rules as the CLI query services.
 
 `plan_runtime_proof` is a bounded planning surface, not a game runner. Its
-`executionBoundary` is one of `singlePlayer`, `listenHost`, `dedicatedServer`,
-or `client`; the planner keeps observability and authority evidence inside that
+`executionBoundary` is one of `SinglePlayer`, `ListenHost`, `DedicatedServer`,
+or `Client`; the planner keeps observability and authority evidence inside that
 boundary. It returns competing hypotheses, controls, lifecycle checks,
 declared-observable limitations, cleanup, and `Pass`, `Inconclusive`, or `Stop`
 outcomes. A missing policy gate or authority starts at `Stop`; otherwise the
