@@ -577,8 +577,10 @@ per-index symbol counts; `/search` queries one codebase scope with paging
 (`q`, `kind`, `codebase`, `page`, plus `build` to scope game results to one
 build). Search ranks exact simple-name matches first, then name prefixes,
 then substring matches ordered by relevance; queries of one or two characters
-match simple-name prefixes only. Substring matching needs the search index built by
-schema migration v16: on an older atlas the page says so and falls back to the
+match simple-name prefixes only. A member's simple name is its declared
+name, so a method named `Up` matches `q=Up` while its return type never
+does. Substring matching needs the search index built by schema migration
+v16: on an older atlas the page says so and falls back to the
 slower unranked search until any `s1atlas` write command upgrades the database.
 `/symbol/<id>` shows one symbol's members, integrity-checked source,
 callers, callees, and references, plus Overrides and Overridden by sections

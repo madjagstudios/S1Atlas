@@ -191,6 +191,14 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- **Serve search matches members by name** (AT-110): stored simple names
+  took the text after the last dot, so methods kept their return type and
+  nested types kept their outer name. Short serve queries matched by return
+  type instead of member name, and exact-name matches never ranked first.
+  New rows store the declared member name, and schema migration v18 rewrites
+  existing rows (with a pre-migration backup and one search-index rebuild),
+  so one- and two-character serve queries match member-name prefixes and
+  exact names rank first. CLI `search` and MCP results are unchanged.
 - **Generated portal no longer prints absolute local paths** (AT-82):
   the environment page rendered the installation root, the GameAssembly and
   global-metadata paths, and every dependency path verbatim, leaking
