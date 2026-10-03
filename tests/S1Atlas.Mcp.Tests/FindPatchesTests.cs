@@ -12,7 +12,7 @@ public sealed class FindPatchesTests
     public async Task Find_patches_stdio_lists_patches_with_cursor_paging()
     {
         await using var atlas = await HarmonyPatchMcpAtlas.CreateAsync();
-        await using var server = await McpTestServer.StartAsync(atlas.DataRoot, TestContext.Current.CancellationToken);
+        var server = await McpTestServer.StartAsync(atlas.DataRoot, TestContext.Current.CancellationToken);
 
         var first = await server.Client.CallToolAsync(
             "find_patches",
@@ -95,8 +95,38 @@ public sealed class FindPatchesTests
         using var fourthDocument = JsonDocument.Parse(fourthText);
         var fourthRoot = fourthDocument.RootElement;
         Assert.Single(fourthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray());
-        Assert.Null(fourthRoot.GetProperty("data").GetProperty("nextCursor").GetString());
+        Assert.False(
+            fourthRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
+            nextCursor.ValueKind != JsonValueKind.Null);
 
+        await server.DisposeAsync();
+        await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Find_patches_rejects_a_foreign_cursor()
+    {
+        await using var atlas = await HarmonyPatchMcpAtlas.CreateAsync();
+        var server = await McpTestServer.StartAsync(atlas.DataRoot, TestContext.Current.CancellationToken);
+
+        var result = await server.Client.CallToolAsync(
+            "find_patches",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Game.Widget::Run()",
+                ["codebase"] = "scheduleI",
+                ["limit"] = 2,
+                ["scope"] = "reference",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+                ["cursor"] = "bogus",
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(result.Content)).Text;
+        using var document = JsonDocument.Parse(text);
+        Assert.Equal("invalid_cursor", document.RootElement.GetProperty("error").GetProperty("code").GetString());
+
+        await server.DisposeAsync();
         await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 }

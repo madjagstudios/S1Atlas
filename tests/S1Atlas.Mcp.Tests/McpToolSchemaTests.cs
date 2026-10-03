@@ -90,7 +90,7 @@ public sealed class McpToolSchemaTests : IClassFixture<SharedHealthyServerFixtur
                 schema.RootElement.GetProperty("properties").GetProperty("codebase").GetProperty("default").GetString());
         }
 
-        Assert.Equal(13, toolsWithCodebase.Count);
+        Assert.Equal(14, toolsWithCodebase.Count);
     }
 
     [Fact]

@@ -374,6 +374,30 @@ public sealed class CodeSymbolTools
             cursor,
             includeGenerated: includeGenerated);
 
+    [McpServerTool(Name = "find_patches", Title = "Find patches", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find reference-mod Harmony patches targeting one game method, including unresolved patches that name the method.")]
+    public async Task<ToolEnvelope<RelationshipQuerySetResult>> FindPatchesAsync(
+        [Description("Exact or fuzzy symbol selector.")] string selector,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        CancellationToken ct = default,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null,
+        [Description("Which indexes to query.")] IndexQueryScope scope = IndexQueryScope.Game,
+        [Description("Collection ID or reference index ID for reference/all scope.")] string? collection = null) =>
+        await FindRelationshipsAsync(
+            "find_patches",
+            selector,
+            codebase,
+            channel,
+            buildId,
+            limit,
+            ct,
+            scope,
+            collection,
+            RelationshipDirection.Patches,
+            cursor);
+
     [McpServerTool(Name = "find_call_sites", Title = "Find call sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find recovered-IL static call-site references for a game member or canonical raw target text; results do not prove runtime behavior or call order.")]
     public async Task<ToolEnvelope<CallSiteQueryResult>> FindCallSitesAsync(
         [Description("Resolved game-member selector or canonical raw target text.")] string selector,
@@ -1317,6 +1341,11 @@ public sealed class CodeSymbolTools
         bool includeGenerated = false,
         bool includeDelegates = false)
     {
+        if (direction == RelationshipDirection.Patches && codebase is not McpCodebase.scheduleI)
+        {
+            return EnvelopeMapper.Invalid<RelationshipQuerySetResult>("UnsupportedCodebase", "find_patches supports the scheduleI codebase only.");
+        }
+
         if (codebase is not McpCodebase.scheduleI)
         {
             if (ToolArguments.TryValidateSelector<RelationshipQuerySetResult>(selector, null, out var selectorError))
@@ -1416,18 +1445,25 @@ public sealed class CodeSymbolTools
                     {
                         RelationshipDirection.Callers => await _services.IndexQueryService.CallersInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, exact, includeGenerated, includeDelegates, offset),
                         RelationshipDirection.Callees => await _services.IndexQueryService.CalleesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated, includeDelegates, offset),
+                        RelationshipDirection.Patches => await _services.IndexQueryService.PatchesInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, ct),
                         _ => await _services.IndexQueryService.RefsInIndexAsync(authority.IndexRun!, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, boundedLimit, ct, includeGenerated, offset)
                     }
                     : direction switch
                     {
                         RelationshipDirection.Callers => await _services.FederatedIndexQueryService.CallersAsync(selector, options, ct, exact, includeGenerated: includeGenerated, includeDelegates: includeDelegates),
                         RelationshipDirection.Callees => await _services.FederatedIndexQueryService.CalleesAsync(selector, options, ct, includeGenerated: includeGenerated, includeDelegates: includeDelegates),
+                        RelationshipDirection.Patches => await _services.FederatedIndexQueryService.PatchesAsync(selector, options, ct),
                         _ => await _services.FederatedIndexQueryService.RefsAsync(selector, options, ct, includeGenerated: includeGenerated)
                     };
-                var expectedHash = ToolArguments.CursorHashFor(
-                    toolName, authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
+                var expectedHash = direction == RelationshipDirection.Patches
+                    ? ToolArguments.CursorHashFor(
+                        toolName, authority.ResolvedBuildId, authority.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString(), pinned.ReferenceCollection?.ReferenceIndexId)
+                    : ToolArguments.CursorHashFor(
+                        toolName, authority.ResolvedBuildId, authority.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
                 if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
                 {
                     return hashError;
@@ -1511,7 +1547,7 @@ public sealed class CodeSymbolTools
         });
     }
 
-    private enum RelationshipDirection { References, Callers, Callees }
+    private enum RelationshipDirection { References, Callers, Callees, Patches }
 
     private async Task<ScopedAuthority<T>> PinAuthorityAsync<T>(
         S1Atlas.Application.Authority.InstalledBuildAuthority authority,
