@@ -143,6 +143,60 @@ public sealed class SqliteAtlasSchemaInspectorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ExclusivelyLockedDatabase_ReturnsUnreadable()
+    {
+        var path = DatabasePath("locked.db");
+        using (var repository = new SqliteAtlasRepository(path, Path.Combine(_root, "backups")))
+        {
+            await repository.InitializeAsync(CancellationToken.None);
+        }
+
+        SqliteConnection.ClearAllPools();
+        var inspector = new SqliteAtlasSchemaInspector(path);
+
+        using var lockHandle = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var status = await inspector.GetStatusAsync(CancellationToken.None);
+
+        Assert.Equal(AtlasSchemaStatusKind.Unreadable, status.Kind);
+        Assert.Null(status.AppliedVersion);
+    }
+
+    [Theory]
+    [InlineData(3)] // SQLITE_PERM
+    [InlineData(5)] // SQLITE_BUSY
+    [InlineData(6)] // SQLITE_LOCKED
+    [InlineData(10)] // SQLITE_IOERR
+    [InlineData(14)] // SQLITE_CANTOPEN
+    [InlineData(266)] // SQLITE_IOERR_SHORT_READ (extended)
+    [InlineData(517)] // SQLITE_BUSY_SNAPSHOT (extended)
+    public void MapSqliteError_AccessFailures_ReturnUnreadable(int errorCode)
+    {
+        var kind = SqliteAtlasSchemaInspector.MapSqliteError(new SqliteException("probe", errorCode));
+
+        Assert.Equal(AtlasSchemaStatusKind.Unreadable, kind);
+    }
+
+    [Theory]
+    [InlineData(11)] // SQLITE_CORRUPT
+    [InlineData(26)] // SQLITE_NOTADB
+    public void MapSqliteError_ForeignFiles_ReturnUnrecognized(int errorCode)
+    {
+        var kind = SqliteAtlasSchemaInspector.MapSqliteError(new SqliteException("probe", errorCode));
+
+        Assert.Equal(AtlasSchemaStatusKind.Unrecognized, kind);
+    }
+
+    [Theory]
+    [InlineData(1)] // SQLITE_ERROR
+    [InlineData(13)] // SQLITE_FULL
+    public void MapSqliteError_UnknownCodes_ReturnUnreadable(int errorCode)
+    {
+        var kind = SqliteAtlasSchemaInspector.MapSqliteError(new SqliteException("probe", errorCode));
+
+        Assert.Equal(AtlasSchemaStatusKind.Unreadable, kind);
+    }
+
+    [Fact]
     public async Task Inspector_DoesNotCreateOrModifyTheDatabase()
     {
         var missingPath = DatabasePath("untouched.db");

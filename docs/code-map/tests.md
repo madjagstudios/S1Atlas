@@ -13,7 +13,7 @@ Roots: tests
 | tests/Fixtures/S1Atlas.ParityFixture/ | 13 |
 | tests/Fixtures/S1Atlas.ScriptLayoutFixture/ | 3 |
 | tests/Fixtures/S1Atlas.TestSupport/ | 3 |
-| tests/Fixtures/S1Atlas.TestSupport/Seeding/ | 3 |
+| tests/Fixtures/S1Atlas.TestSupport/Seeding/ | 4 |
 | tests/S1Atlas.Core.Tests/ | 5 |
 | tests/S1Atlas.Core.Tests/Builds/ | 1 |
 | tests/S1Atlas.Core.Tests/Display/ | 1 |
@@ -56,20 +56,20 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Source/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Upstream/ | 4 |
 | tests/S1Atlas.Indexing.Tests/Workflow/ | 3 |
-| tests/S1Atlas.IntegrationTests/ | 13 |
+| tests/S1Atlas.IntegrationTests/ | 14 |
 | tests/S1Atlas.IntegrationTests/Authority/ | 1 |
 | tests/S1Atlas.IntegrationTests/Cli/ | 6 |
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |
-| tests/S1Atlas.IntegrationTests/GoldenFacts/ | 7 |
+| tests/S1Atlas.IntegrationTests/GoldenFacts/ | 8 |
 | tests/S1Atlas.IntegrationTests/Indexing/ | 8 |
 | tests/S1Atlas.IntegrationTests/NativeRecovery/ | 2 |
 | tests/S1Atlas.IntegrationTests/Performance/ | 1 |
 | tests/S1Atlas.IntegrationTests/Repository/ | 4 |
 | tests/S1Atlas.IntegrationTests/Scene/ | 3 |
 | tests/S1Atlas.IntegrationTests/Tools/ | 2 |
-| tests/S1Atlas.Mcp.Tests/ | 30 |
+| tests/S1Atlas.Mcp.Tests/ | 31 |
 | tests/S1Atlas.NativeRecovery.Tests/ | 14 |
 | tests/S1Atlas.NativeRecovery.Tests/Spikes/ | 3 |
 | tests/S1Atlas.Storage.Tests/ | 5 |
@@ -77,5 +77,5 @@ Roots: tests
 | tests/S1Atlas.Storage.Tests/Migrations/ | 13 |
 | tests/S1Atlas.Storage.Tests/Scene/ | 3 |
 | tests/S1Atlas.Storage.Tests/Sqlite/ | 11 |
-| tests/S1Atlas.Web.Tests/ | 25 |
+| tests/S1Atlas.Web.Tests/ | 26 |
 

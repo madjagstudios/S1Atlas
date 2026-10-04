@@ -6,15 +6,19 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
-### Fixed
+### Upgrading
 
-- **CI and repository gates** (AT-121): pass workflow values through environment
-  variables so PR branch names cannot become PowerShell commands. CI now uses a
-  read-only repository token and pins each action to a release commit within its
-  existing major version. The public-content check catches JSON-escaped Windows
-  paths and paths with forward slashes or mixed separators. Repository hygiene
-  rejects tracked binaries and Unity assets by extension, with an empty list for
-  exact-path exceptions.
+- Run `s1atlas doctor` first, then run the command it prints
+  (`s1atlas status`) to migrate a behind database in place.
+- Expect about 1-2 minutes on a large atlas (~720k symbols).
+- The pre-migration backup is a full copy, as large as `atlas.db` itself
+  (about 8 GB on a large atlas), so make sure you have that much free disk
+  space first. It is written to the `backups` directory before any
+  migration runs.
+- Until the upgrade runs, serve and the MCP server refuse to query the
+  database: every page and API route answers 503, every MCP tool answers
+  `atlas_unavailable`, each with the `s1atlas status` hint. The hosts
+  recover without a restart once the upgrade lands.
 
 ### Breaking
 
@@ -351,6 +355,33 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   then resolves a unique exact member name instead of returning an ambiguous
   list (several exact matches stay ambiguous, without substring rows),
   independent of result order on every resolution path.
+- **Read-only hosts check the atlas schema before serving** (AT-117): `serve`
+  and the MCP server used to query whatever schema they found, failing
+  mid-request on a database migrated by neither. Both hosts now log the
+  schema status at startup and check it before every request or tool call
+  (a current schema is checked once; anything else is re-checked, so
+  upgrading in another terminal recovers without a restart). A behind,
+  ahead, unrecognized, or temporarily unreadable database answers 503 /
+  `atlas_unavailable` with the shared message and fix hint instead of
+  running the query; the database file is never written. A missing
+  database keeps each host's existing missing-store behavior. A locked or
+  otherwise unreadable database is never reported as unrecognized, so the
+  hosts never advise deleting a database another command is using.
+- **A cancelled diff no longer poisons serve's diff cache** (AT-114): the
+  cached computation was bound to the first waiter's cancellation token, so
+  cancelling one diff request cancelled the shared entry and every later
+  waiter failed on it. The computation now runs on a cache-owned token
+  while each waiter cancels only its own wait; entries run outside the
+  cache lock exactly once, faulted or cancelled entries evict themselves
+  even when no waiter observes the failure, and the bounded queue can no
+  longer evict a live re-added entry through a stale slot.
+- **CI and repository gates** (AT-121): pass workflow values through environment
+  variables so PR branch names cannot become PowerShell commands. CI now uses a
+  read-only repository token and pins each action to a release commit within its
+  existing major version. The public-content check catches JSON-escaped Windows
+  paths and paths with forward slashes or mixed separators. Repository hygiene
+  rejects tracked binaries and Unity assets by extension, with an empty list for
+  exact-path exceptions.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 

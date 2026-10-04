@@ -20,6 +20,7 @@ public static class ReadinessFixCommands
     public const string IndexForce = "s1atlas index --force";
     public const string IndexScene = "s1atlas index --scene";
     public const string Status = "s1atlas status";
+    public const string Doctor = "s1atlas doctor";
     public const string ExampleQuery = "s1atlas search \"Player\" --limit 20";
 
     public const string Cpp2IlToolId = "cpp2il";

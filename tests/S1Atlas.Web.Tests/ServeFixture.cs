@@ -49,6 +49,23 @@ public sealed class ServeFixture : IAsyncDisposable
         return await CreateOnRootAsync(root, null, root, ct);
     }
 
+    public static async Task<ServeFixture> CreateOnBehindSchemaRootAsync(CancellationToken ct = default)
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "s1atlas-serve-behind-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        await SchemaVersionFixtures.CreateBehindDatabaseAsync(
+            Path.Combine(root, "atlas.db"),
+            Path.Combine(root, "backups"),
+            SchemaVersionFixtures.LastVersionWithoutMemberNameColumns,
+            ct);
+        return await CreateOnRootAsync(root, null, root, ct);
+    }
+
+    public string DataRoot =>
+        _ownedRoot ?? _atlas?.DataRoot ?? throw new InvalidOperationException("This fixture owns no data root.");
+
     public async Task<HttpResponseMessage> GetAsync(string path, CancellationToken ct = default) =>
         await Client.GetAsync(path, ct);
 

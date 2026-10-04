@@ -175,45 +175,55 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
             missingToolIds);
     }
 
-    private static ReadinessItem SchemaItem(AtlasSchemaStatus schema) =>
-        schema.Kind switch
+    private static ReadinessItem SchemaItem(AtlasSchemaStatus schema)
+    {
+        var (message, hint) = SchemaStatusWording.Describe(schema);
+        return schema.Kind switch
         {
             AtlasSchemaStatusKind.NotCreated => new ReadinessItem(
                 ReadinessItemIds.AtlasSchema,
                 "Atlas schema",
                 ReadinessState.NotApplicable,
-                "No atlas database yet; the first scan creates it.",
-                ReadinessFixCommands.Scan,
+                message,
+                hint,
                 false),
             AtlasSchemaStatusKind.Current => new ReadinessItem(
                 ReadinessItemIds.AtlasSchema,
                 "Atlas schema",
                 ReadinessState.Ok,
-                "Atlas database schema is current.",
-                null,
+                message,
+                hint,
                 false),
             AtlasSchemaStatusKind.Behind => new ReadinessItem(
                 ReadinessItemIds.AtlasSchema,
                 "Atlas schema",
                 ReadinessState.Stale,
-                $"Atlas database schema v{schema.AppliedVersion} is older than v{schema.ExpectedVersion}.",
-                ReadinessFixCommands.Status,
+                message,
+                hint,
                 false),
             AtlasSchemaStatusKind.Ahead => new ReadinessItem(
                 ReadinessItemIds.AtlasSchema,
                 "Atlas schema",
                 ReadinessState.Missing,
-                $"Upgrade S1Atlas to a build that understands atlas schema v{schema.AppliedVersion} (this build expects v{schema.ExpectedVersion}).",
-                null,
+                message,
+                hint,
+                false),
+            AtlasSchemaStatusKind.Unreadable => new ReadinessItem(
+                ReadinessItemIds.AtlasSchema,
+                "Atlas schema",
+                ReadinessState.Stale,
+                message,
+                hint,
                 false),
             _ => new ReadinessItem(
                 ReadinessItemIds.AtlasSchema,
                 "Atlas schema",
                 ReadinessState.Missing,
-                "Back up and remove the unrecognized atlas database, then run 's1atlas scan'.",
-                null,
+                message,
+                hint,
                 false)
         };
+    }
 
     private static ReadinessItem RuntimeItem(DotNetRuntimeInfo runtime) =>
         runtime.IsSupported

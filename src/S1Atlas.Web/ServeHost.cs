@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using S1Atlas.Application.Composition;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Web.Endpoints;
 using S1Atlas.Web.Queries;
 
@@ -27,11 +28,14 @@ public sealed class ServeHost : IAsyncDisposable
     private volatile int[] _boundPorts;
     private volatile string[] _boundAddresses = [];
 
-    private ServeHost(WebApplication app, int configuredPort)
+    private ServeHost(WebApplication app, int configuredPort, AtlasSchemaGate schemaGate)
     {
         _app = app;
         _boundPorts = [configuredPort];
+        SchemaGate = schemaGate;
     }
+
+    public AtlasSchemaGate SchemaGate { get; }
 
     public static ServeHost Create(ServeOptions options)
     {
@@ -57,11 +61,12 @@ public sealed class ServeHost : IAsyncDisposable
         });
 
         var app = builder.Build();
-        var host = new ServeHost(app, options.Port);
+        var host = new ServeHost(app, options.Port, services.SchemaGate);
         app.Use(SecurityHeaders);
         app.Use(CatchAllAsGenericError);
         app.Use((context, next) => host.GuardHostAsync(context, next));
         app.Use(GuardMethod);
+        app.Use((context, next) => host.GuardSchemaAsync(context, next));
         StatusEndpoints.Map(app);
         SearchEndpoints.Map(app);
         SymbolEndpoints.Map(app);
@@ -204,6 +209,45 @@ public sealed class ServeHost : IAsyncDisposable
         }
 
         await next();
+    }
+
+    // Single schema gate for every route: when the atlas database is
+    // behind, ahead, or unrecognized, requests short-circuit here with a
+    // 503 page or envelope before any query runs. A missing database is
+    // not blocked; each endpoint keeps its own missing-store behaviour.
+    private async Task GuardSchemaAsync(HttpContext context, Func<Task> next)
+    {
+        var block = SchemaStatusWording.BlockFor(
+            await SchemaGate.GetStatusAsync(context.RequestAborted));
+        if (block is null)
+        {
+            await next();
+            return;
+        }
+
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
+        {
+            var envelope = ToolEnvelope<object>.Unavailable(
+                new ToolError(block.Code, block.Message, block.Hint));
+            await context.Response.WriteAsJsonAsync(
+                envelope, ServeApiJson.Options, cancellationToken: context.RequestAborted);
+            return;
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync(SchemaBlockedPage(block), context.RequestAborted);
+    }
+
+    private static string SchemaBlockedPage(SchemaBlock block)
+    {
+        var body = $"<h1>Atlas unavailable</h1><p>{Rendering.Html.Escape(block.Message)}</p>";
+        if (block.Hint is not null)
+        {
+            body += $"<p>Run <code>{Rendering.Html.Escape(block.Hint)}</code> to fix.</p>";
+        }
+
+        return Rendering.Html.Layout("Atlas unavailable", body);
     }
 
     private async Task UnknownEndpointAsync(HttpContext context)

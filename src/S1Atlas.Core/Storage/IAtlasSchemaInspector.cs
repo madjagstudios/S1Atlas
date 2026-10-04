@@ -6,7 +6,8 @@ public enum AtlasSchemaStatusKind
     Current,
     Behind,
     Ahead,
-    Unrecognized
+    Unrecognized,
+    Unreadable
 }
 
 public sealed record AtlasSchemaStatus(
@@ -17,7 +18,8 @@ public sealed record AtlasSchemaStatus(
 /// <summary>
 /// Reads the atlas database schema version without migrating, creating, or
 /// otherwise writing the database. A missing database reports
-/// <see cref="AtlasSchemaStatusKind.NotCreated"/>.
+/// <see cref="AtlasSchemaStatusKind.NotCreated"/>; a locked or otherwise
+/// unreadable one reports <see cref="AtlasSchemaStatusKind.Unreadable"/>.
 /// </summary>
 public interface IAtlasSchemaInspector
 {

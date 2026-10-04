@@ -185,6 +185,10 @@ public sealed class McpErrorCodeTests : IClassFixture<SharedHealthyServerFixture
             { "IndexBuildMismatch", "snapshot_not_found" },
             { "NoCurrentBuild", "no_current_build" },
             { "AtlasUnavailable", "atlas_unavailable" },
+            { "AtlasSchemaBehind", "atlas_unavailable" },
+            { "AtlasSchemaAhead", "atlas_unavailable" },
+            { "AtlasSchemaUnrecognized", "atlas_unavailable" },
+            { "AtlasSchemaUnreadable", "atlas_unavailable" },
             { "UnexpectedToolFailure", "unexpected_tool_failure" },
             { "IncompleteSeamResult", "unexpected_tool_failure" },
             { "InvalidCursor", "invalid_cursor" }

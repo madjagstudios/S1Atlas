@@ -5,6 +5,7 @@ using S1Atlas.Application.Readiness;
 using S1Atlas.Cli;
 using S1Atlas.Cli.Commands;
 using S1Atlas.TestSupport;
+using S1Atlas.TestSupport.Seeding;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests;
@@ -194,6 +195,28 @@ public sealed class DoctorCommandTests : IAsyncDisposable
         Assert.Contains("Next:", output.ToString(), StringComparison.Ordinal);
         Assert.Empty(Directory.EnumerateFileSystemEntries(
             _dataDirectory, "*", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public async Task FullApp_LockedDatabase_ShowsUnreadableWording()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SchemaVersionFixtures.UpgradeToCurrentAsync(
+            Path.Combine(_dataDirectory, "atlas.db"),
+            Path.Combine(_dataDirectory, "backups"),
+            cancellationToken);
+
+        using var lockHandle = new FileStream(
+            Path.Combine(_dataDirectory, "atlas.db"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(["doctor"], output, error, cancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("could not be read", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Back up and remove", output.ToString(), StringComparison.Ordinal);
     }
 
     private static int InvokeDoctor(Command command, string[] args)

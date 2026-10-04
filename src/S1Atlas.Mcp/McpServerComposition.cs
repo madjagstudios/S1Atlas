@@ -1,5 +1,6 @@
 using S1Atlas.Application.Composition;
 using S1Atlas.Application.Authority;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Indexing.Diff;
 using S1Atlas.Indexing.Query;
 using S1Atlas.Indexing.Scene;
@@ -32,7 +33,8 @@ public static class McpServerComposition
             referenceQueryService,
             seamInvestigationService,
             services.BuildDiffService,
-            services.SceneQueryService);
+            services.SceneQueryService,
+            services.SchemaGate);
     }
 }
 
@@ -46,4 +48,5 @@ public sealed record McpReadOnlyServices(
     ReferenceModQueryService ReferenceModQueryService,
     SeamInvestigationService SeamInvestigationService,
     BuildDiffService BuildDiffService,
-    SceneQueryService SceneQueryService);
+    SceneQueryService SceneQueryService,
+    AtlasSchemaGate SchemaGate);

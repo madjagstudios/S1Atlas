@@ -123,11 +123,11 @@ public sealed class RankedSearchTests
     }
 
     [Fact]
-    public async Task UnmigratedAtlas_FallsBackWithVisibleNote()
+    public async Task MissingSearchIndexObjects_FallsBackWithVisibleNote()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
-        await DowngradeSearchIndexAsync(fixture.Atlas.DataRoot, cancellationToken);
+        await DropSearchIndexObjectsAsync(fixture.Atlas.DataRoot, cancellationToken);
 
         using var response = await fixture.GetAsync("/search?q=Widget", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -140,11 +140,11 @@ public sealed class RankedSearchTests
     }
 
     [Fact]
-    public async Task UnmigratedAtlas_ApiCarriesFallbackNotice()
+    public async Task MissingSearchIndexObjects_ApiCarriesFallbackNotice()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         await using var fixture = await ServeFixture.CreateTwoBuildAsync(cancellationToken);
-        await DowngradeSearchIndexAsync(fixture.Atlas.DataRoot, cancellationToken);
+        await DropSearchIndexObjectsAsync(fixture.Atlas.DataRoot, cancellationToken);
 
         using var response = await fixture.GetAsync("/api/search?q=Widget", cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -223,7 +223,11 @@ public sealed class RankedSearchTests
         Assert.Contains("Invalid generated", body);
     }
 
-    private static async Task DowngradeSearchIndexAsync(string dataRoot, CancellationToken cancellationToken)
+    // Drops the search-index objects while leaving the migration ledger
+    // intact: the schema still reads Current, so requests pass the gate and
+    // reach the LIKE fallback. A gapped ledger no longer falls back; the
+    // schema gate answers 503 (see ServeSchemaGateTests).
+    private static async Task DropSearchIndexObjectsAsync(string dataRoot, CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(
             $"Data Source={Path.Combine(dataRoot, "atlas.db")};Pooling=False");
@@ -234,7 +238,6 @@ public sealed class RankedSearchTests
             DROP TRIGGER IF EXISTS symbols_fts_ad;
             DROP TRIGGER IF EXISTS symbols_fts_au;
             DROP TABLE IF EXISTS symbols_fts;
-            DELETE FROM schema_migrations WHERE version = 16;
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

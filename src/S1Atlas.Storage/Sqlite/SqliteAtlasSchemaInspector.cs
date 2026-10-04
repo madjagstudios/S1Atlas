@@ -18,6 +18,23 @@ public sealed class SqliteAtlasSchemaInspector : IAtlasSchemaInspector
         _databasePath = Path.GetFullPath(databasePath);
     }
 
+    // Classifies a SQLite failure seen while inspecting. Only a file that
+    // was read and is genuinely not ours (corrupt, or not a database) is
+    // unrecognized; access failures (busy, locked, I/O, cannot open, no
+    // permission) and anything unknown mean the database could not be read,
+    // which must never advise deleting it. Extended codes carry the primary
+    // code in the low byte.
+    internal static AtlasSchemaStatusKind MapSqliteError(SqliteException exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return (exception.SqliteErrorCode & 0xFF) switch
+        {
+            11 => AtlasSchemaStatusKind.Unrecognized, // SQLITE_CORRUPT
+            26 => AtlasSchemaStatusKind.Unrecognized, // SQLITE_NOTADB
+            _ => AtlasSchemaStatusKind.Unreadable,
+        };
+    }
+
     public async Task<AtlasSchemaStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
         var expected = SqliteMigrations.All[^1].Version;
@@ -86,9 +103,17 @@ public sealed class SqliteAtlasSchemaInspector : IAtlasSchemaInspector
                     applied[^1].Version,
                     expected);
         }
-        catch (SqliteException)
+        catch (SqliteException exception)
         {
-            return new AtlasSchemaStatus(AtlasSchemaStatusKind.Unrecognized, null, expected);
+            return new AtlasSchemaStatus(MapSqliteError(exception), null, expected);
+        }
+        catch (IOException)
+        {
+            return new AtlasSchemaStatus(AtlasSchemaStatusKind.Unreadable, null, expected);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new AtlasSchemaStatus(AtlasSchemaStatusKind.Unreadable, null, expected);
         }
     }
 

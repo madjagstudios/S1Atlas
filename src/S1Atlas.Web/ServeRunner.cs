@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using S1Atlas.Application.Readiness;
 
 namespace S1Atlas.Web;
 
@@ -59,6 +60,8 @@ public static class ServeRunner
             }
 
             await output.WriteLineAsync($"S1Atlas serve listening on {host.BaseAddress}");
+            await output.WriteLineAsync(
+                SchemaStatusWording.StartupLine(await host.SchemaGate.GetStatusAsync(CancellationToken.None)));
             if (open)
             {
                 try

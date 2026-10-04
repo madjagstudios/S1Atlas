@@ -65,6 +65,8 @@ public sealed class ServeQueries
         CancellationToken ct) =>
         WithStoreAsync(token => _services.AuthorityResolver.ResolvePreferredExtractionAsync(buildId, token), ct);
 
+    // The computation is owned by the cache entry, not the first waiter:
+    // a cancelled request must not cancel the shared computation.
     public Task<BuildDiffResult> DiffAsync(
         string indexIdA,
         string indexIdB,
@@ -75,7 +77,7 @@ public sealed class ServeQueries
             () => WithStoreAsync(
                 token => _services.BuildDiffService.DiffAsync(
                     indexIdA, indexIdB, "ScheduleI", "Installed", kindFilter, token),
-                ct),
+                CancellationToken.None),
             ct);
 
     public Task<IReadOnlyList<SymbolQueryResult>> GetCanonicalSymbolsAsync(
