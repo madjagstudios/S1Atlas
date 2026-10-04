@@ -128,6 +128,66 @@ public sealed class PublicContentScriptTests
         Assert.Equal(1, exitCode);
     }
 
+    [Fact]
+    public void Script_JsonEscapedWindowsPath_FailsWithNonZeroExit()
+    {
+        var exitCode = RunGate(
+            CleanMessage,
+            DiffFor("docs/USAGE.md", """{"root":"C:\\Users\\example\\data"}"""),
+            CleanBranch);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Fact]
+    public void Script_ForwardSlashWindowsPath_FailsWithNonZeroExit()
+    {
+        var exitCode = RunGate(
+            CleanMessage,
+            DiffFor("docs/USAGE.md", "See c:/Users/example for input."),
+            CleanBranch);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Theory]
+    [InlineData(@"See C:\Users/example/data for input.")]
+    [InlineData(@"See C:/Users\example\data for input.")]
+    [InlineData(@"See C:\\Users/example/data for input.")]
+    [InlineData(@"See C:/Users\\example\\data for input.")]
+    [InlineData(@"See C:\Users\\example\\data for input.")]
+    [InlineData(@"See C:\\Users\example\data for input.")]
+    public void Script_MixedSeparatorWindowsPath_FailsWithNonZeroExit(string line)
+    {
+        var exitCode = RunGate(CleanMessage, DiffFor("docs/USAGE.md", line), CleanBranch);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Theory]
+    [InlineData(@"A path like C:\Users\… is machine-specific.")]
+    [InlineData(@"A path like d:\users\example\data is machine-specific.")]
+    [InlineData("A path like /Users/example/data is machine-specific.")]
+    [InlineData("A path like /home/example/data is machine-specific.")]
+    public void Script_PreviouslyCaughtPathInDocumentation_StillFails(string line)
+    {
+        var exitCode = RunGate(CleanMessage, DiffFor("docs/USAGE.md", line), CleanBranch);
+
+        Assert.Equal(1, exitCode);
+    }
+
+    [Theory]
+    [InlineData("Users/ is an ordinary relative directory.", 0)]
+    [InlineData("Users/example/data is relative.", 0)]
+    [InlineData("https://example.com/Users/", 0)]
+    [InlineData("https://example.com/Users/example/profile", 1)]
+    public void Script_PathLookalikes_KeepExistingBehavior(string line, int expectedExitCode)
+    {
+        var exitCode = RunGate(CleanMessage, DiffFor("docs/USAGE.md", line), CleanBranch);
+
+        Assert.Equal(expectedExitCode, exitCode);
+    }
+
     [Theory]
     [InlineData("// see OC-12 for details")]
     [InlineData("// see AB-1 for details")]
