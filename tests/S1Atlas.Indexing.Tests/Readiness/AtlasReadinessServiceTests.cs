@@ -253,11 +253,12 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
 
         var scan = Item(report, ReadinessItemIds.Scan);
         Assert.Equal(ReadinessState.Stale, scan.State);
-        Assert.Equal(ReadinessFixCommands.Scan, scan.FixCommand);
+        Assert.Equal(ReadinessFixCommands.ScanAt(_gameDir), scan.FixCommand);
+        Assert.Equal(_gameDir, scan.ScanGamePath);
         Assert.Contains("steam-build-old", scan.Detail, StringComparison.Ordinal);
         Assert.Contains(SteamBuildId, scan.Detail, StringComparison.Ordinal);
         Assert.False(report.IsReady);
-        Assert.Equal(ReadinessFixCommands.Scan, report.NextStep.Command);
+        Assert.Equal(ReadinessFixCommands.ScanAt(_gameDir), report.NextStep.Command);
     }
 
     [Fact]
