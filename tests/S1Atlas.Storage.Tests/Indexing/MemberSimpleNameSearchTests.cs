@@ -173,6 +173,73 @@ public sealed class MemberSimpleNameSearchTests : IAsyncDisposable
         Assert.True(Array.IndexOf(ids, "t-run") < Array.IndexOf(ids, "m-runfast"));
     }
 
+    [Theory]
+    [InlineData(false, false, "Manager")]
+    [InlineData(false, true, "Manager")]
+    [InlineData(true, false, "Manager")]
+    [InlineData(true, true, "Manager")]
+    [InlineData(false, false, "Tools.Manager")]
+    [InlineData(false, true, "Tools.Manager")]
+    [InlineData(true, false, "Tools.Manager")]
+    [InlineData(true, true, "Tools.Manager")]
+    public async Task Search_TerminalTierExcludesReturnTypeOnlyMatches(bool readOnly, bool ranked, string query)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTerminalIndexAsync(cancellationToken, query);
+        IIndexRepository repository = readOnly
+            ? new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(_databasePath))
+            : _repository;
+
+        var results = ranked
+            ? await repository.SearchRankedSymbolsAsync("index-terminal", query, 50, cancellationToken)
+            : await repository.SearchCompletedSymbolsAsync("index-terminal", query, 50, cancellationToken);
+        var ids = results.Select(symbol => symbol.SymbolId).ToArray();
+
+        Assert.Equal(new[] { "terminal-namespace", "terminal-type" }, ids.Take(2).Order(StringComparer.Ordinal));
+        Assert.Equal("prefix", ids[2]);
+        Assert.Equal("return-only", ids[3]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompletedSearch_ReturnTypeDoesNotChangeExactMemberSecondaryOrder(bool readOnly)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await SeedTerminalIndexAsync(cancellationToken);
+        IIndexRepository repository = readOnly
+            ? new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(_databasePath))
+            : _repository;
+
+        var results = await repository.SearchCompletedSymbolsAsync("index-terminal", "Run", 50, cancellationToken);
+
+        Assert.Equal(new[] { "exact-void", "exact-return" }, results.Select(symbol => symbol.SymbolId));
+    }
+
+    private async Task SeedTerminalIndexAsync(CancellationToken cancellationToken, string query = "Manager")
+    {
+        await _repository.InitializeAsync(cancellationToken);
+        var snapshot = new CodeSnapshotRecord("snapshot-terminal", CodebaseKind.ScheduleI, CodeChannel.Installed, "source-terminal", "2026-08-20T00:00:00Z");
+        await _repository.CreateCodeSnapshotAsync(snapshot, cancellationToken);
+        await _repository.StartIndexRunAsync(new IndexRunRecord("index-terminal", snapshot.SnapshotId, IndexRunStatus.Running, snapshot.CreatedAtUtc), cancellationToken);
+        IndexSymbolRecord symbol(string id, string kind, string qualified) =>
+            new(id, snapshot.SnapshotId, "key-" + id, kind, qualified, qualified, false);
+        await _repository.CompleteIndexRunAsync(
+            "index-terminal",
+            new IndexWriteSet(
+                [
+                    symbol("terminal-type", "Type", "Demo." + query),
+                    symbol("terminal-namespace", "Namespace", "Demo.Tools." + query),
+                    symbol("prefix", "Type", query + ".Tools"),
+                    symbol("return-only", "Method", "Demo.Factory::Make():Demo." + query),
+                    symbol("exact-void", "Method", "Demo.Aaa::Run():System.Void"),
+                    symbol("exact-return", "Method", "Demo.Zzz::Run():Demo.Run")
+                ],
+                [], [], [], []),
+            "2026-08-20T00:01:00Z",
+            cancellationToken);
+    }
+
     private async Task SeedTopTierIndexAsync(CancellationToken cancellationToken)
     {
         await _repository.InitializeAsync(cancellationToken);

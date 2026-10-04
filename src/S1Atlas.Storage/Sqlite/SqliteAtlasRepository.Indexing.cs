@@ -452,7 +452,8 @@ public sealed partial class SqliteAtlasRepository
                     WHEN symbol.qualified_name = $query COLLATE NOCASE
                       OR symbol.signature = $query COLLATE NOCASE
                       OR symbol.simple_name = $query COLLATE NOCASE THEN 0
-                    WHEN symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 1
+                    WHEN symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE
+                      AND instr(symbol.qualified_name, '::') = 0 THEN 1
                     WHEN symbol.qualified_name LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 2
                     WHEN symbol.qualified_name LIKE $contains ESCAPE '\' COLLATE NOCASE THEN 3
                     ELSE 4
@@ -464,6 +465,7 @@ public sealed partial class SqliteAtlasRepository
                     WHEN symbol.qualified_name = $query COLLATE NOCASE
                       OR symbol.signature = $query COLLATE NOCASE THEN 0
                     WHEN symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE
+                      AND instr(symbol.qualified_name, '::') = 0
                       AND symbol.simple_name = $query COLLATE NOCASE THEN 1
                     ELSE 2
                 END,
@@ -610,7 +612,8 @@ public sealed partial class SqliteAtlasRepository
                     CASE
                         WHEN symbol.qualified_name = $query COLLATE NOCASE
                           OR symbol.simple_name = $query COLLATE NOCASE
-                          OR symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE THEN 0
+                          OR (symbol.qualified_name LIKE $terminal ESCAPE '\' COLLATE NOCASE
+                              AND instr(symbol.qualified_name, '::') = 0) THEN 0
                         WHEN symbol.qualified_name LIKE $prefix ESCAPE '\' COLLATE NOCASE THEN 1
                         ELSE 2
                     END,

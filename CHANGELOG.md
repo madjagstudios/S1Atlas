@@ -278,6 +278,11 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- **Short-name lookup and search ignore member return types when ranking names**
+  (AT-124): only types and namespaces receive the boost for qualified names
+  ending in the query. A singleton getter no longer makes its type's short
+  name ambiguous, and a method returning `Demo.Run` no longer outranks a
+  member named `Run`. Exact-name matching keeps its existing priority.
 - **Serve search matches members by name** (AT-110): stored simple names
   took the text after the last dot, so methods kept their return type and
   nested types kept their outer name. Short serve queries matched by return

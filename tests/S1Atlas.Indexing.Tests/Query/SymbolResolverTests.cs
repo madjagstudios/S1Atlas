@@ -815,6 +815,58 @@ public sealed class SymbolResolverTests : IAsyncDisposable
         Assert.Equal("type-zz-run", result.Symbol?.SymbolId);
     }
 
+    [Fact]
+    public async Task Resolve_TypeWinsOverSingletonGetterReturningItself()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("type-manager", "Type", "Demo.Manager"),
+                ("getter-manager", "Method", "Demo.Manager::get_Instance():Demo.Manager")
+            ],
+            TestContext.Current.CancellationToken);
+
+        var result = await new SymbolResolver(_repository).ResolveAsync(
+            fixture.IndexId, "Manager", CodebaseKind.S1Api, CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal("type-manager", result.Symbol?.SymbolId);
+    }
+
+    [Fact]
+    public async Task Resolve_ExactMemberNameWinsOverAnotherMethodsReturnType()
+    {
+        var fixture = await SeedRankRowsAsync(
+            [
+                ("method-make", "Method", "Demo.Factory::Make():Demo.Run"),
+                ("method-run", "Method", "Demo.Widget::Run():System.Void")
+            ],
+            TestContext.Current.CancellationToken);
+
+        var result = await new SymbolResolver(_repository).ResolveAsync(
+            fixture.IndexId, "Run", CodebaseKind.S1Api, CodeChannel.Release,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Resolved, result.Status);
+        Assert.Equal("method-run", result.Symbol?.SymbolId);
+    }
+
+    [Theory]
+    [InlineData("Type", "Manager")]
+    [InlineData("Namespace", "Manager")]
+    [InlineData("Type", "Tools.Manager")]
+    [InlineData("Namespace", "Tools.Manager")]
+    public void Rank_TerminalTierExcludesMembersButKeepsTypesAndNamespaces(string kind, string query)
+    {
+        var terminal = new IndexSymbolRecord("terminal", "snapshot", "key-terminal", kind, "Demo." + query, "Demo." + query, false);
+        var method = new IndexSymbolRecord("method", "snapshot", "key-method", "Method", "Demo.Factory::Make():Demo." + query, "Demo." + query + " Demo.Factory::Make()", false);
+
+        Assert.Equal(1, SymbolResolver.Rank(terminal, query.ToLowerInvariant()));
+        Assert.Equal(4, SymbolResolver.Rank(method, query.ToLowerInvariant()));
+        Assert.Equal(0, SymbolResolver.Rank(method, method.QualifiedName));
+        Assert.Equal(0, SymbolResolver.Rank(method, method.Signature));
+    }
+
     private async Task<RankRowsFixture> SeedRankRowsAsync(
         (string Id, string Kind, string QualifiedName)[] rows,
         CancellationToken cancellationToken)
