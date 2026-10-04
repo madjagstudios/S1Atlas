@@ -114,10 +114,21 @@ public sealed class FindPatchesTests
         var fifthText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(fifth.Content)).Text;
         using var fifthDocument = JsonDocument.Parse(fifthText);
         var fifthRoot = fifthDocument.RootElement;
-        Assert.Single(fifthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray());
+        Assert.Equal(2, fifthRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
         Assert.False(
             fifthRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
             nextCursor.ValueKind != JsonValueKind.Null);
+        var allRows = firstRoot.GetProperty("data").GetProperty("relationships").EnumerateArray()
+            .Concat(rows)
+            .Concat(thirdRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
+            .Concat(fourthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
+            .Concat(fifthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
+            .ToArray();
+        Assert.Equal(10, allRows.Length);
+        Assert.Single(allRows, row =>
+            row.GetProperty("source").GetProperty("signature").GetString()!
+                .Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal) &&
+            row.GetProperty("generatedDetail").GetString() == "Postfix");
 
         await server.DisposeAsync();
         await server.AssertNoSurvivorsAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
@@ -208,7 +219,7 @@ public sealed class FindPatchesTests
         var sections = root.GetProperty("data").GetProperty("evidenceSections");
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
-        Assert.Equal(9, patches.GetProperty("totalCount").GetInt32());
+        Assert.Equal(10, patches.GetProperty("totalCount").GetInt32());
         var claims = root.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),

@@ -121,6 +121,20 @@ public class ManualMethodInfoPatch
     }
 }
 
+public class ManualTypeMethodInfoPatch
+{
+    public static void Install(Harmony harmony)
+    {
+        harmony.Patch(
+            AccessTools.Method(typeof(Widget), "Run"),
+            postfix: new HarmonyMethod(typeof(ManualTypeMethodInfoPatch).GetMethod(nameof(InfoPostfix))!));
+    }
+
+    public static void InfoPostfix()
+    {
+    }
+}
+
 public class ManualOverloadDisambiguationPatch
 {
     public static void Install(Harmony harmony)

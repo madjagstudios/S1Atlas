@@ -24,7 +24,7 @@ public sealed class HarmonyPatchEdgeTests
                 .Where(edge => edge.Kind == "Patches")
                 .ToArray();
 
-            Assert.Equal(19, edges.Count(edge => edge.TargetSymbolId is not null));
+            Assert.Equal(20, edges.Count(edge => edge.TargetSymbolId is not null));
             Assert.Equal(15, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
@@ -32,15 +32,23 @@ public sealed class HarmonyPatchEdgeTests
             var modSymbols = (await repository.GetCompletedSymbolsAsync(seed.ReferenceIndexId, TestContext.Current.CancellationToken))
                 .ToDictionary(symbol => symbol.SymbolId, symbol => symbol.Signature, StringComparer.Ordinal);
 
-            Assert.Equal(8, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
+            Assert.Equal(9, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
             Assert.All(
-                edges.Where(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)),
+                edges.Where(edge => edge.TargetSymbolId is not null &&
+                    gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
+                    !modSymbols[edge.SourceSymbolId].Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal)),
                 edge => Assert.Equal("Prefix", edge.GeneratedDetail));
+            var typeMethodInfo = Assert.Single(edges, edge =>
+                edge.TargetSymbolId is not null &&
+                gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
+                modSymbols[edge.SourceSymbolId].Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal));
+            Assert.Equal("Postfix", typeMethodInfo.GeneratedDetail);
+            Assert.Equal("RecoveredIL", typeMethodInfo.Evidence);
             Assert.Equal(3, edges.Count(edge =>
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "Metadata"));
-            Assert.Equal(5, edges.Count(edge =>
+            Assert.Equal(6, edges.Count(edge =>
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "RecoveredIL"));

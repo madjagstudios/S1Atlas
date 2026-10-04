@@ -59,14 +59,14 @@ public sealed class ReferenceRelationshipResolver
     private static (string Type, string Name, int Arity, string Signature) CreateIdentityLookupKey(string signature)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(signature);
+        signature = InteropTypeNames.NormalizeSignature(signature);
         var separator = signature.IndexOf("::", StringComparison.Ordinal);
         if (separator < 1)
             return (string.Empty, signature, 0, signature);
 
         var type = signature[..separator];
         var member = signature[(separator + 2)..];
-        var nameEnd = member.IndexOfAny(['(', ' ']);
-        var name = nameEnd < 0 ? member : member[..nameEnd];
+        var name = S1Atlas.Core.SymbolNames.SimpleName(signature);
         var tick = name.LastIndexOf('`');
         var arity = tick >= 0 && int.TryParse(name[(tick + 1)..], out var parsedArity) ? parsedArity : 0;
         return (type, name, arity, signature);

@@ -7,13 +7,13 @@ Roots: tests
 | Directory | Files |
 |---|---|
 | tests/Fixtures/S1Atlas.HarmonyGameFixture/ | 2 |
-| tests/Fixtures/S1Atlas.HarmonyModFixture/ | 7 |
+| tests/Fixtures/S1Atlas.HarmonyModFixture/ | 8 |
 | tests/Fixtures/S1Atlas.InteropAssemblyFixture/ | 3 |
 | tests/Fixtures/S1Atlas.ManagedAssemblyFixture/ | 2 |
 | tests/Fixtures/S1Atlas.ParityFixture/ | 13 |
 | tests/Fixtures/S1Atlas.ScriptLayoutFixture/ | 3 |
 | tests/Fixtures/S1Atlas.TestSupport/ | 3 |
-| tests/Fixtures/S1Atlas.TestSupport/Seeding/ | 4 |
+| tests/Fixtures/S1Atlas.TestSupport/Seeding/ | 5 |
 | tests/S1Atlas.Core.Tests/ | 5 |
 | tests/S1Atlas.Core.Tests/Builds/ | 1 |
 | tests/S1Atlas.Core.Tests/Display/ | 1 |
@@ -42,7 +42,7 @@ Roots: tests
 | tests/S1Atlas.FakeCpp2Il/ | 2 |
 | tests/S1Atlas.Indexing.Tests/ | 7 |
 | tests/S1Atlas.Indexing.Tests/Authority/ | 1 |
-| tests/S1Atlas.Indexing.Tests/Decompilation/ | 9 |
+| tests/S1Atlas.Indexing.Tests/Decompilation/ | 10 |
 | tests/S1Atlas.Indexing.Tests/Diff/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Fingerprints/ | 1 |
 | tests/S1Atlas.Indexing.Tests/NativeRecovery/ | 1 |
@@ -58,7 +58,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Workflow/ | 3 |
 | tests/S1Atlas.IntegrationTests/ | 14 |
 | tests/S1Atlas.IntegrationTests/Authority/ | 1 |
-| tests/S1Atlas.IntegrationTests/Cli/ | 6 |
+| tests/S1Atlas.IntegrationTests/Cli/ | 9 |
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |

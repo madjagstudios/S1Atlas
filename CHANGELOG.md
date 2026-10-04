@@ -42,6 +42,15 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Added
 
+- **Mod update checks** (AT-89): `s1atlas check-mod <path-to-mod.dll>` checks
+  direct references, Harmony patch targets, and constant reflection lookups
+  against completed game indexes without changing the mod or atlas. The report
+  identifies removed, signature-changed, moved, unchanged, and unresolved
+  dependencies, flags broken patch targets, and compares stored body fingerprints.
+  Build prefixes, single-build mode, and `--json` are supported. Breaking
+  dependencies exit 3; cancellation remains 2. CLI exit codes are documented
+  in USAGE.
+
 - **Shell completion and scoped type/method queries** (AT-86):
   `s1atlas completion <pwsh|bash|zsh>` prints a self-contained completion
   script that completes through `s1atlas` itself with no extra tooling.

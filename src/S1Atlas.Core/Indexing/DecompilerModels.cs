@@ -34,12 +34,32 @@ public sealed record ManagedMemberFacts(
     bool IsCompilerGenerated = false,
     string? StateMachineTypeName = null,
     bool IsAsyncStateMachine = false,
-    IReadOnlyList<ManagedPatchFact>? Patches = null)
+    IReadOnlyList<ManagedPatchFact>? Patches = null,
+    IReadOnlyList<ManagedReflectionFact>? Reflections = null,
+    IReadOnlyList<string>? TypeReferences = null)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
     public IReadOnlyList<string> MethodImplDeclarationsOrEmpty => MethodImplDeclarations ?? [];
     public IReadOnlyList<ManagedPatchFact> PatchesOrEmpty => Patches ?? [];
+    public IReadOnlyList<ManagedReflectionFact> ReflectionsOrEmpty => Reflections ?? [];
+    public IReadOnlyList<string> TypeReferencesOrEmpty => TypeReferences ?? [];
 }
+
+public enum ManagedReflectionKind
+{
+    Method,
+    Field,
+    Property,
+    PropertyGetter,
+    PropertySetter,
+    Constructor
+}
+
+public sealed record ManagedReflectionFact(
+    string TargetType,
+    string MemberName,
+    ManagedReflectionKind Kind,
+    IReadOnlyList<string>? ArgumentTypes = null);
 
 public sealed record ManagedMethodBodyFacts(
     bool HasPhysicalBody,

@@ -326,6 +326,69 @@ status, mapping evidence, direct native edges, field accesses, tool identity,
 and an output hash. A no-body or failed record remains visible and does not
 become a positive seam claim.
 
+## Check a mod after an update
+
+`check-mod` reads a local .NET mod assembly and checks its Schedule I dependencies
+against completed game indexes. It opens the mod and atlas read-only, runs offline,
+and never executes the mod.
+
+```powershell
+s1atlas check-mod Demo.Mod.dll
+s1atlas check-mod Demo.Mod.dll --from abc123 --to def456
+s1atlas check-mod Demo.Mod.dll --from abc123 --to def456 --json
+```
+
+Build selectors accept full IDs or unique prefixes. `--to` defaults to the current
+build; `--from` defaults to the most recent other build with a completed game
+index. Without a second indexed build, the summary says **single-build mode** and
+reports dependencies as `resolved` or `unresolved` against `--to`. An unavailable
+index fails with the existing readiness hint showing how to index that build.
+
+The summary comes first, with counts per status, separate Harmony patch-target
+counts, and the number of external references not checked. One row per game symbol
+lists all sources: direct references, Harmony patches (Prefix, Postfix, Transpiler,
+or Finalizer), and constant reflection lookups. Rows sort by status, worst first,
+then by name. For example, a removed `Demo.Api::Run()` prefix target appears before
+an unchanged `Demo.Api::Count` field reference.
+
+| Status | Meaning |
+|---|---|
+| `removed` | The old key is absent and no unique signature-change or body-match candidate qualifies. Up to five weaker candidates remain possible replacements. |
+| `signature_changed` | The same declaring type has a member with the same name, with exactly one overload in each build; the old and new signatures are shown. |
+| `unresolved` | The dependency could not resolve in the base build; the reference resolver's reason is preserved. |
+| `moved` | Exactly one matching stored body fingerprint suggests a rename within the type, or relocation with the same name and signature. The candidate is DERIVED evidence. |
+| `unchanged` | The canonical key still exists. `bodyChanged` is true or false when both stored method-body fingerprints exist, otherwise unknown (`null` in JSON). |
+| `resolved` | In single-build mode, the dependency exists in the selected build. |
+
+Constant Harmony `AccessTools.Method`, `Field`, `Property`, `PropertyGetter`,
+`PropertySetter`, and `Constructor` lookups, plus `typeof(T).GetMethod`, `GetField`,
+and `GetProperty` with constant names are recognized as DERIVED evidence. Dynamic
+strings and values crossing branch merge points are not inferred. System, Unity,
+MelonLoader, S1API, interop runtime, and other-mod dependencies are outside the
+check. The body flag compares stored fingerprints; it does not inspect changes
+inside a member or establish runtime compatibility.
+
+The `--json` envelope uses `command: "check-mod"`. Its `data` contains the resolved
+build/index IDs, `singleBuild`, summary counts, and `dependencies`. Each dependency
+includes sources and patch kinds, status, before/after signatures, `bodyChanged`,
+possible candidates, unresolved reason, and FACT or DERIVED evidence. A breaking
+result has `exitCode: 3`, `success: false`, populated `data`, and `error: null`.
+The human summary calls out broken Harmony patch targets because they can fail
+silently at runtime. Unresolved and moved rows warrant inspection but do not
+produce exit code 3.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Error, including invalid arguments |
+| `2` | Cancelled |
+| `3` | `check-mod` found breaking changes |
+
+`check-mod` returns 3 if any dependency is `removed` or `signature_changed`, from
+any source. Cancellation retains the CLI's existing exit code 2.
+
 ## Recover native method bodies
 
 A stubbed IL2CPP managed method (`BodyRecoveryStatus.StubOrUnavailable`) has no
@@ -1110,6 +1173,7 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas callable <query> [--codebase] [--channel] [--build] [--limit] [--json]` | Show the callable surface of a resolved symbol. |
 | `s1atlas callees <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--include-delegates] [--json]` | List indexed callees of a resolved method. |
 | `s1atlas callers <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--exact] [--include-generated] [--include-delegates] [--json]` | Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations. |
+| `s1atlas check-mod <path-to-mod.dll> [--from] [--to] [--json]` | Check a mod's game dependencies after an update. |
 | `s1atlas completion <shell>` | Print a shell completion script that completes s1atlas commands and options. |
 | `s1atlas component <component-id|exact-type-selector> [--refs] [--code] [--limit] [--json]` | Query one indexed component. |
 | `s1atlas derived <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--offset] [--json]` | Show the subclasses and implementers of a type, transitively. |

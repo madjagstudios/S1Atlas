@@ -10,6 +10,10 @@ namespace S1Atlas.Core.Indexing;
 /// </summary>
 public static class InteropTypeNames
 {
+    public static string NormalizeSignature(string signature) =>
+        System.Text.RegularExpressions.Regex.Replace(signature,
+            @"[A-Za-z_][\w`]*(?:[.+][A-Za-z_][\w`]*)*", match => Normalize(match.Value));
+
     public static string Normalize(string typeName)
     {
         ArgumentNullException.ThrowIfNull(typeName);

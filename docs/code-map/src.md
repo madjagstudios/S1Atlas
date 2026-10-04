@@ -13,7 +13,7 @@ Roots: src
 | src/S1Atlas.Application/Envelope/ | 4 |
 | src/S1Atlas.Application/Readiness/ | 7 |
 | src/S1Atlas.Cli/ | 3 |
-| src/S1Atlas.Cli/Commands/ | 58 |
+| src/S1Atlas.Cli/Commands/ | 59 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
 | src/S1Atlas.Cli/Output/ | 16 |
 | src/S1Atlas.Cli/Performance/ | 1 |
@@ -32,7 +32,7 @@ Roots: src
 | src/S1Atlas.Core/Properties/ | 1 |
 | src/S1Atlas.Core/ReferenceMods/ | 1 |
 | src/S1Atlas.Core/Scenes/ | 3 |
-| src/S1Atlas.Core/Storage/ | 10 |
+| src/S1Atlas.Core/Storage/ | 11 |
 | src/S1Atlas.Core/Tools/ | 15 |
 | src/S1Atlas.Extraction/ | 11 |
 | src/S1Atlas.Extraction/Attempts/ | 4 |
@@ -56,6 +56,7 @@ Roots: src
 | src/S1Atlas.Indexing/Decompilation/ | 6 |
 | src/S1Atlas.Indexing/Diff/ | 1 |
 | src/S1Atlas.Indexing/Fingerprints/ | 1 |
+| src/S1Atlas.Indexing/ModChecking/ | 2 |
 | src/S1Atlas.Indexing/NativeRecovery/ | 2 |
 | src/S1Atlas.Indexing/Paths/ | 2 |
 | src/S1Atlas.Indexing/Properties/ | 1 |
@@ -75,7 +76,7 @@ Roots: src
 | src/S1Atlas.Storage/ | 1 |
 | src/S1Atlas.Storage/Migrations/ | 7 |
 | src/S1Atlas.Storage/Properties/ | 1 |
-| src/S1Atlas.Storage/Sqlite/ | 17 |
+| src/S1Atlas.Storage/Sqlite/ | 18 |
 | src/S1Atlas.Web/ | 7 |
 | src/S1Atlas.Web/Api/ | 1 |
 | src/S1Atlas.Web/Endpoints/ | 8 |

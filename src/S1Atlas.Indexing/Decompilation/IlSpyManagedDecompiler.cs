@@ -150,6 +150,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             var bodyAnalysis = hasBody
                 ? ReadBodyAnalysis(metadata, peReader, method.RelativeVirtualAddress)
                 : BodyAnalysis.Empty;
+            var interpreted = ManualPatchRecognizer.Analyze(bodyAnalysis.Instructions, bodyAnalysis.BranchTargets);
             var bodyFacts = new ManagedMethodBodyFacts(
                 hasBody,
                 IsNoBodyByDesign(method),
@@ -179,7 +180,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 IsCompilerGenerated: generatedAttributes.IsCompilerGenerated,
                 StateMachineTypeName: generatedAttributes.StateMachineTypeName,
                 IsAsyncStateMachine: generatedAttributes.IsAsyncStateMachine,
-                Patches: CombinePatches(typePatches, methodHandle, bodyAnalysis)));
+                Patches: CombinePatches(typePatches, methodHandle, interpreted.Patches),
+                Reflections: interpreted.Reflections.Count == 0 ? null : interpreted.Reflections,
+                TypeReferences: bodyAnalysis.TypeReferences.Count == 0 ? null : bodyAnalysis.TypeReferences));
         }
 
         return new ManagedTypeFacts(
@@ -371,12 +374,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
     private static IReadOnlyList<ManagedPatchFact>? CombinePatches(
         IReadOnlyDictionary<MethodDefinitionHandle, IReadOnlyList<ManagedPatchFact>> typePatches,
         MethodDefinitionHandle methodHandle,
-        BodyAnalysis bodyAnalysis)
+        IReadOnlyList<ManagedPatchFact> manualPatches)
     {
         var attributePatches = typePatches.GetValueOrDefault(methodHandle);
-        var manualPatches = bodyAnalysis.Instructions.Count == 0
-            ? []
-            : ManualPatchRecognizer.Recognize(bodyAnalysis.Instructions, bodyAnalysis.BranchTargets);
         if (attributePatches is null or [])
             return manualPatches.Count == 0 ? null : manualPatches;
         if (manualPatches.Count == 0)
@@ -392,6 +392,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var body = peReader.GetMethodBody(relativeVirtualAddress);
         var il = body.GetILBytes() ?? [];
         var references = new List<ManagedReferenceFact>();
+        var typeReferences = new HashSet<string>(StringComparer.Ordinal);
         var opcodes = new List<OpCode>();
         var captured = new List<CapturedInstruction>();
         var branchTargets = new HashSet<int>();
@@ -449,15 +450,20 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                                 tokenKind.Value,
                                 identity,
                                 RelationshipEvidence.Metadata));
+                        var typeDetail = TokenCaptureDetail(metadata, token);
+                        if (typeDetail is not null) typeReferences.Add(typeDetail);
                         captured.Add(new CapturedInstruction(
                             opcode,
-                            TokenCaptureDetail(metadata, token) ?? identity,
+                            typeDetail ?? identity,
                             0,
                             instructionOffset));
                         break;
                     }
                 default:
-                    captured.Add(CaptureOperand(metadata, opcode, il, operandOffset, instructionOffset));
+                    var instruction = CaptureOperand(metadata, opcode, il, operandOffset, instructionOffset);
+                    if (opcode.OperandType == OperandType.InlineType && instruction.Detail is not null)
+                        typeReferences.Add(instruction.Detail);
+                    captured.Add(instruction);
                     offset = operandOffset + OperandSize(opcode.OperandType, il, operandOffset);
                     break;
             }
@@ -474,7 +480,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 reference.Kind == ManagedReferenceKind.Calls &&
                 IsInteropRuntimeInvokeTarget(reference.Target)),
             captured,
-            branchTargets);
+            branchTargets,
+            typeReferences.ToArray());
     }
 
     private static void CollectBranchTargets(
@@ -964,8 +971,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         bool MatchesVerifiedStubPattern,
         bool MatchesInteropWrapperPattern,
         IReadOnlyList<CapturedInstruction> Instructions,
-        IReadOnlySet<int> BranchTargets)
+        IReadOnlySet<int> BranchTargets,
+        IReadOnlyList<string> TypeReferences)
     {
-        public static BodyAnalysis Empty { get; } = new(0, 0, [], false, false, [], new HashSet<int>());
+        public static BodyAnalysis Empty { get; } = new(0, 0, [], false, false, [], new HashSet<int>(), []);
     }
 }
