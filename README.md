@@ -2,7 +2,7 @@
 
 **A local, offline developer-intelligence platform for Schedule I mod development.** It turns the game's compiled internals into a searchable, provenance-tracked map for both human developers and coding agents.
 
-> **Disclaimer:** S1Atlas is an unofficial, fan-made developer tool. It is not affiliated with, endorsed by, or connected to the developers or publishers of Schedule I. It requires you to supply your own legitimately obtained copy of the game, and it neither includes nor distributes any game assets, binaries, or decompiled output. All generated data stays local on your machine. It is provided for interoperability, modding, and educational purposes under the [MIT License](LICENSE).
+> **Disclaimer:** S1Atlas is an unofficial, fan-made developer tool. It is not affiliated with, endorsed by, or connected to the developers or publishers of Schedule I. It requires you to supply your own legitimately obtained copy of the game, and it neither includes nor distributes any game assets, binaries, or decompiled output. All generated data stays local on your machine. It is provided for interoperability, modding, and educational purposes under the [MIT License](LICENSE). Game type and member names that appear in the documentation are illustrative examples only; no game code or decompiled output is included.
 
 ## What it does
 
