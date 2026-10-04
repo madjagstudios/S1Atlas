@@ -53,10 +53,10 @@ Roots: src
 | src/S1Atlas.Extraction/Validation/ | 8 |
 | src/S1Atlas.Indexing/ | 2 |
 | src/S1Atlas.Indexing/Authority/ | 2 |
-| src/S1Atlas.Indexing/Decompilation/ | 6 |
+| src/S1Atlas.Indexing/Decompilation/ | 7 |
 | src/S1Atlas.Indexing/Diff/ | 1 |
 | src/S1Atlas.Indexing/Fingerprints/ | 1 |
-| src/S1Atlas.Indexing/ModChecking/ | 2 |
+| src/S1Atlas.Indexing/ModChecking/ | 3 |
 | src/S1Atlas.Indexing/NativeRecovery/ | 2 |
 | src/S1Atlas.Indexing/Paths/ | 2 |
 | src/S1Atlas.Indexing/Properties/ | 1 |

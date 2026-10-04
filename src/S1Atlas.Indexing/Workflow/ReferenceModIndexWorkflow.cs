@@ -13,6 +13,8 @@ namespace S1Atlas.Indexing.Workflow;
 
 public sealed class ReferenceModIndexWorkflow
 {
+    private const string RelationshipResolverVersion = "2";
+
     private readonly IIndexRepository _repository;
     private readonly ReferenceModFileSelector _selector;
     private readonly ReferenceModInputHasher _hasher;
@@ -48,7 +50,7 @@ public sealed class ReferenceModIndexWorkflow
             gameIndexId + "\n" + verifiedExtractionIdentity + "\n" + normalizedCollectionHash,
             IndexingWorkflow.DecompilerPackage,
             IndexingWorkflow.DecompilerVersion,
-            settings,
+            settings + "\nreference-relationships:" + RelationshipResolverVersion,
             schemaVersion);
 
     public async Task<IndexingWorkflowResult> RunAsync(

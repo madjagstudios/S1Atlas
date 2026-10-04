@@ -253,7 +253,7 @@ public sealed class IndexingWorkflow
         return Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)).ToLowerInvariant();
     }
 
-    private static IReadOnlyList<IndexCallableSurfaceRecord> BuildCallableSurface(
+    internal static IReadOnlyList<IndexCallableSurfaceRecord> BuildCallableSurface(
         ManagedDecompilation game,
         ManagedDecompilation? interop,
         IReadOnlyList<IndexSymbolRecord> symbols,

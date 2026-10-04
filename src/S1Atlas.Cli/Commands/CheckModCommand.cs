@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Application.Authority;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Hashing;
@@ -16,7 +17,7 @@ internal static class CheckModCommand
     public static Command Create(string dataRoot, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
         var path = new Argument<string>("path-to-mod.dll") { Description = "The local .NET mod assembly to inspect read-only." };
-        var from = new Option<string?>("--from") { Description = "The base build ID or unique prefix; defaults to the most recent other indexed build." };
+        var from = new Option<string?>("--from") { Description = "The base build ID or unique prefix; defaults to the most recent older build with a completed game index." };
         var to = new Option<string?>("--to") { Description = "The target build ID or unique prefix; defaults to the current build." };
         var json = CommandOutput.CreateJsonOption();
         var command = new Command("check-mod", CliExamples.With("Check a mod's game dependencies after an update.",
@@ -43,7 +44,10 @@ internal static class CheckModCommand
                 var database = Path.Combine(dataRoot, "atlas.db");
                 var schema = new SqliteAtlasSchemaInspector(database).GetStatusAsync(cancellationToken).GetAwaiter().GetResult();
                 if (schema.Kind != AtlasSchemaStatusKind.Current)
-                    return commandOutput.Failure(1, "AtlasUnavailable", $"The Atlas database is unavailable ({schema.Kind}).", hint: "s1atlas status");
+                {
+                    var (message, hint) = SchemaStatusWording.Describe(schema);
+                    return commandOutput.Failure(1, "AtlasUnavailable", message, hint: hint);
+                }
                 var repository = new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(database));
                 var preferred = new PreferredVerifiedExtractionResolver(dataRoot, repository,
                     ValidatedExtractionIntegrityVerifier.Create(new Sha256FileHasher(), repository));
@@ -60,7 +64,8 @@ internal static class CheckModCommand
                 else
                 {
                     var builds = repository.ListBuildsAsync(cancellationToken).GetAwaiter().GetResult();
-                    foreach (var build in builds.Where(build => build.BuildId != target.ResolvedBuildId)
+                    var targetBuild = builds.Single(build => build.BuildId == target.ResolvedBuildId);
+                    foreach (var build in builds.Where(build => build.FirstSeenAtUtc < targetBuild.FirstSeenAtUtc)
                                  .OrderByDescending(build => build.FirstSeenAtUtc).ThenByDescending(build => build.BuildId, StringComparer.Ordinal))
                     {
                         // Skip unindexed builds before the expensive integrity check.
@@ -87,7 +92,7 @@ internal static class CheckModCommand
     private static void WriteHuman(TextWriter writer, ModCheckResult result)
     {
         writer.WriteLine(result.SingleBuild
-            ? $"Single-build mode: dependencies resolved against {result.ToBuildId}; no second completed game index."
+            ? $"Single-build mode: dependencies resolved against {result.ToBuildId}; no older completed game index."
             : $"Mod dependencies: {result.FromBuildId} → {result.ToBuildId}");
         foreach (var (status, count) in result.Summary.Counts)
             writer.WriteLine($"  {status}: {count} (Harmony patch targets: {result.Summary.PatchTargets[status]})");

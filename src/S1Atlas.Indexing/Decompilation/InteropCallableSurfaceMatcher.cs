@@ -89,7 +89,7 @@ public sealed class InteropCallableSurfaceMatcher
         {
             foreach (var member in type.Members.Where(IsCallableInteropMember))
             {
-                var key = new MemberLookupKey(type.FullName, member.Kind, member.Name, Arity(member));
+                var key = new MemberLookupKey(InteropMemberProjection.NormalizeType(type.FullName), member.Kind, member.Name, Arity(member));
                 if (!lookup.TryGetValue(key, out var candidates))
                 {
                     candidates = [];
@@ -108,65 +108,21 @@ public sealed class InteropCallableSurfaceMatcher
         ManagedMemberFacts gameMember,
         IReadOnlyDictionary<MemberLookupKey, List<ManagedMemberFacts>> interopMembers)
     {
-        var exact = new List<ManagedMemberFacts>();
-        foreach (var candidateKind in CandidateKinds(gameMember))
-        {
-            if (interopMembers.TryGetValue(
-                    new MemberLookupKey(gameType.FullName, candidateKind, gameMember.Name, Arity(gameMember)),
-                    out var candidates))
-            {
-                exact.AddRange(candidates.Where(candidate =>
-                    string.Equals(candidate.Signature, gameMember.Signature, StringComparison.Ordinal)));
-            }
-        }
+        var typeName = InteropMemberProjection.NormalizeType(gameType.FullName);
+        var hasBackingProperty = InteropMemberProjection.IsBackingField(gameMember) && gameType.Members.Any(member =>
+            member.Kind == ManagedMemberKind.Property && member.Name == InteropMemberProjection.GetBackingPropertyName(gameMember.Name));
+        var candidates = new List<ManagedMemberFacts>();
+        foreach (var candidateKind in InteropMemberProjection.CandidateKinds(gameMember))
+            foreach (var name in InteropMemberProjection.CandidateNames(gameMember, hasBackingProperty))
+                if (interopMembers.TryGetValue(new MemberLookupKey(typeName, candidateKind, name, Arity(gameMember)), out var matches))
+                    candidates.AddRange(matches);
 
-        if (exact.Count > 0)
-            return exact;
-
-        var fallback = new List<ManagedMemberFacts>();
-        foreach (var candidateKind in CandidateKinds(gameMember))
-        {
-            if (interopMembers.TryGetValue(
-                    new MemberLookupKey(gameType.FullName, candidateKind, gameMember.Name, Arity(gameMember)),
-                    out var candidates))
-            {
-                fallback.AddRange(candidates.Where(candidate => IsSignatureCompatible(gameMember, candidate)));
-            }
-        }
-
-        if (IsBackingField(gameMember) && HasBackingProperty(gameType, gameMember))
-        {
-            var propertyName = GetBackingPropertyName(gameMember.Name);
-            foreach (var candidateKind in new[] { ManagedMemberKind.Field, ManagedMemberKind.Property })
-            {
-                foreach (var name in SanitizedBackingFieldNames(propertyName))
-                {
-                    if (interopMembers.TryGetValue(
-                            new MemberLookupKey(gameType.FullName, candidateKind, name, 0),
-                            out var candidates))
-                    {
-                        fallback.AddRange(candidates.Where(candidate => IsSignatureCompatible(gameMember, candidate)));
-                    }
-                }
-
-                if (interopMembers.TryGetValue(
-                        new MemberLookupKey(gameType.FullName, candidateKind, propertyName, 0),
-                        out var propertyCandidates))
-                {
-                    fallback.AddRange(propertyCandidates.Where(candidate => IsSignatureCompatible(gameMember, candidate)));
-                }
-            }
-        }
-
-        return fallback
-            .Distinct()
-            .ToList();
+        var exact = candidates.Where(candidate => string.Equals(candidate.Signature, gameMember.Signature, StringComparison.Ordinal))
+            .Distinct().ToList();
+        return exact.Count > 0
+            ? exact
+            : candidates.Where(candidate => InteropMemberProjection.IsSignatureCompatible(gameMember, candidate)).Distinct().ToList();
     }
-
-    private static IEnumerable<ManagedMemberKind> CandidateKinds(ManagedMemberFacts member) =>
-        IsBackingField(member)
-            ? new[] { ManagedMemberKind.Field, ManagedMemberKind.Property }
-            : new[] { member.Kind };
 
     private static CallableSurfaceKind GetWrapperKind(
         ManagedMemberKind interopKind,
@@ -194,37 +150,6 @@ public sealed class InteropCallableSurfaceMatcher
 
     private static bool IsCallableInteropMember(ManagedMemberFacts member) =>
         member.Kind is ManagedMemberKind.Method or ManagedMemberKind.Field or ManagedMemberKind.Property;
-
-    private static bool IsBackingField(ManagedMemberFacts member) =>
-        member.Kind == ManagedMemberKind.Field &&
-        member.Name.StartsWith('<') &&
-        member.Name.EndsWith(">k__BackingField", StringComparison.Ordinal);
-
-    private static bool HasBackingProperty(ManagedTypeFacts type, ManagedMemberFacts field) =>
-        type.Members.Any(member =>
-            member.Kind == ManagedMemberKind.Property &&
-            string.Equals(member.Name, GetBackingPropertyName(field.Name), StringComparison.Ordinal));
-
-    private static string GetBackingPropertyName(string fieldName) =>
-        fieldName[1..fieldName.IndexOf(">k__BackingField", StringComparison.Ordinal)];
-
-    private static IEnumerable<string> SanitizedBackingFieldNames(string propertyName) =>
-        new[]
-        {
-            propertyName + "k__BackingField",
-            propertyName + "_k__BackingField",
-            propertyName + "__BackingField"
-        };
-
-    private static bool IsSignatureCompatible(
-        ManagedMemberFacts gameMember,
-        ManagedMemberFacts interopMember) =>
-        gameMember.GenericParameterCount == interopMember.GenericParameterCount &&
-        gameMember.ParameterTypesOrEmpty.SequenceEqual(interopMember.ParameterTypesOrEmpty, StringComparer.Ordinal) &&
-        string.Equals(MemberValueType(gameMember), MemberValueType(interopMember), StringComparison.Ordinal);
-
-    private static string? MemberValueType(ManagedMemberFacts member) =>
-        member.Kind == ManagedMemberKind.Method ? member.ReturnType : member.ValueType;
 
     private static int Arity(ManagedMemberFacts member) => member.ParameterTypesOrEmpty.Count;
 

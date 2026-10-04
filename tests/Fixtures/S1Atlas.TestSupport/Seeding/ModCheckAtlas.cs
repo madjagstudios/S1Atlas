@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -76,6 +77,41 @@ public static class ModCheckAtlas
         return new ModCheckSeed(fromBuild, toBuild, fromIndex, toIndex, modPath);
     }
 
+    public static async Task<ModCheckSeed> SeedInteropProjectionAsync(
+        SqliteAtlasRepository repository, string dataRoot, bool includeCallableSurface, CancellationToken ct,
+        bool includeTypeProjections = false, bool publicField = false, bool includePropertyAccessors = false,
+        bool includeReflectionAccessors = false, bool getterDecoy = false)
+    {
+        var scratch = Path.Combine(dataRoot, "interop-projection-inputs");
+        var fromAssembly = Path.Combine(scratch, "game-a", "ModCheckGame.dll");
+        var toAssembly = Path.Combine(scratch, "game-b", "ModCheckGame.dll");
+        var interopAssembly = Path.Combine(scratch, "interop", "InteropProjection.dll");
+        var modPath = Path.Combine(scratch, "plugins", "InteropProjectionPlugin.dll");
+        var gameA = publicField ? ProjectionGameA.Replace("private int Count;", "public int Count;", StringComparison.Ordinal) : ProjectionGameA;
+        Compile(gameA + (includeTypeProjections ? ProjectionArrayGameA : "")
+            + (getterDecoy ? ProjectionGetterDecoyGame : ""), fromAssembly);
+        Compile(ProjectionGameB + (includeTypeProjections ? ProjectionArrayGameB : "")
+            + (getterDecoy ? ProjectionGetterDecoyGame : ""), toAssembly);
+        Compile(ProjectionInterop + (includeTypeProjections ? ProjectionArrayInterop : "")
+            + (includePropertyAccessors ? ProjectionPropertyInterop : "")
+            + (includeReflectionAccessors ? ProjectionReflectionInterop : "")
+            + (getterDecoy ? ProjectionGetterDecoyInterop : ""), interopAssembly);
+        Compile((getterDecoy ? "" : ProjectionMod) + (includeTypeProjections ? ProjectionArrayMod : "")
+            + (includePropertyAccessors ? ProjectionPropertyMod : "")
+            + (includeReflectionAccessors ? ProjectionReflectionMod : ""), modPath, interopAssembly);
+
+        var fromBuild = IndexingWorkflow.HashId("interop-projection-build-a");
+        var toBuild = IndexingWorkflow.HashId("interop-projection-build-b");
+        var fromIndex = IndexingWorkflow.HashId("interop-projection-index-a");
+        var toIndex = IndexingWorkflow.HashId("interop-projection-index-b");
+        await ExtractionSeed.SeedToolInstanceAsync(dataRoot, ToolInstanceId, ct);
+        await SeedBuildAsync(repository, dataRoot, fromBuild, fromIndex, fromAssembly, BaseTime, ct,
+            interopPath: interopAssembly, includeCallableSurface: includeCallableSurface);
+        await SeedBuildAsync(repository, dataRoot, toBuild, toIndex, toAssembly, BaseTime.AddHours(1), ct,
+            interopPath: interopAssembly, includeCallableSurface: includeCallableSurface);
+        return new ModCheckSeed(fromBuild, toBuild, fromIndex, toIndex, modPath);
+    }
+
     public static async Task<string> SeedAmbiguousFromAsync(SqliteAtlasRepository repository, string dataRoot, CancellationToken ct)
     {
         var original = IndexingWorkflow.HashId("mod-check-build-a");
@@ -85,7 +121,8 @@ public static class ModCheckAtlas
         return ambiguous;
     }
 
-    private static async Task SeedBuildAsync(SqliteAtlasRepository repository, string dataRoot, string buildId, string indexId, string assemblyPath, DateTimeOffset at, CancellationToken ct, bool createIndex = true)
+    private static async Task SeedBuildAsync(SqliteAtlasRepository repository, string dataRoot, string buildId, string indexId, string assemblyPath, DateTimeOffset at, CancellationToken ct,
+        bool createIndex = true, string? interopPath = null, bool includeCallableSurface = false)
     {
         var environment = ExtractionSeed.CreateSnapshot(buildId, at);
         await repository.SaveSnapshotAsync(environment, ct);
@@ -103,6 +140,18 @@ public static class ModCheckAtlas
         var paths = OwnedIndexPaths.ForScheduleOne(dataRoot, buildId, indexId);
         Directory.CreateDirectory(paths.StagingRoot);
         var sourceFile = await new GeneratedSourceWriter().WriteAsync(paths.StagingRoot, "Assembly-CSharp.cs", decompilation.SourceText, snapshotId, ct);
+        var sourceFiles = new List<IndexSourceFileRecord> { sourceFile };
+        IReadOnlyList<IndexCallableSurfaceRecord> callableSurface = [];
+        if (includeCallableSurface)
+        {
+            var interop = await new IlSpyManagedDecompiler().DecompileAsync(interopPath!, ct);
+            await using var interopStream = File.OpenRead(interopPath!);
+            var interopHash = Convert.ToHexString(await SHA256.HashDataAsync(interopStream, ct)).ToLowerInvariant();
+            sourceFiles.Add(await new GeneratedSourceWriter().WriteAsync(paths.StagingRoot,
+                "interop/Assembly-CSharp.cs", interop.SourceText, snapshotId, ct));
+            callableSurface = IndexingWorkflow.BuildCallableSurface(decompilation, interop, symbols,
+                indexId, snapshotId, interopPath, interopHash);
+        }
         var sourceSymbols = new RoslynSourceIndexer().Index(decompilation.SourceText, CodebaseKind.ScheduleI, CodeChannel.Installed, sourceFile.RelativePath);
         var locations = IndexingWorkflow.BuildSourceLocations(sourceSymbols, symbols, sourceFile);
         var evidence = decompilation.Types.SelectMany(type => type.Members.Select(member => (type, member)))
@@ -112,7 +161,7 @@ public static class ModCheckAtlas
             .Where(item => item.Symbol is not null)
             .ToDictionary(item => item.Symbol!.SymbolId, item => item.References, StringComparer.Ordinal);
         var fingerprints = new SymbolFingerprintService().Create(symbols, evidence);
-        await repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, [sourceFile], locations, fingerprints, []), at.AddMinutes(21).ToString("O"), ct);
+        await repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, sourceFiles, locations, fingerprints, [], callableSurface), at.AddMinutes(21).ToString("O"), ct);
         Directory.Move(paths.StagingRoot, paths.FinalRoot);
         await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, ct);
     }
@@ -270,6 +319,138 @@ public static class ModCheckAtlas
           public static class InteropReflectionDependency {
             public static void Reflect() =>
               _ = HarmonyLib.AccessTools.Method(typeof(Il2CppDemo.Api), "ReflectChanged", new[] { typeof(Il2CppDemo.Arg) });
+          }
+        }
+        """;
+
+    private const string ProjectionGameA = """
+        namespace Demo {
+          public sealed partial class ProjectedState {
+            private string StoredValue { get; set; }
+            private int Count;
+          }
+        }
+        """;
+
+    private const string ProjectionGameB = """
+        namespace Demo {
+          public sealed partial class ProjectedState { }
+        }
+        """;
+
+    private const string ProjectionInterop = """
+        namespace Il2CppDemo {
+          public sealed partial class ProjectedState {
+            public string _StoredValue_k__BackingField { get => null; set { } }
+            public int Count { get => 0; set { } }
+          }
+        }
+        """;
+
+    private const string ProjectionMod = """
+        namespace InteropProjectionPlugin {
+          public static class Plugin {
+            public static string ReadBacking(Il2CppDemo.ProjectedState state) => state._StoredValue_k__BackingField;
+            public static void WriteBacking(Il2CppDemo.ProjectedState state, string value) => state._StoredValue_k__BackingField = value;
+            public static int ReadPlain(Il2CppDemo.ProjectedState state) => state.Count;
+            public static void WritePlain(Il2CppDemo.ProjectedState state, int value) => state.Count = value;
+          }
+        }
+        """;
+
+    private const string ProjectionArrayGameA = """
+        namespace Demo {
+          public sealed class Value { }
+          public sealed partial class ProjectedState {
+            private Value[] Entries { get; set; }
+            private string[] Transform(Value[] entries, int[] scores, System.Collections.Generic.List<Value[]> groups) => null;
+          }
+        }
+        """;
+
+    private const string ProjectionArrayGameB = """
+        namespace Demo { public sealed class Value { } }
+        """;
+
+    private const string ProjectionArrayInterop = """
+        namespace Il2CppInterop.Runtime.InteropTypes.Arrays {
+          public sealed class Il2CppReferenceArray<T> { }
+          public sealed class Il2CppStructArray<T> { }
+          public sealed class Il2CppStringArray { }
+        }
+        namespace Il2CppSystem.Collections.Generic { public sealed class List<T> { } }
+        namespace Il2CppDemo {
+          using Il2CppInterop.Runtime.InteropTypes.Arrays;
+          public sealed class Value { }
+          public sealed partial class ProjectedState {
+            public Il2CppReferenceArray<Value> _Entries_k__BackingField { get => null; set { } }
+            public Il2CppStringArray Transform(Il2CppReferenceArray<Value> entries, Il2CppStructArray<int> scores,
+              Il2CppSystem.Collections.Generic.List<Il2CppReferenceArray<Value>> groups) => null;
+          }
+        }
+        """;
+
+    private const string ProjectionArrayMod = """
+        namespace InteropProjectionPlugin {
+          using Il2CppInterop.Runtime.InteropTypes.Arrays;
+          public static class ArrayPlugin {
+            public static Il2CppReferenceArray<Il2CppDemo.Value> ReadArray(Il2CppDemo.ProjectedState state) => state._Entries_k__BackingField;
+            public static void WriteArray(Il2CppDemo.ProjectedState state, Il2CppReferenceArray<Il2CppDemo.Value> value) => state._Entries_k__BackingField = value;
+            public static Il2CppStringArray CallTransform(Il2CppDemo.ProjectedState state, Il2CppReferenceArray<Il2CppDemo.Value> entries,
+              Il2CppStructArray<int> scores, Il2CppSystem.Collections.Generic.List<Il2CppReferenceArray<Il2CppDemo.Value>> groups) =>
+                state.Transform(entries, scores, groups);
+          }
+        }
+        """;
+
+    private const string ProjectionPropertyInterop = """
+        namespace Il2CppDemo {
+          public sealed partial class ProjectedState {
+            public Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Value> Entries { get => null; set { } }
+          }
+        }
+        """;
+
+    private const string ProjectionPropertyMod = """
+        namespace InteropProjectionPlugin {
+          using Il2CppInterop.Runtime.InteropTypes.Arrays;
+          public static class PropertyPlugin {
+            public static Il2CppReferenceArray<Il2CppDemo.Value> ReadProperty(Il2CppDemo.ProjectedState state) => state.Entries;
+            public static void WriteProperty(Il2CppDemo.ProjectedState state, Il2CppReferenceArray<Il2CppDemo.Value> value) => state.Entries = value;
+          }
+        }
+        """;
+
+    private const string ProjectionReflectionInterop = """
+        namespace HarmonyLib {
+          public static class AccessTools {
+            public static System.Reflection.MethodInfo PropertyGetter(System.Type type, string name) => type.GetProperty(name)?.GetMethod;
+            public static System.Reflection.MethodInfo PropertySetter(System.Type type, string name) => type.GetProperty(name)?.SetMethod;
+          }
+        }
+        """;
+
+    private const string ProjectionReflectionMod = """
+        namespace InteropProjectionPlugin {
+          public static class ReflectionPlugin {
+            public static void ReflectGetter() => _ = HarmonyLib.AccessTools.PropertyGetter(typeof(Il2CppDemo.ProjectedState), "Count");
+            public static void ReflectSetter() => _ = HarmonyLib.AccessTools.PropertySetter(typeof(Il2CppDemo.ProjectedState), "Count");
+          }
+        }
+        """;
+
+    private const string ProjectionGetterDecoyGame = """
+        namespace Demo {
+          public sealed partial class ProjectedState {
+            private int get_Count(int value) => value;
+          }
+        }
+        """;
+
+    private const string ProjectionGetterDecoyInterop = """
+        namespace Il2CppDemo {
+          public sealed partial class ProjectedState {
+            public int get_Count(int value) => value;
           }
         }
         """;

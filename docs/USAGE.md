@@ -339,10 +339,11 @@ s1atlas check-mod Demo.Mod.dll --from abc123 --to def456 --json
 ```
 
 Build selectors accept full IDs or unique prefixes. `--to` defaults to the current
-build; `--from` defaults to the most recent other build with a completed game
-index. Without a second indexed build, the summary says **single-build mode** and
-reports dependencies as `resolved` or `unresolved` against `--to`. An unavailable
-index fails with the existing readiness hint showing how to index that build.
+build; `--from` defaults to the most recent build first seen earlier than `--to`
+with a completed game index. Without an older indexed build, the summary says
+**single-build mode** and reports dependencies as `resolved` or `unresolved`
+against `--to`. An unavailable index fails with the existing readiness hint
+showing how to index that build.
 
 The summary comes first, with counts per status, separate Harmony patch-target
 counts, and the number of external references not checked. One row per game symbol
@@ -356,8 +357,8 @@ an unchanged `Demo.Api::Count` field reference.
 | `removed` | The old key is absent and no unique signature-change or body-match candidate qualifies. Up to five weaker candidates remain possible replacements. |
 | `signature_changed` | The same declaring type has a member with the same name, with exactly one overload in each build; the old and new signatures are shown. |
 | `unresolved` | The dependency could not resolve in the base build; the reference resolver's reason is preserved. |
-| `moved` | Exactly one matching stored body fingerprint suggests a rename within the type, or relocation with the same name and signature. The candidate is DERIVED evidence. |
-| `unchanged` | The canonical key still exists. `bodyChanged` is true or false when both stored method-body fingerprints exist, otherwise unknown (`null` in JSON). |
+| `moved` | Exactly one matching stored fingerprint from recovered method bodies suggests a rename within the type, or relocation with the same name and signature. The candidate is DERIVED evidence. |
+| `unchanged` | The canonical key still exists. `bodyChanged` is true or false when both indexed method bodies were recovered and have stored fingerprints, otherwise unknown (`null` in JSON). |
 | `resolved` | In single-build mode, the dependency exists in the selected build. |
 
 Constant Harmony `AccessTools.Method`, `Field`, `Property`, `PropertyGetter`,
@@ -367,6 +368,11 @@ strings and values crossing branch merge points are not inferred. System, Unity,
 MelonLoader, S1API, interop runtime, and other-mod dependencies are outside the
 check. The body flag compares stored fingerprints; it does not inspect changes
 inside a member or establish runtime compatibility.
+
+Without recovered method bodies, which is common for IL2CPP indexes,
+`bodyChanged` is unknown even when the method's canonical key is unchanged.
+`moved` requires recovered bodies in both builds; a rename without that evidence
+remains `removed` with possible replacement candidates.
 
 The `--json` envelope uses `command: "check-mod"`. Its `data` contains the resolved
 build/index IDs, `singleBuild`, summary counts, and `dependencies`. Each dependency

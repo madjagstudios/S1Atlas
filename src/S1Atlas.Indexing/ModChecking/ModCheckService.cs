@@ -33,6 +33,8 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
 
         var game = await new ReferenceGameSymbolLoader(indexes).LoadAsync(fromIndexId ?? toIndexId, cancellationToken);
         var gameSymbols = game.Symbols.Where(symbol => !IsExternal(DeclaringType(symbol.QualifiedName))).ToArray();
+        var callableSurface = await indexes.GetCompletedCallableSurfaceAsync(fromIndexId ?? toIndexId, cancellationToken);
+        var interop = new ModCheckInteropResolver(gameSymbols, callableSurface);
         const string modId = "check-mod";
         var modSymbols = ReferenceModIndexWorkflow.BuildSymbols(modId, mod, "check-mod");
         var lookup = ReferenceModIndexWorkflow.BuildRelationshipLookup(gameSymbols, modSymbols);
@@ -53,6 +55,7 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
             var type = DeclaringType(text);
             if (IsExternal(type)) { external.Add(text); continue; }
             gameById.TryGetValue(edge.TargetSymbolId ?? "", out var target);
+            if (!patch) target = interop.ResolveReference(text, ReferenceKind(edge.Kind)) ?? target;
             if (edge.TargetSymbolId is not null && target is null) continue;
             var unknownPatchTarget = patch && reason is not null && text == modById.GetValueOrDefault(edge.SourceSymbolId)?.Signature;
             if (target is null && !IsGameType(type) && !unknownPatchTarget)
@@ -63,7 +66,7 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
             var source = new ModDependencySource(patch ? "harmony_patch" : "direct_reference",
                 patch ? edge.GeneratedDetail : null, modById.GetValueOrDefault(edge.SourceSymbolId)?.Signature ?? edge.SourceSymbolId,
                 patch && edge.Evidence == "RecoveredIL" ? "DERIVED" : "FACT");
-            Add(target, text, patch ? "Method" : ReferenceKind(edge.Kind),
+            Add(target, text, target?.Kind ?? (patch ? "Method" : ReferenceKind(edge.Kind)),
                 reason ?? (target is null ? ResolutionReason(text, gameSymbols) : null), source);
             AddType(type, source);
         }
@@ -105,11 +108,14 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
                         if (!ownTypes.Contains(normalizedType)) external.Add(text);
                         continue;
                     }
+                    var arguments = interop.ReflectionArguments(normalizedType, name, reflection.ArgumentTypes,
+                        reflection.Kind is ManagedReflectionKind.PropertyGetter or ManagedReflectionKind.PropertySetter);
                     var candidates = gameSymbols.Where(symbol => symbol.Kind == kind && DeclaringType(symbol.QualifiedName) == normalizedType &&
-                        SymbolNames.SimpleName(symbol.QualifiedName) == name && MatchesArguments(symbol.Signature, reflection.ArgumentTypes)).ToArray();
-                    var target = candidates.Length == 1 ? candidates[0] : null;
+                        SymbolNames.SimpleName(symbol.QualifiedName) == name && MatchesArguments(symbol.Signature, arguments)).ToArray();
+                    var target = interop.ResolveReflection(normalizedType, name, kind, arguments)
+                        ?? (candidates.Length == 1 ? candidates[0] : null);
                     var source = new ModDependencySource("reflection", null, memberName, "DERIVED");
-                    Add(target, text, kind, target is null ? candidates.Length > 1 ? HarmonyPatchReasons.AmbiguousOverload : ResolutionReason(text, gameSymbols) : null, source);
+                    Add(target, text, target?.Kind ?? kind, target is null ? candidates.Length > 1 ? HarmonyPatchReasons.AmbiguousOverload : ResolutionReason(text, gameSymbols) : null, source);
                     AddType(normalizedType, source);
                 }
             }

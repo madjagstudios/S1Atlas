@@ -49,7 +49,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Paths/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Query/ | 20 |
 | tests/S1Atlas.Indexing.Tests/Readiness/ | 5 |
-| tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 3 |
+| tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 4 |
 | tests/S1Atlas.Indexing.Tests/Relationships/ | 5 |
 | tests/S1Atlas.Indexing.Tests/Relationships/Parity/ | 5 |
 | tests/S1Atlas.Indexing.Tests/Scene/ | 6 |
@@ -58,7 +58,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/Workflow/ | 3 |
 | tests/S1Atlas.IntegrationTests/ | 14 |
 | tests/S1Atlas.IntegrationTests/Authority/ | 1 |
-| tests/S1Atlas.IntegrationTests/Cli/ | 9 |
+| tests/S1Atlas.IntegrationTests/Cli/ | 11 |
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |

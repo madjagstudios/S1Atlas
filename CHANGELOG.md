@@ -287,6 +287,15 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- **Mod checks resolve generated interop member shapes** (AT-89): stored
+  callable surfaces and shared projection rules resolve property accessors,
+  sanitized backing fields, and array/collection signatures before comparing
+  builds. The default baseline is older than the target, and schema errors
+  use the shared retry or upgrade guidance.
+- **Reference mod field references resolve to game symbols** (AT-89):
+  qualified field identities and normalized signatures resolve field reads
+  and writes, including interop references. Existing reference collections
+  rebuild automatically with reference resolver v2.
 - **Short-name lookup and search ignore member return types when ranking names**
   (AT-124): only types and namespaces receive the boost for qualified names
   ending in the query. A singleton getter no longer makes its type's short
