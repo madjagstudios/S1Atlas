@@ -25,6 +25,9 @@ public static class SchemaStatusWording
             AtlasSchemaStatusKind.Ahead => (
                 $"Upgrade S1Atlas to a build that understands atlas schema v{status.AppliedVersion} (this build expects v{status.ExpectedVersion}).",
                 null),
+            AtlasSchemaStatusKind.Unreadable => (
+                "The atlas database could not be read (another s1atlas command may be using it). Try again.",
+                ReadinessFixCommands.Doctor),
             _ => (
                 "Back up and remove the unrecognized atlas database, then run 's1atlas scan'.",
                 null)
@@ -53,6 +56,9 @@ public static class SchemaStatusWording
             AtlasSchemaStatusKind.Unrecognized => Block(
                 status,
                 "AtlasSchemaUnrecognized"),
+            AtlasSchemaStatusKind.Unreadable => Block(
+                status,
+                "AtlasSchemaUnreadable"),
             _ => null
         };
     }

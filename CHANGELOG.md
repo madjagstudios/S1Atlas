@@ -6,6 +6,20 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Upgrading
+
+- Run `s1atlas doctor` first, then run the command it prints
+  (`s1atlas status`) to migrate a behind database in place.
+- Expect about 1-2 minutes on a large atlas (~720k symbols).
+- The pre-migration backup is a full copy, as large as `atlas.db` itself
+  (about 8 GB on a large atlas), so make sure you have that much free disk
+  space first. It is written to the `backups` directory before any
+  migration runs.
+- Until the upgrade runs, serve and the MCP server refuse to query the
+  database: every page and API route answers 503, every MCP tool answers
+  `atlas_unavailable`, each with the `s1atlas status` hint. The hosts
+  recover without a restart once the upgrade lands.
+
 ### Breaking
 
 - **Breaking: CLI** (AT-86): command and option names are kebab-case with no
@@ -347,10 +361,12 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   schema status at startup and check it before every request or tool call
   (a current schema is checked once; anything else is re-checked, so
   upgrading in another terminal recovers without a restart). A behind,
-  ahead, or unrecognized database answers 503 / `atlas_unavailable` with the
-  shared message and fix hint instead of running the query; the database
-  file is never written. A missing database keeps each host's existing
-  missing-store behavior.
+  ahead, unrecognized, or temporarily unreadable database answers 503 /
+  `atlas_unavailable` with the shared message and fix hint instead of
+  running the query; the database file is never written. A missing
+  database keeps each host's existing missing-store behavior. A locked or
+  otherwise unreadable database is never reported as unrecognized, so the
+  hosts never advise deleting a database another command is using.
 - **A cancelled diff no longer poisons serve's diff cache** (AT-114): the
   cached computation was bound to the first waiter's cancellation token, so
   cancelling one diff request cancelled the shared entry and every later
@@ -359,15 +375,6 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   cache lock exactly once, faulted or cancelled entries evict themselves
   even when no waiter observes the failure, and the bounded queue can no
   longer evict a live re-added entry through a stale slot.
-
-### Upgrading
-
-- Serve and the MCP server now refuse to query a database whose schema is
-  behind, ahead, or unrecognized: every page and API route answers 503,
-  every MCP tool answers `atlas_unavailable`. Run `s1atlas status` to
-  migrate a behind database in place (a timestamped pre-migration backup is
-  written to the `backups` directory first); the hosts recover without a
-  restart once the upgrade lands.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 

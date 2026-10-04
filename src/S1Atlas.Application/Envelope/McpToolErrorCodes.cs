@@ -108,6 +108,7 @@ public static class McpToolErrorCodes
             ["AtlasSchemaBehind"] = AtlasUnavailable,
             ["AtlasSchemaAhead"] = AtlasUnavailable,
             ["AtlasSchemaUnrecognized"] = AtlasUnavailable,
+            ["AtlasSchemaUnreadable"] = AtlasUnavailable,
             ["UnexpectedToolFailure"] = UnexpectedToolFailure,
             ["IncompleteSeamResult"] = UnexpectedToolFailure,
             ["InvalidCursor"] = InvalidCursor

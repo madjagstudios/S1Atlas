@@ -188,6 +188,7 @@ public sealed class McpErrorCodeTests : IClassFixture<SharedHealthyServerFixture
             { "AtlasSchemaBehind", "atlas_unavailable" },
             { "AtlasSchemaAhead", "atlas_unavailable" },
             { "AtlasSchemaUnrecognized", "atlas_unavailable" },
+            { "AtlasSchemaUnreadable", "atlas_unavailable" },
             { "UnexpectedToolFailure", "unexpected_tool_failure" },
             { "IncompleteSeamResult", "unexpected_tool_failure" },
             { "InvalidCursor", "invalid_cursor" }

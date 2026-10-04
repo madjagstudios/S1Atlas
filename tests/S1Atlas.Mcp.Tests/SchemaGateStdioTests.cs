@@ -122,6 +122,29 @@ public sealed class SchemaGateStdioTests
         }
     }
 
+    [Fact]
+    public async Task LockedDatabase_ReturnsUnreadableHintAndRecovers()
+    {
+        await using var atlas = await McpTestAtlas.CreateCurrentSchemaRootAsync();
+        // Locked before the server starts: nothing may cache a healthy read.
+        using var lockHandle = new FileStream(
+            Path.Combine(atlas.DataRoot, "atlas.db"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        await using var server = await StartServerAsync(atlas.DataRoot);
+
+        var blocked = await CallToolErrorAsync(server.Client, "get_type");
+        Assert.Equal("atlas_unavailable", blocked.GetProperty("code").GetString());
+        Assert.Equal(ReadinessFixCommands.Doctor, blocked.GetProperty("hint").GetString());
+        Assert.Contains(
+            "could not be read",
+            blocked.GetProperty("message").GetString(),
+            StringComparison.Ordinal);
+
+        lockHandle.Dispose();
+        var recovered = await CallToolErrorAsync(server.Client, "get_type");
+        Assert.Equal("no_current_build", recovered.GetProperty("code").GetString());
+        Assert.Equal(ReadinessFixCommands.Scan, recovered.GetProperty("hint").GetString());
+    }
+
     private static Task<McpTestServer> StartServerAsync(string dataRoot) =>
         McpTestServer.StartAsync(dataRoot);
 

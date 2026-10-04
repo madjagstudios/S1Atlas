@@ -40,6 +40,9 @@ public sealed class AtlasSchemaGateTests : IAsyncDisposable
         Assert.Equal(
             ("Back up and remove the unrecognized atlas database, then run 's1atlas scan'.", null),
             SchemaStatusWording.Describe(new AtlasSchemaStatus(AtlasSchemaStatusKind.Unrecognized, null, expected)));
+        Assert.Equal(
+            ("The atlas database could not be read (another s1atlas command may be using it). Try again.", "s1atlas doctor"),
+            SchemaStatusWording.Describe(new AtlasSchemaStatus(AtlasSchemaStatusKind.Unreadable, null, expected)));
     }
 
     [Fact]
@@ -53,10 +56,13 @@ public sealed class AtlasSchemaGateTests : IAsyncDisposable
         Assert.Equal(
             $"Atlas database schema v15 is older than v{expected}. Run 's1atlas status' to fix.",
             SchemaStatusWording.StartupLine(new AtlasSchemaStatus(AtlasSchemaStatusKind.Behind, 15, expected)));
+        Assert.Equal(
+            "The atlas database could not be read (another s1atlas command may be using it). Try again. Run 's1atlas doctor' to fix.",
+            SchemaStatusWording.StartupLine(new AtlasSchemaStatus(AtlasSchemaStatusKind.Unreadable, null, expected)));
     }
 
     [Fact]
-    public void BlockFor_BlocksOnlyBehindAheadAndUnrecognized()
+    public void BlockFor_BlocksOnlyBehindAheadUnrecognizedAndUnreadable()
     {
         var expected = SchemaVersionFixtures.CurrentVersion;
 
@@ -82,6 +88,12 @@ public sealed class AtlasSchemaGateTests : IAsyncDisposable
         Assert.NotNull(unrecognized);
         Assert.Equal("AtlasSchemaUnrecognized", unrecognized.Code);
         Assert.Null(unrecognized.Hint);
+
+        var unreadable = SchemaStatusWording.BlockFor(
+            new AtlasSchemaStatus(AtlasSchemaStatusKind.Unreadable, null, expected));
+        Assert.NotNull(unreadable);
+        Assert.Equal("AtlasSchemaUnreadable", unreadable.Code);
+        Assert.Equal("s1atlas doctor", unreadable.Hint);
     }
 
     [Fact]
@@ -98,6 +110,22 @@ public sealed class AtlasSchemaGateTests : IAsyncDisposable
 
         Assert.Equal(AtlasSchemaStatusKind.Behind, (await gate.GetStatusAsync(cancellationToken)).Kind);
         Assert.Equal(AtlasSchemaStatusKind.Current, (await gate.GetStatusAsync(cancellationToken)).Kind);
+        Assert.Equal(AtlasSchemaStatusKind.Current, (await gate.GetStatusAsync(cancellationToken)).Kind);
+
+        Assert.Equal(2, inspector.Calls);
+    }
+
+    [Fact]
+    public async Task GetStatus_RechecksUnreadable()
+    {
+        var expected = SchemaVersionFixtures.CurrentVersion;
+        var inspector = new ScriptedInspector(
+            new AtlasSchemaStatus(AtlasSchemaStatusKind.Unreadable, null, expected),
+            new AtlasSchemaStatus(AtlasSchemaStatusKind.Current, expected, expected));
+        var gate = new AtlasSchemaGate(inspector);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.Equal(AtlasSchemaStatusKind.Unreadable, (await gate.GetStatusAsync(cancellationToken)).Kind);
         Assert.Equal(AtlasSchemaStatusKind.Current, (await gate.GetStatusAsync(cancellationToken)).Kind);
 
         Assert.Equal(2, inspector.Calls);

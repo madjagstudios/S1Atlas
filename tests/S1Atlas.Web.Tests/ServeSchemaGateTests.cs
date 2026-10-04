@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using S1Atlas.Application.Readiness;
+using S1Atlas.TestSupport;
 using S1Atlas.TestSupport.Seeding;
 using Xunit;
 
@@ -175,6 +176,54 @@ public sealed class ServeSchemaGateTests
             DELETE FROM schema_migrations WHERE version = 16;
             """;
         await command.ExecuteNonQueryAsync(ct);
+    }
+
+    [Fact]
+    public async Task LockedDatabase_ReturnsUnreadableBlockAndRecoversWithoutRestart()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-serve-locked-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await SchemaVersionFixtures.UpgradeToCurrentAsync(
+                Path.Combine(root, "atlas.db"), Path.Combine(root, "backups"), cancellationToken);
+
+            // Locked before the host starts: nothing may cache a healthy read.
+            using var lockHandle = new FileStream(
+                Path.Combine(root, "atlas.db"), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var host = ServeHost.Create(new ServeOptions(root, 0));
+            await using (host)
+            {
+                await host.StartAsync(cancellationToken);
+                using var client = new HttpClient { BaseAddress = host.BaseAddress };
+
+                using (var blocked = await client.GetAsync("/api/status", cancellationToken))
+                {
+                    var body = await blocked.Content.ReadAsStringAsync(cancellationToken);
+                    Assert.Equal(HttpStatusCode.ServiceUnavailable, blocked.StatusCode);
+                    using var json = JsonDocument.Parse(body);
+                    var error = json.RootElement.GetProperty("error");
+                    Assert.Equal("atlas_unavailable", error.GetProperty("code").GetString());
+                    Assert.Equal(ReadinessFixCommands.Doctor, error.GetProperty("hint").GetString());
+                    Assert.Contains(
+                        "could not be read",
+                        error.GetProperty("message").GetString(),
+                        StringComparison.Ordinal);
+                }
+
+                lockHandle.Dispose();
+
+                using var recovered = await client.GetAsync("/api/status", cancellationToken);
+                Assert.Equal(HttpStatusCode.OK, recovered.StatusCode);
+
+                await host.StopAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
     }
 
     private static async Task<Uri> WaitForAddressAsync(StringWriter output, CancellationToken ct)

@@ -208,6 +208,13 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 message,
                 hint,
                 false),
+            AtlasSchemaStatusKind.Unreadable => new ReadinessItem(
+                ReadinessItemIds.AtlasSchema,
+                "Atlas schema",
+                ReadinessState.Stale,
+                message,
+                hint,
+                false),
             _ => new ReadinessItem(
                 ReadinessItemIds.AtlasSchema,
                 "Atlas schema",
