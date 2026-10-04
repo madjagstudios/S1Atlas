@@ -4,7 +4,18 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). S1Atlas ships on a rolling
 `main`; dated entries mark notable milestones rather than formal released packages.
 
-## [Unreleased]
+## [2.0.0] - 2026-10-04: Local web app, Harmony patch index, and mod checks
+
+S1Atlas now runs as a local web app as well as a CLI and MCP server: `s1atlas serve`
+opens a loopback-only, read-only browser view for searching symbols, reading
+members, and diffing builds. It also indexes which reference mods patch which game
+methods (`patched-by` / `find_patches`), follows virtual and interface dispatch
+when answering "who calls this", credits compiler-generated code to the method you
+wrote, and adds `check-mod`, which lists the game symbols your mod depends on and
+what a game update changed or removed. Guided `doctor` and `setup` commands and
+installable `s1atlas` / `s1atlas-mcp` dotnet tools make first runs easier. The CLI
+and MCP surfaces were renamed and consolidated with no deprecated aliases, hence
+the major version, and existing atlases need the one-time upgrade below.
 
 ### Upgrading
 
