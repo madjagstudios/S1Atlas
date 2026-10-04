@@ -48,7 +48,7 @@ Roots: tests
 | tests/S1Atlas.Indexing.Tests/NativeRecovery/ | 1 |
 | tests/S1Atlas.Indexing.Tests/Paths/ | 2 |
 | tests/S1Atlas.Indexing.Tests/Query/ | 20 |
-| tests/S1Atlas.Indexing.Tests/Readiness/ | 4 |
+| tests/S1Atlas.Indexing.Tests/Readiness/ | 5 |
 | tests/S1Atlas.Indexing.Tests/ReferenceMods/ | 3 |
 | tests/S1Atlas.Indexing.Tests/Relationships/ | 5 |
 | tests/S1Atlas.Indexing.Tests/Relationships/Parity/ | 5 |

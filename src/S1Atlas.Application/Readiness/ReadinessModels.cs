@@ -28,6 +28,12 @@ public static class ReadinessItemIds
 /// One ordered readiness checklist entry. <see cref="FixCommand"/> is the
 /// exact runnable command that satisfies the item, or null when no command
 /// can satisfy it (the detail then carries the guidance).
+/// <see cref="ScanGamePath"/> carries the folder a scan step must use, so
+/// setup never parses it out of the fix command: null means Steam
+/// discovery. <see cref="ScanRecordedGamePath"/> names the previously
+/// recorded folder when the planned scan target differs from it, so setup
+/// can confirm an install switch without parsing text. Both are only set
+/// on the scan item.
 /// </summary>
 public sealed record ReadinessItem(
     string Id,
@@ -35,7 +41,9 @@ public sealed record ReadinessItem(
     ReadinessState State,
     string Detail,
     string? FixCommand,
-    bool IsOptional);
+    bool IsOptional,
+    string? ScanGamePath = null,
+    string? ScanRecordedGamePath = null);
 
 public sealed record ReadinessNextStep(
     bool IsReady,

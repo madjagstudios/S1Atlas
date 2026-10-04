@@ -56,6 +56,13 @@ Consoles without Unicode support get `[ok]`/`[missing]` marks instead of
 glyphs. `status` keeps its scan lines and appends the same Ready-or-Next
 summary, plus a readiness object under `--json`.
 
+`doctor` compares the scan against the install folder recorded in the
+snapshot, not just Steam discovery: an unchanged `--game-path` install
+reports Ok even when Steam holds a different copy. `setup` rescans that
+recorded folder, prints it in the plan, and never switches installs on its
+own — a switch needs interactive confirmation, and non-interactive runs
+(`--yes` or piped input) stop with the fix command instead.
+
 Setup errors carry the fix with them. CLI `--json` failures, MCP error
 envelopes, and serve error payloads include a `hint` field with the exact
 runnable command when one exists (`s1atlas scan`, `s1atlas extract`, and

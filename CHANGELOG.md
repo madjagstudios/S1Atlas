@@ -387,6 +387,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   paths and paths with forward slashes or mixed separators. Repository hygiene
   rejects tracked binaries and Unity assets by extension, with an empty list for
   exact-path exceptions.
+- **Doctor and setup use the scanned game path** (AT-120): readiness compared
+  the snapshot against Steam discovery instead of the recorded install, so a
+  `--game-path` scan reported stale on every run (or "moved" when Steam held
+  another copy), and setup rescanned through Steam discovery, silently
+  switching the current build. Doctor now locates the recorded folder first
+  and only falls back to discovery when there is no snapshot or the folder
+  is gone; a stale scan names its folder explicitly in the fix command, and
+  a missing folder names both the recorded and the discovered install.
+  Setup scans the planned folder (shown in the plan) and refuses to switch
+  installs non-interactively, stopping with the fix command instead.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 

@@ -395,12 +395,12 @@ public sealed class CliApplication
             SetupCommand.Create(
                 readinessService,
                 new SetupStepRunners(
-                    cancellation =>
+                    (gamePath, cancellation) =>
                         Task.FromResult(ScanCommand.Execute(
                             discovery,
                             repository,
                             _atlasVersion,
-                            null,
+                            gamePath,
                             new CommandOutput("scan", json: false, output, error),
                             null,
                             cancellation)),

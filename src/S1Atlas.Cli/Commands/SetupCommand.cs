@@ -5,7 +5,7 @@ using S1Atlas.Extraction;
 namespace S1Atlas.Cli.Commands;
 
 internal sealed record SetupStepRunners(
-    Func<CancellationToken, Task<int>> Scan,
+    Func<string?, CancellationToken, Task<int>> Scan,
     Func<string, CancellationToken, Task<int>> InstallTool,
     Func<ExtractionOptions, CancellationToken, Task<int>> Extract,
     Func<IndexCommandOptions, CancellationToken, Task<int>> Index,
@@ -67,6 +67,17 @@ internal static class SetupCommand
         ArgumentNullException.ThrowIfNull(error);
 
         var initial = readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult();
+        var initialScan = FindItem(initial, ReadinessItemIds.Scan);
+        if (initialScan is not null &&
+            initialScan.State is ReadinessState.Stale or ReadinessState.Missing &&
+            initialScan.FixCommand is null &&
+            initialScan.ScanGamePath is null)
+        {
+            error.WriteLine("Setup cannot proceed automatically.");
+            error.WriteLine(initialScan.Detail);
+            return 1;
+        }
+
         var plan = BuildPlan(initial, includeOptional, runners);
         if (plan.Count == 0)
         {
@@ -82,10 +93,30 @@ internal static class SetupCommand
             return 1;
         }
 
+        var scanSwitches = initialScan is not null && SwitchesInstalls(initialScan);
         output.WriteLine("Setup plan:");
         for (var index = 0; index < plan.Count; index++)
         {
             output.WriteLine($"{index + 1}. {plan[index].Display}");
+            if (scanSwitches &&
+                string.Equals(plan[index].ItemId, ReadinessItemIds.Scan, StringComparison.Ordinal))
+            {
+                output.WriteLine(
+                    $"   The recorded install at {initialScan!.ScanRecordedGamePath} no longer exists; " +
+                    $"this would switch to {initialScan.ScanGamePath}.");
+            }
+        }
+
+        if (scanSwitches && (assumeYes || inputRedirected))
+        {
+            error.WriteLine("Setup cannot switch game installs non-interactively.");
+            error.WriteLine(initialScan!.Detail);
+            if (initialScan.FixCommand is not null)
+            {
+                error.WriteLine($"Next: {initialScan.FixCommand}");
+            }
+
+            return 1;
         }
 
         if (!assumeYes)
@@ -171,12 +202,13 @@ internal static class SetupCommand
         if (items.TryGetValue(ReadinessItemIds.Scan, out var scan) &&
             scan.State != ReadinessState.Ok)
         {
+            var gamePath = scan.ScanGamePath;
             plan.Add(new SetupPlanStep(
                 ReadinessItemIds.Scan,
-                scan.FixCommand ?? ReadinessFixCommands.Scan,
+                ScanDisplay(scan),
                 false,
                 null,
-                runners.Scan));
+                cancellationToken => runners.Scan(gamePath, cancellationToken)));
         }
 
         if (items.TryGetValue(ReadinessItemIds.Tools, out var tools) &&
@@ -241,10 +273,10 @@ internal static class SetupCommand
                 0,
                 new SetupPlanStep(
                     ReadinessItemIds.Scan,
-                    satisfiedScan.FixCommand ?? ReadinessFixCommands.Scan,
+                    ScanDisplay(satisfiedScan),
                     false,
                     null,
-                    runners.Scan));
+                    cancellationToken => runners.Scan(satisfiedScan.ScanGamePath, cancellationToken)));
         }
 
         if (includeOptional &&
@@ -261,6 +293,21 @@ internal static class SetupCommand
 
         return plan;
     }
+
+    private static string ScanDisplay(ReadinessItem scan) =>
+        scan.FixCommand
+        ?? (scan.ScanGamePath is null
+            ? ReadinessFixCommands.Scan
+            : ReadinessFixCommands.ScanAt(scan.ScanGamePath)
+                ?? $"s1atlas scan --game-path {scan.ScanGamePath}");
+
+    private static bool SwitchesInstalls(ReadinessItem scan) =>
+        scan.ScanGamePath is not null &&
+        scan.ScanRecordedGamePath is not null &&
+        !string.Equals(
+            Path.TrimEndingDirectorySeparator(scan.ScanGamePath),
+            Path.TrimEndingDirectorySeparator(scan.ScanRecordedGamePath),
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool IsSatisfiedSincePlanning(
         SetupPlanStep step,

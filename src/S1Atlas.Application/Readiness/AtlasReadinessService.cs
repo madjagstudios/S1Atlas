@@ -74,7 +74,6 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
         var databaseMissing = schema.Kind == AtlasSchemaStatusKind.NotCreated;
 
         var runtime = _runtimeProbe.GetCurrent();
-        var install = await _gameLocator.LocateAsync(null, cancellationToken);
 
         EnvironmentSnapshot? snapshot = null;
         if (databaseUsable)
@@ -82,8 +81,25 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
             snapshot = await _atlasRepository.GetCurrentSnapshotAsync(cancellationToken);
         }
 
+        // The recorded install wins: a snapshot taken with --game-path is
+        // compared against that folder, never against whatever Steam
+        // discovery happens to find. Discovery runs only when there is no
+        // recorded folder, or the recorded folder no longer resolves.
+        var recordedRoot = snapshot?.Installation.InstallationRoot;
+        ScheduleOneInstallation? recorded = null;
+        if (!string.IsNullOrWhiteSpace(recordedRoot))
+        {
+            recorded = await _gameLocator.LocateAsync(recordedRoot, cancellationToken);
+        }
+
+        ScheduleOneInstallation? discovered = null;
+        if (recorded is null)
+        {
+            discovered = await _gameLocator.LocateAsync(null, cancellationToken);
+        }
+
         var scanItem = await ScanItemAsync(
-            snapshot, install, databaseUsable, databaseMissing, cancellationToken);
+            snapshot, recorded, discovered, databaseUsable, databaseMissing, cancellationToken);
         var (toolsItem, missingToolIds) = await ToolsItemAsync(cancellationToken);
 
         string? verifiedExtractionId = null;
@@ -156,7 +172,7 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
         {
             SchemaItem(schema),
             RuntimeItem(runtime),
-            GameItem(install),
+            GameItem(recorded ?? discovered),
             scanItem,
             toolsItem,
             extractionItem,
@@ -261,7 +277,8 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
 
     private async Task<ReadinessItem> ScanItemAsync(
         EnvironmentSnapshot? snapshot,
-        ScheduleOneInstallation? install,
+        ScheduleOneInstallation? recorded,
+        ScheduleOneInstallation? discovered,
         bool databaseUsable,
         bool databaseMissing,
         CancellationToken cancellationToken)
@@ -283,44 +300,103 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 false);
         }
 
-        if (install is null)
+        var recordedRoot = snapshot.Installation.InstallationRoot;
+        if (recorded is not null && !string.IsNullOrWhiteSpace(recordedRoot))
+        {
+            return await CompareScanAsync(
+                snapshot,
+                recorded,
+                ReadinessFixCommands.ScanAt(recordedRoot),
+                recordedRoot,
+                cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(recordedRoot))
+        {
+            if (discovered is null)
+            {
+                return new ReadinessItem(
+                    ReadinessItemIds.Scan,
+                    "Build scan",
+                    ReadinessState.Stale,
+                    $"Build {ShortId.Display(snapshot.Build.BuildId)} was scanned, but no Schedule I installation is available.",
+                    ReadinessFixCommands.Scan,
+                    false);
+            }
+
+            return await CompareScanAsync(
+                snapshot,
+                discovered,
+                ReadinessFixCommands.Scan,
+                null,
+                cancellationToken);
+        }
+
+        if (discovered is null)
         {
             return new ReadinessItem(
                 ReadinessItemIds.Scan,
                 "Build scan",
                 ReadinessState.Stale,
-                $"Build {ShortId.Display(snapshot.Build.BuildId)} was scanned, but no Schedule I installation is available.",
-                ReadinessFixCommands.Scan,
+                $"The scanned install at {recordedRoot} no longer exists. " +
+                "Run 's1atlas scan --game-path <folder>' with the folder that holds Schedule I.",
+                null,
                 false);
         }
 
+        return new ReadinessItem(
+            ReadinessItemIds.Scan,
+            "Build scan",
+            ReadinessState.Stale,
+            $"The scanned install at {recordedRoot} no longer exists; Schedule I was found at {discovered.RootPath}.",
+            ReadinessFixCommands.ScanAt(discovered.RootPath),
+            false,
+            discovered.RootPath,
+            recordedRoot);
+    }
+
+    private async Task<ReadinessItem> CompareScanAsync(
+        EnvironmentSnapshot snapshot,
+        ScheduleOneInstallation install,
+        string? fixCommand,
+        string? scanGamePath,
+        CancellationToken cancellationToken)
+    {
         try
         {
             var live = await _installationMetadataReader.ReadAsync(install, cancellationToken);
-            var recorded = snapshot.Installation;
-            if (Differs(recorded.SteamBuildId, live.SteamBuildId))
+            var recordedObservation = snapshot.Installation;
+            if (Differs(recordedObservation.SteamBuildId, live.SteamBuildId))
             {
                 return StaleScan(
-                    $"Steam build changed from {recorded.SteamBuildId} to {live.SteamBuildId}.");
+                    $"Steam build changed from {recordedObservation.SteamBuildId} to {live.SteamBuildId}.",
+                    fixCommand,
+                    scanGamePath);
             }
 
-            if (Differs(recorded.ExecutableVersion, live.ExecutableVersion))
+            if (Differs(recordedObservation.ExecutableVersion, live.ExecutableVersion))
             {
                 return StaleScan(
-                    $"Executable version changed from {recorded.ExecutableVersion} to {live.ExecutableVersion}.");
+                    $"Executable version changed from {recordedObservation.ExecutableVersion} to {live.ExecutableVersion}.",
+                    fixCommand,
+                    scanGamePath);
             }
 
-            if (RootsDiffer(recorded.InstallationRoot, live.InstallationRoot))
+            if (RootsDiffer(recordedObservation.InstallationRoot, live.InstallationRoot))
             {
                 return StaleScan(
-                    $"Installation moved from {recorded.InstallationRoot} to {live.InstallationRoot}.");
+                    $"Installation moved from {recordedObservation.InstallationRoot} to {live.InstallationRoot}.",
+                    fixCommand,
+                    scanGamePath);
             }
 
             if (IsModifiedAfter(live.GameAssemblyPath, snapshot.CapturedAtUtc) ||
                 IsModifiedAfter(live.GlobalMetadataPath, snapshot.CapturedAtUtc))
             {
                 return StaleScan(
-                    $"Game files were modified after the scan (captured {snapshot.CapturedAtUtc:O}).");
+                    $"Game files were modified after the scan (captured {snapshot.CapturedAtUtc:O}).",
+                    fixCommand,
+                    scanGamePath);
             }
 
             var sizes = DescribeInputSizes(live);
@@ -329,9 +405,10 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 "Build scan",
                 ReadinessState.Ok,
                 $"Build {ShortId.Display(snapshot.Build.BuildId)} scanned {snapshot.CapturedAtUtc:O}; " +
-                $"Steam build {recorded.SteamBuildId ?? "unknown"}{sizes}.",
+                $"Steam build {recordedObservation.SteamBuildId ?? "unknown"}{sizes}.",
                 null,
-                false);
+                false,
+                scanGamePath);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -341,7 +418,8 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 ReadinessState.Ok,
                 $"Build {ShortId.Display(snapshot.Build.BuildId)} scanned {snapshot.CapturedAtUtc:O}; live comparison unavailable.",
                 null,
-                false);
+                false,
+                scanGamePath);
         }
     }
 
@@ -696,14 +774,15 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 blocker.FixCommand);
     }
 
-    private static ReadinessItem StaleScan(string detail) =>
+    private static ReadinessItem StaleScan(string detail, string? fixCommand, string? scanGamePath) =>
         new(
             ReadinessItemIds.Scan,
             "Build scan",
             ReadinessState.Stale,
             detail,
-            ReadinessFixCommands.Scan,
-            false);
+            fixCommand,
+            false,
+            scanGamePath);
 
     private static bool Differs(string? recorded, string? live) =>
         !string.IsNullOrWhiteSpace(recorded) &&
