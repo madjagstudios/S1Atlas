@@ -22,20 +22,26 @@ public sealed class PatchedByQueryTests
 
         Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
         Assert.Equal("game", result.Resolution.Symbol!.Origin);
-        Assert.Equal(9, result.TotalCount);
-        Assert.Equal(9, result.Relationships.Count);
+        Assert.Equal(10, result.TotalCount);
+        Assert.Equal(10, result.Relationships.Count);
         var resolved = result.Relationships.Where(edge => edge.Target.Resolved).ToArray();
-        Assert.Equal(8, resolved.Length);
+        Assert.Equal(9, resolved.Length);
         Assert.All(resolved, edge =>
         {
             Assert.Equal("Patches", edge.Kind);
-            Assert.Equal("Prefix", edge.GeneratedDetail);
             Assert.Equal("harmony-fixture", edge.Source.ReferenceModId);
             Assert.Equal("harmony", edge.Source.Collection);
+            Assert.Equal(
+                edge.Source.Signature!.Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal)
+                    ? "Postfix" : "Prefix",
+                edge.GeneratedDetail);
         });
+        Assert.Single(resolved, edge =>
+            edge.Source.Signature!.Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal) &&
+            edge.GeneratedDetail == "Postfix");
         var labels = resolved.Select(edge => edge.Label).ToArray();
         Assert.Equal(3, labels.Count(label => label == "attribute"));
-        Assert.Equal(5, labels.Count(label => label == "DERIVED"));
+        Assert.Equal(6, labels.Count(label => label == "DERIVED"));
         var unresolved = Assert.Single(result.Relationships, edge => !edge.Target.Resolved);
         Assert.Equal("attribute", unresolved.Label);
         Assert.Contains("unsupported-method-type", unresolved.Target.RawText, StringComparison.Ordinal);
@@ -79,7 +85,7 @@ public sealed class PatchedByQueryTests
             options with { Limit = 2, Offset = 2 },
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(9, first.TotalCount);
+        Assert.Equal(10, first.TotalCount);
         Assert.Equal(2, first.Relationships.Count);
         Assert.True(first.HasMore);
         Assert.Equal(2, second.Relationships.Count);
@@ -98,7 +104,7 @@ public sealed class PatchedByQueryTests
             TestContext.Current.CancellationToken);
 
         Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
-        Assert.Equal(9, result.TotalCount);
+        Assert.Equal(10, result.TotalCount);
     }
 
     [Fact]

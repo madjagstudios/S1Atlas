@@ -165,4 +165,12 @@ public static class AccessTools
     public static System.Reflection.MethodInfo? Method(Type type, string name) => null;
 
     public static System.Reflection.MethodInfo? Method(Type type, string name, Type[]? typeArguments) => null;
+    public static System.Reflection.MethodInfo? Method(Type type, string name, Type[]? typeArguments, Type[]? generics) => null;
+
+    public static System.Reflection.FieldInfo? Field(Type type, string name) => null;
+    public static System.Reflection.PropertyInfo? Property(Type type, string name) => null;
+    public static System.Reflection.MethodInfo? PropertyGetter(Type type, string name) => null;
+    public static System.Reflection.MethodInfo? PropertySetter(Type type, string name) => null;
+    public static System.Reflection.ConstructorInfo? Constructor(Type type, Type[]? typeArguments) => null;
+    public static System.Reflection.ConstructorInfo? Constructor(Type type, Type[]? typeArguments, bool searchForStatic) => null;
 }

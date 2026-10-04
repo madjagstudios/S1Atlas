@@ -34,6 +34,10 @@ internal static class ManualPatchRecognizer
 
     public static IReadOnlyList<ManagedPatchFact> Recognize(
         IReadOnlyList<CapturedInstruction> instructions,
+        IReadOnlySet<int> branchTargets) => Analyze(instructions, branchTargets).Patches;
+
+    public static (IReadOnlyList<ManagedPatchFact> Patches, IReadOnlyList<ManagedReflectionFact> Reflections) Analyze(
+        IReadOnlyList<CapturedInstruction> instructions,
         IReadOnlySet<int> branchTargets)
     {
         ArgumentNullException.ThrowIfNull(instructions);
@@ -42,7 +46,7 @@ internal static class ManualPatchRecognizer
         var state = new InterpreterState(branchTargets);
         foreach (var instruction in instructions)
             state.Step(instruction);
-        return state.Facts;
+        return (state.Facts, state.Reflections);
     }
 
     private abstract record StackValue
@@ -71,6 +75,9 @@ internal static class ManualPatchRecognizer
 
     private sealed class TrackedArray
     {
+        public TrackedArray(long length) => Length = length;
+
+        public long Length { get; }
         public List<(long? Index, StackValue Value)> Elements { get; } = [];
 
         public bool Poisoned { get; set; }
@@ -82,6 +89,7 @@ internal static class ManualPatchRecognizer
         private readonly Dictionary<int, StackValue> _locals = [];
         private readonly Dictionary<int, TrackedArray> _arrays = [];
         private readonly List<ManagedPatchFact> _facts = [];
+        private readonly List<ManagedReflectionFact> _reflections = [];
         private readonly IReadOnlySet<int> _mergeOffsets;
         private int _nextArrayId;
         private bool _sawBranch;
@@ -93,6 +101,7 @@ internal static class ManualPatchRecognizer
         }
 
         public IReadOnlyList<ManagedPatchFact> Facts => _facts;
+        public IReadOnlyList<ManagedReflectionFact> Reflections => _reflections;
 
         public void Step(CapturedInstruction instruction)
         {
@@ -183,8 +192,9 @@ internal static class ManualPatchRecognizer
             }
             if (opcode == OpCodes.Newarr)
             {
-                TryPop();
-                if (instruction.Detail is null || instruction.Detail.StartsWith("unresolved:", StringComparison.Ordinal))
+                var length = TryPop();
+                if (instruction.Detail is null || instruction.Detail.StartsWith("unresolved:", StringComparison.Ordinal) ||
+                    length is not IntValue { Value: >= 0 and <= 1024 } size)
                 {
                     _lostPrecision = true;
                     Push(StackValue.Unknown);
@@ -192,7 +202,7 @@ internal static class ManualPatchRecognizer
                 }
 
                 var id = _nextArrayId++;
-                _arrays[id] = new TrackedArray();
+                _arrays[id] = new TrackedArray(size.Value);
                 Push(new ArrayReference(id));
                 return;
             }
@@ -203,7 +213,8 @@ internal static class ManualPatchRecognizer
                 var array = TryPop();
                 if (array is ArrayReference reference && _arrays.TryGetValue(reference.Id, out var tracked))
                 {
-                    if (index is IntValue at)
+                    if (index is IntValue at && at.Value >= 0 && at.Value < tracked.Length &&
+                        !tracked.Elements.Any(element => element.Index == at.Value))
                         tracked.Elements.Add((at.Value, value));
                     else
                         tracked.Poisoned = true;
@@ -278,9 +289,16 @@ internal static class ManualPatchRecognizer
             }
 
             if (string.Equals(owner, AccessToolsName, StringComparison.Ordinal) &&
-                string.Equals(name, "Method", StringComparison.Ordinal))
+                TryReflectionKind(name, out var accessKind))
             {
-                Push(AccessToolsResult(parameters));
+                Push(AccessToolsResult(accessKind, parameters));
+                return;
+            }
+
+            if (string.Equals(owner, "System.Type", StringComparison.Ordinal) &&
+                name is "GetMethod" or "GetField" or "GetProperty")
+            {
+                Push(TypeLookupResult(name, parameters));
                 return;
             }
 
@@ -309,37 +327,130 @@ internal static class ManualPatchRecognizer
                 Push(StackValue.Unknown);
         }
 
-        private StackValue AccessToolsResult(IReadOnlyList<string> parameters)
+        private StackValue AccessToolsResult(ManagedReflectionKind kind, IReadOnlyList<string> parameters)
         {
-            if (parameters.Count == 2)
+            if (kind == ManagedReflectionKind.Method && parameters.Count == 4 &&
+                parameters[0] == "System.Type" && parameters[1] == "System.String" &&
+                parameters[2] == "System.Type[]" && parameters[3] == "System.Type[]")
             {
-                var name = TryPop();
-                var type = TryPop();
-                if (type is TypeValue target && name is StringValue method)
-                    return new MethodReferenceValue(target.TypeName, method.Text, null);
+                // Generic instantiation is outside the fact's identity. Only an
+                // explicit null lets the ordinary method signature stay exact.
+                if (TryPop() == StackValue.Null)
+                    return AccessToolsResult(kind, parameters.Take(3).ToArray());
+                for (var i = 0; i < 3; i++)
+                    TryPop();
                 return StackValue.Unknown;
             }
 
-            if (parameters.Count == 3)
+            if (kind == ManagedReflectionKind.Constructor && parameters.Count == 3 &&
+                parameters[0] == "System.Type" && parameters[1] == "System.Type[]" &&
+                parameters[2] == "System.Boolean")
+            {
+                var staticFlag = TryPop();
+                var types = TryPop();
+                var type = TryPop();
+                var argumentTypes = ResolveTypeArray(types);
+                if (type is TypeValue target && argumentTypes is not null && staticFlag is IntValue { Value: 0 or 1 } flag)
+                    _reflections.Add(new ManagedReflectionFact(
+                        target.TypeName, flag.Value == 1 ? ".cctor" : ".ctor", kind, argumentTypes));
+                return StackValue.Unknown;
+            }
+
+            if (kind == ManagedReflectionKind.Constructor && parameters.Count == 2 &&
+                parameters[0] == "System.Type" && parameters[1] == "System.Type[]")
             {
                 var types = TryPop();
-                var name = TryPop();
                 var type = TryPop();
-                if (type is not TypeValue target || name is not StringValue method)
+                var argumentTypes = ResolveTypeArray(types);
+                if (type is TypeValue target && argumentTypes is not null)
+                    _reflections.Add(new ManagedReflectionFact(target.TypeName, ".ctor", kind, argumentTypes));
+                return StackValue.Unknown;
+            }
+
+            if (parameters.Count == 2 && parameters[0] == "System.Type" && parameters[1] == "System.String")
+            {
+                var memberName = TryPop();
+                var type = TryPop();
+                if (type is TypeValue target && memberName is StringValue member)
+                {
+                    _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind));
+                    return kind == ManagedReflectionKind.Method
+                        ? new MethodReferenceValue(target.TypeName, member.Text, null)
+                        : StackValue.Unknown;
+                }
+                return StackValue.Unknown;
+            }
+
+            if (kind == ManagedReflectionKind.Method && parameters.Count == 3 &&
+                parameters[0] == "System.Type" && parameters[1] == "System.String" && parameters[2] == "System.Type[]")
+            {
+                var types = TryPop();
+                var memberName = TryPop();
+                var type = TryPop();
+                if (type is not TypeValue target || memberName is not StringValue member)
                     return StackValue.Unknown;
                 // Only an explicit null widens to an unparameterized target; an
                 // unreadable array stays unknown so it can never resolve by luck.
                 if (types == StackValue.Null)
-                    return new MethodReferenceValue(target.TypeName, method.Text, null);
+                {
+                    _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind));
+                    return new MethodReferenceValue(target.TypeName, member.Text, null);
+                }
                 var argumentTypes = ResolveTypeArray(types);
-                return argumentTypes is null
-                    ? StackValue.Unknown
-                    : new MethodReferenceValue(target.TypeName, method.Text, argumentTypes);
+                if (argumentTypes is null)
+                    return StackValue.Unknown;
+                _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind, argumentTypes));
+                return new MethodReferenceValue(target.TypeName, member.Text, argumentTypes);
             }
 
             for (var i = 0; i < parameters.Count; i++)
                 TryPop();
             _lostPrecision = true;
+            return StackValue.Unknown;
+        }
+
+        private StackValue TypeLookupResult(string name, IReadOnlyList<string> parameters)
+        {
+            var arguments = new StackValue[parameters.Count];
+            for (var i = parameters.Count - 1; i >= 0; i--)
+                arguments[i] = TryPop();
+            var receiver = TryPop();
+            if (receiver is not TypeValue target || parameters.Count == 0 ||
+                parameters[0] != "System.String" || arguments[0] is not StringValue member)
+                return StackValue.Unknown;
+            var kind = name switch
+            {
+                "GetMethod" => ManagedReflectionKind.Method,
+                "GetField" => ManagedReflectionKind.Field,
+                _ => ManagedReflectionKind.Property
+            };
+            if (parameters.Count == 1)
+            {
+                _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind));
+                return kind == ManagedReflectionKind.Method
+                    ? new MethodReferenceValue(target.TypeName, member.Text, null)
+                    : StackValue.Unknown;
+            }
+
+            if (parameters.Count == 2 && parameters[1] == "System.Reflection.BindingFlags")
+            {
+                _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind));
+                return kind == ManagedReflectionKind.Method
+                    ? new MethodReferenceValue(target.TypeName, member.Text, null)
+                    : StackValue.Unknown;
+            }
+
+            if (kind == ManagedReflectionKind.Method && parameters.Count == 2 &&
+                parameters[1] == "System.Type[]")
+            {
+                var argumentTypes = ResolveTypeArray(arguments[1]);
+                if (argumentTypes is not null)
+                {
+                    _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind, argumentTypes));
+                    return new MethodReferenceValue(target.TypeName, member.Text, argumentTypes);
+                }
+            }
+
             return StackValue.Unknown;
         }
 
@@ -445,7 +556,8 @@ internal static class ManualPatchRecognizer
         {
             if (value == StackValue.Null)
                 return null;
-            if (value is not ArrayReference reference || !_arrays.TryGetValue(reference.Id, out var tracked) || tracked.Poisoned)
+            if (value is not ArrayReference reference || !_arrays.TryGetValue(reference.Id, out var tracked) ||
+                tracked.Poisoned || tracked.Elements.Count != tracked.Length)
                 return null;
             var names = new List<string>(tracked.Elements.Count);
             foreach (var (_, element) in tracked.Elements.OrderBy(element => element.Index ?? long.MaxValue))
@@ -498,12 +610,27 @@ internal static class ManualPatchRecognizer
                 string.Equals(SymbolNames.SimpleName("X::" + tail), "EmptyTypes", StringComparison.Ordinal))
             {
                 var id = _nextArrayId++;
-                _arrays[id] = new TrackedArray();
+                _arrays[id] = new TrackedArray(0);
                 return new ArrayReference(id);
             }
 
             return StackValue.Unknown;
         }
+    }
+
+    private static bool TryReflectionKind(string name, out ManagedReflectionKind kind)
+    {
+        kind = name switch
+        {
+            "Method" => ManagedReflectionKind.Method,
+            "Field" => ManagedReflectionKind.Field,
+            "Property" => ManagedReflectionKind.Property,
+            "PropertyGetter" => ManagedReflectionKind.PropertyGetter,
+            "PropertySetter" => ManagedReflectionKind.PropertySetter,
+            "Constructor" => ManagedReflectionKind.Constructor,
+            _ => default
+        };
+        return name is "Method" or "Field" or "Property" or "PropertyGetter" or "PropertySetter" or "Constructor";
     }
 
     private static StackValue TokenValue(string? detail)

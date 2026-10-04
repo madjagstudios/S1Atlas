@@ -93,6 +93,7 @@ public sealed class HarmonyPatchReaderTests
     [InlineData("Mod.ManualAmbiguousMethodPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualAmbiguousMethodPatch", "Do")]
     [InlineData("Mod.ManualUnknownMethodPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualUnknownMethodPatch", "Missing")]
     [InlineData("Mod.ManualMethodInfoPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualMethodInfoPatch", "InfoPrefix")]
+    [InlineData("Mod.ManualTypeMethodInfoPatch", "Install", HarmonyPatchKind.Postfix, "Game.Widget::Run", "Mod.ManualTypeMethodInfoPatch", "InfoPostfix")]
     [InlineData("Mod.ManualOverloadDisambiguationPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualOverloadDisambiguationPatch", "Do")]
     [InlineData("Mod.ManualFloatConstantPatch", "Install", HarmonyPatchKind.Prefix, "Game.Widget::Run", "Mod.ManualFloatConstantPatch", "FloatPrefix")]
     public async Task Manual_patches_resolve_from_constant_calls(

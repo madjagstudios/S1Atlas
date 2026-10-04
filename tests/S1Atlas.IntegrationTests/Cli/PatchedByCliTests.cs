@@ -32,25 +32,30 @@ public sealed class PatchedByCliTests
         var resolved = relationships.EnumerateArray()
             .Where(edge => edge.GetProperty("target").GetProperty("resolved").GetBoolean())
             .ToArray();
-        Assert.Equal(8, resolved.Length);
+        Assert.Equal(9, resolved.Length);
         Assert.All(resolved, edge =>
         {
             Assert.Equal("harmony-fixture", edge.GetProperty("source").GetProperty("referenceModId").GetString());
             Assert.Equal("harmony", edge.GetProperty("source").GetProperty("collection").GetString());
-            Assert.Equal("Prefix", edge.GetProperty("generatedDetail").GetString());
+            var signature = edge.GetProperty("source").GetProperty("signature").GetString()!;
+            Assert.Equal(
+                signature.Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal)
+                    ? "Postfix" : "Prefix",
+                edge.GetProperty("generatedDetail").GetString());
         });
         var methods = resolved.Select(edge => edge.GetProperty("source").GetProperty("signature").GetString()).ToArray();
         Assert.Contains(methods, method => method!.Contains("RunPatch", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("ManualPatch", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("ManualEmptyTypesPatch", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("ManualMethodInfoPatch", StringComparison.Ordinal));
+        Assert.Contains(methods, method => method!.Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("InteropPrefixPatch", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("StringNamePatch", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("ManualFloatConstantPatch", StringComparison.Ordinal));
         Assert.Contains(methods, method => method!.Contains("ManualOverloadDisambiguationPatch", StringComparison.Ordinal));
         var evidence = resolved.Select(edge => edge.GetProperty("label").GetString()).ToArray();
         Assert.Equal(3, evidence.Count(label => label == "attribute"));
-        Assert.Equal(5, evidence.Count(label => label == "DERIVED"));
+        Assert.Equal(6, evidence.Count(label => label == "DERIVED"));
     }
 
     [Fact]
@@ -148,7 +153,7 @@ public sealed class PatchedByCliTests
         var sections = document.RootElement.GetProperty("data").GetProperty("evidenceSections");
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
-        Assert.Equal(9, patches.GetProperty("totalCount").GetInt32());
+        Assert.Equal(10, patches.GetProperty("totalCount").GetInt32());
         var claims = document.RootElement.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),

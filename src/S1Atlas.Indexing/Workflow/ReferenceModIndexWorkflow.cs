@@ -13,6 +13,8 @@ namespace S1Atlas.Indexing.Workflow;
 
 public sealed class ReferenceModIndexWorkflow
 {
+    private const string RelationshipResolverVersion = "2";
+
     private readonly IIndexRepository _repository;
     private readonly ReferenceModFileSelector _selector;
     private readonly ReferenceModInputHasher _hasher;
@@ -48,7 +50,7 @@ public sealed class ReferenceModIndexWorkflow
             gameIndexId + "\n" + verifiedExtractionIdentity + "\n" + normalizedCollectionHash,
             IndexingWorkflow.DecompilerPackage,
             IndexingWorkflow.DecompilerVersion,
-            settings,
+            settings + "\nreference-relationships:" + RelationshipResolverVersion,
             schemaVersion);
 
     public async Task<IndexingWorkflowResult> RunAsync(
@@ -183,7 +185,7 @@ public sealed class ReferenceModIndexWorkflow
             decompilations);
     }
 
-    private static IReadOnlyList<IndexSymbolRecord> BuildSymbols(string modId, ManagedDecompilation decompilation, string snapshotId)
+    internal static IReadOnlyList<IndexSymbolRecord> BuildSymbols(string modId, ManagedDecompilation decompilation, string snapshotId)
     {
         var symbols = new List<IndexSymbolRecord>();
         foreach (var type in decompilation.Types)
@@ -213,7 +215,7 @@ public sealed class ReferenceModIndexWorkflow
         }
     }
 
-    private static IReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord> BuildRelationshipLookup(
+    internal static IReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord> BuildRelationshipLookup(
         IReadOnlyList<IndexSymbolRecord> gameSymbols,
         IReadOnlyList<IndexSymbolRecord> referenceSymbols)
     {
@@ -221,7 +223,9 @@ public sealed class ReferenceModIndexWorkflow
             .Concat(referenceSymbols.Select(symbol => (Origin: ExtractModId(symbol.QualifiedName), Symbol: symbol)));
         var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>();
         foreach (var entry in entries)
-            lookup.TryAdd(ReferenceRelationshipResolver.CreateLookupKey(entry.Origin, entry.Symbol.Signature), entry.Symbol);
+            lookup.TryAdd(ReferenceRelationshipResolver.CreateLookupKey(entry.Origin,
+                entry.Origin == PatchTargetResolver.GameOrigin && entry.Symbol.Kind is "Field" or "Property" or "Event"
+                    ? entry.Symbol.QualifiedName : entry.Symbol.Signature), entry.Symbol);
         return lookup;
     }
 

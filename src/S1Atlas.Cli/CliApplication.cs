@@ -529,6 +529,7 @@ public sealed class CliApplication
             error,
             cancellationToken));
         root.Subcommands.Add(CompletionCommand.Create(output, error, cancellationToken));
+        root.Subcommands.Add(CheckModCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
 
         _lastBuiltRoot = root;
         var invocation = new InvocationConfiguration
