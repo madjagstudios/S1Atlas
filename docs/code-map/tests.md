@@ -62,7 +62,7 @@ Roots: tests
 | tests/S1Atlas.IntegrationTests/Diff/ | 1 |
 | tests/S1Atlas.IntegrationTests/Extraction/ | 6 |
 | tests/S1Atlas.IntegrationTests/Foundation/ | 4 |
-| tests/S1Atlas.IntegrationTests/GoldenFacts/ | 8 |
+| tests/S1Atlas.IntegrationTests/GoldenFacts/ | 7 |
 | tests/S1Atlas.IntegrationTests/Indexing/ | 8 |
 | tests/S1Atlas.IntegrationTests/NativeRecovery/ | 2 |
 | tests/S1Atlas.IntegrationTests/Performance/ | 1 |

@@ -857,7 +857,7 @@ public sealed class ReferenceModQueryService
     private static int Rank(SymbolQueryResult result, string query)
     {
         if (string.Equals(result.QualifiedName, query, StringComparison.OrdinalIgnoreCase) || string.Equals(result.Signature, query, StringComparison.OrdinalIgnoreCase) || string.Equals(SymbolNames.SimpleName(result.QualifiedName), query, StringComparison.OrdinalIgnoreCase)) return 0;
-        if (result.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase)) return 1;
+        if (!result.QualifiedName.Contains("::", StringComparison.Ordinal) && result.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase)) return 1;
         if (result.QualifiedName.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 2;
         if (result.QualifiedName.Contains(query, StringComparison.OrdinalIgnoreCase)) return 3;
         if (result.Signature.Contains(query, StringComparison.OrdinalIgnoreCase)) return 4;

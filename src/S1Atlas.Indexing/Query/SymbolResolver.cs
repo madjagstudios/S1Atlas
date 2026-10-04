@@ -278,7 +278,8 @@ public sealed class SymbolResolver
         if (string.Equals(record.QualifiedName, query, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(record.Signature, query, StringComparison.OrdinalIgnoreCase))
             return 0;
-        if (record.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase))
+        if (!record.QualifiedName.Contains("::", StringComparison.Ordinal) &&
+            record.QualifiedName.EndsWith("." + query, StringComparison.OrdinalIgnoreCase))
             return 1;
         if (string.Equals(SymbolNames.SimpleName(record.QualifiedName), query, StringComparison.OrdinalIgnoreCase))
             return 2;
