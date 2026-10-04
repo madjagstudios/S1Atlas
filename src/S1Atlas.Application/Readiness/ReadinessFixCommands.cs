@@ -21,6 +21,23 @@ public static class ReadinessFixCommands
     public const string IndexScene = "s1atlas index --scene";
     public const string Status = "s1atlas status";
     public const string Doctor = "s1atlas doctor";
+
+    /// <summary>
+    /// Builds the runnable rescan command for an explicit game folder. The
+    /// path is always quoted; a path containing a double quote cannot be
+    /// quoted safely for the shell, so there is no runnable hint and the
+    /// caller must carry the guidance in the message instead.
+    /// </summary>
+    public static string? ScanAt(string gamePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gamePath);
+        if (gamePath.Contains('"'))
+        {
+            return null;
+        }
+
+        return $"s1atlas scan --game-path \"{gamePath}\"";
+    }
     public const string ExampleQuery = "s1atlas search \"Player\" --limit 20";
 
     public const string Cpp2IlToolId = "cpp2il";

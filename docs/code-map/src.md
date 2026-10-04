@@ -11,7 +11,7 @@ Roots: src
 | src/S1Atlas.Application/Composition/ | 1 |
 | src/S1Atlas.Application/Configuration/ | 1 |
 | src/S1Atlas.Application/Envelope/ | 4 |
-| src/S1Atlas.Application/Readiness/ | 5 |
+| src/S1Atlas.Application/Readiness/ | 7 |
 | src/S1Atlas.Cli/ | 3 |
 | src/S1Atlas.Cli/Commands/ | 58 |
 | src/S1Atlas.Cli/Configuration/ | 3 |
@@ -66,7 +66,7 @@ Roots: src
 | src/S1Atlas.Indexing/Source/ | 2 |
 | src/S1Atlas.Indexing/Upstream/ | 5 |
 | src/S1Atlas.Indexing/Workflow/ | 7 |
-| src/S1Atlas.Mcp/ | 7 |
+| src/S1Atlas.Mcp/ | 8 |
 | src/S1Atlas.Mcp/Mapping/ | 1 |
 | src/S1Atlas.Mcp/Serialization/ | 1 |
 | src/S1Atlas.Mcp/Tools/ | 9 |

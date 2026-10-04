@@ -300,7 +300,7 @@ public sealed class SetupCommandTests
         ]);
         var calls = new List<string>();
         var runners = new SetupStepRunners(
-            Scan: _ =>
+            Scan: (_, _) =>
             {
                 calls.Add("scan");
                 return Task.FromResult(0);
@@ -474,7 +474,7 @@ public sealed class SetupCommandTests
         var readiness = new ScriptedReadinessService(report);
         IndexCommandOptions? received = null;
         var runners = new SetupStepRunners(
-            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            Scan: (_, _) => throw new InvalidOperationException("Scan must not run."),
             InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
             Extract: (_, _) => throw new InvalidOperationException("Extract must not run."),
             Index: (options, _) =>
@@ -514,7 +514,7 @@ public sealed class SetupCommandTests
         var readiness = new ScriptedReadinessService(report);
         ExtractionOptions? received = null;
         var runners = new SetupStepRunners(
-            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            Scan: (_, _) => throw new InvalidOperationException("Scan must not run."),
             InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
             Extract: (options, _) =>
             {
@@ -554,7 +554,7 @@ public sealed class SetupCommandTests
         var readiness = new ScriptedReadinessService(report);
         ExtractionOptions? received = null;
         var runners = new SetupStepRunners(
-            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            Scan: (_, _) => throw new InvalidOperationException("Scan must not run."),
             InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
             Extract: (options, _) =>
             {
@@ -580,7 +580,7 @@ public sealed class SetupCommandTests
 
     private static SetupStepRunners ExplodingRunners() =>
         new(
-            Scan: _ => throw new InvalidOperationException("Scan must not run."),
+            Scan: (_, _) => throw new InvalidOperationException("Scan must not run."),
             InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
             Extract: (_, _) => throw new InvalidOperationException("Extract must not run."),
             Index: (_, _) => throw new InvalidOperationException("Index must not run."),
@@ -590,7 +590,7 @@ public sealed class SetupCommandTests
         EvolvingReadinessService? readiness,
         List<string> calls) =>
         new(
-            Scan: _ =>
+            Scan: (_, _) =>
             {
                 calls.Add("scan");
                 readiness?.Complete("scan");
@@ -619,6 +619,231 @@ public sealed class SetupCommandTests
                 calls.Add("scene");
                 return Task.FromResult(0);
             });
+
+    [Fact]
+    public void StaleRecordedScan_PassesRecordedPathToRunnerAndShowsItInPlan()
+    {
+        const string recorded = "C:\\Modding\\S1 Copy (x86)";
+        var scan = new ReadinessItem(
+            ReadinessItemIds.Scan, "Build scan",
+            ReadinessState.Stale, "Steam build changed from 1 to 2.",
+            $"s1atlas scan --game-path \"{recorded}\"", false, recorded);
+        var stale = ScanOnlyReport(scan);
+        var readiness = new QueueReadinessService([stale, stale, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var runners = PathCapturingRunners(calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader("y" + Environment.NewLine),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan:" + recorded], calls);
+        Assert.Contains(
+            $"1. s1atlas scan --game-path \"{recorded}\"", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SatisfiedScan_RefreshStepUsesRecordedPath()
+    {
+        const string recorded = "C:\\Modding\\S1 Copy (x86)";
+        var report = new ReadinessReport(
+            [
+                new ReadinessItem(
+                    ReadinessItemIds.Scan, "Build scan",
+                    ReadinessState.Ok, "Build scanned.", null, false, recorded),
+                new ReadinessItem(
+                    ReadinessItemIds.Extraction, "Preferred extraction",
+                    ReadinessState.Missing, "No preferred verified extraction exists for the build.",
+                    ReadinessFixCommands.Extract, false)
+            ],
+            new ReadinessNextStep(false, "Next: s1atlas extract", ReadinessFixCommands.Extract),
+            false,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+        var readiness = new QueueReadinessService([report, report, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var runners = PathCapturingRunners(calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader("y" + Environment.NewLine),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan:" + recorded, "extract"], calls);
+        Assert.Contains(
+            $"1. s1atlas scan --game-path \"{recorded}\"", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SwitchInteractive_ShowsBothPathsAndScansDiscovered()
+    {
+        const string recorded = "C:\\Modding\\S1 Copy (x86)";
+        const string discovered = "C:\\Steam\\Schedule I";
+        var scan = new ReadinessItem(
+            ReadinessItemIds.Scan, "Build scan",
+            ReadinessState.Stale,
+            $"The scanned install at {recorded} no longer exists; Schedule I was found at {discovered}.",
+            $"s1atlas scan --game-path \"{discovered}\"", false, discovered, recorded);
+        var stale = ScanOnlyReport(scan);
+        var readiness = new QueueReadinessService([stale, stale, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var runners = PathCapturingRunners(calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader("y" + Environment.NewLine),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan:" + discovered], calls);
+        Assert.Contains(recorded, output.ToString(), StringComparison.Ordinal);
+        Assert.Contains(discovered, output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SwitchNonInteractiveRedirected_RefusesWithoutScanning()
+    {
+        const string recorded = "C:\\Modding\\S1 Copy (x86)";
+        const string discovered = "C:\\Steam\\Schedule I";
+        var scan = new ReadinessItem(
+            ReadinessItemIds.Scan, "Build scan",
+            ReadinessState.Stale,
+            $"The scanned install at {recorded} no longer exists; Schedule I was found at {discovered}.",
+            $"s1atlas scan --game-path \"{discovered}\"", false, discovered, recorded);
+        var readiness = new ScriptedReadinessService(ScanOnlyReport(scan));
+        var runners = ExplodingRunners();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: true, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains(recorded, error.ToString(), StringComparison.Ordinal);
+        Assert.Contains(discovered, error.ToString(), StringComparison.Ordinal);
+        Assert.Contains("s1atlas scan --game-path", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SwitchNonInteractiveYes_RefusesWithoutScanning()
+    {
+        const string recorded = "C:\\Modding\\S1 Copy (x86)";
+        const string discovered = "C:\\Steam\\Schedule I";
+        var scan = new ReadinessItem(
+            ReadinessItemIds.Scan, "Build scan",
+            ReadinessState.Stale,
+            $"The scanned install at {recorded} no longer exists; Schedule I was found at {discovered}.",
+            $"s1atlas scan --game-path \"{discovered}\"", false, discovered, recorded);
+        var readiness = new ScriptedReadinessService(ScanOnlyReport(scan));
+        var calls = new List<string>();
+        var runners = PathCapturingRunners(calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Empty(calls);
+        Assert.Contains(recorded, error.ToString(), StringComparison.Ordinal);
+        Assert.Contains("s1atlas scan --game-path", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GoneWithoutDiscovery_RunsNoScanAndShowsGuidance()
+    {
+        const string recorded = "C:\\Modding\\S1 Copy (x86)";
+        var scan = new ReadinessItem(
+            ReadinessItemIds.Scan, "Build scan",
+            ReadinessState.Stale,
+            $"The scanned install at {recorded} no longer exists. " +
+            "Run 's1atlas scan --game-path <folder>' with the folder that holds Schedule I.",
+            null, false);
+        var readiness = new ScriptedReadinessService(ScanOnlyReport(scan));
+        var calls = new List<string>();
+        var runners = PathCapturingRunners(calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(1, exitCode);
+        Assert.Empty(calls);
+        Assert.Contains(recorded, error.ToString(), StringComparison.Ordinal);
+        Assert.Contains("--game-path <folder>", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UnquotableScanPath_ShowsRawFolderInPlan()
+    {
+        const string raw = "C:\\we\"ird";
+        var scan = new ReadinessItem(
+            ReadinessItemIds.Scan, "Build scan",
+            ReadinessState.Stale, "Steam build changed from 1 to 2.",
+            null, false, raw);
+        var stale = ScanOnlyReport(scan);
+        var readiness = new QueueReadinessService([stale, stale, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var runners = PathCapturingRunners(calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader("y" + Environment.NewLine),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan:" + raw], calls);
+        Assert.Contains("1. s1atlas scan --game-path " + raw, output.ToString(), StringComparison.Ordinal);
+    }
+
+    private static ReadinessReport ScanOnlyReport(ReadinessItem scan) =>
+        new(
+            [scan],
+            new ReadinessNextStep(false, $"Next: {scan.FixCommand ?? scan.Detail}", scan.FixCommand),
+            false,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+
+    private static SetupStepRunners PathCapturingRunners(List<string> calls) =>
+        new(
+            Scan: (gamePath, _) =>
+            {
+                calls.Add("scan:" + (gamePath ?? "<null>"));
+                return Task.FromResult(0);
+            },
+            InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
+            Extract: (_, _) =>
+            {
+                calls.Add("extract");
+                return Task.FromResult(0);
+            },
+            Index: (_, _) => throw new InvalidOperationException("Index must not run."),
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
 
     private static int InvokeSetup(Command command, string[] args)
     {
