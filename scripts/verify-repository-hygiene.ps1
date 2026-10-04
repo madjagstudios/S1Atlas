@@ -15,6 +15,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$prohibitedBinaryExtensions = @(
+    '.dll', '.exe', '.pdb', '.assets', '.resS', '.bundle', '.so', '.dylib'
+)
+
+# Exact repo-relative paths only, no wildcards. Every entry needs a reason.
+$allowedBinaryPaths = @()
+
 $prohibitedBasenames = @(
     'Cpp2IL.exe',
     'GameAssembly.dll',
@@ -75,6 +82,11 @@ $violations = New-Object System.Collections.Generic.List[string]
 foreach ($path in $paths) {
     $normalized = $path -replace '\\', '/'
     $basename = ($normalized -split '/')[-1]
+    $extension = [System.IO.Path]::GetExtension($basename)
+    if ($prohibitedBinaryExtensions -contains $extension -and $allowedBinaryPaths -cnotcontains $normalized) {
+        $violations.Add("$normalized (prohibited binary extension '$extension')")
+    }
+
     if ($prohibitedBasenames -contains $basename) {
         $violations.Add("$normalized (prohibited file '$basename')")
         continue

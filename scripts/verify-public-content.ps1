@@ -33,7 +33,7 @@ $ErrorActionPreference = 'Stop'
 # script from flagging its own patterns.
 $aiToolPattern = '\b(Claude|Codex|Copilot|ChatGPT|Anthropic|OpenAI|Gemini|GPT-?\d+[a-z0-9]*)\b'
 $ticketPattern = '\b[A-Z]{2,}-\d+\b'
-$machinePathPattern = '[A-Za-z]:\\Users\\|/Users/[^/\s]+/|/home/[^/\s]+/'
+$machinePathPattern = '[A-Za-z]:(?:\\\\|[\\/])Users(?:\\\\|[\\/])|/Users/[^/\s]+/|/home/[^/\s]+/'
 $trackerPattern = 'atlassian\.net'
 $planStepPattern = '\b(Task|Step|Phase)\s+\d+\b'
 $workflowPhrases = @(

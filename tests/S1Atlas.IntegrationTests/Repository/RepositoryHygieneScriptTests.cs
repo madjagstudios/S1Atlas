@@ -121,6 +121,84 @@ public sealed class RepositoryHygieneScriptTests
         Assert.Equal(0, exitCode);
     }
 
+    [Theory]
+    [InlineData("plugin.dll", ".dll")]
+    [InlineData("plugin.DLL", ".DLL")]
+    [InlineData("utility.exe", ".exe")]
+    [InlineData("symbols.pdb", ".pdb")]
+    [InlineData("scene.assets", ".assets")]
+    [InlineData("scene.resS", ".resS")]
+    [InlineData("scene.Ress", ".Ress")]
+    [InlineData("scene.bundle", ".bundle")]
+    [InlineData("plugin.so", ".so")]
+    [InlineData("plugin.dylib", ".dylib")]
+    [InlineData("fixtures/nested/plugin.dll", ".dll")]
+    public void Script_BinaryExtension_FailsAndNamesExtension(string path, string extension)
+    {
+        var result = RunWithTrackedPathsAndOutput([path]);
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains($"prohibited binary extension '{extension}'", result.Output);
+    }
+
+    [Theory]
+    [InlineData("plugin.dll.config")]
+    [InlineData("symbols.pdb.txt")]
+    [InlineData("docs/x.assets.md")]
+    public void Script_BinaryExtensionLookalike_Passes(string path)
+    {
+        Assert.Equal(0, RunWithTrackedPaths([path]));
+    }
+
+    [Fact]
+    public void Script_BinaryAllowlist_ExemptsOnlyTheExactPath()
+    {
+        const string emptyAllowlist = "$allowedBinaryPaths = @()";
+        var script = File.ReadAllText(ScriptPath);
+        Assert.Contains(emptyAllowlist, script);
+        var testScript = Path.Combine(Path.GetTempPath(), $"s1atlas-hygiene-{Guid.NewGuid():N}.ps1");
+        File.WriteAllText(testScript, script.Replace(
+            emptyAllowlist,
+            "$allowedBinaryPaths = @('fixtures/approved.dll')",
+            StringComparison.Ordinal));
+        try
+        {
+            Assert.Equal(0, RunWithTrackedPathsAndOutput(["fixtures/approved.dll"], testScript).ExitCode);
+            Assert.Equal(1, RunWithTrackedPathsAndOutput(["other/approved.dll"], testScript).ExitCode);
+            Assert.Equal(1, RunWithTrackedPathsAndOutput(["fixtures/nested/approved.dll"], testScript).ExitCode);
+        }
+        finally
+        {
+            File.Delete(testScript);
+        }
+    }
+
+    [Theory]
+    [InlineData("fixtures/*.dll", "fixtures/plugin.dll")]
+    [InlineData("fixtures/approved.dll", "fixtures/approved.DLL")]
+    [InlineData("GameAssembly.dll", "GameAssembly.dll")]
+    [InlineData("decompiled/approved.dll", "decompiled/approved.dll")]
+    [InlineData("docs/worknotes/approved.dll", "docs/worknotes/approved.dll")]
+    public void Script_BinaryAllowlist_DoesNotBypassOtherRules(string entry, string path)
+    {
+        const string emptyAllowlist = "$allowedBinaryPaths = @()";
+        var script = File.ReadAllText(ScriptPath);
+        Assert.Contains(emptyAllowlist, script);
+        var testScript = Path.Combine(Path.GetTempPath(), $"s1atlas-hygiene-{Guid.NewGuid():N}.ps1");
+        File.WriteAllText(testScript, script.Replace(
+            emptyAllowlist,
+            $"$allowedBinaryPaths = @('{entry}')",
+            StringComparison.Ordinal));
+        try
+        {
+            Assert.Equal(1, RunWithTrackedPathsAndOutput([path], testScript).ExitCode);
+        }
+        finally
+        {
+            File.Delete(testScript);
+        }
+    }
+
     [Fact]
     public void Script_RealRepository_IsClean()
     {
@@ -130,6 +208,10 @@ public sealed class RepositoryHygieneScriptTests
     }
 
     private static int RunWithTrackedPaths(IReadOnlyList<string> trackedPaths)
+        => RunWithTrackedPathsAndOutput(trackedPaths).ExitCode;
+
+    private static (int ExitCode, string Output) RunWithTrackedPathsAndOutput(
+        IReadOnlyList<string> trackedPaths, string? scriptPath = null)
     {
         var file = Path.Combine(
             Path.GetTempPath(),
@@ -137,7 +219,7 @@ public sealed class RepositoryHygieneScriptTests
         File.WriteAllText(file, string.Join('\n', trackedPaths));
         try
         {
-            return Run(["-TrackedPathsFile", file], RepositoryRoot);
+            return RunWithOutput(["-TrackedPathsFile", file], RepositoryRoot, scriptPath);
         }
         finally
         {
@@ -146,6 +228,10 @@ public sealed class RepositoryHygieneScriptTests
     }
 
     private static int Run(IReadOnlyList<string> arguments, string workingDirectory)
+        => RunWithOutput(arguments, workingDirectory).ExitCode;
+
+    private static (int ExitCode, string Output) RunWithOutput(
+        IReadOnlyList<string> arguments, string workingDirectory, string? scriptPath = null)
     {
         foreach (var shell in new[] { "pwsh", "powershell" })
         {
@@ -163,7 +249,7 @@ public sealed class RepositoryHygieneScriptTests
                 startInfo.ArgumentList.Add("-ExecutionPolicy");
                 startInfo.ArgumentList.Add("Bypass");
                 startInfo.ArgumentList.Add("-File");
-                startInfo.ArgumentList.Add(ScriptPath);
+                startInfo.ArgumentList.Add(scriptPath ?? ScriptPath);
                 foreach (var argument in arguments)
                 {
                     startInfo.ArgumentList.Add(argument);
@@ -171,10 +257,10 @@ public sealed class RepositoryHygieneScriptTests
 
                 using var process = Process.Start(startInfo)
                     ?? throw new InvalidOperationException($"'{shell}' did not start.");
-                process.StandardOutput.ReadToEnd();
-                process.StandardError.ReadToEnd();
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
                 process.WaitForExit();
-                return process.ExitCode;
+                return (process.ExitCode, output + error);
             }
             catch (Win32Exception)
             {

@@ -375,6 +375,13 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   cache lock exactly once, faulted or cancelled entries evict themselves
   even when no waiter observes the failure, and the bounded queue can no
   longer evict a live re-added entry through a stale slot.
+- **CI and repository gates** (AT-121): pass workflow values through environment
+  variables so PR branch names cannot become PowerShell commands. CI now uses a
+  read-only repository token and pins each action to a release commit within its
+  existing major version. The public-content check catches JSON-escaped Windows
+  paths and paths with forward slashes or mixed separators. Repository hygiene
+  rejects tracked binaries and Unity assets by extension, with an empty list for
+  exact-path exceptions.
 
 ## [1.5.0] - 2026-09-26: Serialized script values
 
