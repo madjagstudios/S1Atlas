@@ -114,6 +114,22 @@ internal static class SetupReportBuilder
             ReadinessFixCommands.ExampleQuery,
             []);
 
+    public static ReadinessReport GameUpdated() =>
+        new(
+            [
+                new ReadinessItem(
+                    ReadinessItemIds.Scan, "Build scan",
+                    ReadinessState.Stale, "Steam build changed from 1 to 2.",
+                    ReadinessFixCommands.Scan, false),
+                Ok(ReadinessItemIds.Tools, "Managed tools", "Tools verified."),
+                Ok(ReadinessItemIds.Extraction, "Preferred extraction", "Extraction verified."),
+                Ok(ReadinessItemIds.Index, "Schedule I index", "Index complete.")
+            ],
+            new ReadinessNextStep(false, "Next: s1atlas scan", ReadinessFixCommands.Scan),
+            false,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+
     public static ReadinessReport FromCompleted(IReadOnlySet<string> completed)
     {
         var scanOk = completed.Contains("scan");
@@ -365,6 +381,61 @@ public sealed class SetupCommandTests
         Assert.Equal(0, exitCode);
         Assert.Equal(["extract", "index"], calls);
         Assert.Contains("Skipping s1atlas scan: already satisfied.", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GameUpdate_OneRunRescansExtractsAndIndexes()
+    {
+        var readiness = new QueueReadinessService(
+        [
+            SetupReportBuilder.GameUpdated(),
+            SetupReportBuilder.GameUpdated(),
+            SetupReportBuilder.FromCompleted(new HashSet<string>(["scan", "tools"], StringComparer.Ordinal)),
+            SetupReportBuilder.FromCompleted(new HashSet<string>(["scan", "tools", "extract"], StringComparer.Ordinal)),
+            ReadinessReportBuilder.Ready()
+        ]);
+        var calls = new List<string>();
+        var runners = RecordingRunners(null, calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan", "extract", "index"], calls);
+        var text = output.ToString();
+        Assert.Contains("1. s1atlas scan", text, StringComparison.Ordinal);
+        Assert.Contains("2. s1atlas extract (if the scan records a new build)", text, StringComparison.Ordinal);
+        Assert.Contains("3. s1atlas index (if the scan records a new build)", text, StringComparison.Ordinal);
+        Assert.Contains("Setup complete.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SameBuildRescan_SkipsExtractAndIndex()
+    {
+        var sameBuild = SetupReportBuilder.FromCompleted(
+            new HashSet<string>(["scan", "tools", "extract", "index"], StringComparer.Ordinal));
+        var readiness = new QueueReadinessService(
+            [SetupReportBuilder.GameUpdated(), SetupReportBuilder.GameUpdated(), sameBuild]);
+        var calls = new List<string>();
+        var runners = RecordingRunners(null, calls);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan"], calls);
+        Assert.Contains("Skipping s1atlas extract: already satisfied.", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Skipping s1atlas index: already satisfied.", output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
