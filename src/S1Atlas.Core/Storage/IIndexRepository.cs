@@ -50,7 +50,8 @@ public enum CallableSurfaceStatus
 {
     Resolved,
     Ambiguous,
-    Unavailable
+    Unavailable,
+    Unknown
 }
 
 public enum InteropInputTrust
@@ -156,6 +157,8 @@ public interface IIndexRepository
         CancellationToken cancellationToken);
     Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(string indexId, string symbolId, CancellationToken cancellationToken);
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken);
+    Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedMembersByNameAsync(string indexId, string declaringType, string memberName, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Exact member lookup is not supported by this index repository.");
     Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdPrefixAsync(string indexId, string prefix, int limit, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Completed symbol prefix lookup is not supported by this index repository.");
     Task<int> CountCompletedSymbolsByIdPrefixAsync(string indexId, string prefix, CancellationToken cancellationToken) =>

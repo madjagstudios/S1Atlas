@@ -880,11 +880,11 @@ public sealed class IndexQueryService
             null,
             symbol.IsPublic ? CallableSurfaceKind.DirectGameMember : CallableSurfaceKind.NonPublicWrapper,
             false,
-            symbol.IsPublic ? CallableSurfaceStatus.Resolved : CallableSurfaceStatus.Unavailable,
+            symbol.IsPublic ? CallableSurfaceStatus.Resolved : CallableSurfaceStatus.Unknown,
             InteropInputTrust.LocalOnly,
             symbol.IsPublic
                 ? "public game member is directly callable; no interop input was indexed"
-                : "no callable-surface mapping was retained by this legacy index");
+                : "interop availability is unknown because this legacy index retained no callable-surface mapping");
 
     private static IndexCallableSurfaceRecord CreateAmbiguousCallableSurface(IndexRunRecord run, IndexSymbolRecord symbol) =>
         new(

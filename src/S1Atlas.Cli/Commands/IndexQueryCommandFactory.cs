@@ -407,7 +407,15 @@ internal static class IndexQueryCommandFactory
         {
             writer.WriteLine($"Callable: {callable.Status} | {callable.Kind} | reflection required: {callable.RequiresReflection}");
             writer.WriteLine($"Game member: {callable.GameCanonicalKey}");
-            writer.WriteLine($"Interop: {callable.InteropSignature ?? "unavailable"}");
+            var interop = callable.InteropSignature ?? (callable.Status switch
+            {
+                nameof(CallableSurfaceStatus.Unknown) => "unknown",
+                nameof(CallableSurfaceStatus.Unavailable) => "unavailable",
+                nameof(CallableSurfaceStatus.Ambiguous) => "ambiguous",
+                nameof(CallableSurfaceStatus.Resolved) => "not needed (public game member)",
+                _ => "unknown"
+            });
+            writer.WriteLine($"Interop: {interop}");
             writer.WriteLine($"Evidence: {callable.Evidence}");
             writer.WriteLine($"Interop input trust: {callable.InteropInputTrust} (not cross-validated to the selected game build)");
         }

@@ -28,7 +28,7 @@ public sealed record IndexingWorkflowResult(
 
 public sealed class IndexingWorkflow
 {
-    public const int IndexSchemaVersion = 15;
+    public const int IndexSchemaVersion = 16;
     internal const string DecompilerPackage = "ICSharpCode.Decompiler";
     internal static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
@@ -196,7 +196,7 @@ public sealed class IndexingWorkflow
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
             await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, cancellationToken);
             var warnings = selectedInteropPath is null
-                ? new[] { "InteropSurfaceUnavailable: no usable Il2CppInterop Assembly-CSharp.dll was found; wrapper-dependent members are unavailable." }
+                ? new[] { "InteropSurfaceUnknown: no usable Il2CppInterop Assembly-CSharp.dll was found; wrapper-dependent availability is unknown." }
                 : Array.Empty<string>();
             return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, sourceFiles.Length, relationships.Count, warnings, callableSurface.Count);
         }

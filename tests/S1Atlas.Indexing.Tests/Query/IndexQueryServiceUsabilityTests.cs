@@ -407,6 +407,89 @@ public sealed class IndexQueryServiceUsabilityTests : IAsyncDisposable
         Assert.Contains("il2cpp_runtime_invoke", callable.Evidence, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Callable_surface_resolves_canonical_and_dotted_member_selectors_without_kinds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var source = """
+            namespace ScheduleOne.UI
+            {
+                public class HUD
+                {
+                    protected TMPro.TextMeshProUGUI topScreenText;
+                    public UnityEngine.Canvas canvas;
+                    public void Show() { }
+                    public void Show(int count) { }
+                }
+            }
+            namespace ScheduleOne.Law
+            {
+                public class LawManager
+                {
+                    public void PoliceCalled() { }
+                }
+            }
+            """;
+        source += "namespace Demo { " + string.Join(" ", Enumerable.Range(0, 60)
+            .Select(i => $"public class Other{i:00} {{ public UnityEngine.Canvas canvas; }}")) + " }";
+        var symbols = new S1Atlas.Indexing.Source.RoslynSourceIndexer()
+            .Index(source, CodebaseKind.ScheduleI, CodeChannel.Installed)
+            .Select(symbol =>
+            {
+                var identity = SymbolIdentity.Create(
+                    symbol.Codebase, symbol.Channel, symbol.Kind, symbol.QualifiedName, symbol.IsBestEffort);
+                return new IndexSymbolRecord(
+                    identity.Fingerprint(),
+                    "snapshot-Installed",
+                    identity.CanonicalKey,
+                    symbol.Kind.ToString(),
+                    symbol.QualifiedName,
+                    symbol.Signature,
+                    symbol.IsBestEffort);
+            })
+            .ToArray();
+        await SeedChannelAsync(CodeChannel.Installed, symbols, cancellationToken, CodebaseKind.ScheduleI);
+        var field = Assert.Single(symbols, symbol => symbol.QualifiedName.EndsWith(" topScreenText", StringComparison.Ordinal));
+        var canvas = Assert.Single(symbols, symbol => symbol.QualifiedName == "ScheduleOne.UI.HUD::UnityEngine.Canvas canvas");
+        var method = Assert.Single(symbols, symbol => symbol.QualifiedName.Contains("::PoliceCalled(", StringComparison.Ordinal));
+        var overloads = symbols.Where(symbol => symbol.QualifiedName.Contains("::Show(", StringComparison.Ordinal)).ToArray();
+        var service = new IndexQueryService(_repository);
+        var run = Assert.IsType<IndexRunRecord>(await _repository.GetCompletedIndexAsync("index-Installed", cancellationToken));
+
+        foreach (var (selector, expected) in new[]
+        {
+            ("HUD.topScreenText", field),
+            ("HUD.canvas", canvas),
+            ("ScheduleOne.UI.HUD.topScreenText", field),
+            ("LawManager.PoliceCalled", method),
+            ("ScheduleOne.Law.LawManager.PoliceCalled", method),
+            (field.CanonicalKey, field),
+            (field.QualifiedName, field),
+            (method.SymbolId, method),
+            (method.Signature, method)
+        })
+        {
+            var result = await service.GetCallableSurfaceInIndexAsync(
+                run, CodebaseKind.ScheduleI, CodeChannel.Installed, selector, cancellationToken);
+
+            Assert.Equal(SymbolResolutionStatus.Resolved, result.Resolution.Status);
+            Assert.Equal(expected.SymbolId, result.Resolution.Symbol?.SymbolId);
+            Assert.Equal(expected.SymbolId, result.CallableSurface?.GameSymbolId);
+        }
+
+        var ambiguous = await service.GetCallableSurfaceInIndexAsync(
+            run, CodebaseKind.ScheduleI, CodeChannel.Installed, "HUD.Show", cancellationToken);
+
+        Assert.Equal(SymbolResolutionStatus.Ambiguous, ambiguous.Resolution.Status);
+        Assert.Null(ambiguous.Resolution.Symbol);
+        Assert.Null(ambiguous.CallableSurface);
+        Assert.Equal(2, ambiguous.Resolution.TotalCandidateCount);
+        Assert.Equal(
+            overloads.Select(symbol => symbol.SymbolId).Order(StringComparer.Ordinal),
+            ambiguous.Resolution.Candidates.Select(symbol => symbol.SymbolId).Order(StringComparer.Ordinal));
+    }
+
     private async Task SeedChannelAsync(
         CodeChannel channel,
         IReadOnlyList<IndexSymbolRecord> symbols,

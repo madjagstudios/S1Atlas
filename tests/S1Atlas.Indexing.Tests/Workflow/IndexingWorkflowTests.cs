@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Xunit;
 using S1Atlas.Core.Builds;
 using S1Atlas.Core.Extraction;
@@ -26,7 +27,7 @@ public sealed class IndexingWorkflowTests
         Assert.Equal(first, second);
         Assert.Equal(64, first.Length);
         Assert.DoesNotContain(first, char.IsUpper);
-        Assert.Equal(15, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
+        Assert.Equal(16, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
     }
 
     [Fact]
@@ -220,6 +221,161 @@ public sealed class IndexingWorkflowTests
         {
             await TestDirectory.DeleteTreeAsync(root);
         }
+    }
+
+    [Fact]
+    public async Task Installed_hud_fields_resolve_and_missing_interop_is_unknown()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-hud-" + Guid.NewGuid().ToString("N"));
+        var cancellationToken = TestContext.Current.CancellationToken;
+        try
+        {
+            var (workflow, repository, authority, interopPath) = await CreateInstalledHudWorkflowAsync(root, cancellationToken);
+            var buildId = authority.BuildId;
+            var missing = await workflow.RunScheduleOneAsync(buildId, false, cancellationToken);
+            Assert.False(missing.Reused);
+            var missingRows = await repository.GetCompletedCallableSurfaceAsync(missing.IndexId, cancellationToken);
+            var hudFields = new[]
+            {
+                (Name: "topScreenText", GameType: "TMPro.TextMeshProUGUI", InteropType: "Il2CppTMPro.TextMeshProUGUI"),
+                (Name: "topScreenText_Background", GameType: "UnityEngine.RectTransform", InteropType: "Il2CppUnityEngine.RectTransform")
+            };
+            foreach (var field in hudFields)
+            {
+                var key = SymbolIdentity.Create(
+                    CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Field,
+                    $"ScheduleOne.UI.HUD::{field.GameType} {field.Name}").CanonicalKey;
+                var row = Assert.Single(missingRows, row => row.GameCanonicalKey == key);
+                Assert.Equal(CallableSurfaceStatus.Unknown, row.Status);
+                Assert.Null(row.InteropSignature);
+                Assert.Null(row.InteropInputSha256);
+            }
+            Assert.Equal(
+                "InteropSurfaceUnknown: no usable Il2CppInterop Assembly-CSharp.dll was found; wrapper-dependent availability is unknown.",
+                Assert.Single(missing.Warnings));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(interopPath)!);
+            File.Copy(typeof(S1Atlas.InteropAssemblyFixture.InteropFixtureRoot).Assembly.Location, interopPath);
+            var interopHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(interopPath, cancellationToken))).ToLowerInvariant();
+            var installed = await workflow.RunScheduleOneAsync(buildId, false, cancellationToken);
+
+            Assert.False(installed.Reused);
+            Assert.NotEqual(missing.IndexId, installed.IndexId);
+            Assert.Empty(installed.Warnings);
+            var installedRows = await repository.GetCompletedCallableSurfaceAsync(installed.IndexId, cancellationToken);
+            foreach (var field in hudFields)
+            {
+                var key = SymbolIdentity.Create(
+                    CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Field,
+                    $"ScheduleOne.UI.HUD::{field.GameType} {field.Name}").CanonicalKey;
+                var row = Assert.Single(installedRows, row => row.GameCanonicalKey == key);
+                Assert.Equal(CallableSurfaceStatus.Resolved, row.Status);
+                Assert.Equal(CallableSurfaceKind.PublicPropertyAccessor, row.Kind);
+                Assert.Equal($"{field.InteropType} {field.Name}", row.InteropSignature);
+                Assert.Equal(interopHash, row.InteropInputSha256);
+                Assert.False(row.RequiresReflection);
+                Assert.Equal(InteropInputTrust.LocalOnly, row.InteropInputTrust);
+            }
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    [Fact]
+    public async Task Previous_index_identity_is_rebuilt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-hud-rebuild-" + Guid.NewGuid().ToString("N"));
+        var cancellationToken = TestContext.Current.CancellationToken;
+        try
+        {
+            var (workflow, repository, authority, interopPath) = await CreateInstalledHudWorkflowAsync(root, cancellationToken);
+            Directory.CreateDirectory(Path.GetDirectoryName(interopPath)!);
+            File.Copy(typeof(S1Atlas.InteropAssemblyFixture.InteropFixtureRoot).Assembly.Location, interopPath);
+            var interopHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(interopPath, cancellationToken))).ToLowerInvariant();
+            var extractionId = authority.Extraction.ExtractionId;
+            var previousIndexId = S1Atlas.Indexing.Workflow.IndexingWorkflow.CreateIndexId(
+                extractionId,
+                S1Atlas.Indexing.Workflow.IndexingWorkflow.DecompilerPackage,
+                S1Atlas.Indexing.Workflow.IndexingWorkflow.DecompilerVersion,
+                "default", 15, interopHash);
+            var previousSnapshotId = "schedule-i:" + extractionId + ":" + previousIndexId;
+            var now = DateTimeOffset.UtcNow.ToString("O");
+            const string qualifiedName = "ScheduleOne.UI.HUD::TMPro.TextMeshProUGUI topScreenText";
+            var identity = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Field, qualifiedName);
+            var symbol = new IndexSymbolRecord(
+                identity.Fingerprint(), previousSnapshotId, identity.CanonicalKey, "Field",
+                qualifiedName, "TMPro.TextMeshProUGUI topScreenText", false);
+            var previousRow = new IndexCallableSurfaceRecord(
+                "previous-hud-surface", previousIndexId, previousSnapshotId, symbol.SymbolId, symbol.CanonicalKey,
+                "Assembly-CSharp.dll", interopHash, null, CallableSurfaceKind.NonPublicWrapper, false,
+                CallableSurfaceStatus.Unavailable, InteropInputTrust.LocalOnly, "no usable interop wrapper or accessor was found");
+            await repository.CreateCodeSnapshotAsync(
+                new CodeSnapshotRecord(previousSnapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, extractionId, now),
+                cancellationToken);
+            await repository.StartIndexRunAsync(
+                new IndexRunRecord(previousIndexId, previousSnapshotId, IndexRunStatus.Running, now), cancellationToken);
+            await repository.CompleteIndexRunAsync(
+                previousIndexId, new IndexWriteSet([symbol], [], [], [], [], [previousRow]), now, cancellationToken);
+            Assert.NotNull(await repository.GetCompletedIndexAsync(previousIndexId, cancellationToken));
+
+            var result = await workflow.RunScheduleOneAsync(authority.BuildId, false, cancellationToken);
+
+            Assert.False(result.Reused);
+            Assert.NotEqual(previousIndexId, result.IndexId);
+            var rebuiltRows = await repository.GetCompletedCallableSurfaceAsync(result.IndexId, cancellationToken);
+            var rebuilt = Assert.Single(rebuiltRows, row => row.GameCanonicalKey == symbol.CanonicalKey);
+            Assert.Equal(CallableSurfaceStatus.Resolved, rebuilt.Status);
+            Assert.Equal(CallableSurfaceKind.PublicPropertyAccessor, rebuilt.Kind);
+            Assert.Equal("Il2CppTMPro.TextMeshProUGUI topScreenText", rebuilt.InteropSignature);
+            Assert.Equal(interopHash, rebuilt.InteropInputSha256);
+            Assert.False(rebuilt.RequiresReflection);
+            Assert.Equal(InteropInputTrust.LocalOnly, rebuilt.InteropInputTrust);
+            Assert.Equal(previousRow, Assert.Single(await repository.GetCompletedCallableSurfaceAsync(previousIndexId, cancellationToken)));
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    private static async Task<(
+        S1Atlas.Indexing.Workflow.IndexingWorkflow Workflow,
+        SqliteAtlasRepository Repository,
+        PreferredVerifiedExtraction Authority,
+        string InteropPath)> CreateInstalledHudWorkflowAsync(string root, CancellationToken cancellationToken)
+    {
+        var extractionRoot = Path.Combine(root, "extraction");
+        Directory.CreateDirectory(Path.Combine(extractionRoot, "reconstructed"));
+        File.Copy(typeof(S1Atlas.ManagedAssemblyFixture.FixtureRoot).Assembly.Location, Path.Combine(extractionRoot, "reconstructed", "Assembly-CSharp.dll"));
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+        var buildId = new string('3', 64);
+        var extractionId = new string('4', 64);
+        var now = DateTimeOffset.UtcNow;
+        var authority = new PreferredVerifiedExtraction(
+            buildId,
+            new PreferredExtraction(buildId, extractionId, now, ExtractionPreferenceReason.ManualPromotion),
+            new ValidatedExtraction(extractionId, "recipe", buildId, "tool", "attempt", "profile", 1, "profile-digest", 1, 1, "manifest", extractionRoot, now, ToolTrustLevel.ManagedPinned, ValidationOutcome.Valid, new ExtractionStatistics(0, 0, 1, 0, 0, 0, 0, 0, 0, 0, [])));
+        await repository.InitializeAsync(cancellationToken);
+        await repository.SaveSnapshotAsync(
+            new EnvironmentSnapshot(
+                2,
+                new GameBuild(buildId, new string('1', 64), new string('2', 64), now, true),
+                new InstallationObservation("2022.3.62", "3164500", "fixture", root, null, null),
+                [
+                    new DependencyVersion(DependencyKind.S1Api, null, null, false),
+                    new DependencyVersion(DependencyKind.S1Mapi, null, null, false),
+                    new DependencyVersion(DependencyKind.MelonLoader, null, null, false),
+                    new DependencyVersion(DependencyKind.Sideload, null, null, false)
+                ],
+                "0.1.0-test",
+                now),
+            cancellationToken);
+        var workflow = new S1Atlas.Indexing.Workflow.IndexingWorkflow(
+            root, repository, (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(authority),
+            new S1Atlas.Indexing.Workflow.ScheduleOneIndexSource(new IlSpyManagedDecompiler()), repository);
+        return (workflow, repository, authority, Path.Combine(root, "MelonLoader", "Il2CppAssemblies", "Assembly-CSharp.dll"));
     }
 
     // SceneIndexWorkflow.RequireCodeIndexAsync rejects a completed Schedule I

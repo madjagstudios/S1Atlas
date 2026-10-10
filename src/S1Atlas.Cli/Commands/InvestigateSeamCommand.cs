@@ -519,6 +519,9 @@ internal static class InvestigateSeamCommand
         public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedSymbolsByIdsAsync(string indexId, IReadOnlyList<string> symbolIds, CancellationToken cancellationToken) =>
             _inner.GetCompletedSymbolsByIdsAsync(indexId, symbolIds, cancellationToken);
 
+        public Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedMembersByNameAsync(string indexId, string declaringType, string memberName, CancellationToken cancellationToken) =>
+            _inner.GetCompletedMembersByNameAsync(indexId, declaringType, memberName, cancellationToken);
+
         public Task<int> CountCompletedSymbolMatchesAsync(string indexId, string query, CancellationToken cancellationToken, string? kind = null, bool includeGenerated = false) =>
             _inner.CountCompletedSymbolMatchesAsync(indexId, query, cancellationToken, kind, includeGenerated);
 

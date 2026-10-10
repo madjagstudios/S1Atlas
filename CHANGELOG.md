@@ -6,6 +6,10 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## Unreleased
 
+### Upgrading
+
+- Run `s1atlas index` once; callable evidence is rebuilt (AT-134).
+
 ### Fixed
 
 - `setup` now takes a game update all the way to ready in one run (AT-138).
@@ -14,6 +18,14 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   plan now also lists extract and index (and the scene snapshot with
   `--include-optional`), marked "if the scan records a new build", and skips
   them if the rescan keeps the same build.
+- Callable human output follows availability status instead of printing a
+  misleading `Interop: unavailable` for every missing signature. Public game
+  members that need no wrapper show `Interop: not needed (public game member)`
+  (AT-134).
+- Callable queries accept dotted `Type.member` selectors, including
+  `HUD.topScreenText`, without requiring a member-kind filter (AT-134).
+- Missing interop input and legacy indexes without retained callable mappings
+  report availability as unknown instead of unavailable (AT-134).
 
 ## [2.0.0] - 2026-10-04: Local web app, Harmony patch index, and mod checks
 

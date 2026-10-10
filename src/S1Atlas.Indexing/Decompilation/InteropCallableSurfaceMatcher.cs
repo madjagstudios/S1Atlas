@@ -44,6 +44,20 @@ public sealed class InteropCallableSurfaceMatcher
                     continue;
                 }
 
+                if (interopAssembly is null)
+                {
+                    matches.Add(new CallableSurfaceMatch(
+                        gameType.FullName,
+                        gameMember,
+                        null,
+                        CallableSurfaceKind.NonPublicWrapper,
+                        CallableSurfaceStatus.Unknown,
+                        false,
+                        null,
+                        "interop availability is unknown because no interop assembly was indexed"));
+                    continue;
+                }
+
                 var candidates = FindCandidates(gameType, gameMember, interopMembers);
                 if (candidates.Count == 1)
                 {
