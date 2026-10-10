@@ -13,7 +13,7 @@ namespace S1Atlas.Indexing.Workflow;
 
 public sealed class ReferenceModIndexWorkflow
 {
-    private const string RelationshipResolverVersion = "3";
+    private const string RelationshipResolverVersion = "4";
 
     private readonly IIndexRepository _repository;
     private readonly ReferenceModFileSelector _selector;

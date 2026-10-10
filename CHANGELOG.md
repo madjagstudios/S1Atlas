@@ -49,6 +49,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   resolve to their indexed type (AT-135).
 - Referenced assemblies are released right after decompiling, so indexing no
   longer holds a lock on the extraction folder (AT-135).
+- `check-mod` and the reference patch index now resolve more constant manual
+  `harmony.Patch(...)` registrations (AT-136).
+  Before, a target stored in a local and checked for `null`, a
+  `PropertySetter`/`PropertyGetter` target, or a target passed through a helper
+  method was reported as `unrecognized-manual-shape` or dropped, so an update
+  check could miss broken patch targets. Constant `typeof`, `const` and `nameof`
+  arguments are now followed into one level of helper, including a static,
+  parameterless helper returning a constant method lookup. Simple `?? throw`
+  guards retain the lookup on the surviving path. Unresolved call sites are
+  reported at the caller, and patches whose patch method cannot be identified are
+  kept. Existing reference collections are rebuilt on the next `reference index`.
 
 ## [2.0.0] - 2026-10-04: Local web app, Harmony patch index, and mod checks
 

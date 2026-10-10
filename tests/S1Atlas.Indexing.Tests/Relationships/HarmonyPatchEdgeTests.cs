@@ -24,7 +24,7 @@ public sealed class HarmonyPatchEdgeTests
                 .Where(edge => edge.Kind == "Patches")
                 .ToArray();
 
-            Assert.Equal(20, edges.Count(edge => edge.TargetSymbolId is not null));
+            Assert.Equal(24, edges.Count(edge => edge.TargetSymbolId is not null));
             Assert.Equal(15, edges.Count(edge => edge.TargetSymbolId is null));
 
             var gameSymbols = (await repository.GetCompletedSymbolsAsync(seed.GameIndexId, TestContext.Current.CancellationToken))
@@ -32,7 +32,7 @@ public sealed class HarmonyPatchEdgeTests
             var modSymbols = (await repository.GetCompletedSymbolsAsync(seed.ReferenceIndexId, TestContext.Current.CancellationToken))
                 .ToDictionary(symbol => symbol.SymbolId, symbol => symbol.Signature, StringComparer.Ordinal);
 
-            Assert.Equal(9, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
+            Assert.Equal(12, edges.Count(edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal)));
             Assert.All(
                 edges.Where(edge => edge.TargetSymbolId is not null &&
                     gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
@@ -48,7 +48,7 @@ public sealed class HarmonyPatchEdgeTests
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "Metadata"));
-            Assert.Equal(6, edges.Count(edge =>
+            Assert.Equal(9, edges.Count(edge =>
                 edge.TargetSymbolId is not null &&
                 gameSymbols[edge.TargetSymbolId!].Contains("::Run(", StringComparison.Ordinal) &&
                 edge.Evidence == "RecoveredIL"));
@@ -64,9 +64,10 @@ public sealed class HarmonyPatchEdgeTests
             Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::.cctor(", StringComparison.Ordinal));
             Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Compute(System.Int32&)", StringComparison.Ordinal));
             Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Consume(System.Int32&)", StringComparison.Ordinal));
-            var untouched = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Untouched(", StringComparison.Ordinal));
+            var untouched = Assert.Single(edges, edge => edge.TargetSymbolId is not null &&
+                gameSymbols[edge.TargetSymbolId!].Contains("::Untouched(", StringComparison.Ordinal) &&
+                edge.Evidence == "Metadata");
             Assert.Equal("Prefix", untouched.GeneratedDetail);
-            Assert.Equal("Metadata", untouched.Evidence);
             var transpiler = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("Widget+Nested::Inner(", StringComparison.Ordinal));
             Assert.Equal("Transpiler", transpiler.GeneratedDetail);
             var interopParam = Assert.Single(edges, edge => edge.TargetSymbolId is not null && gameSymbols[edge.TargetSymbolId!].Contains("::Calibrate(", StringComparison.Ordinal));
@@ -90,6 +91,27 @@ public sealed class HarmonyPatchEdgeTests
                 edge.TargetSymbolId is null &&
                 modSymbols[edge.SourceSymbolId].Contains("NoOverloadPatch::Prefix(", StringComparison.Ordinal));
             Assert.StartsWith("unresolved:no-matching-overload:", noOverload.TargetText, StringComparison.Ordinal);
+
+            // A manual patch whose patch method cannot be identified hangs on the method
+            // that registers it, so its target is still checked (AT-136).
+            foreach (var host in new[]
+            {
+                "ManualAmbiguousMethodPatch::Install(",
+                "ManualUnknownMethodPatch::Install(",
+                "ManualNonConstantPatchTypesPatch::Install(",
+            })
+            {
+                var hosted = Assert.Single(edges, edge => modSymbols[edge.SourceSymbolId].Contains(host, StringComparison.Ordinal));
+                Assert.Contains("::Run(", gameSymbols[hosted.TargetSymbolId!], StringComparison.Ordinal);
+                Assert.Equal("Prefix", hosted.GeneratedDetail);
+                Assert.Equal("RecoveredIL", hosted.Evidence);
+            }
+
+            var hostedUntouched = Assert.Single(edges, edge =>
+                modSymbols[edge.SourceSymbolId].Contains("ManualNonConstantMethodPatch::Install(", StringComparison.Ordinal));
+            Assert.Contains("::Untouched(", gameSymbols[hostedUntouched.TargetSymbolId!], StringComparison.Ordinal);
+            Assert.Equal("Prefix", hostedUntouched.GeneratedDetail);
+            Assert.Equal("RecoveredIL", hostedUntouched.Evidence);
 
             var unresolvedReasons = edges
                 .Where(edge => edge.TargetSymbolId is null)

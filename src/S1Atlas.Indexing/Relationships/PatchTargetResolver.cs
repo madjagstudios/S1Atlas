@@ -9,7 +9,7 @@ public static class PatchTargetResolver
 {
     public const string GameOrigin = "game";
 
-    public static IndexRelationshipRecord? ResolvePatchEdge(
+    public static IndexRelationshipRecord ResolvePatchEdge(
         ManagedPatchFact fact,
         IndexSymbolRecord hostSource,
         string modId,
@@ -21,13 +21,6 @@ public static class PatchTargetResolver
         ArgumentNullException.ThrowIfNull(hostSource);
         ArgumentNullException.ThrowIfNull(gameTypes);
         var source = ResolveSource(fact, hostSource, modId, modMembers);
-        if (source is null)
-        {
-            // The one edgeless case: a manual-patch fact whose patch method cannot be
-            // identified at all leaves no source symbol to hang the edge on, so there is
-            // nothing to store. Every other recognised patch below yields an edge.
-            return null;
-        }
 
         var kindName = fact.Kind.ToString();
         if (fact.Reason is not null)
@@ -101,24 +94,25 @@ public static class PatchTargetResolver
             kindName);
     }
 
-    private static IndexSymbolRecord? ResolveSource(
+    private static IndexSymbolRecord ResolveSource(
         ManagedPatchFact fact,
         IndexSymbolRecord hostSource,
         string modId,
         IReadOnlyDictionary<(string Origin, string Type, string Name), List<IndexSymbolRecord>> modMembers)
     {
-        if (fact.Evidence != RelationshipEvidence.RecoveredIL)
+        // Attribute patches patch from their own member. A manual patch hangs on its patch
+        // method when that is identified uniquely, and otherwise on the method that
+        // registers it, so the patch is reported at the caller instead of dropped.
+        if (fact.Evidence != RelationshipEvidence.RecoveredIL ||
+            fact.PatchMethodType is null || fact.PatchMethodName is null ||
+            !modMembers.TryGetValue((modId, fact.PatchMethodType, fact.PatchMethodName), out var candidates))
             return hostSource;
-        if (fact.PatchMethodType is null || fact.PatchMethodName is null)
-            return null;
-        if (!modMembers.TryGetValue((modId, fact.PatchMethodType, fact.PatchMethodName), out var candidates))
-            return null;
 
         var matching = candidates
             .DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal)
             .Where(symbol => fact.PatchMethodArgumentTypes is null || MatchesParameters(symbol.Signature, fact.PatchMethodArgumentTypes))
             .ToArray();
-        return matching.Length == 1 ? matching[0] : null;
+        return matching.Length == 1 ? matching[0] : hostSource;
     }
 
     private static IndexRelationshipRecord ResolveUnresolved(ManagedPatchFact fact, IndexSymbolRecord source, string kindName)

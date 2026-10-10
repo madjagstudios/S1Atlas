@@ -145,11 +145,7 @@ public sealed class ReferenceRelationshipResolver
                     var detail = rawSourceId is not null || mapping?.DeclaringKey is null ? mapping?.Detail : null;
 
                     foreach (var patch in member.PatchesOrEmpty)
-                    {
-                        var patchEdge = PatchTargetResolver.ResolvePatchEdge(patch, source, mod.ModId, gameMembers, gameTypes, modMembers);
-                        if (patchEdge is not null)
-                            result.Add(patchEdge);
-                    }
+                        result.Add(PatchTargetResolver.ResolvePatchEdge(patch, source, mod.ModId, gameMembers, gameTypes, modMembers));
 
                     foreach (var reference in member.References)
                     {

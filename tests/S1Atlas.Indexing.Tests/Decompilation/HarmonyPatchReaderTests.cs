@@ -147,7 +147,7 @@ public sealed class HarmonyPatchReaderTests
         var fact = Assert.Single(member.Patches ?? []);
         Assert.Equal(HarmonyPatchKind.Prefix, fact.Kind);
         Assert.Equal("Game.Widget::Untouched", fact.TargetSignature);
-        Assert.Equal(HarmonyPatchReasons.NonConstantArguments, fact.Reason);
+        Assert.Null(fact.Reason);
         Assert.Null(fact.PatchMethodType);
     }
 
@@ -185,7 +185,7 @@ public sealed class HarmonyPatchReaderTests
         var fact = Assert.Single(member.Patches ?? []);
         Assert.Equal(HarmonyPatchKind.Prefix, fact.Kind);
         Assert.Equal("Game.Widget::Run", fact.TargetSignature);
-        Assert.Equal(HarmonyPatchReasons.NonConstantArguments, fact.Reason);
+        Assert.Null(fact.Reason);
         Assert.Null(fact.PatchMethodType);
         Assert.Null(fact.PatchMethodName);
     }

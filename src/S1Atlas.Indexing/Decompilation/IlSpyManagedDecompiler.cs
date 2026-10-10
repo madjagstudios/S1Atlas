@@ -51,10 +51,13 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         }
 
         var metadata = peReader.GetMetadataReader();
+        var helpers = PatchHelperCache.Create(metadata, peReader);
         var types = metadata.TypeDefinitions
-            .Select(handle => ReadType(metadata, peReader, handle))
+            .Select(handle => ReadType(metadata, peReader, handle, helpers))
             .Where(type => !string.Equals(type.Name, "<Module>", StringComparison.Ordinal))
             .ToArray();
+        if (helpers is { Inlined.Count: > 0 })
+            types = types.Select(type => SuppressInlinedHelperPatches(type, helpers.Inlined)).ToArray();
 
         return Task.FromResult(new ManagedDecompilation(fullPath, source, types));
     }
@@ -62,7 +65,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
     private static ManagedTypeFacts ReadType(
         MetadataReader metadata,
         PEReader peReader,
-        TypeDefinitionHandle typeHandle)
+        TypeDefinitionHandle typeHandle,
+        PatchHelperCache? helpers)
     {
         var definition = metadata.GetTypeDefinition(typeHandle);
         var name = metadata.GetString(definition.Name);
@@ -150,7 +154,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             var bodyAnalysis = hasBody
                 ? ReadBodyAnalysis(metadata, peReader, method.RelativeVirtualAddress)
                 : BodyAnalysis.Empty;
-            var interpreted = ManualPatchRecognizer.Analyze(bodyAnalysis.Instructions, bodyAnalysis.BranchTargets);
+            var interpreted = ManualPatchRecognizer.Analyze(
+                bodyAnalysis.Instructions, bodyAnalysis.BranchTargets, helpers is null ? null : helpers.Find);
+            helpers?.Inlined.UnionWith(interpreted.InlinedHelpers);
             var bodyFacts = new ManagedMethodBodyFacts(
                 hasBody,
                 IsNoBodyByDesign(method),
@@ -382,6 +388,104 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         if (manualPatches.Count == 0)
             return attributePatches;
         return attributePatches.Concat(manualPatches).ToArray();
+    }
+
+    // A forwarding helper's own facts only say "whatever a caller passes". Once any call
+    // site was inlined, the callers report the concrete targets, so those facts go.
+    // Attribute (Metadata) facts on the same member are kept.
+    private static ManagedTypeFacts SuppressInlinedHelperPatches(ManagedTypeFacts type, IReadOnlySet<string> inlined)
+    {
+        if (!type.Members.Any(member => member.Patches is not null && inlined.Contains(member.Signature)))
+            return type;
+        return type with
+        {
+            Members = type.Members.Select(member =>
+            {
+                if (member.Patches is null || !inlined.Contains(member.Signature))
+                    return member;
+                var kept = member.Patches.Where(patch => patch.Evidence != RelationshipEvidence.RecoveredIL).ToArray();
+                return member with { Patches = kept.Length == 0 ? null : kept };
+            }).ToArray()
+        };
+    }
+
+    private sealed class PatchHelperCache
+    {
+        private const string HarmonyTypeName = "HarmonyLib.Harmony";
+        private readonly MetadataReader _metadata;
+        private readonly PEReader _peReader;
+        private readonly Dictionary<string, MethodDefinitionHandle> _methods;
+        private readonly Dictionary<string, PatchHelperBody?> _bodies = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, PatchHelperBody?> _targetBodies = new(StringComparer.Ordinal);
+
+        private PatchHelperCache(MetadataReader metadata, PEReader peReader, Dictionary<string, MethodDefinitionHandle> methods)
+        {
+            _metadata = metadata;
+            _peReader = peReader;
+            _methods = methods;
+        }
+
+        public HashSet<string> Inlined { get; } = new(StringComparer.Ordinal);
+
+        // Only an assembly that defines or references HarmonyLib.Harmony can host a patch
+        // helper, so game assemblies skip building the method map.
+        public static PatchHelperCache? Create(MetadataReader metadata, PEReader peReader)
+        {
+            if (!metadata.TypeReferences.Any(handle => string.Equals(GetTypeName(metadata, handle), HarmonyTypeName, StringComparison.Ordinal)) &&
+                !metadata.TypeDefinitions.Any(handle => string.Equals(GetTypeName(metadata, handle), HarmonyTypeName, StringComparison.Ordinal)))
+                return null;
+            var typeProvider = new MetadataTypeNameProvider();
+            var methods = new Dictionary<string, MethodDefinitionHandle>(StringComparer.Ordinal);
+            foreach (var handle in metadata.MethodDefinitions)
+                methods.TryAdd(GetMethodIdentity(metadata, handle, typeProvider), handle);
+            return new PatchHelperCache(metadata, peReader, methods);
+        }
+
+        public PatchHelperBody? Find(string identity)
+        {
+            if (_bodies.TryGetValue(identity, out var cached))
+                return cached;
+            var helper = FindTarget(identity);
+            if (helper is null && _methods.TryGetValue(identity, out var handle))
+            {
+                var method = _metadata.GetMethodDefinition(handle);
+                if (method.RelativeVirtualAddress != 0)
+                {
+                    var hasThis = (method.Attributes & MethodAttributes.Static) == 0;
+                    var body = ReadBodyAnalysis(_metadata, _peReader, method.RelativeVirtualAddress);
+                    // Resolve constant target helpers before deciding whether this body
+                    // needs caller arguments. Otherwise a self-contained registration
+                    // is suppressed and then loses its target at the outer call site.
+                    if (ManualPatchRecognizer.IsForwardingPatchHelper(body.Instructions, body.BranchTargets, hasThis, FindTarget))
+                        helper = new PatchHelperBody(body.Instructions, body.BranchTargets, hasThis);
+                }
+            }
+
+            _bodies[identity] = helper;
+            return helper;
+        }
+
+        private PatchHelperBody? FindTarget(string identity)
+        {
+            if (_targetBodies.TryGetValue(identity, out var cached))
+                return cached;
+            PatchHelperBody? helper = null;
+            if (_methods.TryGetValue(identity, out var handle))
+            {
+                var method = _metadata.GetMethodDefinition(handle);
+                var signature = method.DecodeSignature(new MetadataTypeNameProvider(), null);
+                if (method.RelativeVirtualAddress != 0 && (method.Attributes & MethodAttributes.Static) != 0 &&
+                    signature.ParameterTypes.Length == 0 && signature.GenericParameterCount == 0 &&
+                    signature.ReturnType is "System.Reflection.MethodInfo" or "System.Reflection.MethodBase")
+                {
+                    var body = ReadBodyAnalysis(_metadata, _peReader, method.RelativeVirtualAddress);
+                    if (ManualPatchRecognizer.IsConstantTargetHelper(body.Instructions, body.BranchTargets))
+                        helper = new PatchHelperBody(body.Instructions, body.BranchTargets, HasThis: false, ReturnsTarget: true);
+                }
+            }
+            _targetBodies[identity] = helper;
+            return helper;
+        }
     }
 
     private static BodyAnalysis ReadBodyAnalysis(
@@ -647,6 +751,10 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                     return new CapturedInstruction(opcode, null, BitConverter.ToInt32(il, operandOffset), instructionOffset);
                 case OperandType.InlineI8:
                     return new CapturedInstruction(opcode, null, BitConverter.ToInt64(il, operandOffset), instructionOffset);
+                case OperandType.ShortInlineBrTarget:
+                    return new CapturedInstruction(opcode, null, operandOffset + 1 + (sbyte)il[operandOffset], instructionOffset);
+                case OperandType.InlineBrTarget:
+                    return new CapturedInstruction(opcode, null, operandOffset + 4 + BitConverter.ToInt32(il, operandOffset), instructionOffset);
                 case OperandType.ShortInlineVar:
                     return new CapturedInstruction(opcode, null, il[operandOffset], instructionOffset);
                 case OperandType.InlineVar:

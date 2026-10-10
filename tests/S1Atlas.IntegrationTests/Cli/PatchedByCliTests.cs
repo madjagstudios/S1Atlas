@@ -32,7 +32,7 @@ public sealed class PatchedByCliTests
         var resolved = relationships.EnumerateArray()
             .Where(edge => edge.GetProperty("target").GetProperty("resolved").GetBoolean())
             .ToArray();
-        Assert.Equal(9, resolved.Length);
+        Assert.Equal(12, resolved.Length);
         Assert.All(resolved, edge =>
         {
             Assert.Equal("harmony-fixture", edge.GetProperty("source").GetProperty("referenceModId").GetString());
@@ -55,7 +55,7 @@ public sealed class PatchedByCliTests
         Assert.Contains(methods, method => method!.Contains("ManualOverloadDisambiguationPatch", StringComparison.Ordinal));
         var evidence = resolved.Select(edge => edge.GetProperty("label").GetString()).ToArray();
         Assert.Equal(3, evidence.Count(label => label == "attribute"));
-        Assert.Equal(6, evidence.Count(label => label == "DERIVED"));
+        Assert.Equal(9, evidence.Count(label => label == "DERIVED"));
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class PatchedByCliTests
         var sections = document.RootElement.GetProperty("data").GetProperty("evidenceSections");
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
-        Assert.Equal(10, patches.GetProperty("totalCount").GetInt32());
+        Assert.Equal(13, patches.GetProperty("totalCount").GetInt32());
         var claims = document.RootElement.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),

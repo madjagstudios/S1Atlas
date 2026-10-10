@@ -383,11 +383,22 @@ an unchanged `Demo.Api::Count` field reference.
 
 Constant Harmony `AccessTools.Method`, `Field`, `Property`, `PropertyGetter`,
 `PropertySetter`, and `Constructor` lookups, plus `typeof(T).GetMethod`, `GetField`,
-and `GetProperty` with constant names are recognized as DERIVED evidence. Dynamic
-strings and values crossing branch merge points are not inferred. System, Unity,
-MelonLoader, S1API, interop runtime, and other-mod dependencies are outside the
-check. The body flag compares stored fingerprints; it does not inspect changes
-inside a member or establish runtime compatibility.
+and `GetProperty` with constant names are recognized as DERIVED evidence. Manual
+`harmony.Patch(...)` calls resolve when the target is built from `typeof`, string
+literals, `const` strings, or `nameof`, including a target stored once in a local
+and checked for `null` before the call (also a simple `?? throw` exception guard),
+and `PropertyGetter`/`PropertySetter` targets (reported as `get_Name`/`set_Name`).
+A static, parameterless helper that returns one constant method lookup is also
+followed one level. A helper method that passes its own parameters into
+`AccessTools` and `harmony.Patch` is followed one level: each call site with
+constant arguments reports its own target, and a call site with
+non-constant arguments is reported as unresolved at that caller. A patch whose
+patch method cannot be identified is still checked, with the registering method as
+its source. Dynamic strings, values that differ between branches, and helpers that
+call further helpers are not inferred. System, Unity, MelonLoader, S1API, interop
+runtime, and other-mod dependencies are outside the check. The body flag compares
+stored fingerprints; it does not inspect changes inside a member or establish
+runtime compatibility.
 
 Without recovered method bodies, which is common for IL2CPP indexes,
 `bodyChanged` is unknown even when the method's canonical key is unchanged.
@@ -769,15 +780,18 @@ the recorded content hash is checked.
 patch edge from a patch method to the game method: `generatedDetail` names the
 patch kind (`Prefix`, `Postfix`, `Transpiler`, or `Finalizer`), `attribute`
 labels declared `[HarmonyPatch]` patches, and `DERIVED` labels constant manual
-`harmony.Patch(AccessTools.Method(...))` calls. Unlike the other reference
-queries, `patched-by` falls back to the recorded game index when the selector
-matches no reference symbol, since patch targets are game methods by
-definition. Resolved rows carry the game target; unresolved rows carry the
-`unresolved:<reason>:` target text instead, and rows whose text names the
-queried method are included. Patch targets written against the `Il2Cpp`
-interop view resolve to the same game symbols. Reference collections indexed
-before this version have no patch edges; re-run
-`s1atlas reference index <manifest>` to rebuild with patches.
+`harmony.Patch(AccessTools.Method(...))` calls, including those registered through
+one forwarding helper or using a constant target returned by a helper. A patch
+whose patch method cannot be identified uses the registering method as the row's
+source. Unlike the other reference queries, `patched-by` falls back to the
+recorded game index when the selector matches no reference symbol, since patch
+targets are game methods by definition. Resolved rows carry the game target;
+unresolved rows carry the `unresolved:<reason>:` target text instead, and rows
+whose text names the queried method are included. Patch targets written against
+the `Il2Cpp` interop view resolve to the same game symbols. Reference collections
+indexed before this version have no patch edges; re-run
+`s1atlas reference index <manifest>` to rebuild with patches. Collections indexed
+before AT-136 are rebuilt automatically on the next `reference index` run.
 
 Body recovery, callable-surface evidence, and reference evidence are orthogonal.
 Body recovery describes whether decompiled text is
