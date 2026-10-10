@@ -97,7 +97,9 @@ internal static class SetupCommand
         output.WriteLine("Setup plan:");
         for (var index = 0; index < plan.Count; index++)
         {
-            output.WriteLine($"{index + 1}. {plan[index].Display}");
+            output.WriteLine(plan[index].OnlyIfRescanChangesBuild
+                ? $"{index + 1}. {plan[index].Display} (if the scan records a new build)"
+                : $"{index + 1}. {plan[index].Display}");
             if (scanSwitches &&
                 string.Equals(plan[index].ItemId, ReadinessItemIds.Scan, StringComparison.Ordinal))
             {
@@ -199,6 +201,7 @@ internal static class SetupCommand
         }
 
         var plan = new List<SetupPlanStep>();
+        var rescanPending = false;
         if (items.TryGetValue(ReadinessItemIds.Scan, out var scan) &&
             scan.State != ReadinessState.Ok)
         {
@@ -209,6 +212,7 @@ internal static class SetupCommand
                 false,
                 null,
                 cancellationToken => runners.Scan(gamePath, cancellationToken)));
+            rescanPending = true;
         }
 
         if (items.TryGetValue(ReadinessItemIds.Tools, out var tools) &&
@@ -246,6 +250,20 @@ internal static class SetupCommand
                 null,
                 cancellationToken => runners.Extract(options, cancellationToken)));
         }
+        else if (rescanPending && extraction is not null)
+        {
+            // Extraction, index, and scene snapshot are all per-build. A stale scan
+            // can record a new build, which turns these Ok items stale only after
+            // the scan runs, so plan them now and skip them at run time if the
+            // rescan kept the same build.
+            plan.Add(new SetupPlanStep(
+                ReadinessItemIds.Extraction,
+                ReadinessFixCommands.Extract,
+                false,
+                null,
+                cancellationToken => runners.Extract(ExtractCommand.DefaultOptions, cancellationToken),
+                OnlyIfRescanChangesBuild: true));
+        }
 
         if (items.TryGetValue(ReadinessItemIds.Index, out var index) &&
             index.State != ReadinessState.Ok)
@@ -264,6 +282,16 @@ internal static class SetupCommand
                 null,
                 cancellationToken => runners.Index(options, cancellationToken)));
         }
+        else if (rescanPending && index is not null)
+        {
+            plan.Add(new SetupPlanStep(
+                ReadinessItemIds.Index,
+                ReadinessFixCommands.Index,
+                false,
+                null,
+                cancellationToken => runners.Index(new IndexCommandOptions(), cancellationToken),
+                OnlyIfRescanChangesBuild: true));
+        }
 
         if (plan.Count > 0 &&
             items.TryGetValue(ReadinessItemIds.Scan, out var satisfiedScan) &&
@@ -280,15 +308,27 @@ internal static class SetupCommand
         }
 
         if (includeOptional &&
-            items.TryGetValue(ReadinessItemIds.Scene, out var scene) &&
-            scene.State != ReadinessState.Ok)
+            items.TryGetValue(ReadinessItemIds.Scene, out var scene))
         {
-            plan.Add(new SetupPlanStep(
-                ReadinessItemIds.Scene,
-                scene.FixCommand ?? ReadinessFixCommands.IndexScene,
-                false,
-                null,
-                runners.IndexScene));
+            if (scene.State != ReadinessState.Ok)
+            {
+                plan.Add(new SetupPlanStep(
+                    ReadinessItemIds.Scene,
+                    scene.FixCommand ?? ReadinessFixCommands.IndexScene,
+                    false,
+                    null,
+                    runners.IndexScene));
+            }
+            else if (rescanPending)
+            {
+                plan.Add(new SetupPlanStep(
+                    ReadinessItemIds.Scene,
+                    ReadinessFixCommands.IndexScene,
+                    false,
+                    null,
+                    runners.IndexScene,
+                    OnlyIfRescanChangesBuild: true));
+            }
         }
 
         return plan;
@@ -321,7 +361,7 @@ internal static class SetupCommand
         }
 
         return FindItem(fresh, step.ItemId)?.State == ReadinessState.Ok &&
-            FindItem(initial, step.ItemId)?.State != ReadinessState.Ok;
+            (step.OnlyIfRescanChangesBuild || FindItem(initial, step.ItemId)?.State != ReadinessState.Ok);
     }
 
     private static ReadinessItem? FindItem(ReadinessReport report, string id)
@@ -352,5 +392,6 @@ internal static class SetupCommand
         string Display,
         bool RequiresNetwork,
         string? ToolId,
-        Func<CancellationToken, Task<int>> Invoke);
+        Func<CancellationToken, Task<int>> Invoke,
+        bool OnlyIfRescanChangesBuild = false);
 }
