@@ -28,7 +28,7 @@ public sealed record IndexingWorkflowResult(
 
 public sealed class IndexingWorkflow
 {
-    public const int IndexSchemaVersion = 16;
+    public const int IndexSchemaVersion = 17;
     internal const string DecompilerPackage = "ICSharpCode.Decompiler";
     internal static string DecompilerVersion => typeof(CSharpDecompiler).Assembly.GetName().Version?.ToString()
         ?? throw new InvalidOperationException("The ILSpy decompiler assembly has no version.");
@@ -86,9 +86,9 @@ public sealed class IndexingWorkflow
             ?? throw new InvalidOperationException("No preferred integrity-verified extraction is available.");
         var currentEnvironment = await ResolveMatchingEnvironmentAsync(buildId, cancellationToken);
         var selectedInteropPath = ResolveInteropPath(currentEnvironment, interopPath);
-        var interopInputSha256 = selectedInteropPath is null
-            ? null
-            : await HashFileAsync(selectedInteropPath, cancellationToken);
+        var gameAssemblyPaths = GameAssemblySet.Select(Path.Combine(authority.Extraction.RootPath, "reconstructed"));
+        var interopInputs = await ResolveInteropInputsAsync(selectedInteropPath, gameAssemblyPaths, cancellationToken);
+        var interopInputSha256 = CombineInteropHashes(interopInputs);
         var indexId = CreateIndexId(
             authority.Extraction.ExtractionId,
             DecompilerPackage,
@@ -147,58 +147,107 @@ public sealed class IndexingWorkflow
         {
             await _repository.StartIndexRunAsync(run, cancellationToken);
             runStarted = true;
-            var decompilation = await _source.ReadAsync(authority, cancellationToken);
+            var assemblies = await _source.ReadGameAssembliesAsync(authority, cancellationToken);
             var finalAuthority = await _authorityResolver(buildId, cancellationToken);
             if (finalAuthority is null || finalAuthority.Extraction.ExtractionId != authority.Extraction.ExtractionId)
                 throw new InvalidOperationException("The preferred extraction changed during indexing.");
-            var sourceFile = await _sourceWriter.WriteAsync(paths.StagingRoot, "Assembly-CSharp.cs", decompilation.SourceText, snapshotId, cancellationToken);
-            ManagedDecompilation? interopDecompilation = null;
-            IndexSourceFileRecord? interopSourceFile = null;
-            if (selectedInteropPath is not null)
+            var decompilation = MergeGameAssemblies(assemblies);
+            var gameSources = new List<(IndexSourceFileRecord File, string Text)>();
+            foreach (var assembly in assemblies)
             {
-                interopDecompilation = await _source.ReadInteropAsync(selectedInteropPath, cancellationToken);
-                var finalInteropHash = await HashFileAsync(selectedInteropPath, cancellationToken);
-                if (!string.Equals(interopInputSha256, finalInteropHash, StringComparison.Ordinal))
-                    throw new InvalidDataException("The interop assembly changed during indexing.");
-                interopSourceFile = await _sourceWriter.WriteAsync(
+                var file = await _sourceWriter.WriteAsync(
                     paths.StagingRoot,
-                    "interop/Assembly-CSharp.cs",
-                    interopDecompilation.SourceText,
+                    GameAssemblySet.SourceRelativePath(assembly.FileName),
+                    assembly.Decompilation.SourceText,
                     snapshotId,
                     cancellationToken);
+                gameSources.Add((file, assembly.Decompilation.SourceText));
+            }
+            var interopDecompilations = new Dictionary<string, ManagedDecompilation>(StringComparer.OrdinalIgnoreCase);
+            var interopSourceFiles = new List<IndexSourceFileRecord>();
+            foreach (var input in interopInputs)
+            {
+                var interop = await _source.ReadInteropAsync(input.AssemblyPath, cancellationToken);
+                var finalInteropHash = await HashFileAsync(input.AssemblyPath, cancellationToken);
+                if (!string.Equals(input.Sha256, finalInteropHash, StringComparison.Ordinal))
+                    throw new InvalidDataException("The interop assembly changed during indexing.");
+                interopDecompilations[input.GameFileName] = interop;
+                interopSourceFiles.Add(await _sourceWriter.WriteAsync(
+                    paths.StagingRoot,
+                    "interop/" + GameAssemblySet.SourceRelativePath(input.GameFileName),
+                    interop.SourceText,
+                    snapshotId,
+                    cancellationToken));
             }
             var symbols = BuildSymbols(decompilation, snapshotId);
-            var callableSurface = BuildCallableSurface(
-                decompilation,
-                interopDecompilation,
-                symbols,
-                indexId,
-                snapshotId,
-                selectedInteropPath,
-                interopInputSha256);
-            var sourceSymbols = _sourceIndexer.Index(decompilation.SourceText, CodebaseKind.ScheduleI, CodeChannel.Installed, sourceFile.RelativePath);
-            var sourceLocations = BuildSourceLocations(sourceSymbols, symbols, sourceFile);
+            var callableSurface = assemblies
+                .SelectMany(assembly =>
+                {
+                    var input = interopInputs.FirstOrDefault(item =>
+                        string.Equals(item.GameFileName, assembly.FileName, StringComparison.OrdinalIgnoreCase));
+                    return BuildCallableSurface(
+                        assembly.Decompilation,
+                        input is null ? null : interopDecompilations[input.GameFileName],
+                        symbols,
+                        indexId,
+                        snapshotId,
+                        input?.AssemblyPath,
+                        input?.Sha256,
+                        GameAssemblySet.InteropFileName(assembly.FileName));
+                })
+                .GroupBy(record => record.CallableSurfaceId, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .OrderBy(record => record.GameCanonicalKey, StringComparer.Ordinal)
+                .ToArray();
+            var indexedSources = gameSources
+                .Select(source => (source.File, source.Text, Symbols: _sourceIndexer.Index(source.Text, CodebaseKind.ScheduleI, CodeChannel.Installed, source.File.RelativePath)))
+                .ToArray();
+            var sourceLocations = indexedSources
+                .SelectMany(source => BuildSourceLocations(source.Symbols, symbols, source.File))
+                .GroupBy(location => location.SymbolId, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .ToArray();
+            var sourceEvidence = indexedSources
+                .SelectMany(source => BuildSourceEvidence(source.Symbols, symbols, source.Text))
+                .GroupBy(pair => pair.Key, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<string>)group.SelectMany(pair => pair.Value).ToArray(),
+                    StringComparer.Ordinal);
             var fingerprints = _fingerprints.Create(
                 symbols,
                 BuildMethodEvidence(decompilation, symbols),
-                BuildSourceEvidence(sourceSymbols, symbols, decompilation.SourceText));
+                sourceEvidence);
             var relationships = BuildRelationships(decompilation, symbols, snapshotId);
 
-            var writtenPath = Path.Combine(paths.StagingRoot, sourceFile.RelativePath.Replace('/', Path.DirectorySeparatorChar));
-            var writtenHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(writtenPath, cancellationToken))).ToLowerInvariant();
-            if (!string.Equals(writtenHash, sourceFile.Sha256, StringComparison.Ordinal))
-                throw new InvalidDataException("Generated source hash validation failed.");
+            foreach (var (file, _) in gameSources)
+            {
+                var writtenPath = Path.Combine(paths.StagingRoot, file.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                var writtenHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(writtenPath, cancellationToken))).ToLowerInvariant();
+                if (!string.Equals(writtenHash, file.Sha256, StringComparison.Ordinal))
+                    throw new InvalidDataException("Generated source hash validation failed.");
+            }
 
-            var sourceFiles = interopSourceFile is null ? new[] { sourceFile } : new[] { sourceFile, interopSourceFile };
+            var sourceFiles = gameSources.Select(source => source.File).ToList();
+            sourceFiles.AddRange(interopSourceFiles);
             await _repository.CompleteIndexRunAsync(indexId, new IndexWriteSet(symbols, sourceFiles, sourceLocations, fingerprints, relationships, callableSurface), DateTimeOffset.UtcNow.ToString("O"), cancellationToken);
             databaseCompleted = true;
             if (Directory.Exists(paths.FinalRoot)) Directory.Delete(paths.FinalRoot, recursive: true);
             Directory.Move(paths.StagingRoot, paths.FinalRoot);
             await File.WriteAllTextAsync(paths.CompleteMarkerPath!, indexId + "\n", Encoding.UTF8, cancellationToken);
-            var warnings = selectedInteropPath is null
-                ? new[] { "InteropSurfaceUnknown: no usable Il2CppInterop Assembly-CSharp.dll was found; wrapper-dependent availability is unknown." }
-                : Array.Empty<string>();
-            return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, sourceFiles.Length, relationships.Count, warnings, callableSurface.Count);
+            var warnings = new List<string>();
+            if (selectedInteropPath is null)
+            {
+                warnings.Add("InteropSurfaceUnknown: no usable Il2CppInterop Assembly-CSharp.dll was found; wrapper-dependent availability is unknown.");
+            }
+            else
+            {
+                warnings.AddRange(assemblies
+                    .Where(assembly => !interopDecompilations.ContainsKey(assembly.FileName))
+                    .Select(assembly =>
+                        $"InteropSurfaceUnknown: no usable Il2CppInterop {GameAssemblySet.InteropFileName(assembly.FileName)} was found beside {Path.GetFileName(selectedInteropPath)}; wrapper-dependent availability of {assembly.FileName} is unknown."));
+            }
+            return new IndexingWorkflowResult(indexId, snapshotId, false, symbols.Count, sourceFiles.Count, relationships.Count, warnings, callableSurface.Length);
         }
         catch (Exception exception)
         {
@@ -253,6 +302,40 @@ public sealed class IndexingWorkflow
         return Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)).ToLowerInvariant();
     }
 
+    private sealed record InteropInput(string GameFileName, string AssemblyPath, string Sha256);
+
+    /// <summary>
+    /// Pairs each game assembly with its Il2CppInterop assembly: the selected
+    /// Assembly-CSharp interop itself, and "Il2Cpp" + name (for example
+    /// Il2CppScheduleOne.Core.dll) beside it for every other game assembly.
+    /// </summary>
+    private static async Task<IReadOnlyList<InteropInput>> ResolveInteropInputsAsync(
+        string? primaryInteropPath,
+        IReadOnlyList<string> gameAssemblyPaths,
+        CancellationToken cancellationToken)
+    {
+        if (primaryInteropPath is null)
+            return [];
+        var directory = Path.GetDirectoryName(primaryInteropPath)!;
+        var inputs = new List<InteropInput>();
+        foreach (var gameFileName in gameAssemblyPaths.Select(path => Path.GetFileName(path)))
+        {
+            var candidate = string.Equals(gameFileName, GameAssemblySet.PrimaryFileName, StringComparison.OrdinalIgnoreCase)
+                ? primaryInteropPath
+                : Path.Combine(directory, GameAssemblySet.InteropFileName(gameFileName));
+            if (File.Exists(candidate))
+                inputs.Add(new InteropInput(gameFileName, candidate, await HashFileAsync(candidate, cancellationToken)));
+        }
+        return inputs;
+    }
+
+    private static string? CombineInteropHashes(IReadOnlyList<InteropInput> inputs) => inputs.Count switch
+    {
+        0 => null,
+        1 when string.Equals(inputs[0].GameFileName, GameAssemblySet.PrimaryFileName, StringComparison.OrdinalIgnoreCase) => inputs[0].Sha256,
+        _ => HashId(string.Join("\n", inputs.Select(input => input.GameFileName + ":" + input.Sha256)))
+    };
+
     internal static IReadOnlyList<IndexCallableSurfaceRecord> BuildCallableSurface(
         ManagedDecompilation game,
         ManagedDecompilation? interop,
@@ -260,11 +343,14 @@ public sealed class IndexingWorkflow
         string indexId,
         string snapshotId,
         string? interopPath,
-        string? interopInputSha256)
+        string? interopInputSha256,
+        string? unavailableAssemblyName = null)
     {
         var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol, StringComparer.Ordinal);
         var matches = new InteropCallableSurfaceMatcher().Match(game, interop);
-        var assemblyName = interopPath is null ? "Assembly-CSharp.dll" : Path.GetFileName(interopPath);
+        var assemblyName = interopPath is null
+            ? unavailableAssemblyName ?? GameAssemblySet.PrimaryFileName
+            : Path.GetFileName(interopPath);
         return matches
             .Select(match =>
             {
@@ -291,6 +377,28 @@ public sealed class IndexingWorkflow
             .Cast<IndexCallableSurfaceRecord>()
             .OrderBy(record => record.GameCanonicalKey, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Combines every game assembly's type facts so symbols, fingerprints and
+    /// relationships resolve across assemblies (a game type deriving from a
+    /// ScheduleOne.Core type gets a resolved Inherits edge). The first assembly
+    /// (Assembly-CSharp) wins when two assemblies declare the same type name.
+    /// </summary>
+    internal static ManagedDecompilation MergeGameAssemblies(IReadOnlyList<GameAssemblyDecompilation> assemblies)
+    {
+        ArgumentNullException.ThrowIfNull(assemblies);
+        if (assemblies.Count == 0)
+            throw new InvalidDataException("No game assembly was decompiled.");
+        var primary = assemblies[0].Decompilation;
+        if (assemblies.Count == 1)
+            return primary;
+        var types = assemblies
+            .SelectMany(assembly => assembly.Decompilation.Types)
+            .GroupBy(type => type.FullName, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        return new ManagedDecompilation(primary.AssemblyPath, primary.SourceText, types);
     }
 
     internal static IReadOnlyList<IndexSymbolRecord> BuildSymbols(ManagedDecompilation decompilation, string snapshotId)

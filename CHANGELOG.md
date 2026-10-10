@@ -8,7 +8,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Upgrading
 
-- Run `s1atlas index` once; callable evidence is rebuilt (AT-134).
+- Run `s1atlas index` once. The code index format changed (AT-134, AT-135), so
+  the current build is re-indexed instead of reused and callable evidence is
+  rebuilt. API and reference-mod indexes also rebuild the next time they run.
+- To compare against an older build with `check-mod` or `diff`, re-index that
+  build too: `s1atlas index --build <build-id>` (AT-135).
+
+### Added
+
+- `s1atlas index --build <build-id>` indexes the code of an earlier build that
+  still has a preferred, verified extraction. Without `--build` the current build
+  is indexed, as before (AT-135).
 
 ### Fixed
 
@@ -26,6 +36,19 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   `HUD.topScreenText`, without requiring a member-kind filter (AT-134).
 - Missing interop input and legacy indexes without retained callable mappings
   report availability as unknown instead of unavailable (AT-134).
+- The game index now covers every game-owned assembly that Cpp2IL reconstructs,
+  not only `Assembly-CSharp`. Types in `ScheduleOne.Core` (item definitions, item
+  instances, avatar types) can be searched, resolved and diffed, and `check-mod`
+  resolves mod references into them instead of reporting `target-type-not-found`
+  (AT-135).
+- Each game assembly is matched to its own Il2CppInterop assembly, for example
+  `Il2CppScheduleOne.Core.dll` beside `Assembly-CSharp.dll` in
+  `MelonLoader\Il2CppAssemblies`, so the callable surface covers those types too
+  (AT-135).
+- Scene and prefab components whose script lives in a `ScheduleOne.*` assembly now
+  resolve to their indexed type (AT-135).
+- Referenced assemblies are released right after decompiling, so indexing no
+  longer holds a lock on the extraction folder (AT-135).
 
 ## [2.0.0] - 2026-10-04: Local web app, Harmony patch index, and mod checks
 

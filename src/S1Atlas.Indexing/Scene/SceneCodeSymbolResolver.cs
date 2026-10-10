@@ -2,6 +2,7 @@ using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.Scene;
+using S1Atlas.Indexing.Workflow;
 
 namespace S1Atlas.Indexing.Scene;
 
@@ -18,7 +19,6 @@ public sealed record SceneCodeSymbolResolution(
 
 public sealed class SceneCodeSymbolResolver
 {
-    private const string ScheduleOneAssemblyName = "Assembly-CSharp";
     private readonly IIndexRepository _indexRepository;
     private readonly Func<string, CancellationToken, Task<SceneCodeBuildAuthority?>> _authorityResolver;
 
@@ -125,15 +125,7 @@ public sealed class SceneCodeSymbolResolver
         };
     }
 
-    private static bool IsScheduleOneAssembly(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-        var trimmed = value.Trim();
-        if (trimmed.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-            trimmed = trimmed[..^4];
-        return string.Equals(trimmed, ScheduleOneAssemblyName, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsScheduleOneAssembly(string value) => GameAssemblySet.IsGameAssemblyName(value);
 
     private static Func<string, CancellationToken, Task<SceneCodeBuildAuthority?>> CreateAuthorityResolver(
         IIndexRepository indexRepository)

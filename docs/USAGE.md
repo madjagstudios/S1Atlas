@@ -175,13 +175,20 @@ input snapshots, current tools, or uncertain evidence. See
 **[docs/REFERENCE.md](REFERENCE.md)** for the full safety and recovery rules.
 
 Build and query the code index once the current build has a preferred,
-integrity-verified extraction. The index decompiles the reconstructed assemblies
-with ILSpy, records normalized symbols and relationships with Roslyn, and answers
-queries entirely offline:
+integrity-verified extraction. The index decompiles the game's own reconstructed
+assemblies (`Assembly-CSharp.dll`, `ScheduleOne.dll` and every `ScheduleOne.*.dll`,
+such as `ScheduleOne.Core.dll`) with ILSpy, records normalized symbols and relationships
+with Roslyn, and answers queries entirely offline. When MelonLoader's generated
+`Il2CppAssemblies` folder is present, each game assembly is paired with its interop
+assembly (`Assembly-CSharp.dll`, `Il2CppScheduleOne.Core.dll`, and so on) to record
+which members a mod can call directly. `--build` indexes an earlier build that still
+has a preferred, verified extraction, for example before comparing it with
+`check-mod` or `diff`:
 
 ```powershell
 s1atlas index
 s1atlas index --interop-path "C:\path\to\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll"
+s1atlas index --build <64-character-build-id>
 s1atlas index --codebase s1api --channel installed
 s1atlas search "<name-fragment>" --limit 25
 s1atlas type "<Namespace.TypeName>"

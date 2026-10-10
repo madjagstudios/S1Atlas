@@ -10,7 +10,7 @@ public sealed class CliOptionRuleTests
     [InlineData("upstream sync", "--commit", "Required.")]
     [InlineData("index", "--commit", "Required with --channel release or preview.")]
     [InlineData("index", "--interop-path", "Valid only for the default installed Schedule I code index.")]
-    [InlineData("index", "--build", "Valid only with --scene.")]
+    [InlineData("index", "--build", "Not with --codebase, --channel, --commit, or --interop-path.")]
     [InlineData("index", "--scene", "Accepts --build and --force only.")]
     [InlineData("index", "--codebase", "Not with --scene.")]
     [InlineData("index", "--channel", "Not with --scene.")]

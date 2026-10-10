@@ -37,7 +37,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             throwOnError: false,
             targetFramework: ".NETCoreApp,Version=8.0",
             runtimePack: "Microsoft.NETCore.App",
-            PEStreamOptions.Default,
+            PEStreamOptions.PrefetchMetadata,
             MetadataReaderOptions.Default);
         var source = new CSharpDecompiler(fullPath, resolver, new DecompilerSettings())
             .DecompileWholeModuleAsString();

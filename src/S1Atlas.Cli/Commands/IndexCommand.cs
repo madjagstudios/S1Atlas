@@ -25,7 +25,7 @@ internal static class IndexCommand
     {
         var forceOption = new Option<bool>("--force") { Description = "Rebuild a completed index as a new candidate." };
         var sceneOption = new Option<bool>("--scene") { Description = "Build the verified Unity scene intelligence index. Accepts --build and --force only." };
-        var buildOption = new Option<string?>("--build") { Description = "A completed build ID for scene indexing. Valid only with --scene." };
+        var buildOption = new Option<string?>("--build") { Description = "A completed build ID to index instead of the current build. Not with --codebase, --channel, --commit, or --interop-path." };
         var codebaseOption = new Option<string?>("--codebase") { Description = "s1api or s1mapi. Not with --scene." };
         var channelOption = new Option<string?>("--channel") { Description = "installed, release, or preview. Not with --scene." };
         var commitOption = new Option<string?>("--commit") { Description = "An exact cached upstream commit SHA. Required with --channel release or preview. Not with --scene." };
@@ -70,12 +70,12 @@ internal static class IndexCommand
                         "InvalidOptionCombination",
                         "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.");
                 }
-                if (!scene && build is not null)
+                if (!scene && build is not null && (codebase is not null || channel is not null || commit is not null))
                 {
                     throw new CliValidationException(
                         "index",
                         "InvalidOptionCombination",
-                        "--build is valid only with --scene.");
+                        "--build is valid only with --scene or the default installed Schedule I code index.");
                 }
                 if (codebase is null && channel is null && commit is null)
                     return;
@@ -192,12 +192,14 @@ internal static class IndexCommand
                 IndexingWorkflowResult result;
                 string codebase;
                 string channel;
+                string? codeBuildId = null;
                 if (requestedCodebase is null && requestedChannel is null && requestedCommit is null)
                 {
-                    if (snapshot is null)
+                    codeBuildId = requestedBuild ?? snapshot?.Build.BuildId;
+                    if (codeBuildId is null)
                         return commandOutput.Failure(1, "NoEnvironmentSnapshot", "No current environment snapshot is available.", hint: ReadinessFixCommands.Scan);
                     result = workflow.RunScheduleOneAsync(
-                        snapshot.Build.BuildId,
+                        codeBuildId,
                         options.Force,
                         cancellationToken,
                         requestedInteropPath).GetAwaiter().GetResult();
@@ -265,7 +267,7 @@ internal static class IndexCommand
                     channel,
                     channel is "Release" or "Preview"
                         ? requestedCommit ?? string.Empty
-                        : snapshot?.Build.BuildId ?? string.Empty,
+                        : codeBuildId ?? snapshot?.Build.BuildId ?? string.Empty,
                     result.IndexId,
                     result.Reused,
                     result.SymbolCount,
