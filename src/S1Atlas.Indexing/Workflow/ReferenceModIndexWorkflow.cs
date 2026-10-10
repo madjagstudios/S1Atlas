@@ -13,7 +13,7 @@ namespace S1Atlas.Indexing.Workflow;
 
 public sealed class ReferenceModIndexWorkflow
 {
-    private const string RelationshipResolverVersion = "2";
+    private const string RelationshipResolverVersion = "3";
 
     private readonly IIndexRepository _repository;
     private readonly ReferenceModFileSelector _selector;
@@ -215,18 +215,23 @@ public sealed class ReferenceModIndexWorkflow
         }
     }
 
-    internal static IReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord> BuildRelationshipLookup(
+    internal static IReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>> BuildRelationshipLookup(
         IReadOnlyList<IndexSymbolRecord> gameSymbols,
         IReadOnlyList<IndexSymbolRecord> referenceSymbols)
     {
-        var entries = gameSymbols.Select(symbol => (Origin: "game", Symbol: symbol))
-            .Concat(referenceSymbols.Select(symbol => (Origin: ExtractModId(symbol.QualifiedName), Symbol: symbol)));
-        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>();
-        foreach (var entry in entries)
-            lookup.TryAdd(ReferenceRelationshipResolver.CreateLookupKey(entry.Origin,
-                entry.Origin == PatchTargetResolver.GameOrigin && entry.Symbol.Kind is "Field" or "Property" or "Event"
-                    ? entry.Symbol.QualifiedName : entry.Symbol.Signature), entry.Symbol);
-        return lookup;
+        // Game fields, properties and events store a type-less Signature, so they key by QualifiedName.
+        // Methods and types keep their Signature, which already includes the declaring type.
+        var entries = gameSymbols.Select(symbol => (
+            Key: ReferenceRelationshipResolver.CreateLookupKey(
+                PatchTargetResolver.GameOrigin,
+                symbol.Kind is "Field" or "Property" or "Event" ? symbol.QualifiedName : symbol.Signature),
+            Symbol: symbol))
+            .Concat(referenceSymbols.Select(symbol => (
+                Key: ReferenceRelationshipResolver.CreateLookupKey(ExtractModId(symbol.QualifiedName), symbol.Signature), Symbol: symbol)));
+        return entries.GroupBy(entry => entry.Key).ToDictionary(
+            group => group.Key,
+            group => (IReadOnlyList<IndexSymbolRecord>)group.Select(entry => entry.Symbol)
+                .DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal).ToArray());
     }
 
     private static IReadOnlyList<IndexReferenceModRecord> BuildReferenceMods(

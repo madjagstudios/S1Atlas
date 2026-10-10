@@ -43,6 +43,12 @@ public sealed class ReferenceRelationshipResolver
         return SymbolIdentity.Create(CodebaseKind.ReferenceMod, CodeChannel.Installed, symbolKind, signature).CanonicalKey;
     }
 
+    private static IndexSymbolRecord? UniqueCandidate(IReadOnlyList<IndexSymbolRecord> candidates)
+    {
+        var distinct = candidates.DistinctBy(symbol => symbol.SymbolId, StringComparer.Ordinal).Take(2).ToArray();
+        return distinct.Length == 1 ? distinct[0] : null;
+    }
+
     private static string RenderedNameOf(string canonicalKey)
     {
         var index = -1;
@@ -74,7 +80,7 @@ public sealed class ReferenceRelationshipResolver
 
     public IReadOnlyList<IndexRelationshipRecord> Resolve(
         IReadOnlyList<ReferenceModDecompilation> mods,
-        IReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord> symbols)
+        IReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>> symbols)
     {
         ArgumentNullException.ThrowIfNull(mods);
         ArgumentNullException.ThrowIfNull(symbols);
@@ -91,15 +97,18 @@ public sealed class ReferenceRelationshipResolver
                 targetLookup[targetKey] = candidates;
             }
 
-            candidates.Add(pair.Value);
-            if (string.Equals(pair.Key.Origin, PatchTargetResolver.GameOrigin, StringComparison.Ordinal))
+            foreach (var symbol in pair.Value)
             {
-                AddMemberCandidate(gameMembers, (InteropTypeNames.Normalize(pair.Key.Type), pair.Key.Name), pair.Value);
-                gameTypes.Add(InteropTypeNames.Normalize(pair.Key.Type));
-            }
-            else
-            {
-                AddMemberCandidate(modMembers, (pair.Key.Origin, pair.Key.Type, pair.Key.Name), pair.Value);
+                candidates.Add(symbol);
+                if (string.Equals(pair.Key.Origin, PatchTargetResolver.GameOrigin, StringComparison.Ordinal))
+                {
+                    AddMemberCandidate(gameMembers, (InteropTypeNames.Normalize(pair.Key.Type), pair.Key.Name), symbol);
+                    gameTypes.Add(InteropTypeNames.Normalize(pair.Key.Type));
+                }
+                else
+                {
+                    AddMemberCandidate(modMembers, (pair.Key.Origin, pair.Key.Type, pair.Key.Name), symbol);
+                }
             }
         }
 
@@ -112,17 +121,25 @@ public sealed class ReferenceRelationshipResolver
                 foreach (var member in type.Members)
                 {
                     var sourceSignature = ManagedMemberIdentity.Render(type.FullName, member);
-                    if (!symbols.TryGetValue(CreateLookupKey(mod.ModId, sourceSignature), out var source))
+                    if (!symbols.TryGetValue(CreateLookupKey(mod.ModId, sourceSignature), out var sources))
+                        continue;
+                    var source = UniqueCandidate(sources);
+                    if (source is null)
                         continue;
                     var mapping = credit.GetValueOrDefault(SourceKeyFor(member.Kind, sourceSignature));
                     var credited = source;
                     string? rawSourceId = null;
                     if (mapping?.DeclaringKey is not null
-                        && symbols.TryGetValue(CreateLookupKey(mod.ModId, RenderedNameOf(mapping.DeclaringKey)), out var declaring)
-                        && !string.Equals(declaring.SymbolId, source.SymbolId, StringComparison.Ordinal))
+                        && symbols.TryGetValue(CreateLookupKey(mod.ModId, RenderedNameOf(mapping.DeclaringKey)), out var declaringCandidates))
                     {
-                        credited = declaring;
-                        rawSourceId = source.SymbolId;
+                        var declaring = UniqueCandidate(declaringCandidates);
+                        if (declaring is null)
+                            continue;
+                        if (!string.Equals(declaring.SymbolId, source.SymbolId, StringComparison.Ordinal))
+                        {
+                            credited = declaring;
+                            rawSourceId = source.SymbolId;
+                        }
                     }
 
                     var detail = rawSourceId is not null || mapping?.DeclaringKey is null ? mapping?.Detail : null;
