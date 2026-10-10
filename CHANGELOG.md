@@ -4,13 +4,29 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). S1Atlas ships on a rolling
 `main`; dated entries mark notable milestones rather than formal released packages.
 
-## Unreleased
+## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
+
+The game index now covers the game's second assembly, `ScheduleOne.Core`, so item
+definitions, item instances and avatar types can be searched, diffed and checked,
+and `check-mod` no longer reports a mod's references into them as missing. `check-mod`
+also follows the manual `harmony.Patch(...)` registrations real mods use, so far more
+patch targets are tracked across a game update. `callable` accepts the selectors
+people actually type, such as `HUD.topScreenText`, says "unknown" when no interop
+assembly was indexed instead of a false "unavailable", and no longer labels public
+game members as unavailable. `setup` now takes a game update all the way to ready in
+one run. Existing atlases need the one-time upgrade below.
 
 ### Upgrading
 
-- Run `s1atlas index` once. The code index format changed (AT-134, AT-135), so
-  the current build is re-indexed instead of reused and callable evidence is
-  rebuilt. API and reference-mod indexes also rebuild the next time they run.
+- Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
+  to migrate the database to schema 19 (AT-134). The pre-migration backup is a
+  full copy of `atlas.db`, so make sure you have that much free disk space. Until
+  the upgrade runs, serve and the MCP server refuse queries with the
+  `s1atlas status` hint.
+- Then run `s1atlas index` once. The code index format changed (AT-134, AT-135),
+  so the current build is re-indexed instead of reused and callable evidence is
+  rebuilt. API indexes rebuild the next time they run, and reference collections
+  rebuild on the next `reference index` (AT-122, AT-136).
 - To compare against an older build with `check-mod` or `diff`, re-index that
   build too: `s1atlas index --build <build-id>` (AT-135).
 
@@ -22,6 +38,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- Reference-mod edges whose target matches more than one symbol now stay
+  unresolved instead of being credited to whichever symbol loaded first (AT-122).
 - `setup` now takes a game update all the way to ready in one run (AT-138).
   Before, a stale build scan planned only the rescan, so setup stopped with
   `Next: s1atlas extract` and had to be run again. When the scan is stale, the
