@@ -355,12 +355,17 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
         Assert.Equal("fileId=0;localFileId=0", reference.TargetText);
     }
 
-    [Fact]
-    public async Task Exact_monoscript_resolution_propagates_only_the_exact_symbol_to_component_and_reference()
+    [Theory]
+    [InlineData("Assembly-CSharp.dll", "ScheduleOne", "PlayerController")]
+    [InlineData("ScheduleOne.Core.dll", "ScheduleOne.Core.Avatar", "AvatarObject")]
+    public async Task Exact_monoscript_resolution_propagates_only_the_exact_symbol_to_component_and_reference(
+        string assemblyName,
+        string scriptNamespace,
+        string className)
     {
         await _repository.InitializeAsync(TestContext.Current.CancellationToken);
         const string codeSnapshotId = "code-a";
-        const string canonicalName = "ScheduleOne.PlayerController";
+        var canonicalName = scriptNamespace + "." + className;
         var canonicalKey = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Type, canonicalName).CanonicalKey;
         var symbol = new IndexSymbolRecord(Hash(canonicalKey), codeSnapshotId, canonicalKey, "Type", canonicalName, canonicalName, false);
         await _repository.CreateCodeSnapshotAsync(new CodeSnapshotRecord(codeSnapshotId, CodebaseKind.ScheduleI, CodeChannel.Installed, "extraction-a", "2026-08-15T00:00:00Z"), TestContext.Current.CancellationToken);
@@ -374,7 +379,7 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
             [
                 GameObject(1, "Player", [new ParsedScenePPtr(0, 10)]),
                 Object(10, 114, ParsedSceneObjectKind.MonoBehaviour, references: [scriptReference], monoBehaviour: new ParsedMonoBehaviourData(new ParsedScenePPtr(0, 1), new ParsedScenePPtr(0, 20), true)),
-                Object(20, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData("Assembly-CSharp.dll", "ScheduleOne", "PlayerController"))
+                Object(20, 115, ParsedSceneObjectKind.MonoScript, monoScript: new ParsedMonoScriptData(assemblyName, scriptNamespace, className))
             ]);
         var resolver = new SceneCodeSymbolResolver(
             _repository,

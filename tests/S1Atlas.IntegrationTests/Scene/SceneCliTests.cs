@@ -80,20 +80,6 @@ public sealed class SceneCliTests : IAsyncDisposable
     }
 
     [Fact]
-    public void Index_code_rejects_scene_build_option()
-    {
-        var application = new CliApplication(_dataDirectory, "0.1.0-test");
-        using var output = new StringWriter();
-        using var error = new StringWriter();
-
-        var exit = application.Invoke(["index", "--build", "build-a", "--json"], output, error, TestContext.Current.CancellationToken);
-
-        Assert.Equal(1, exit);
-        Assert.Contains("InvalidOptionCombination", output.ToString(), StringComparison.Ordinal);
-        Assert.Equal(string.Empty, error.ToString());
-    }
-
-    [Fact]
     public async Task Index_scene_authority_failure_has_the_same_distinct_code_in_human_and_json()
     {
         await SeedPublishedSceneAsync();

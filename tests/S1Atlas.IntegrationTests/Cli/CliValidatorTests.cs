@@ -183,7 +183,7 @@ public sealed class CliValidatorTests
     [InlineData("index", "index --scene --codebase s1api --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
     [InlineData("index", "index --scene --channel installed --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
     [InlineData("index", "index --scene --commit deadbeef --json", "InvalidOptionCombination", "Scene indexing accepts --build and --force; --codebase, --channel, and --commit are code-index options.", true)]
-    [InlineData("index", "index --build b --json", "InvalidOptionCombination", "--build is valid only with --scene.", true)]
+    [InlineData("index", "index --build b --codebase s1api --channel installed --json", "InvalidOptionCombination", "--build is valid only with --scene or the default installed Schedule I code index.", true)]
     [InlineData("index", "index --interop-path p --codebase s1api --channel installed --json", "InvalidOptionCombination", "--interop-path is valid only for the default installed Schedule I code index.", true)]
     [InlineData("index", "index --codebase bogus --json", "InvalidCodebaseChannel", "API indexing requires --codebase s1api or s1mapi and --channel installed, release, or preview.", true)]
     [InlineData("index", "index --codebase s1api --channel release --json", "InvalidCommit", "Release and Preview indexing require --commit <40-character cached SHA>.", true)]

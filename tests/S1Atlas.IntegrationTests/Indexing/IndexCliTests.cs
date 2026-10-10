@@ -48,6 +48,26 @@ public sealed class IndexCliTests : IAsyncDisposable
     }
 
     [Fact]
+    public void Index_build_targets_that_build_without_a_current_snapshot()
+    {
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exitCode = application.Invoke(
+            ["index", "--build", new string('a', 64), "--json"],
+            output,
+            error,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exitCode);
+        Assert.Equal(string.Empty, error.ToString());
+        Assert.DoesNotContain("InvalidOptionCombination", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("NoEnvironmentSnapshot", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("No preferred integrity-verified extraction is available.", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Index_installed_s1api_uses_the_current_snapshot_dependency_and_persists_provenance()
     {
         var assemblyPath = Path.Combine(_dataDirectory, "inputs", "S1API.dll");
