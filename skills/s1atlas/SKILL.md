@@ -128,8 +128,10 @@ treat a setup error as an empty index.
    To learn which reference mods patch one game method, use CLI `patched-by`
    or MCP `find_patches` with `reference`/`all` scope and a collection:
    rows carry the patch kind, an `attribute` label for declared patches or
-   `DERIVED` for constant manual patches, and unresolved rows name the
-   method in raw text with a reason instead of a resolved target.
+   `DERIVED` for constant manual patches (including ones registered through one
+   forwarding helper or using a constant target returned by a helper), and
+   unresolved rows name the method in raw text with a reason instead of a resolved
+   target.
    Preserve the reported direction, resolution status, origin, unresolved raw
    target text, and completeness boundary. `reference` is isolated to the
    selected collection; use `all` explicitly when a recorded game endpoint or

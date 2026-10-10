@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -8,13 +9,27 @@ namespace S1Atlas.Indexing.Decompilation;
 
 internal sealed record CapturedInstruction(OpCode Opcode, string? Detail, long Number, int Offset);
 
+/// <summary>A forwarding patch or constant target helper, interpreted at each call site.</summary>
+internal sealed record PatchHelperBody(
+    IReadOnlyList<CapturedInstruction> Instructions,
+    IReadOnlySet<int> BranchTargets,
+    bool HasThis,
+    bool ReturnsTarget = false);
+
+internal sealed record ManualPatchAnalysis(
+    IReadOnlyList<ManagedPatchFact> Patches,
+    IReadOnlyList<ManagedReflectionFact> Reflections,
+    IReadOnlySet<string> InlinedHelpers);
+
 /// <summary>
 /// Recognizes constant manual Harmony patches in one method body:
 /// harmony.Patch(AccessTools.Method(...), prefix/postfix/transpiler/finalizer:
 /// new HarmonyMethod(...), ...). A straight-line abstract interpreter tracks constant
 /// types, strings, and Type arrays; anything else stays unresolved with a reason and
 /// is never guessed. Branch instructions and branch-target merge points clear the
-/// tracked state, so values from one arm can never leak into the merged flow.
+/// stack and every local that could hold different values on different paths, so one
+/// arm can never leak into the merged flow. A local stored exactly once and never
+/// address-taken keeps its value: definite assignment means every read sees that store.
 /// Control flow and untracked instructions degrade to unrecognized-manual-shape;
 /// non-constant inputs without them degrade to non-constant-arguments.
 /// </summary>
@@ -36,17 +51,52 @@ internal static class ManualPatchRecognizer
         IReadOnlyList<CapturedInstruction> instructions,
         IReadOnlySet<int> branchTargets) => Analyze(instructions, branchTargets).Patches;
 
-    public static (IReadOnlyList<ManagedPatchFact> Patches, IReadOnlyList<ManagedReflectionFact> Reflections) Analyze(
+    public static ManualPatchAnalysis Analyze(
         IReadOnlyList<CapturedInstruction> instructions,
-        IReadOnlySet<int> branchTargets)
+        IReadOnlySet<int> branchTargets,
+        Func<string, PatchHelperBody?>? helpers = null)
     {
         ArgumentNullException.ThrowIfNull(instructions);
         ArgumentNullException.ThrowIfNull(branchTargets);
 
-        var state = new InterpreterState(branchTargets);
-        foreach (var instruction in instructions)
-            state.Step(instruction);
-        return (state.Facts, state.Reflections);
+        var state = new InterpreterState(
+            branchTargets, PinnedLocalSlots(instructions), new ArrayTable(),
+            arguments: null, hasThis: false, writtenArguments: new HashSet<int>(), helpers);
+        state.Run(instructions);
+        return new ManualPatchAnalysis(state.Facts, state.Reflections, state.InlinedHelpers);
+    }
+
+    public static bool IsConstantTargetHelper(
+        IReadOnlyList<CapturedInstruction> instructions,
+        IReadOnlySet<int> branchTargets)
+    {
+        var state = new InterpreterState(
+            branchTargets, PinnedLocalSlots(instructions), new ArrayTable(),
+            arguments: null, hasThis: false, writtenArguments: new HashSet<int>(), helpers: null,
+            captureReturn: true);
+        state.Run(instructions);
+        return state.Facts.Count == 0 && state.ReturnedTarget is MethodReferenceValue;
+    }
+
+    /// <summary>
+    /// A forwarding helper passes its own parameters into Harmony.Patch: it reads a
+    /// declared parameter and none of its standalone patches is complete. Helpers that
+    /// patch constants on their own keep their facts and are never inlined.
+    /// </summary>
+    public static bool IsForwardingPatchHelper(
+        IReadOnlyList<CapturedInstruction> instructions,
+        IReadOnlySet<int> branchTargets,
+        bool hasThis,
+        Func<string, PatchHelperBody?>? targetHelpers = null)
+    {
+        var firstDeclared = hasThis ? 1 : 0;
+        if (!instructions.Any(instruction =>
+                TryArgumentSlot(instruction.Opcode, instruction, out var slot) && slot >= firstDeclared))
+            return false;
+        var patches = Analyze(instructions, branchTargets, targetHelpers).Patches;
+        return patches.Count > 0 && patches.All(patch =>
+            patch.Reason is not null || patch.TargetSignature is null ||
+            patch.PatchMethodType is null || patch.PatchMethodName is null);
     }
 
     private abstract record StackValue
@@ -73,11 +123,42 @@ internal static class ManualPatchRecognizer
 
     private sealed record PatchMethodValue(string? Type, string? Method, IReadOnlyList<string>? ArgumentTypes) : StackValue;
 
+    private sealed class ArrayTable
+    {
+        private readonly Dictionary<int, TrackedArray> _arrays = [];
+        private int _nextId;
+
+        public ArrayReference Add(TrackedArray array)
+        {
+            var id = _nextId++;
+            _arrays[id] = array;
+            return new ArrayReference(id);
+        }
+
+        public bool TryGet(StackValue value, [NotNullWhen(true)] out TrackedArray? array)
+        {
+            array = null;
+            return value is ArrayReference reference && _arrays.TryGetValue(reference.Id, out array);
+        }
+    }
+
     private sealed class TrackedArray
     {
-        public TrackedArray(long length) => Length = length;
+        public TrackedArray(long length, object owner, int epoch)
+        {
+            Length = length;
+            Owner = owner;
+            Epoch = epoch;
+        }
 
         public long Length { get; }
+
+        // The interpreter that created the array, and its epoch then. A store from another
+        // interpreter or a later epoch may run on only some paths, so it poisons the array.
+        public object Owner { get; }
+
+        public int Epoch { get; }
+
         public List<(long? Index, StackValue Value)> Elements { get; } = [];
 
         public bool Poisoned { get; set; }
@@ -87,27 +168,129 @@ internal static class ManualPatchRecognizer
     {
         private readonly List<StackValue> _stack = [];
         private readonly Dictionary<int, StackValue> _locals = [];
-        private readonly Dictionary<int, TrackedArray> _arrays = [];
         private readonly List<ManagedPatchFact> _facts = [];
         private readonly List<ManagedReflectionFact> _reflections = [];
         private readonly IReadOnlySet<int> _mergeOffsets;
-        private int _nextArrayId;
+        private readonly IReadOnlySet<int> _pinnedSlots;
+        private readonly ArrayTable _arrayTable;
+        private readonly IReadOnlyList<StackValue>? _arguments;
+        private readonly bool _hasThis;
+        private readonly IReadOnlySet<int> _writtenArguments;
+        private readonly Func<string, PatchHelperBody?>? _helpers;
+        private readonly HashSet<string> _inlinedHelpers = new(StringComparer.Ordinal);
+        private readonly bool _captureReturn;
+        private readonly List<StackValue> _returns = [];
+        private int _epoch;
         private bool _sawBranch;
         private bool _lostPrecision;
 
-        public InterpreterState(IReadOnlySet<int> mergeOffsets)
+        public InterpreterState(
+            IReadOnlySet<int> mergeOffsets,
+            IReadOnlySet<int> pinnedSlots,
+            ArrayTable arrayTable,
+            IReadOnlyList<StackValue>? arguments,
+            bool hasThis,
+            IReadOnlySet<int> writtenArguments,
+            Func<string, PatchHelperBody?>? helpers,
+            bool captureReturn = false)
         {
             _mergeOffsets = mergeOffsets;
+            _pinnedSlots = pinnedSlots;
+            _arrayTable = arrayTable;
+            _arguments = arguments;
+            _hasThis = hasThis;
+            _writtenArguments = writtenArguments;
+            _helpers = helpers;
+            _captureReturn = captureReturn;
         }
+
+        public IReadOnlySet<string> InlinedHelpers => _inlinedHelpers;
 
         public IReadOnlyList<ManagedPatchFact> Facts => _facts;
         public IReadOnlyList<ManagedReflectionFact> Reflections => _reflections;
 
-        public void Step(CapturedInstruction instruction)
+        // Every normal return must carry the same known method. Throwing paths have
+        // no return value; unknown or differing returns invalidate the whole helper.
+        public StackValue ReturnedTarget => _returns.Count > 0 &&
+            _returns[0] is MethodReferenceValue target && _returns.All(value => value == target)
+                ? target : StackValue.Unknown;
+
+        public void Run(IReadOnlyList<CapturedInstruction> instructions)
+        {
+            for (var i = 0; i < instructions.Count; i++)
+            {
+                if (_stack.Count > 0 && _stack[^1] is MethodReferenceValue &&
+                    TryThrowGuard(instructions, i, out var continuation))
+                {
+                    // `dup; brtrue keep; pop; ...; throw; keep:` leaves the original
+                    // lookup on the sole surviving path. Do not merge the throwing
+                    // arm into it or clear the stack before its local store.
+                    TryPop();
+                    i = continuation;
+                    Step(instructions[i], preserveStack: true);
+                }
+                else
+                    Step(instructions[i]);
+            }
+        }
+
+        private bool TryThrowGuard(IReadOnlyList<CapturedInstruction> instructions, int index, out int continuation)
+        {
+            continuation = -1;
+            var branch = instructions[index];
+            if (index == 0 || instructions[index - 1].Opcode != OpCodes.Dup ||
+                (branch.Opcode != OpCodes.Brtrue && branch.Opcode != OpCodes.Brtrue_S) ||
+                _mergeOffsets.Contains(branch.Offset) || index + 1 >= instructions.Count ||
+                instructions[index + 1].Opcode != OpCodes.Pop)
+                return false;
+
+            // Additional incoming edges or control flow in the throwing arm would
+            // make this a real merge. Switch destinations are not captured individually.
+            if (instructions.Any(instruction => instruction.Opcode == OpCodes.Switch) ||
+                instructions.Count(instruction => IsBranch(instruction.Opcode) && instruction.Number == branch.Number) != 1)
+                return false;
+            for (var i = index + 1; i < instructions.Count; i++)
+            {
+                var instruction = instructions[i];
+                if (instruction.Offset == branch.Number)
+                {
+                    if (instructions[i - 1].Opcode != OpCodes.Throw)
+                        return false;
+                    continuation = i;
+                    return true;
+                }
+                if (_mergeOffsets.Contains(instruction.Offset) || IsBranch(instruction.Opcode) ||
+                    instruction.Opcode == OpCodes.Ret || instruction.Opcode == OpCodes.Rethrow ||
+                    (instruction.Opcode == OpCodes.Throw &&
+                        (i + 1 >= instructions.Count || instructions[i + 1].Offset != branch.Number)))
+                    return false;
+                // Skip only a simple exception construction. Arbitrary calls (including
+                // another Harmony.Patch) in the throwing arm still need interpretation.
+                if (instruction.Opcode != OpCodes.Throw && !IsThrowGuardOperand(instruction))
+                    return false;
+            }
+            return false;
+        }
+
+        private static bool IsThrowGuardOperand(CapturedInstruction instruction)
+        {
+            var opcode = instruction.Opcode;
+            if (opcode == OpCodes.Nop || opcode == OpCodes.Pop || opcode == OpCodes.Ldstr ||
+                opcode == OpCodes.Ldtoken || opcode == OpCodes.Ldnull)
+                return true;
+            if (!TryParseCallIdentity(instruction.Detail, out var owner, out var name, out _, out _))
+                return false;
+            return ((opcode == OpCodes.Call || opcode == OpCodes.Callvirt) &&
+                    owner == "System.Type" && name is "GetTypeFromHandle" or "get_FullName") ||
+                (opcode == OpCodes.Newobj && name == ".ctor" &&
+                    owner.StartsWith("System.", StringComparison.Ordinal) && owner.EndsWith("Exception", StringComparison.Ordinal));
+        }
+
+        private void Step(CapturedInstruction instruction, bool preserveStack = false)
         {
             // Values must not flow across a branch merge: whichever arm the linear walk
             // happens to visit last would otherwise win, recording one arm as certain.
-            if (_mergeOffsets.Contains(instruction.Offset))
+            if (!preserveStack && _mergeOffsets.Contains(instruction.Offset))
             {
                 Clear();
                 _lostPrecision = true;
@@ -155,7 +338,15 @@ internal static class ManualPatchRecognizer
             }
             if (TryLocalSlot(opcode, instruction, load: false, out var storeSlot))
             {
-                _locals[storeSlot] = _sawBranch ? StackValue.Unknown : TryPop();
+                // The stack is empty after every clear, so a known value here was computed
+                // in this block from constants. Only a pinned slot may keep it past a branch.
+                var stored = TryPop();
+                _locals[storeSlot] = _sawBranch && !_pinnedSlots.Contains(storeSlot) ? StackValue.Unknown : stored;
+                return;
+            }
+            if (TryArgumentSlot(opcode, instruction, out var argumentSlot))
+            {
+                Push(ArgumentValue(argumentSlot));
                 return;
             }
             if (IsLoadArgument(opcode))
@@ -201,9 +392,7 @@ internal static class ManualPatchRecognizer
                     return;
                 }
 
-                var id = _nextArrayId++;
-                _arrays[id] = new TrackedArray(size.Value);
-                Push(new ArrayReference(id));
+                Push(_arrayTable.Add(new TrackedArray(size.Value, this, _epoch)));
                 return;
             }
             if (opcode == OpCodes.Stelem_Ref)
@@ -211,9 +400,10 @@ internal static class ManualPatchRecognizer
                 var value = TryPop();
                 var index = TryPop();
                 var array = TryPop();
-                if (array is ArrayReference reference && _arrays.TryGetValue(reference.Id, out var tracked))
+                if (_arrayTable.TryGet(array, out var tracked))
                 {
-                    if (index is IntValue at && at.Value >= 0 && at.Value < tracked.Length &&
+                    if (ReferenceEquals(tracked.Owner, this) && tracked.Epoch == _epoch &&
+                        index is IntValue at && at.Value >= 0 && at.Value < tracked.Length &&
                         !tracked.Elements.Any(element => element.Index == at.Value))
                         tracked.Elements.Add((at.Value, value));
                     else
@@ -231,6 +421,8 @@ internal static class ManualPatchRecognizer
             if (opcode == OpCodes.Ret || opcode == OpCodes.Throw || opcode == OpCodes.Rethrow ||
                 opcode == OpCodes.Endfinally || opcode == OpCodes.Endfilter)
             {
+                if (opcode == OpCodes.Ret && _captureReturn)
+                    _returns.Add(TryPop());
                 Clear();
                 return;
             }
@@ -317,6 +509,12 @@ internal static class ManualPatchRecognizer
                 return;
             }
 
+            if (opcode == OpCodes.Call && _helpers is not null && _helpers(instruction.Detail!) is { } helper)
+            {
+                InlineHelper(instruction.Detail!, helper, parameters.Count, returnsValue);
+                return;
+            }
+
             // Newobj carries only the constructor arguments; the instance does not exist yet,
             // so unlike Call/.ctor and Callvirt there is no receiver to pop.
             var pop = parameters.Count + (opcode == OpCodes.Callvirt ||
@@ -325,6 +523,37 @@ internal static class ManualPatchRecognizer
                 TryPop();
             if (opcode == OpCodes.Newobj || returnsValue)
                 Push(StackValue.Unknown);
+        }
+
+        private StackValue ArgumentValue(int slot)
+        {
+            if (_arguments is null || _writtenArguments.Contains(slot))
+                return StackValue.Unknown;
+            var index = slot - (_hasThis ? 1 : 0);
+            return index >= 0 && index < _arguments.Count ? _arguments[index] : StackValue.Unknown;
+        }
+
+        private void InlineHelper(string identity, PatchHelperBody helper, int parameterCount, bool returnsValue)
+        {
+            var arguments = new StackValue[parameterCount];
+            for (var i = parameterCount - 1; i >= 0; i--)
+                arguments[i] = TryPop();
+            if (helper.HasThis)
+                TryPop();
+
+            // One level only: the helper sees this caller's values through its parameters
+            // but cannot inline further, so chains and recursion stay bounded. Its patch
+            // facts belong to this caller, which is where an unresolved one is reported.
+            var inlined = new InterpreterState(
+                helper.BranchTargets, PinnedLocalSlots(helper.Instructions), _arrayTable,
+                arguments, helper.HasThis, WrittenArgumentSlots(helper.Instructions), helpers: null,
+                captureReturn: helper.ReturnsTarget);
+            inlined.Run(helper.Instructions);
+            _facts.AddRange(inlined.Facts);
+            if (!helper.ReturnsTarget)
+                _inlinedHelpers.Add(identity);
+            if (returnsValue)
+                Push(helper.ReturnsTarget ? inlined.ReturnedTarget : StackValue.Unknown);
         }
 
         private StackValue AccessToolsResult(ManagedReflectionKind kind, IReadOnlyList<string> parameters)
@@ -374,9 +603,14 @@ internal static class ManualPatchRecognizer
                 if (type is TypeValue target && memberName is StringValue member)
                 {
                     _reflections.Add(new ManagedReflectionFact(target.TypeName, member.Text, kind));
-                    return kind == ManagedReflectionKind.Method
-                        ? new MethodReferenceValue(target.TypeName, member.Text, null)
-                        : StackValue.Unknown;
+                    // Accessor lookups return the accessor MethodInfo, so they can be patched.
+                    return kind switch
+                    {
+                        ManagedReflectionKind.Method => new MethodReferenceValue(target.TypeName, member.Text, null),
+                        ManagedReflectionKind.PropertyGetter => new MethodReferenceValue(target.TypeName, "get_" + member.Text, null),
+                        ManagedReflectionKind.PropertySetter => new MethodReferenceValue(target.TypeName, "set_" + member.Text, null),
+                        _ => StackValue.Unknown
+                    };
                 }
                 return StackValue.Unknown;
             }
@@ -522,33 +756,17 @@ internal static class ManualPatchRecognizer
             {
                 if (popped[i] == StackValue.Null)
                     continue;
-                if (popped[i] is not PatchMethodValue patch)
-                {
-                    _facts.Add(new ManagedPatchFact(KindByPosition[i - 1], target, reason, RelationshipEvidence.RecoveredIL));
-                    continue;
-                }
-
-                if (target is not null && patch.Type is not null && patch.Method is not null)
-                {
-                    _facts.Add(new ManagedPatchFact(
-                        KindByPosition[i - 1],
-                        target,
-                        null,
-                        RelationshipEvidence.RecoveredIL,
-                        patch.Type,
-                        patch.Method,
-                        patch.ArgumentTypes));
-                    continue;
-                }
-
+                // A constant target resolves even when the patch method does not; the edge
+                // then hangs on the registering method, so the target is still checked.
+                var patch = popped[i] as PatchMethodValue;
                 _facts.Add(new ManagedPatchFact(
                     KindByPosition[i - 1],
                     target,
-                    reason,
+                    target is null ? reason : null,
                     RelationshipEvidence.RecoveredIL,
-                    patch.Type,
-                    patch.Method,
-                    patch.ArgumentTypes));
+                    patch?.Type,
+                    patch?.Method,
+                    patch?.ArgumentTypes));
             }
         }
 
@@ -556,7 +774,7 @@ internal static class ManualPatchRecognizer
         {
             if (value == StackValue.Null)
                 return null;
-            if (value is not ArrayReference reference || !_arrays.TryGetValue(reference.Id, out var tracked) ||
+            if (!_arrayTable.TryGet(value, out var tracked) ||
                 tracked.Poisoned || tracked.Elements.Count != tracked.Length)
                 return null;
             var names = new List<string>(tracked.Elements.Count);
@@ -599,7 +817,9 @@ internal static class ManualPatchRecognizer
         private void Clear()
         {
             _stack.Clear();
-            _locals.Clear();
+            foreach (var slot in _locals.Keys.Where(slot => !_pinnedSlots.Contains(slot)).ToArray())
+                _locals.Remove(slot);
+            _epoch++;
         }
 
         private StackValue StaticFieldValue(string? detail)
@@ -609,9 +829,7 @@ internal static class ManualPatchRecognizer
                 string.Equals(type, "System.Type", StringComparison.Ordinal) &&
                 string.Equals(SymbolNames.SimpleName("X::" + tail), "EmptyTypes", StringComparison.Ordinal))
             {
-                var id = _nextArrayId++;
-                _arrays[id] = new TrackedArray(0);
-                return new ArrayReference(id);
+                return _arrayTable.Add(new TrackedArray(0, this, _epoch));
             }
 
             return StackValue.Unknown;
@@ -661,6 +879,23 @@ internal static class ManualPatchRecognizer
         return true;
     }
 
+    private static IReadOnlySet<int> PinnedLocalSlots(IReadOnlyList<CapturedInstruction> instructions)
+    {
+        var stores = new Dictionary<int, int>();
+        var addressed = new HashSet<int>();
+        foreach (var instruction in instructions)
+        {
+            if (TryLocalSlot(instruction.Opcode, instruction, load: false, out var slot))
+                stores[slot] = stores.GetValueOrDefault(slot) + 1;
+            else if (instruction.Opcode == OpCodes.Ldloca || instruction.Opcode == OpCodes.Ldloca_S)
+                addressed.Add((int)instruction.Number);
+        }
+
+        return stores.Where(entry => entry.Value == 1 && !addressed.Contains(entry.Key))
+            .Select(entry => entry.Key)
+            .ToHashSet();
+    }
+
     private static bool TryLocalSlot(OpCode opcode, CapturedInstruction instruction, bool load, out int slot)
     {
         slot = 0;
@@ -683,6 +918,27 @@ internal static class ManualPatchRecognizer
         else return false;
         return true;
     }
+
+    private static bool TryArgumentSlot(OpCode opcode, CapturedInstruction instruction, out int slot)
+    {
+        slot = 0;
+        if (opcode == OpCodes.Ldarg_0) slot = 0;
+        else if (opcode == OpCodes.Ldarg_1) slot = 1;
+        else if (opcode == OpCodes.Ldarg_2) slot = 2;
+        else if (opcode == OpCodes.Ldarg_3) slot = 3;
+        else if (opcode == OpCodes.Ldarg_S || opcode == OpCodes.Ldarg) slot = (int)instruction.Number;
+        else return false;
+        return true;
+    }
+
+    // A parameter the helper overwrites or takes the address of no longer holds the
+    // caller's value, so it reads as unknown everywhere in the inlined body.
+    private static IReadOnlySet<int> WrittenArgumentSlots(IReadOnlyList<CapturedInstruction> instructions) =>
+        instructions
+            .Where(instruction => instruction.Opcode == OpCodes.Starg || instruction.Opcode == OpCodes.Starg_S ||
+                instruction.Opcode == OpCodes.Ldarga || instruction.Opcode == OpCodes.Ldarga_S)
+            .Select(instruction => (int)instruction.Number)
+            .ToHashSet();
 
     private static bool IsLoadArgument(OpCode opcode) =>
         opcode == OpCodes.Ldarg_0 || opcode == OpCodes.Ldarg_1 || opcode == OpCodes.Ldarg_2 || opcode == OpCodes.Ldarg_3 ||

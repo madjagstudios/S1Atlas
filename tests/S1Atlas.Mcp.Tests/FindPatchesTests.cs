@@ -115,16 +115,58 @@ public sealed class FindPatchesTests
         using var fifthDocument = JsonDocument.Parse(fifthText);
         var fifthRoot = fifthDocument.RootElement;
         Assert.Equal(2, fifthRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
+        Assert.False(string.IsNullOrWhiteSpace(fifthRoot.GetProperty("data").GetProperty("nextCursor").GetString()));
+
+        var sixth = await server.Client.CallToolAsync(
+            "find_patches",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Game.Widget::Run()",
+                ["codebase"] = "scheduleI",
+                ["limit"] = 2,
+                ["scope"] = "reference",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+                ["cursor"] = fifthRoot.GetProperty("data").GetProperty("nextCursor").GetString(),
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(sixth.IsError ?? false);
+        var sixthText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(sixth.Content)).Text;
+        using var sixthDocument = JsonDocument.Parse(sixthText);
+        var sixthRoot = sixthDocument.RootElement;
+        Assert.Equal(2, sixthRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
+        Assert.False(string.IsNullOrWhiteSpace(sixthRoot.GetProperty("data").GetProperty("nextCursor").GetString()));
+
+        var seventh = await server.Client.CallToolAsync(
+            "find_patches",
+            new Dictionary<string, object?>
+            {
+                ["selector"] = "Game.Widget::Run()",
+                ["codebase"] = "scheduleI",
+                ["limit"] = 2,
+                ["scope"] = "reference",
+                ["collection"] = HarmonyPatchAtlas.CollectionId,
+                ["cursor"] = sixthRoot.GetProperty("data").GetProperty("nextCursor").GetString(),
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(seventh.IsError ?? false);
+        var seventhText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(seventh.Content)).Text;
+        using var seventhDocument = JsonDocument.Parse(seventhText);
+        var seventhRoot = seventhDocument.RootElement;
+        Assert.Equal(1, seventhRoot.GetProperty("data").GetProperty("relationships").GetArrayLength());
         Assert.False(
-            fifthRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
+            seventhRoot.GetProperty("data").TryGetProperty("nextCursor", out var nextCursor) &&
             nextCursor.ValueKind != JsonValueKind.Null);
         var allRows = firstRoot.GetProperty("data").GetProperty("relationships").EnumerateArray()
             .Concat(rows)
             .Concat(thirdRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
             .Concat(fourthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
             .Concat(fifthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
+            .Concat(sixthRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
+            .Concat(seventhRoot.GetProperty("data").GetProperty("relationships").EnumerateArray())
             .ToArray();
-        Assert.Equal(10, allRows.Length);
+        Assert.Equal(13, allRows.Length);
         Assert.Single(allRows, row =>
             row.GetProperty("source").GetProperty("signature").GetString()!
                 .Contains("ManualTypeMethodInfoPatch::InfoPostfix(", StringComparison.Ordinal) &&
@@ -219,7 +261,7 @@ public sealed class FindPatchesTests
         var sections = root.GetProperty("data").GetProperty("evidenceSections");
         var patches = sections.EnumerateArray()
             .Single(section => section.GetProperty("family").GetString() == "Patches");
-        Assert.Equal(10, patches.GetProperty("totalCount").GetInt32());
+        Assert.Equal(13, patches.GetProperty("totalCount").GetInt32());
         var claims = root.GetProperty("data").GetProperty("claims");
         Assert.Contains(
             claims.EnumerateArray(),
