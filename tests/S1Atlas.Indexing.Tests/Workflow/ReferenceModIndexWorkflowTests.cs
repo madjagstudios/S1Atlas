@@ -117,7 +117,7 @@ public sealed class ReferenceModIndexWorkflowTests
     }
 
     [Fact]
-    public async Task Duplicate_game_signatures_keep_the_first_loaded_symbol()
+    public async Task Duplicate_game_signatures_leave_the_target_unresolved()
     {
         await using var fixture = await ReferenceWorkflowFixture.CreateAsync(includeEnvironmentLink: false, duplicateGameSymbol: true);
         fixture.CreateInput("qol", "plugins/QolMod.dll", "selected");
@@ -129,7 +129,8 @@ public sealed class ReferenceModIndexWorkflowTests
         var relationship = Assert.Single(
             await fixture.Repository.GetCompletedRelationshipsAsync(result.IndexId, TestContext.Current.CancellationToken),
             edge => edge.Kind == "Calls");
-        Assert.Equal(fixture.GameSymbolId, relationship.TargetSymbolId);
+        Assert.Null(relationship.TargetSymbolId);
+        Assert.Equal("Game.Target::Run():System.Void", relationship.TargetText);
     }
 
     [Fact]

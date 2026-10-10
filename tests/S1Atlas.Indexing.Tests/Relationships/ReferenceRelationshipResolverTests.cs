@@ -13,10 +13,10 @@ public sealed class ReferenceRelationshipResolverTests
         var snapshotId = "reference-snapshot";
         var modSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
         var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
-        var symbols = new CountingReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>(new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        var symbols = new CountingReadOnlyDictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>>(new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>>
         {
-            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
-            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = modSymbol
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = [gameSymbol],
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = [modSymbol]
         });
         var decompilation = new ManagedDecompilation("qol.dll", "", [new ManagedTypeFacts(
             "Mods.Entry", "Mods", "Entry", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [
@@ -36,10 +36,10 @@ public sealed class ReferenceRelationshipResolverTests
         var snapshotId = "reference-snapshot";
         var modSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
         var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
-        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>>
         {
-            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
-            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = modSymbol
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = [gameSymbol],
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = [modSymbol]
         };
         var decompilation = new ManagedDecompilation("qol.dll", "", [new ManagedTypeFacts(
             "Mods.Entry", "Mods", "Entry", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [
@@ -63,10 +63,10 @@ public sealed class ReferenceRelationshipResolverTests
         var snapshotId = "reference-snapshot";
         var modSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
         var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
-        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>>
         {
-            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
-            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = modSymbol
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = [gameSymbol],
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = [modSymbol]
         };
         var decompilation = new ManagedDecompilation("qol.dll", "", [new ManagedTypeFacts(
             "Mods.Entry", "Mods", "Entry", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [], [], "System.Void", Patches: [new ManagedPatchFact(HarmonyPatchKind.Prefix, "NoSeparatorHere", null, RelationshipEvidence.Metadata)])])]);
@@ -85,10 +85,10 @@ public sealed class ReferenceRelationshipResolverTests
         var snapshotId = "reference-snapshot";
         var modSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
         var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
-        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>>
         {
-            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
-            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = modSymbol
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = [gameSymbol],
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", modSymbol.Signature)] = [modSymbol]
         };
         var decompilation = new ManagedDecompilation("qol.dll", "", [new ManagedTypeFacts(
             "Mods.Entry", "Mods", "Entry", null, [], [new ManagedMemberFacts("Run", ManagedMemberKind.Method, "Run", true, [
@@ -114,11 +114,11 @@ public sealed class ReferenceRelationshipResolverTests
         var runSymbol = new IndexSymbolRecord("mod-run", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry::Run():System.Void", "Method", "qol/Mods.Entry::Run():System.Void", "Mods.Entry::Run():System.Void", false);
         var lambdaSymbol = new IndexSymbolRecord("mod-lambda", snapshotId, "ReferenceMod:Installed:Method:qol/Mods.Entry+<>c::<Run>b__0_0():System.Void", "Method", "qol/Mods.Entry+<>c::<Run>b__0_0():System.Void", "Mods.Entry+<>c::<Run>b__0_0():System.Void", false);
         var gameSymbol = new IndexSymbolRecord("existing-game-symbol", "game-snapshot", "ScheduleI:Installed:Method:Game.Target::Run():System.Void", "Method", "Game.Target::Run():System.Void", "Game.Target::Run():System.Void", false);
-        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IndexSymbolRecord>
+        var lookup = new Dictionary<(string Origin, string Type, string Name, int Arity, string Signature), IReadOnlyList<IndexSymbolRecord>>
         {
-            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = gameSymbol,
-            [ReferenceRelationshipResolver.CreateLookupKey("qol", runSymbol.Signature)] = runSymbol,
-            [ReferenceRelationshipResolver.CreateLookupKey("qol", lambdaSymbol.Signature)] = lambdaSymbol
+            [ReferenceRelationshipResolver.CreateLookupKey("game", gameSymbol.Signature)] = [gameSymbol],
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", runSymbol.Signature)] = [runSymbol],
+            [ReferenceRelationshipResolver.CreateLookupKey("qol", lambdaSymbol.Signature)] = [lambdaSymbol]
         };
         var decompilation = new ManagedDecompilation("qol.dll", "", [
             new ManagedTypeFacts(
