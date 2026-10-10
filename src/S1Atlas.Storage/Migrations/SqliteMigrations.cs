@@ -1020,6 +1020,52 @@ internal static class SqliteMigrations
         END;
         """;
 
+    private const string CallableSurfaceUnknownV19Sql = """
+        CREATE TABLE callable_surface_v19 (
+            callable_surface_id TEXT NOT NULL PRIMARY KEY,
+            index_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            game_symbol_id TEXT NOT NULL,
+            game_canonical_key TEXT NOT NULL,
+            interop_assembly_name TEXT NOT NULL,
+            interop_input_sha256 TEXT NULL,
+            interop_signature TEXT NULL,
+            callable_kind TEXT NOT NULL CHECK (callable_kind IN ('DirectGameMember', 'PublicMethodWrapper', 'PublicFieldAccessor', 'PublicPropertyAccessor', 'NonPublicWrapper')),
+            requires_reflection INTEGER NOT NULL CHECK (requires_reflection IN (0, 1)),
+            status TEXT NOT NULL CHECK (status IN ('Resolved', 'Ambiguous', 'Unavailable', 'Unknown')),
+            interop_input_trust TEXT NOT NULL CHECK (interop_input_trust IN ('LocalOnly')),
+            evidence TEXT NOT NULL,
+            FOREIGN KEY (index_id) REFERENCES index_runs(index_id),
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id),
+            FOREIGN KEY (game_symbol_id) REFERENCES symbols(symbol_id)
+        );
+
+        INSERT INTO callable_surface_v19 (
+            callable_surface_id, index_id, snapshot_id, game_symbol_id, game_canonical_key,
+            interop_assembly_name, interop_input_sha256, interop_signature, callable_kind,
+            requires_reflection, status, interop_input_trust, evidence)
+        SELECT
+            callable_surface_id, index_id, snapshot_id, game_symbol_id, game_canonical_key,
+            interop_assembly_name, interop_input_sha256, interop_signature, callable_kind,
+            requires_reflection,
+            CASE WHEN status = 'Unavailable' AND interop_input_sha256 IS NULL AND interop_signature IS NULL
+                THEN 'Unknown' ELSE status END,
+            interop_input_trust,
+            CASE WHEN status = 'Unavailable' AND interop_input_sha256 IS NULL AND interop_signature IS NULL
+                THEN 'interop availability is unknown because no interop assembly was indexed'
+                ELSE evidence END
+        FROM callable_surface;
+
+        DROP TABLE callable_surface;
+        ALTER TABLE callable_surface_v19 RENAME TO callable_surface;
+
+        CREATE UNIQUE INDEX ux_callable_surface_index_symbol
+        ON callable_surface(index_id, game_symbol_id);
+
+        CREATE INDEX ix_callable_surface_index_status
+        ON callable_surface(index_id, status);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -1039,6 +1085,7 @@ internal static class SqliteMigrations
         new(15, "native-evidence-method-extent-v15", NativeEvidenceMethodExtentV15Sql),
         new(16, "symbol-search-fts-v16", SymbolSearchFtsV16Sql, RequiresFts5Trigram: true),
         new(17, "generated-body-credit-v17", GeneratedBodyCreditV17Sql),
-        new(18, "simple-name-correction-v18", SimpleNameCorrectionV18Sql, RequiresFts5Trigram: true)
+        new(18, "simple-name-correction-v18", SimpleNameCorrectionV18Sql, RequiresFts5Trigram: true),
+        new(19, "callable-surface-unknown-v19", CallableSurfaceUnknownV19Sql)
     ];
 }

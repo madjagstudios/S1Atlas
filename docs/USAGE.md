@@ -240,8 +240,15 @@ unrecovered body is reported as unavailable rather than presented as authoritati
 `callable` answers whether a Schedule I game member is directly callable through
 the locally observed Il2CppInterop projection. Public game members are reported
 as direct callables even when no interop assembly is present. Private or protected
-members require a resolved wrapper; an ambiguous or missing wrapper remains
-explicitly unavailable. The interop input is local-only and is not cross-validated
+members require a resolved wrapper, which can be a public generated proxy.
+`Unknown` means interop input was missing or no callable mapping was retained by
+a legacy index, so availability cannot be determined. `Unavailable` means indexed
+interop evidence established no usable wrapper. `Ambiguous` means multiple wrapper
+candidates remain. Public game members need no wrapper and show
+`Interop: not needed (public game member)` when no interop signature is stored.
+Run `s1atlas index` once after upgrading to rebuild callable evidence, then query
+with a dotted selector such as `s1atlas callable "HUD.topScreenText"`.
+The interop input is local-only and is not cross-validated
 to the selected game build. A resolved runtime-invoke wrapper is an invocation
 route, not behavioral evidence: its body forwards through `il2cpp_runtime_invoke`.
 The optional `--interop-path` override is valid only for the default installed

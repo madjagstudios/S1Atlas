@@ -299,6 +299,36 @@ public sealed partial class SqliteAtlasRepository
         return result;
     }
 
+    public async Task<IReadOnlyList<IndexSymbolRecord>> GetCompletedMembersByNameAsync(
+        string indexId, string declaringType, string memberName, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(declaringType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(memberName);
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT symbol.symbol_id, symbol.snapshot_id, symbol.canonical_key, symbol.kind,
+                   symbol.qualified_name, symbol.signature, symbol.is_best_effort,
+                   symbol.body_recovery_status, symbol.is_public, symbol.is_generated
+            FROM symbols AS symbol
+            INNER JOIN index_runs AS run ON run.snapshot_id = symbol.snapshot_id
+            WHERE run.index_id = $indexId AND run.status = 'Completed'
+              AND symbol.kind <> 'Type'
+              AND symbol.simple_name = $memberName COLLATE NOCASE
+              AND substr(symbol.qualified_name, 1, instr(symbol.qualified_name, '::') - 1) = $declaringType COLLATE NOCASE
+            ORDER BY symbol.qualified_name COLLATE BINARY, symbol.symbol_id COLLATE BINARY;
+            """;
+        command.Parameters.AddWithValue("$indexId", indexId);
+        command.Parameters.AddWithValue("$declaringType", declaringType);
+        command.Parameters.AddWithValue("$memberName", memberName);
+        var result = new List<IndexSymbolRecord>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(ReadSymbol(reader));
+        return result;
+    }
+
     public async Task<IndexSymbolRecord?> GetCompletedSymbolByIdAsync(
         string indexId,
         string symbolId,

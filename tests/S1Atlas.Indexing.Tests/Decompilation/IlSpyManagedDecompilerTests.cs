@@ -186,9 +186,18 @@ public sealed class IlSpyManagedDecompilerTests
             new ManagedDecompilation("interop.dll", "", [interopType])));
         Assert.Equal(CallableSurfaceStatus.Ambiguous, ambiguous.Status);
 
-        var unavailable = Assert.Single(new InteropCallableSurfaceMatcher().Match(game, null));
+        var unknown = Assert.Single(new InteropCallableSurfaceMatcher().Match(game, null));
+        Assert.Equal(CallableSurfaceStatus.Unknown, unknown.Status);
+        Assert.Equal(CallableSurfaceKind.NonPublicWrapper, unknown.Kind);
+        Assert.Null(unknown.InteropMember);
+        Assert.Null(unknown.InteropSignature);
+        Assert.False(unknown.RequiresReflection);
+        Assert.Equal("interop availability is unknown because no interop assembly was indexed", unknown.Evidence);
+
+        var unavailable = Assert.Single(new InteropCallableSurfaceMatcher().Match(
+            game,
+            new ManagedDecompilation("interop.dll", "", [])));
         Assert.Equal(CallableSurfaceStatus.Unavailable, unavailable.Status);
-        Assert.Equal(CallableSurfaceKind.NonPublicWrapper, unavailable.Kind);
     }
 
     [Fact]

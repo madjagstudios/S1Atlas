@@ -45,7 +45,7 @@ public sealed class SymbolResolver
                 return prefixed;
         }
 
-        if (kindNames is not null && IsCanonicalSelector(selector, codebase, channel))
+        if (IsCanonicalSelector(selector, codebase, channel))
             return await ResolveCanonicalKeyAsync(indexId, selector, codebase, channel, kindNames, cancellationToken);
 
         var searchQuery = SearchQueryForSelector(selector, codebase, channel);
@@ -55,9 +55,6 @@ public sealed class SymbolResolver
             .ThenBy(record => record.Signature, StringComparer.Ordinal)
             .ThenBy(record => record.SymbolId, StringComparer.Ordinal)
             .ToArray();
-        if (records.Length == 0)
-            return NotFound(await SuggestAsync(indexId, codebase, channel, searchQuery, kindNames, cancellationToken));
-
         var exactCanonical = records
             .Where(record => string.Equals(record.CanonicalKey, selector, StringComparison.Ordinal))
             .ToArray();
@@ -81,6 +78,13 @@ public sealed class SymbolResolver
             return Resolved(ToQueryResult(indexId, codebase, channel, exactQualifiedName[0], OriginFor(codebase)));
         if (exactQualifiedName.Length > 1)
             return Ambiguous(indexId, codebase, channel, exactQualifiedName, TotalUnlessTruncated(records.Length, exactQualifiedName.Length));
+
+        var byMember = await ResolveDottedMemberAsync(indexId, selector, codebase, channel, kindNames, cancellationToken);
+        if (byMember is not null)
+            return byMember;
+
+        if (records.Length == 0)
+            return NotFound(await SuggestAsync(indexId, codebase, channel, searchQuery, kindNames, cancellationToken));
 
         var bestRank = Rank(records[0], searchQuery);
         var best = records
@@ -146,11 +150,11 @@ public sealed class SymbolResolver
         string selector,
         CodebaseKind codebase,
         CodeChannel channel,
-        HashSet<string> kindNames,
+        HashSet<string>? kindNames,
         CancellationToken cancellationToken)
     {
         var records = await _repository.GetCompletedSymbolByCanonicalKeyAsync(indexId, selector, cancellationToken);
-        var kinded = records.Where(record => kindNames.Contains(record.Kind)).ToArray();
+        var kinded = records.Where(record => kindNames is null || kindNames.Contains(record.Kind)).ToArray();
         if (kinded.Length == 1)
             return Resolved(ToQueryResult(indexId, codebase, channel, kinded[0], OriginFor(codebase)));
         if (kinded.Length > 1)
@@ -162,6 +166,54 @@ public sealed class SymbolResolver
             .ThenBy(record => record.SymbolId, StringComparer.Ordinal)
             .First();
         return KindMismatch(indexId, codebase, channel, mismatch);
+    }
+
+    private async Task<SymbolResolutionResult?> ResolveDottedMemberAsync(
+        string indexId,
+        string selector,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        HashSet<string>? kindNames,
+        CancellationToken cancellationToken)
+    {
+        if (kindNames is not null && kindNames.All(kind => kind == nameof(SymbolKind.Type)))
+            return null;
+        if (selector.Any(char.IsWhiteSpace) || selector.IndexOfAny([':', '(', ')']) >= 0)
+            return null;
+        var separator = selector.LastIndexOf('.');
+        if (separator <= 0 || separator == selector.Length - 1)
+            return null;
+
+        var typeName = selector[..separator];
+        var typeResolution = await ResolveAsync(
+            indexId, typeName, codebase, channel, cancellationToken,
+            kinds: new HashSet<SymbolKind> { SymbolKind.Type });
+        var candidates = typeResolution.Symbol is { } type
+            ? new[] { type }
+            : typeResolution.Candidates;
+        var types = candidates.Where(candidate =>
+            string.Equals(candidate.QualifiedName, typeName, StringComparison.OrdinalIgnoreCase) ||
+            candidate.QualifiedName.EndsWith("." + typeName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(SymbolNames.SimpleName(candidate.QualifiedName), typeName, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (types.Length == 0)
+            return null;
+        var memberName = selector[(separator + 1)..];
+        var pool = new List<IndexSymbolRecord>();
+        foreach (var candidate in types)
+        {
+            var rows = await _repository.GetCompletedMembersByNameAsync(
+                indexId, candidate.QualifiedName, memberName, cancellationToken);
+            pool.AddRange(rows);
+        }
+        var matches = pool.Where(record => kindNames is null || kindNames.Contains(record.Kind))
+            .DistinctBy(record => record.SymbolId).ToArray();
+        if (matches.Length == 0)
+            return null;
+        var truncated = typeResolution.Status == SymbolResolutionStatus.Ambiguous &&
+            (typeResolution.TotalCandidateCount is null || typeResolution.TotalCandidateCount > candidates.Count);
+        if (matches.Length == 1 && !truncated)
+            return Resolved(ToQueryResult(indexId, codebase, channel, matches[0], OriginFor(codebase)));
+        return Ambiguous(indexId, codebase, channel, matches, truncated ? null : matches.Length);
     }
 
     private async Task<SymbolResolutionResult?> ResolveShortIdAsync(
