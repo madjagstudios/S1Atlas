@@ -4,6 +4,17 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). S1Atlas ships on a rolling
 `main`; dated entries mark notable milestones rather than formal released packages.
 
+## Unreleased
+
+### Fixed
+
+- `setup` now takes a game update all the way to ready in one run (AT-138).
+  Before, a stale build scan planned only the rescan, so setup stopped with
+  `Next: s1atlas extract` and had to be run again. When the scan is stale, the
+  plan now also lists extract and index (and the scene snapshot with
+  `--include-optional`), marked "if the scan records a new build", and skips
+  them if the rescan keeps the same build.
+
 ## [2.0.0] - 2026-10-04: Local web app, Harmony patch index, and mod checks
 
 S1Atlas now runs as a local web app as well as a CLI and MCP server: `s1atlas serve`

@@ -49,6 +49,12 @@ stops at the first failure with the next step to take. `--include-optional`
 adds the scene snapshot; without it, an otherwise-ready atlas prints
 `Already ready` and touches nothing.
 
+After a game update the scan is stale while extract and index still read Ok
+for the old build. A rescan can record a new build, so the plan also lists the
+per-build steps that follow it, marked `(if the scan records a new build)`, and
+one `setup` run reaches ready. If the rescan keeps the same build, those steps
+are skipped as already satisfied.
+
 `doctor` is the read-only version of the same checklist: it never writes the
 atlas, migrates the database, or touches the network, and it exits `0` only
 when the atlas is ready. `doctor --json` renders the machine-readable report.
