@@ -208,6 +208,14 @@ s1atlas derived "<Namespace.TypeName>" --limit 20 --offset 20
 s1atlas callable "<TypeName.MethodName>"
 ```
 
+Plain `s1atlas index` also builds or reuses the installed S1API/S1MAPI indexes
+for whatever API DLLs the current scan recorded, so no separate invocation is
+needed. A DLL that cannot be indexed is reported as a warning and never fails
+the game index, and nothing extra happens when no API DLL is installed.
+`index --build <id>` skips the API step because the recorded DLLs describe the
+current install; targeted rebuilds remain available via
+`index --codebase s1api|s1mapi --channel installed`.
+
 Source queries are focused by default. For a resolved method or constructor,
 the result includes bounded direct callers and callees from the selected index.
 `--related-limit` defaults to `10`, accepts `0` through `50`, and `0` disables

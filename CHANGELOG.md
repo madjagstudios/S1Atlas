@@ -8,6 +8,15 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Upgrading
 
+- Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
+  to migrate the database to schema 20, which stores each installed
+  dependency DLL's hash (AT-131). The pre-migration backup is a full copy of
+  `atlas.db`, so make sure you have that much free disk space. Until the upgrade
+  runs, serve and the MCP server refuse queries with the `s1atlas status` hint,
+  and S1Atlas 2.1.0 and earlier cannot open a migrated atlas, so update the CLI
+  and MCP tools together.
+- Then run `s1atlas scan` once so the installed S1API/S1MAPI DLL hashes are
+  recorded; until then `doctor` asks for a rescan (AT-131).
 - Run `s1atlas index` once. The code index format changed (AT-140), so
   the current build is re-indexed instead of reused and callable evidence is
   rebuilt. API and reference-mod indexes also rebuild the next time they run.
@@ -27,6 +36,14 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   (AT-140).
 - Scene and prefab components whose script lives in `FishNet.Runtime` now
   resolve to their indexed type (AT-140).
+- Plain `s1atlas index` also builds or reuses the installed S1API/S1MAPI index
+  for each API DLL the current scan recorded, so no separate invocation is
+  needed. A DLL that cannot be indexed is reported as a warning and never fails
+  the game index; `index --build <id>` skips this step (AT-131).
+- `doctor` checks the installed API index only when the scan recorded an S1API
+  or S1MAPI DLL, and reports it stale when the DLL changed since the index was
+  built. Installed-channel `s1api`/`s1mapi` queries then report the index as
+  stale instead of answering from the old DLL's members (AT-131).
 
 ## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
 

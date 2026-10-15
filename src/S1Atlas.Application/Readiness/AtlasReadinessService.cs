@@ -639,8 +639,36 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
         }
 
         var environmentSnapshotId = EnvironmentSnapshotId.Create(snapshot);
-        foreach (var codebase in ApiCodebases)
+        var installedApi = snapshot.Dependencies
+            .Where(dependency => dependency.Kind is DependencyKind.S1Api or DependencyKind.S1Mapi
+                && dependency.IsInstalled)
+            .OrderBy(dependency => dependency.Kind)
+            .ToArray();
+        if (installedApi.Length == 0)
         {
+            return new ReadinessItem(
+                ReadinessItemIds.ApiIndex,
+                title,
+                ReadinessState.NotApplicable,
+                "Optional; S1API and S1MAPI are not installed in the scanned build.",
+                null,
+                true);
+        }
+
+        foreach (var dependency in installedApi)
+        {
+            var codebase = ApiCodebaseKind(dependency.Kind);
+            if (string.IsNullOrWhiteSpace(dependency.BinarySha256))
+            {
+                return new ReadinessItem(
+                    ReadinessItemIds.ApiIndex,
+                    title,
+                    ReadinessState.Missing,
+                    $"The scan did not record an installed {ApiDisplayName(codebase)} DLL hash; re-run 's1atlas scan'.",
+                    ReadinessFixCommands.Scan,
+                    true);
+            }
+
             var installed = await _indexRepository.GetLatestCompletedIndexAsync(
                 codebase,
                 CodeChannel.Installed,
@@ -653,6 +681,20 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                     title,
                     ReadinessState.Missing,
                     $"No installed {ApiDisplayName(codebase)} index exists for this build.",
+                    ReadinessFixCommands.IndexApiInstalled(codebase),
+                    true);
+            }
+
+            var installedSnapshot = await _indexRepository.GetCodeSnapshotAsync(
+                installed.SnapshotId, cancellationToken);
+            if (installedSnapshot is null
+                || !string.Equals(installedSnapshot.SourceIdentity, dependency.BinarySha256, StringComparison.Ordinal))
+            {
+                return new ReadinessItem(
+                    ReadinessItemIds.ApiIndex,
+                    title,
+                    ReadinessState.Stale,
+                    $"Installed {ApiDisplayName(codebase)} changed since the index was built (the scanned DLL hash no longer matches the indexed one).",
                     ReadinessFixCommands.IndexApiInstalled(codebase),
                     true);
             }
@@ -694,11 +736,15 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
             }
         }
 
+        var okDetail = installedApi.Length == 1
+            ? $"Installed {ApiDisplayName(ApiCodebaseKind(installedApi[0].Kind))} index is current."
+            : "S1API and S1MAPI installed indexes are current.";
+
         return new ReadinessItem(
             ReadinessItemIds.ApiIndex,
             title,
             ReadinessState.Ok,
-            "S1API and S1MAPI installed indexes are current.",
+            okDetail,
             null,
             true);
     }
@@ -879,6 +925,14 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
             CodebaseKind.S1Api => "S1API",
             CodebaseKind.S1MApi => "S1MAPI",
             _ => codebase.ToString()
+        };
+
+    private static CodebaseKind ApiCodebaseKind(DependencyKind kind) =>
+        kind switch
+        {
+            DependencyKind.S1Api => CodebaseKind.S1Api,
+            DependencyKind.S1Mapi => CodebaseKind.S1MApi,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
 
     private static string FirstLine(string value)

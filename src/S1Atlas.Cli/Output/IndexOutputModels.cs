@@ -1,5 +1,12 @@
 namespace S1Atlas.Cli.Output;
 
+internal sealed record InstalledApiIndexOutput(
+    string Codebase,
+    string Channel,
+    string IndexId,
+    bool Reused,
+    int SymbolCount);
+
 internal sealed record IndexOutput(
     string Codebase,
     string Channel,
@@ -9,4 +16,7 @@ internal sealed record IndexOutput(
     int SymbolCount,
     int SourceFileCount,
     int RelationshipCount,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    public IReadOnlyList<InstalledApiIndexOutput> ApiIndexes { get; init; } = [];
+}

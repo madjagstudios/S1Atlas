@@ -1911,7 +1911,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT kind, version, path, is_installed
+            SELECT kind, version, path, is_installed, binary_sha256
             FROM dependencies
             WHERE snapshot_id = $snapshotId
             ORDER BY ordinal;
@@ -1925,7 +1925,8 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
                 Enum.Parse<DependencyKind>(reader.GetString(0), ignoreCase: false),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2),
-                reader.GetInt64(3) == 1));
+                reader.GetInt64(3) == 1,
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
 
         return dependencies;
@@ -2154,7 +2155,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT kind, version, path, is_installed
+            SELECT kind, version, path, is_installed, binary_sha256
             FROM dependencies
             WHERE snapshot_id = $snapshotId
             ORDER BY ordinal;
@@ -2164,7 +2165,7 @@ public sealed partial class ReadOnlySqliteAtlasRepository :
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            dependencies.Add(new DependencyVersion(Enum.Parse<DependencyKind>(reader.GetString(0), ignoreCase: false), reader.IsDBNull(1) ? null : reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetInt64(3) == 1));
+            dependencies.Add(new DependencyVersion(Enum.Parse<DependencyKind>(reader.GetString(0), ignoreCase: false), reader.IsDBNull(1) ? null : reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetInt64(3) == 1, reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
         return dependencies;
     }

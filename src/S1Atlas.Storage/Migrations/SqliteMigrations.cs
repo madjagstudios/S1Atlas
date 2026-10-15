@@ -1066,6 +1066,11 @@ internal static class SqliteMigrations
         ON callable_surface(index_id, status);
         """;
 
+    private const string DependencyBinaryHashV20Sql = """
+        ALTER TABLE dependencies
+        ADD COLUMN binary_sha256 TEXT NULL;
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -1086,6 +1091,7 @@ internal static class SqliteMigrations
         new(16, "symbol-search-fts-v16", SymbolSearchFtsV16Sql, RequiresFts5Trigram: true),
         new(17, "generated-body-credit-v17", GeneratedBodyCreditV17Sql),
         new(18, "simple-name-correction-v18", SimpleNameCorrectionV18Sql, RequiresFts5Trigram: true),
-        new(19, "callable-surface-unknown-v19", CallableSurfaceUnknownV19Sql)
+        new(19, "callable-surface-unknown-v19", CallableSurfaceUnknownV19Sql),
+        new(20, "dependency-binary-hash-v20", DependencyBinaryHashV20Sql)
     ];
 }

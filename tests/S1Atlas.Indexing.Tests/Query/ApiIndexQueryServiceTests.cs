@@ -36,7 +36,10 @@ public sealed class ApiIndexQueryServiceTests : IAsyncDisposable
         await _repository.InitializeAsync(cancellationToken);
 
         var staleEnvironmentId = await SeedEnvironmentAsync("build-stale", cancellationToken);
-        var currentEnvironmentId = await SeedEnvironmentAsync("build-current", cancellationToken);
+        var currentEnvironmentId = await SeedEnvironmentAsync(
+            "build-current",
+            cancellationToken,
+            [new DependencyVersion(DependencyKind.S1Api, "3.0.0", "S1API.dll", true, "installed-s1api-binary")]);
         var current = await SeedIndexAsync(
             CodebaseKind.S1Api,
             CodeChannel.Installed,
@@ -407,10 +410,155 @@ public sealed class ApiIndexQueryServiceTests : IAsyncDisposable
         Assert.Equal(before, after);
     }
 
+    [Fact]
+    public async Task Installed_index_matching_current_scan_hash_is_current_and_searchable()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        const string dllHash = "matching-dll-hash";
+        var environmentId = await SeedEnvironmentAsync(
+            "build-current",
+            cancellationToken,
+            [new DependencyVersion(DependencyKind.S1Api, "3.2.1", "S1API.dll", true, dllHash)]);
+        await SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "api-installed-hash-match",
+            dllHash,
+            environmentId,
+            cancellationToken,
+            symbols:
+            [
+                Symbol("hash-match-symbol", CodebaseKind.S1Api, CodeChannel.Installed, "Demo.HashMatch")
+            ]);
+
+        var service = CreateService();
+        var catalog = await service.ListAsync(null, cancellationToken);
+        var selection = Selection(catalog, CodebaseKind.S1Api, CodeChannel.Installed);
+        Assert.Equal(ApiIndexAvailability.Current, selection.Availability);
+
+        var search = await service.SearchAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "Demo.HashMatch",
+            limit: 10,
+            cancellationToken);
+        Assert.Null(search.ResolutionStatus);
+        Assert.Equal(1, search.TotalCount);
+        Assert.Equal("hash-match-symbol", Assert.Single(search.Results).SymbolId);
+    }
+
+    [Fact]
+    public async Task Installed_index_with_drifted_dll_hash_is_stale_and_not_searchable()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        const string indexedHash = "indexed-dll-hash";
+        const string scannedHash = "scanned-dll-hash";
+        var environmentId = await SeedEnvironmentAsync(
+            "build-current",
+            cancellationToken,
+            [new DependencyVersion(DependencyKind.S1Api, "3.2.1", "S1API.dll", true, scannedHash)]);
+        await SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "api-installed-hash-drifted",
+            indexedHash,
+            environmentId,
+            cancellationToken,
+            symbols:
+            [
+                Symbol("drifted-symbol", CodebaseKind.S1Api, CodeChannel.Installed, "Demo.Drifted")
+            ]);
+
+        var service = CreateService();
+        var catalog = await service.ListAsync(null, cancellationToken);
+        var selection = Selection(catalog, CodebaseKind.S1Api, CodeChannel.Installed);
+        Assert.Equal(ApiIndexAvailability.Stale, selection.Availability);
+        Assert.NotNull(selection.IndexId);
+        Assert.NotNull(selection.SnapshotId);
+        Assert.Contains(indexedHash, selection.Message, StringComparison.Ordinal);
+        Assert.Contains(scannedHash, selection.Message, StringComparison.Ordinal);
+
+        var search = await service.SearchAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "Demo.Drifted",
+            limit: 10,
+            cancellationToken);
+        Assert.Equal(SymbolResolutionStatus.NoCompletedIndex, search.ResolutionStatus);
+        Assert.Equal(0, search.TotalCount);
+        Assert.Empty(search.Results);
+    }
+
+    [Fact]
+    public async Task Installed_index_without_installed_dependency_in_current_scan_is_stale()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        var environmentId = await SeedEnvironmentAsync(
+            "build-current",
+            cancellationToken,
+            [new DependencyVersion(DependencyKind.S1Mapi, null, null, false)]);
+        await SeedIndexAsync(
+            CodebaseKind.S1MApi,
+            CodeChannel.Installed,
+            "api-installed-hash-uninstalled",
+            "orphaned-dll-hash",
+            environmentId,
+            cancellationToken);
+
+        var catalog = await CreateService().ListAsync(null, cancellationToken);
+        var selection = Selection(catalog, CodebaseKind.S1MApi, CodeChannel.Installed);
+        Assert.Equal(ApiIndexAvailability.Stale, selection.Availability);
+        Assert.Contains("not installed", selection.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Rebuilt_installed_index_after_hash_change_is_current_again()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await _repository.InitializeAsync(cancellationToken);
+        const string newHash = "rebuilt-dll-hash";
+        var environmentId = await SeedEnvironmentAsync(
+            "build-current",
+            cancellationToken,
+            [new DependencyVersion(DependencyKind.S1Api, "3.2.1", "S1API.dll", true, newHash)]);
+        await SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "api-installed-hash-old",
+            "superseded-dll-hash",
+            environmentId,
+            cancellationToken);
+
+        var staleCatalog = await CreateService().ListAsync(null, cancellationToken);
+        Assert.Equal(
+            ApiIndexAvailability.Stale,
+            Selection(staleCatalog, CodebaseKind.S1Api, CodeChannel.Installed).Availability);
+
+        var rebuilt = await SeedIndexAsync(
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            "api-installed-hash-new",
+            newHash,
+            environmentId,
+            cancellationToken);
+
+        var catalog = await CreateService().ListAsync(null, cancellationToken);
+        var selection = Selection(catalog, CodebaseKind.S1Api, CodeChannel.Installed);
+        Assert.Equal(ApiIndexAvailability.Current, selection.Availability);
+        Assert.Equal(rebuilt.IndexId, selection.IndexId);
+        Assert.Equal(rebuilt.SnapshotId, selection.SnapshotId);
+    }
+
     private ApiIndexQueryService CreateService() =>
         new(_repository, new IndexQueryService(_repository, _dataRoot));
 
-    private async Task<string> SeedEnvironmentAsync(string buildId, CancellationToken cancellationToken)
+    private async Task<string> SeedEnvironmentAsync(
+        string buildId,
+        CancellationToken cancellationToken,
+        IReadOnlyList<DependencyVersion>? dependencies = null)
     {
         var capturedAt = DateTimeOffset.Parse("2026-08-30T00:00:00Z").AddMinutes(_seedOrdinal++);
         var snapshot = new EnvironmentSnapshot(
@@ -422,7 +570,7 @@ public sealed class ApiIndexQueryServiceTests : IAsyncDisposable
                 capturedAt,
                 true),
             new InstallationObservation("fixture", "app", buildId, _root, null, null),
-            [],
+            dependencies ?? [],
             "test",
             capturedAt);
         await _repository.SaveSnapshotAsync(snapshot, cancellationToken);
