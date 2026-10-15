@@ -45,6 +45,12 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   built. Installed-channel `s1api`/`s1mapi` queries then report the index as
   stale instead of answering from the old DLL's members (AT-131).
 
+### Fixed
+
+- `recover-native-body --json` now writes only the JSON envelope to stdout.
+  LibCpp2IL's progress and diagnostic messages go to stderr instead, and its
+  verbose progress lines appear only with the new `--verbose` flag (AT-132).
+
 ## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
 
 The game index now covers the game's second assembly, `ScheduleOne.Core`, so item

@@ -53,7 +53,10 @@ public sealed class NativeRecoveryComposition
     /// Builds the real <see cref="NativeRecoveryWorkflow"/> against the located install, or
     /// <c>null</c> when no Schedule I installation can be found.
     /// </summary>
-    public async Task<NativeRecoveryWorkflow?> BuildWorkflowAsync(CancellationToken cancellationToken)
+    public async Task<NativeRecoveryWorkflow?> BuildWorkflowAsync(
+        CancellationToken cancellationToken,
+        TextWriter? logSink = null,
+        bool verbose = false)
     {
         var installation = await LocateInstallationAsync(cancellationToken).ConfigureAwait(false);
         if (installation is null)
@@ -62,7 +65,12 @@ public sealed class NativeRecoveryComposition
         }
 
         var symbolResolver = new IndexSymbolIdentityResolver(_indexRepository);
-        var imageCache = new Il2CppImageCache(LibCpp2IlImageInitializer.InitializeAsync);
+        var imageCache = new Il2CppImageCache(
+            (gameAssemblySha256, gameAssemblyBytes, metadataSha256, metadataBytes, unityVersion, ct) =>
+                LibCpp2IlImageInitializer.InitializeAsync(
+                    gameAssemblySha256, gameAssemblyBytes,
+                    metadataSha256, metadataBytes,
+                    unityVersion, ct, logSink, verbose));
         var imageSource = new ScheduleOneNativeImageSource(installation);
         var adapterFactory = new LibCpp2IlAdapterFactory();
         var libraryPins = LoadLibraryPins();
