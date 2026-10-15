@@ -35,6 +35,10 @@ internal static class RecoverNativeBodyCommand
         {
             Description = "Select a Schedule I Installed build ID or unique short-ID prefix; defaults to the current installed build."
         };
+        var verboseOption = new Option<bool>("--verbose")
+        {
+            Description = "Show LibCpp2IL progress logging on stderr."
+        };
         var jsonOption = CommandOutput.CreateJsonOption();
 
         var command = new Command(
@@ -43,6 +47,7 @@ internal static class RecoverNativeBodyCommand
         command.Options.Add(symbolIdOption);
         command.Options.Add(traversalBudgetOption);
         command.Options.Add(buildOption);
+        command.Options.Add(verboseOption);
         command.Options.Add(jsonOption);
         command.Validators.Add(result =>
         {
@@ -73,6 +78,8 @@ internal static class RecoverNativeBodyCommand
                     parseResult.GetValue(symbolIdOption) ?? [],
                     parseResult.GetValue(traversalBudgetOption),
                     parseResult.GetValue(buildOption),
+                    parseResult.GetValue(verboseOption),
+                    error,
                     commandOutput,
                     cancellationToken),
                 commandOutput,
@@ -90,6 +97,8 @@ internal static class RecoverNativeBodyCommand
         IReadOnlyList<string> symbolIds,
         int traversalBudget,
         string? buildId,
+        bool verbose,
+        TextWriter logSink,
         CommandOutput commandOutput,
         CancellationToken cancellationToken)
     {
@@ -152,7 +161,7 @@ internal static class RecoverNativeBodyCommand
                 contextResult.Reason ?? "The native recovery execution context could not be prepared.");
         }
 
-        var workflow = composition.BuildWorkflowAsync(cancellationToken).GetAwaiter().GetResult();
+        var workflow = composition.BuildWorkflowAsync(cancellationToken, logSink, verbose).GetAwaiter().GetResult();
         if (workflow is null)
         {
             return commandOutput.Failure(

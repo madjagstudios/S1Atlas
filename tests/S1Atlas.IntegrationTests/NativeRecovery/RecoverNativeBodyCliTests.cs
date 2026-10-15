@@ -65,6 +65,38 @@ public sealed class RecoverNativeBodyCliTests
     }
 
     [Fact]
+    public async Task Recover_native_body_accepts_verbose_and_proceeds_past_option_validation()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run(
+            "recover-native-body",
+            "--symbol-id",
+            "native-target",
+            "--native-traversal-budget",
+            "100",
+            "--verbose",
+            "--json");
+
+        // A bare atlas has no current build, so execution must proceed past option
+        // validation and fail on authority resolution instead of an unknown-option error.
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        AssertJsonErrorCode(result.StandardOutput, "NoCurrentBuild");
+    }
+
+    [Fact]
+    public async Task Recover_native_body_help_advertises_verbose()
+    {
+        await using var atlas = await SeamInvestigationCliAtlas.CreateBareAsync();
+
+        var result = atlas.Run("recover-native-body", "--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("--verbose", result.StandardOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Recover_native_body_lists_matches_for_an_ambiguous_symbol_id_prefix()
     {
         await using var atlas = await SeamInvestigationCliAtlas.CreateSymbolPrefixAsync();
@@ -187,13 +219,129 @@ public sealed class RecoverNativeBodyCliTests
         Assert.Equal(recoveryId, secondRecoveryId);
     }
 
-    private static (int ExitCode, string StandardOutput, string StandardError) Run(string dataRoot, string symbolId)
+    /// <summary>
+    /// AT-132 stdout-purity regression gate (default mode): <c>recover-native-body --json</c>
+    /// stdout must parse as JSON with a non-empty <c>data.recoveryId</c>, proving LibCpp2IL
+    /// progress stays off stdout. Same gating and fixtures as
+    /// <see cref="Recover_native_body_recovers_and_persists_deterministically_for_the_real_installed_build"/>.
+    /// </summary>
+    [Trait("Category", "LocalGameRequired")]
+    [Fact]
+    public async Task Recover_native_body_json_stdout_parses_as_json_in_default_mode()
+    {
+        await RunJsonStdoutPurityAsync(verbose: false);
+    }
+
+    /// <summary>
+    /// AT-132 stdout-purity regression gate (verbose mode): same stdout requirement as
+    /// default mode, plus LibCpp2IL verbose progress must appear on stderr with
+    /// <c>--verbose</c>.
+    /// </summary>
+    [Trait("Category", "LocalGameRequired")]
+    [Fact]
+    public async Task Recover_native_body_json_stdout_parses_as_json_in_verbose_mode()
+    {
+        await RunJsonStdoutPurityAsync(verbose: true);
+    }
+
+    private static async Task RunJsonStdoutPurityAsync(bool verbose)
+    {
+        const string DeclaringTypeFullName = "ScheduleOne.Economy.Customer";
+        const string MethodName = "EvaluateCounteroffer";
+        const string QualifiedNamePrefix = $"{DeclaringTypeFullName}::{MethodName}(";
+        // "Initializing Metadata..." is Info-level in the pinned LibCpp2IL build
+        // (LibCpp2IlMain.Initialize logs it via LibLogger.InfoNewline), so it is routed to
+        // stderr in both modes. "Reading PE File Header..." is Verbose-level (the first log
+        // in PE..ctor, unconditional on the Windows success path), so it appears on stderr
+        // only with --verbose. Both levels were verified against the pinned
+        // Samboy063.LibCpp2IL IL rather than assumed from the marker text.
+        const string InfoMarker = "Initializing Metadata";
+        const string VerboseMarker = "Reading PE File Header";
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        Assert.SkipUnless(
+            LiveAtlasCopy.IsExplicitlyEnabled,
+            $"LocalGameRequired tests run only with {LiveAtlasCopy.EnableVariable}=1. " +
+            "Skipping: NEEDS_CONTEXT.");
+
+        var installation = await new WindowsScheduleOneLocator().LocateAsync(null, cancellationToken);
+        Assert.SkipUnless(
+            installation is not null,
+            "No Schedule I installation was found via standard Steam detection. Skipping: NEEDS_CONTEXT.");
+
+        var liveDataRoot = LiveAtlasCopy.ResolveLiveDataRoot();
+        var liveDatabasePath = Path.Combine(liveDataRoot, "atlas.db");
+        Assert.SkipUnless(
+            File.Exists(liveDatabasePath),
+            $"No S1Atlas database found at '{liveDatabasePath}' (override with S1ATLAS_HOME). " +
+            "Skipping: NEEDS_CONTEXT.");
+
+        await using var copy = await LiveAtlasCopy.CreateAsync(liveDataRoot, cancellationToken);
+        Assert.SkipUnless(
+            copy is not null,
+            "The temp drive cannot hold a copy of the live atlas. Skipping: NEEDS_CONTEXT.");
+
+        var atlasHomeDirectory = copy!.DataRoot;
+        var databasePath = copy.DatabasePath;
+
+        var repository = new SqliteAtlasRepository(
+            databasePath,
+            Path.Combine(atlasHomeDirectory, "backups"));
+        await repository.InitializeAsync(cancellationToken);
+
+        var run = await repository.GetLatestCompletedIndexAsync(
+            CodebaseKind.ScheduleI, CodeChannel.Installed, environmentSnapshotId: null, cancellationToken);
+        Assert.SkipUnless(
+            run is not null,
+            "No completed Schedule I Installed index exists locally. Skipping: NEEDS_CONTEXT.");
+
+        var candidates = await repository.SearchCompletedSymbolsAsync(
+            run!.IndexId, MethodName, limit: 50, cancellationToken, kind: "Method");
+        var symbol = candidates.FirstOrDefault(
+            candidate => candidate.QualifiedName.StartsWith(QualifiedNamePrefix, StringComparison.Ordinal));
+        Assert.SkipUnless(
+            symbol is not null,
+            $"No indexed '{DeclaringTypeFullName}::{MethodName}' symbol was found in index '{run.IndexId}'. " +
+            "Skipping: NEEDS_CONTEXT.");
+
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
+        var result = Run(atlasHomeDirectory, symbol!.SymbolId, verbose: verbose);
+        Assert.SkipUnless(
+            result.ExitCode == 0,
+            "recover-native-body did not resolve an installed-build authority in the local " +
+            $"environment (exit {result.ExitCode}): {result.StandardOutput}{result.StandardError} " +
+            "Skipping: NEEDS_CONTEXT.");
+
+        // Core regression gate: pre-fix, LibCpp2IL progress lines preceded the envelope and
+        // this parse threw.
+        using var document = JsonDocument.Parse(result.StandardOutput);
+        var recoveryId = document.RootElement.GetProperty("data").GetProperty("recoveryId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(recoveryId));
+
+        Assert.Contains(InfoMarker, result.StandardError, StringComparison.Ordinal);
+        if (verbose)
+        {
+            Assert.Contains(VerboseMarker, result.StandardError, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.DoesNotContain(VerboseMarker, result.StandardError, StringComparison.Ordinal);
+        }
+    }
+
+    private static (int ExitCode, string StandardOutput, string StandardError) Run(
+        string dataRoot, string symbolId, bool verbose = false)
     {
         var application = new CliApplication(dataRoot, "0.1.0-test");
         using var output = new StringWriter();
         using var error = new StringWriter();
+        string[] args = verbose
+            ? ["recover-native-body", "--symbol-id", symbolId, "--native-traversal-budget", "100", "--verbose", "--json"]
+            : ["recover-native-body", "--symbol-id", symbolId, "--native-traversal-budget", "100", "--json"];
         var exitCode = application.Invoke(
-            ["recover-native-body", "--symbol-id", symbolId, "--native-traversal-budget", "100", "--json"],
+            args,
             output,
             error,
             TestContext.Current.CancellationToken);

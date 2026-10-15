@@ -14,8 +14,11 @@ public static class LibCpp2IlImageInitializer
         string gameAssemblySha256, byte[] gameAssemblyBytes,
         string metadataSha256, byte[] metadataBytes,
         UnityVersion unityVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TextWriter? logSink = null,
+        bool verbose = false)
     {
+        LibCpp2IlLogging.Configure(logSink ?? Console.Error, verbose);
         LibCpp2IL.LibCpp2IlMain.Reset();
         var initialized = LibCpp2IL.LibCpp2IlMain.Initialize(gameAssemblyBytes, metadataBytes, unityVersion);
         if (!initialized)
