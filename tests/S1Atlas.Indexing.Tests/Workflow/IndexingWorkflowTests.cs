@@ -982,7 +982,7 @@ public sealed class IndexingWorkflowTests
             ScratchAssembly.Compile(fishNetSource, fishNet);
         }
         ScratchAssembly.Compile(
-            fishNet is null ? PlainGameSource : FishNetGameSource,
+            fishNet is null ? CodegenGameSource : FishNetGameSource,
             Path.Combine(reconstructed, "Assembly-CSharp.dll"),
             fishNet is null ? [] : [fishNet]);
     }
@@ -992,6 +992,7 @@ public sealed class IndexingWorkflowTests
           public class NetworkObject { public int ObjectId { get; set; } }
         }
         namespace FishNet.Managing {
+          public class NetworkManager { }
           public static class ServerManager {
             public static void Spawn(FishNet.Object.NetworkObject obj) { }
             public static void Despawn(FishNet.Object.NetworkObject obj) { }
@@ -1005,6 +1006,7 @@ public sealed class IndexingWorkflowTests
           public class NetworkObject { public int ObjectId { get; set; } }
         }
         namespace FishNet.Managing {
+          public class NetworkManager { }
           public static class ServerManager {
             public static void Spawn(FishNet.Object.NetworkObject obj, int ownerId) { }
             public static void Despawn(FishNet.Object.NetworkObject obj) { }
@@ -1021,11 +1023,15 @@ public sealed class IndexingWorkflowTests
         }
         """;
 
-    private const string PlainGameSource = """
+    private const string CodegenGameSource = """
         namespace ScheduleOne.Networking {
           public static class NetworkBootstrap {
             public static void Register(string prefabName) { }
           }
+        }
+        namespace FishNet.Serializing.Generated {
+          public sealed class GeneratedReaders___Internal { }
+          public sealed class GeneratedComparers___Internal { }
         }
         """;
 
