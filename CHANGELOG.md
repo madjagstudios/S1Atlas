@@ -50,6 +50,10 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - `recover-native-body --json` now writes only the JSON envelope to stdout.
   LibCpp2IL's progress and diagnostic messages go to stderr instead, and its
   verbose progress lines appear only with the new `--verbose` flag (AT-132).
+- `extractions list --build` accepts a unique short build-id prefix, as other
+  commands do, instead of silently printing "No validated extractions." An
+  ambiguous prefix fails with `AmbiguousBuildPrefix` and lists the matching
+  builds; an unknown or malformed build id fails with `BuildNotFound` (AT-133).
 
 ## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
 
