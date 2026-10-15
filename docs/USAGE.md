@@ -175,12 +175,14 @@ input snapshots, current tools, or uncertain evidence. See
 **[docs/REFERENCE.md](REFERENCE.md)** for the full safety and recovery rules.
 
 Build and query the code index once the current build has a preferred,
-integrity-verified extraction. The index decompiles the game's own reconstructed
-assemblies (`Assembly-CSharp.dll`, `ScheduleOne.dll` and every `ScheduleOne.*.dll`,
-such as `ScheduleOne.Core.dll`) with ILSpy, records normalized symbols and relationships
-with Roslyn, and answers queries entirely offline. When MelonLoader's generated
-`Il2CppAssemblies` folder is present, each game assembly is paired with its interop
-assembly (`Assembly-CSharp.dll`, `Il2CppScheduleOne.Core.dll`, and so on) to record
+integrity-verified extraction. The index decompiles the reconstructed assemblies
+it covers (the game's own `Assembly-CSharp.dll`, `ScheduleOne.dll` and every
+`ScheduleOne.*.dll`, such as `ScheduleOne.Core.dll`, plus the FishNet multiplayer
+runtime `FishNet.Runtime.dll` the game ships) with ILSpy, records normalized symbols
+and relationships with Roslyn, and answers queries entirely offline. When MelonLoader's
+generated `Il2CppAssemblies` folder is present, each indexed assembly is paired with
+its interop assembly (`Assembly-CSharp.dll`, `Il2CppScheduleOne.Core.dll`,
+`Il2CppFishNet.Runtime.dll`, and so on) to record
 which members a mod can call directly. `--build` indexes an earlier build that still
 has a preferred, verified extraction, for example before comparing it with
 `check-mod` or `diff`:
@@ -396,7 +398,10 @@ non-constant arguments is reported as unresolved at that caller. A patch whose
 patch method cannot be identified is still checked, with the registering method as
 its source. Dynamic strings, values that differ between branches, and helpers that
 call further helpers are not inferred. System, Unity, MelonLoader, S1API, interop
-runtime, and other-mod dependencies are outside the check. The body flag compares
+runtime, and other-mod dependencies are outside the check. FishNet references are
+checked when every compared index contains FishNet types; when a compared index
+predates FishNet coverage they stay outside the check like other external references.
+The body flag compares
 stored fingerprints; it does not inspect changes inside a member or establish
 runtime compatibility.
 

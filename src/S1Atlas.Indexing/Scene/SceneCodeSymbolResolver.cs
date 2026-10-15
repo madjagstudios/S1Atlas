@@ -57,7 +57,7 @@ public sealed class SceneCodeSymbolResolver
             null,
             SceneResolutionStatus.UnresolvedText);
 
-        if (!IsScheduleOneAssembly(script.AssemblyName) ||
+        if (!IsIndexedAssembly(script.AssemblyName) ||
             string.IsNullOrWhiteSpace(script.Namespace) ||
             string.IsNullOrWhiteSpace(script.ClassName))
         {
@@ -125,7 +125,7 @@ public sealed class SceneCodeSymbolResolver
         };
     }
 
-    private static bool IsScheduleOneAssembly(string value) => GameAssemblySet.IsGameAssemblyName(value);
+    private static bool IsIndexedAssembly(string value) => GameAssemblySet.IsIndexedAssemblyName(value);
 
     private static Func<string, CancellationToken, Task<SceneCodeBuildAuthority?>> CreateAuthorityResolver(
         IIndexRepository indexRepository)

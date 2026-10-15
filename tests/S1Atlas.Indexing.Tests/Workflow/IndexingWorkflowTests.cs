@@ -29,7 +29,7 @@ public sealed class IndexingWorkflowTests
         Assert.Equal(first, second);
         Assert.Equal(64, first.Length);
         Assert.DoesNotContain(first, char.IsUpper);
-        Assert.Equal(17, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
+        Assert.Equal(18, S1Atlas.Indexing.Workflow.IndexingWorkflow.IndexSchemaVersion);
     }
 
     [Fact]
@@ -666,6 +666,248 @@ public sealed class IndexingWorkflowTests
         }
     }
 
+    [Fact]
+    public async Task Schedule_one_index_covers_the_allowlisted_fishnet_assembly()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-fishnet-" + Guid.NewGuid().ToString("N"));
+        var extractionRoot = Path.Combine(root, "extractions", "current");
+        WriteFishNetGameAssemblies(extractionRoot, FishNetSourceV1);
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+        var buildId = new string('1', 64);
+        var authority = CreateAuthority(buildId, new string('2', 64), extractionRoot);
+        var ct = TestContext.Current.CancellationToken;
+
+        try
+        {
+            await repository.InitializeAsync(ct);
+            var workflow = new IndexingWorkflow(
+                root,
+                repository,
+                (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(authority),
+                new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+
+            var result = await workflow.RunScheduleOneAsync(buildId, false, ct);
+
+            var symbols = await repository.GetCompletedSymbolsAsync(result.IndexId, ct);
+            var networkObject = Assert.Single(symbols, symbol => symbol.Kind == "Type" && symbol.Signature == "FishNet.Object.NetworkObject");
+            Assert.Contains(symbols, symbol => symbol.Kind == "Type" && symbol.Signature == "FishNet.Managing.ServerManager");
+            Assert.Contains(symbols, symbol => symbol.Kind == "Method" && symbol.QualifiedName.StartsWith("FishNet.Managing.ServerManager::Spawn(", StringComparison.Ordinal));
+            var register = Assert.Single(symbols, symbol => symbol.Kind == "Method" && symbol.QualifiedName.StartsWith("ScheduleOne.Networking.NetworkBootstrap::Register(", StringComparison.Ordinal));
+            Assert.Contains("FishNet.Object.NetworkObject", register.QualifiedName, StringComparison.Ordinal);
+
+            var key = SymbolIdentity.Create(CodebaseKind.ScheduleI, CodeChannel.Installed, SymbolKind.Type, "FishNet.Object.NetworkObject").CanonicalKey;
+            var resolved = await repository.GetCompletedSymbolByCanonicalKeyAsync(result.IndexId, key, ct);
+            Assert.Contains(resolved, symbol => symbol.SymbolId == networkObject.SymbolId);
+
+            var sourceFiles = await repository.GetCompletedSourceFilesAsync(result.IndexId, ct);
+            Assert.Contains(sourceFiles, file => file.RelativePath == "FishNet.Runtime.cs");
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    [Fact]
+    public async Task Schedule_one_index_pairs_the_fishnet_assembly_with_its_own_interop_assembly()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-fishnet-interop-" + Guid.NewGuid().ToString("N"));
+        var extractionRoot = Path.Combine(root, "extractions", "current");
+        WriteFishNetGameAssemblies(extractionRoot, FishNetSourceV1);
+        var melonLoader = Path.Combine(root, "MelonLoader");
+        var interopDirectory = Path.Combine(melonLoader, "Il2CppAssemblies");
+        ScratchAssembly.Compile(InteropFishNetGameSource, Path.Combine(interopDirectory, "Assembly-CSharp.dll"));
+        var interopFishNet = Path.Combine(interopDirectory, "Il2CppFishNet.Runtime.dll");
+        ScratchAssembly.Compile(InteropFishNetSource, interopFishNet);
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+        var buildId = new string('7', 64);
+        var authority = CreateAuthority(buildId, new string('8', 64), extractionRoot);
+        var ct = TestContext.Current.CancellationToken;
+
+        try
+        {
+            await repository.InitializeAsync(ct);
+            var workflow = new IndexingWorkflow(
+                root,
+                repository,
+                (_, _) => Task.FromResult<PreferredVerifiedExtraction?>(authority),
+                new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+            var fishNetHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(interopFishNet, ct))).ToLowerInvariant();
+
+            var result = await workflow.RunScheduleOneAsync(buildId, false, ct, melonLoader);
+
+            Assert.Empty(result.Warnings);
+            var sourceFiles = await repository.GetCompletedSourceFilesAsync(result.IndexId, ct);
+            Assert.Contains(sourceFiles, file => file.RelativePath == "interop/FishNet.Runtime.cs");
+            var spawn = Assert.Single(
+                await repository.GetCompletedCallableSurfaceAsync(result.IndexId, ct),
+                record => record.GameCanonicalKey.Contains("ServerManager::Spawn(", StringComparison.Ordinal));
+            Assert.Equal(CallableSurfaceStatus.Resolved, spawn.Status);
+            Assert.Equal("Il2CppFishNet.Runtime.dll", spawn.InteropAssemblyName);
+            Assert.Equal(fishNetHash, spawn.InteropInputSha256);
+            var nextId = Assert.Single(
+                await repository.GetCompletedCallableSurfaceAsync(result.IndexId, ct),
+                record => record.GameCanonicalKey.Contains("ServerManager::NextObjectId(", StringComparison.Ordinal));
+            Assert.Equal(CallableSurfaceStatus.Resolved, nextId.Status);
+            Assert.Equal("Il2CppFishNet.Runtime.dll", nextId.InteropAssemblyName);
+
+            File.Delete(interopFishNet);
+            var withoutFishNet = await workflow.RunScheduleOneAsync(buildId, false, ct, melonLoader);
+
+            Assert.NotEqual(result.IndexId, withoutFishNet.IndexId);
+            Assert.Contains(withoutFishNet.Warnings, warning => warning.Contains("Il2CppFishNet.Runtime.dll", StringComparison.Ordinal));
+            var unknown = Assert.Single(
+                await repository.GetCompletedCallableSurfaceAsync(withoutFishNet.IndexId, ct),
+                record => record.GameCanonicalKey.Contains("ServerManager::NextObjectId(", StringComparison.Ordinal));
+            Assert.Equal(CallableSurfaceStatus.Unknown, unknown.Status);
+            Assert.Equal("Il2CppFishNet.Runtime.dll", unknown.InteropAssemblyName);
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    [Fact]
+    public async Task Check_mod_checks_fishnet_references_when_both_builds_contain_fishnet()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-fishnet-check-" + Guid.NewGuid().ToString("N"));
+        var fromBuild = new string('3', 64);
+        var toBuild = new string('5', 64);
+        var authorities = new Dictionary<string, PreferredVerifiedExtraction>(StringComparer.Ordinal)
+        {
+            [fromBuild] = CreateAuthority(fromBuild, new string('4', 64), Path.Combine(root, "extractions", "from")),
+            [toBuild] = CreateAuthority(toBuild, new string('6', 64), Path.Combine(root, "extractions", "to"))
+        };
+        WriteFishNetGameAssemblies(authorities[fromBuild].Extraction.RootPath, FishNetSourceV1);
+        WriteFishNetGameAssemblies(authorities[toBuild].Extraction.RootPath, FishNetSourceV2);
+        var fishNetV1 = Path.Combine(authorities[fromBuild].Extraction.RootPath, "reconstructed", "FishNet.Runtime.dll");
+        var modPath = Path.Combine(root, "mods", "FishNetDependentMod.dll");
+        ScratchAssembly.Compile(FishNetModSource, modPath, fishNetV1);
+        var databasePath = Path.Combine(root, "atlas.db");
+        var repository = new SqliteAtlasRepository(databasePath);
+        var ct = TestContext.Current.CancellationToken;
+
+        try
+        {
+            await repository.InitializeAsync(ct);
+            var workflow = new IndexingWorkflow(
+                root,
+                repository,
+                (buildId, _) => Task.FromResult<PreferredVerifiedExtraction?>(authorities[buildId]),
+                new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+            var from = await workflow.RunScheduleOneAsync(fromBuild, false, ct);
+            var to = await workflow.RunScheduleOneAsync(toBuild, false, ct);
+            var reader = new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(databasePath));
+
+            var check = await new ModCheckService(reader, reader, new IlSpyManagedDecompiler())
+                .CheckAsync(modPath, fromBuild, toBuild, from.IndexId, to.IndexId, ct);
+
+            var fishNet = check.Dependencies.Where(dependency => dependency.Name.StartsWith("FishNet.", StringComparison.Ordinal)).ToArray();
+            Assert.Contains(fishNet, dependency => dependency.Kind == "Type" && dependency.Name == "FishNet.Object.NetworkObject" && dependency.Status == "unchanged");
+            Assert.Contains(fishNet, dependency => dependency.Kind == "Type" && dependency.Name == "FishNet.Managing.ServerManager" && dependency.Status == "unchanged");
+            var spawn = Assert.Single(fishNet, dependency => dependency.Kind == "Method" && dependency.Name.Contains("::Spawn(", StringComparison.Ordinal));
+            Assert.Equal("signature_changed", spawn.Status);
+            Assert.Contains("FishNet.Object.NetworkObject", spawn.BeforeSignature!, StringComparison.Ordinal);
+            Assert.Contains("System.Int32", spawn.AfterSignature!, StringComparison.Ordinal);
+            Assert.Contains(fishNet, dependency => dependency.Kind == "Method" && dependency.Name.Contains("::Despawn(", StringComparison.Ordinal) && dependency.Status == "unchanged");
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    [Fact]
+    public async Task Check_mod_treats_fishnet_references_as_external_when_the_target_predates_fishnet()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-fishnet-target-" + Guid.NewGuid().ToString("N"));
+        var fromBuild = new string('3', 64);
+        var toBuild = new string('5', 64);
+        var authorities = new Dictionary<string, PreferredVerifiedExtraction>(StringComparer.Ordinal)
+        {
+            [fromBuild] = CreateAuthority(fromBuild, new string('4', 64), Path.Combine(root, "extractions", "from")),
+            [toBuild] = CreateAuthority(toBuild, new string('6', 64), Path.Combine(root, "extractions", "to"))
+        };
+        WriteFishNetGameAssemblies(authorities[fromBuild].Extraction.RootPath, FishNetSourceV1);
+        WriteFishNetGameAssemblies(authorities[toBuild].Extraction.RootPath, null);
+        var fishNetV1 = Path.Combine(authorities[fromBuild].Extraction.RootPath, "reconstructed", "FishNet.Runtime.dll");
+        var modPath = Path.Combine(root, "mods", "FishNetDependentMod.dll");
+        ScratchAssembly.Compile(FishNetModSource, modPath, fishNetV1);
+        var databasePath = Path.Combine(root, "atlas.db");
+        var repository = new SqliteAtlasRepository(databasePath);
+        var ct = TestContext.Current.CancellationToken;
+
+        try
+        {
+            await repository.InitializeAsync(ct);
+            var workflow = new IndexingWorkflow(
+                root,
+                repository,
+                (buildId, _) => Task.FromResult<PreferredVerifiedExtraction?>(authorities[buildId]),
+                new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+            var from = await workflow.RunScheduleOneAsync(fromBuild, false, ct);
+            var to = await workflow.RunScheduleOneAsync(toBuild, false, ct);
+            var reader = new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(databasePath));
+
+            var check = await new ModCheckService(reader, reader, new IlSpyManagedDecompiler())
+                .CheckAsync(modPath, fromBuild, toBuild, from.IndexId, to.IndexId, ct);
+
+            Assert.DoesNotContain(check.Dependencies, dependency => dependency.Name.StartsWith("FishNet.", StringComparison.Ordinal));
+            Assert.Equal(0, check.Summary.BreakingDependencies);
+            Assert.True(check.Summary.ExternalReferencesNotChecked > 0);
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    [Fact]
+    public async Task Check_mod_treats_fishnet_references_as_external_when_the_base_predates_fishnet()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-workflow-fishnet-base-" + Guid.NewGuid().ToString("N"));
+        var fromBuild = new string('3', 64);
+        var toBuild = new string('5', 64);
+        var authorities = new Dictionary<string, PreferredVerifiedExtraction>(StringComparer.Ordinal)
+        {
+            [fromBuild] = CreateAuthority(fromBuild, new string('4', 64), Path.Combine(root, "extractions", "from")),
+            [toBuild] = CreateAuthority(toBuild, new string('6', 64), Path.Combine(root, "extractions", "to"))
+        };
+        WriteFishNetGameAssemblies(authorities[fromBuild].Extraction.RootPath, null);
+        WriteFishNetGameAssemblies(authorities[toBuild].Extraction.RootPath, FishNetSourceV1);
+        var fishNetV1 = Path.Combine(authorities[toBuild].Extraction.RootPath, "reconstructed", "FishNet.Runtime.dll");
+        var modPath = Path.Combine(root, "mods", "FishNetDependentMod.dll");
+        ScratchAssembly.Compile(FishNetModSource, modPath, fishNetV1);
+        var databasePath = Path.Combine(root, "atlas.db");
+        var repository = new SqliteAtlasRepository(databasePath);
+        var ct = TestContext.Current.CancellationToken;
+
+        try
+        {
+            await repository.InitializeAsync(ct);
+            var workflow = new IndexingWorkflow(
+                root,
+                repository,
+                (buildId, _) => Task.FromResult<PreferredVerifiedExtraction?>(authorities[buildId]),
+                new ScheduleOneIndexSource(new IlSpyManagedDecompiler()));
+            var from = await workflow.RunScheduleOneAsync(fromBuild, false, ct);
+            var to = await workflow.RunScheduleOneAsync(toBuild, false, ct);
+            var reader = new ReadOnlySqliteAtlasRepository(new ReadOnlySqliteConnectionFactory(databasePath));
+
+            var check = await new ModCheckService(reader, reader, new IlSpyManagedDecompiler())
+                .CheckAsync(modPath, fromBuild, toBuild, from.IndexId, to.IndexId, ct);
+
+            Assert.DoesNotContain(check.Dependencies, dependency => dependency.Name.StartsWith("FishNet.", StringComparison.Ordinal));
+            Assert.Equal(0, check.Summary.BreakingDependencies);
+            Assert.True(check.Summary.ExternalReferencesNotChecked > 0);
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
     private const string InteropGameSource = """
         namespace Il2CppScheduleOne.ItemFramework { public class ItemDefinition { } }
         """;
@@ -726,6 +968,98 @@ public sealed class IndexingWorkflowTests
             public static string DefinitionId(Il2CppScheduleOne.Core.Items.Framework.BaseItemDefinition definition) => definition.ID;
             public static float Value(Il2CppScheduleOne.Core.Items.Framework.BaseItemInstance instance) =>
               instance.GetMonetaryValue() + instance.ID.Length;
+          }
+        }
+        """;
+
+    private static void WriteFishNetGameAssemblies(string extractionRoot, string? fishNetSource)
+    {
+        var reconstructed = Path.Combine(extractionRoot, "reconstructed");
+        string? fishNet = null;
+        if (fishNetSource is not null)
+        {
+            fishNet = Path.Combine(reconstructed, "FishNet.Runtime.dll");
+            ScratchAssembly.Compile(fishNetSource, fishNet);
+        }
+        ScratchAssembly.Compile(
+            fishNet is null ? CodegenGameSource : FishNetGameSource,
+            Path.Combine(reconstructed, "Assembly-CSharp.dll"),
+            fishNet is null ? [] : [fishNet]);
+    }
+
+    private const string FishNetSourceV1 = """
+        namespace FishNet.Object {
+          public class NetworkObject { public int ObjectId { get; set; } }
+        }
+        namespace FishNet.Managing {
+          public class NetworkManager { }
+          public static class ServerManager {
+            public static void Spawn(FishNet.Object.NetworkObject obj) { }
+            public static void Despawn(FishNet.Object.NetworkObject obj) { }
+            private static int NextObjectId() => 1;
+          }
+        }
+        """;
+
+    private const string FishNetSourceV2 = """
+        namespace FishNet.Object {
+          public class NetworkObject { public int ObjectId { get; set; } }
+        }
+        namespace FishNet.Managing {
+          public class NetworkManager { }
+          public static class ServerManager {
+            public static void Spawn(FishNet.Object.NetworkObject obj, int ownerId) { }
+            public static void Despawn(FishNet.Object.NetworkObject obj) { }
+            private static int NextObjectId() => 1;
+          }
+        }
+        """;
+
+    private const string FishNetGameSource = """
+        namespace ScheduleOne.Networking {
+          public static class NetworkBootstrap {
+            public static void Register(FishNet.Object.NetworkObject prefab) { }
+          }
+        }
+        """;
+
+    private const string CodegenGameSource = """
+        namespace ScheduleOne.Networking {
+          public static class NetworkBootstrap {
+            public static void Register(string prefabName) { }
+          }
+        }
+        namespace FishNet.Serializing.Generated {
+          public sealed class GeneratedReaders___Internal { }
+          public sealed class GeneratedComparers___Internal { }
+        }
+        """;
+
+    private const string InteropFishNetGameSource = """
+        namespace Il2CppScheduleOne.Networking { public class NetworkBootstrap { } }
+        """;
+
+    private const string InteropFishNetSource = """
+        namespace Il2CppFishNet.Object {
+          public class NetworkObject { public int ObjectId { get => 0; set { } } }
+        }
+        namespace Il2CppFishNet.Managing {
+          public static class ServerManager {
+            public static void Spawn(Il2CppFishNet.Object.NetworkObject obj) { }
+            public static void Despawn(Il2CppFishNet.Object.NetworkObject obj) { }
+            public static int NextObjectId() => 0;
+          }
+        }
+        """;
+
+    private const string FishNetModSource = """
+        namespace FishNetDependentMod {
+          public static class Plugin {
+            public static FishNet.Object.NetworkObject Prefab;
+            public static void SpawnPrefab(FishNet.Object.NetworkObject prefab) =>
+              FishNet.Managing.ServerManager.Spawn(prefab);
+            public static void DespawnPrefab(FishNet.Object.NetworkObject prefab) =>
+              FishNet.Managing.ServerManager.Despawn(prefab);
           }
         }
         """;

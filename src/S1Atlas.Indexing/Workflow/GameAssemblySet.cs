@@ -1,10 +1,11 @@
 namespace S1Atlas.Indexing.Workflow;
 
 /// <summary>
-/// Chooses the game-owned assemblies a Schedule I index covers from a Cpp2IL
-/// reconstructed directory: Assembly-CSharp.dll first, then ScheduleOne.dll and every
-/// ScheduleOne.*.dll (for example ScheduleOne.Core.dll) in ordinal order. Unity,
-/// System and third-party assemblies are never game-owned.
+/// Chooses the assemblies a Schedule I index covers from a Cpp2IL
+/// reconstructed directory: Assembly-CSharp.dll first, then ScheduleOne.dll, every
+/// ScheduleOne.*.dll (for example ScheduleOne.Core.dll), and the allowlisted
+/// third-party runtime assemblies the game ships (FishNet.Runtime.dll), in ordinal
+/// order. Unity, System and every other third-party assembly are never indexed.
 /// </summary>
 public static class GameAssemblySet
 {
@@ -12,6 +13,7 @@ public static class GameAssemblySet
     private const string PrimaryAssemblyName = "Assembly-CSharp";
     private const string GameAssemblyPrefix = "ScheduleOne";
     private const string InteropPrefix = "Il2Cpp";
+    private static readonly string[] IndexedThirdPartyAssemblies = ["FishNet.Runtime"];
 
     public static IReadOnlyList<string> Select(string reconstructedRoot)
     {
@@ -20,7 +22,7 @@ public static class GameAssemblySet
         if (!Directory.Exists(reconstructedRoot))
             return [primary];
         var additional = Directory.EnumerateFiles(reconstructedRoot, "*.dll", SearchOption.TopDirectoryOnly)
-            .Where(path => !IsPrimary(Path.GetFileName(path)) && IsGameAssemblyName(Path.GetFileName(path)))
+            .Where(path => !IsPrimary(Path.GetFileName(path)) && IsIndexedAssemblyName(Path.GetFileName(path)))
             .OrderBy(path => Path.GetFileName(path), StringComparer.Ordinal);
         return [primary, .. additional];
     }
@@ -35,6 +37,18 @@ public static class GameAssemblySet
         return string.Equals(name, PrimaryAssemblyName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(name, GameAssemblyPrefix, StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith(GameAssemblyPrefix + ".", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsIndexedAssemblyName(string assemblyName)
+    {
+        if (IsGameAssemblyName(assemblyName))
+            return true;
+        if (string.IsNullOrWhiteSpace(assemblyName))
+            return false;
+        var name = assemblyName.Trim();
+        if (name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+        return IndexedThirdPartyAssemblies.Contains(name, StringComparer.OrdinalIgnoreCase);
     }
 
     public static string SourceRelativePath(string fileName) => Path.GetFileNameWithoutExtension(fileName) + ".cs";

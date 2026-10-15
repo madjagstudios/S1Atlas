@@ -4,6 +4,30 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). S1Atlas ships on a rolling
 `main`; dated entries mark notable milestones rather than formal released packages.
 
+## [Unreleased]
+
+### Upgrading
+
+- Run `s1atlas index` once. The code index format changed (AT-140), so
+  the current build is re-indexed instead of reused and callable evidence is
+  rebuilt. API and reference-mod indexes also rebuild the next time they run.
+- To compare against an older build with `check-mod` or `diff`, re-index that
+  build too: `s1atlas index --build <build-id>` (AT-140).
+
+### Added
+
+- The game index now covers the FishNet multiplayer runtime the game ships,
+  not only the game-owned assemblies. Types in `FishNet.*` (network objects,
+  the server manager, spawnable prefabs) can be searched, resolved and diffed,
+  and `check-mod` checks mod references into them instead of treating them as
+  external, as long as every compared index contains FishNet types (AT-140).
+- `FishNet.Runtime.dll` is matched to its own Il2CppInterop assembly,
+  `Il2CppFishNet.Runtime.dll` beside `Assembly-CSharp.dll` in
+  `MelonLoader\Il2CppAssemblies`, so the callable surface covers those types too
+  (AT-140).
+- Scene and prefab components whose script lives in `FishNet.Runtime` now
+  resolve to their indexed type (AT-140).
+
 ## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
 
 The game index now covers the game's second assembly, `ScheduleOne.Core`, so item
