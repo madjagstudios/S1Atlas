@@ -13,7 +13,8 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
     private static readonly string[] StatusOrder = ["removed", "signature_changed", "unresolved", "moved", "unchanged", "resolved"];
     private static readonly Regex TypeToken = new(@"[A-Za-z_][\w`]*(?:[.+][A-Za-z_][\w`]*)*", RegexOptions.Compiled);
     private static readonly string[] ExternalRoots =
-        ["System", "Microsoft", "UnityEngine", "UnityEditor", "Unity", "MelonLoader", "HarmonyLib", "Il2CppInterop", "S1API", "S1MAPI", "Il2CppSystem", "FishNet"];
+        ["System", "Microsoft", "UnityEngine", "UnityEditor", "Unity", "MelonLoader", "HarmonyLib", "Il2CppInterop", "S1API", "S1MAPI", "Il2CppSystem"];
+    private const string FishNetRoot = "FishNet";
 
     public async Task<ModCheckResult> CheckAsync(
         string modPath, string? fromBuildId, string toBuildId, string? fromIndexId, string toIndexId,
@@ -32,6 +33,12 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
         }
 
         var game = await new ReferenceGameSymbolLoader(indexes).LoadAsync(fromIndexId ?? toIndexId, cancellationToken);
+        // FishNet references count as game references only when every compared
+        // index already carries FishNet types. A compared index that predates
+        // FishNet coverage would otherwise report each FishNet reference as
+        // removed, so in that case FishNet stays external exactly as before.
+        var fishNetIndexed = ContainsFishNetTypes(game.Symbols)
+            && (fromIndexId is null || await ComparedIndexContainsFishNetTypesAsync(indexes, toIndexId, cancellationToken));
         var gameSymbols = game.Symbols.Where(symbol => !IsExternal(DeclaringType(symbol.QualifiedName))).ToArray();
         var callableSurface = await indexes.GetCompletedCallableSurfaceAsync(fromIndexId ?? toIndexId, cancellationToken);
         var interop = new ModCheckInteropResolver(gameSymbols, callableSurface);
@@ -179,6 +186,7 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
             new(counts, patches, external.Count, sorted.Count(IsBreaking), sorted.Count(row => IsBreaking(row) && row.Kind != "Type" && row.Sources.Any(source => source.Kind == "harmony_patch"))), sorted);
 
         bool IsGameType(string type) => gameTypes.ContainsKey(type) || gameRoots.Contains(type.Split('.')[0]);
+        bool IsExternal(string type) => IsExternalRoot(type) || (!fishNetIndexed && IsFishNetType(type));
         void Add(IndexSymbolRecord? symbol, string text, string kind, string? reason, ModDependencySource source)
         {
             var key = symbol?.CanonicalKey ?? kind + ":" + text;
@@ -210,7 +218,20 @@ public sealed class ModCheckService(IIndexRepository indexes, IModCheckRepositor
     private static ModReplacement Replacement(ModCheckSymbol candidate) => new(candidate.Symbol.CanonicalKey, candidate.Symbol.QualifiedName, candidate.Symbol.Signature, "DERIVED");
     private static string DeclaringType(string signature) => InteropTypeNames.Normalize(signature.Split("::", 2, StringSplitOptions.None)[0]);
     private static string MemberTail(string signature) => signature.Contains("::", StringComparison.Ordinal) ? signature.Split("::", 2, StringSplitOptions.None)[1] : signature;
-    private static bool IsExternal(string type) => ExternalRoots.Any(root => type == root || type.StartsWith(root + ".", StringComparison.Ordinal));
+    private static bool IsExternalRoot(string type) => ExternalRoots.Any(root => type == root || type.StartsWith(root + ".", StringComparison.Ordinal));
+    private static bool IsFishNetType(string type) =>
+        type == FishNetRoot || type.StartsWith(FishNetRoot + ".", StringComparison.Ordinal);
+    private static bool ContainsFishNetTypes(IReadOnlyList<IndexSymbolRecord> symbols) =>
+        symbols.Any(symbol => symbol.Kind == "Type" && IsFishNetType(symbol.Signature));
+    private static async Task<bool> ComparedIndexContainsFishNetTypesAsync(
+        IIndexRepository indexes, string indexId, CancellationToken cancellationToken)
+    {
+        // Symbol search is a contains match with prefix matches ordered first,
+        // so one row disambiguates: the predicate then verifies the FishNet
+        // root and rejects mere-contains rows such as "MyFishNet.X".
+        var matches = await indexes.SearchCompletedSymbolsAsync(indexId, FishNetRoot + ".", 1, cancellationToken, "Type");
+        return matches.Any(symbol => symbol.Kind == "Type" && IsFishNetType(symbol.Signature));
+    }
     private static string ReferenceKind(string kind) => kind is "ReadsField" or "WritesField" or "TakesFieldAddress" ? "Field" : kind == "Constructs" ? "Constructor" : "Method";
     private static (string? Reason, string Text) SplitReason(string text)
     {

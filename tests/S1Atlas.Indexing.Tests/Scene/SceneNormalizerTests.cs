@@ -358,6 +358,7 @@ public sealed class SceneNormalizerTests : IAsyncDisposable
     [Theory]
     [InlineData("Assembly-CSharp.dll", "ScheduleOne", "PlayerController")]
     [InlineData("ScheduleOne.Core.dll", "ScheduleOne.Core.Avatar", "AvatarObject")]
+    [InlineData("FishNet.Runtime.dll", "FishNet.Object", "NetworkObject")]
     public async Task Exact_monoscript_resolution_propagates_only_the_exact_symbol_to_component_and_reference(
         string assemblyName,
         string scriptNamespace,
