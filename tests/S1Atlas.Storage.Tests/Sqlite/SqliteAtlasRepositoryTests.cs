@@ -153,6 +153,92 @@ public sealed class SqliteAtlasRepositoryTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SaveSnapshotAsync_InstalledDependencyWithBinaryHash_RoundTripsHash()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = CreateRepository();
+        await repository.InitializeAsync(cancellationToken);
+        var snapshot = CreateSnapshot(
+            "build-a",
+            DateTimeOffset.Parse("2026-08-12T12:00:00Z"),
+            dependencies:
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api,
+                    "3.2.1.0",
+                    "C:\\Mods\\S1API.dll",
+                    true,
+                    "dll-hash-a"),
+                new DependencyVersion(
+                    DependencyKind.S1Mapi,
+                    "1.0.0",
+                    "C:\\Mods\\S1MAPI.dll",
+                    true)
+            ]);
+
+        await repository.SaveSnapshotAsync(snapshot, cancellationToken);
+
+        var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
+        Assert.NotNull(current);
+        Assert.Equal(
+            "dll-hash-a",
+            current.Dependencies.Single(dependency => dependency.Kind == DependencyKind.S1Api).BinarySha256);
+        Assert.Null(
+            current.Dependencies.Single(dependency => dependency.Kind == DependencyKind.S1Mapi).BinarySha256);
+    }
+
+    [Theory]
+    [InlineData("dll-hash-a")]
+    [InlineData(null)]
+    public async Task SaveSnapshotAsync_RescanWithChangedDllHash_RefreshesHashForSameBuild(string? initialHash)
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = CreateRepository();
+        await repository.InitializeAsync(cancellationToken);
+        var captured = DateTimeOffset.Parse("2026-08-12T12:00:00Z");
+        var initial = CreateSnapshot(
+            "build-a",
+            captured,
+            dependencies:
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api,
+                    "3.2.1.0",
+                    "C:\\Mods\\S1API.dll",
+                    true,
+                    initialHash)
+            ]);
+        await repository.SaveSnapshotAsync(initial, cancellationToken);
+
+        var rescanned = initial with
+        {
+            Dependencies =
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api,
+                    "3.2.1.0",
+                    "C:\\Mods\\S1API.dll",
+                    true,
+                    "dll-hash-b")
+            ],
+            CapturedAtUtc = captured.AddHours(1)
+        };
+        Assert.Equal(
+            EnvironmentSnapshotId.Create(initial),
+            EnvironmentSnapshotId.Create(rescanned));
+
+        await repository.SaveSnapshotAsync(rescanned, cancellationToken);
+
+        var current = await repository.GetCurrentSnapshotAsync(cancellationToken);
+        Assert.NotNull(current);
+        Assert.Equal("build-a", current.Build.BuildId);
+        Assert.Equal(
+            "dll-hash-b",
+            Assert.Single(current.Dependencies).BinarySha256);
+        Assert.Equal(1L, await CountAsync("environment_snapshots", cancellationToken));
+    }
+
+    [Fact]
     public async Task SaveSnapshotAsync_WhenDependencyInsertFails_RollsBackAndKeepsPreviousCurrentBuild()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

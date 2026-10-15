@@ -20,7 +20,10 @@ public sealed class ApiCodebaseRoutingTests
     {
         await using var atlas = await ApiToolAtlas.CreateAsync();
         var cancellationToken = TestContext.Current.CancellationToken;
-        var environmentId = await atlas.SeedCurrentBuildAsync("build-current", cancellationToken);
+        var environmentId = await atlas.SeedCurrentBuildAsync(
+            "build-current",
+            cancellationToken,
+            [new DependencyVersion(DependencyKind.S1Api, "3.0.0", "S1API.dll", true, "installed-s1api-binary")]);
         var installed = await atlas.SeedIndexAsync(
             CodebaseKind.S1Api,
             CodeChannel.Installed,
@@ -656,7 +659,10 @@ public sealed class ApiCodebaseRoutingTests
             return atlas;
         }
 
-        public async Task<string> SeedCurrentBuildAsync(string buildId, CancellationToken cancellationToken)
+        public async Task<string> SeedCurrentBuildAsync(
+            string buildId,
+            CancellationToken cancellationToken,
+            IReadOnlyList<DependencyVersion>? dependencies = null)
         {
             var capturedAt = BaseTime.AddMinutes(_seedOrdinal++);
             var snapshot = new EnvironmentSnapshot(
@@ -668,7 +674,7 @@ public sealed class ApiCodebaseRoutingTests
                     capturedAt,
                     true),
                 new InstallationObservation("fixture", "app", buildId, Root, null, null),
-                [],
+                dependencies ?? [],
                 "test",
                 capturedAt);
             await _repository.SaveSnapshotAsync(snapshot, cancellationToken);

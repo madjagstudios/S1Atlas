@@ -1,3 +1,4 @@
+using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
 using S1Atlas.Core.Storage;
 
@@ -528,6 +529,13 @@ public sealed class ApiIndexQueryService
                 cancellationToken);
             if (currentSnapshot is not null)
             {
+                var drifted = await CheckInstalledHashDriftAsync(
+                    codebase, current, currentSnapshot, authority, cancellationToken);
+                if (drifted is not null)
+                {
+                    return drifted;
+                }
+
                 return new ResolvedApiSelection(
                     new ApiIndexSelection(
                         codebase,
@@ -585,6 +593,67 @@ public sealed class ApiIndexQueryService
                 latestSnapshot.EnvironmentSnapshotId,
                 associationMessage),
             latest);
+    }
+
+    private async Task<ResolvedApiSelection?> CheckInstalledHashDriftAsync(
+        CodebaseKind codebase,
+        IndexRunRecord run,
+        CodeSnapshotRecord snapshot,
+        BuildAuthority authority,
+        CancellationToken cancellationToken)
+    {
+        // Only the current build carries a readable scan: IAtlasRepository exposes
+        // no per-build snapshot fetch, so explicit historical builds keep
+        // build-scoping without a DLL-hash check.
+        if (authority.RequestedBuildId is not null || _atlasRepository is null)
+        {
+            return null;
+        }
+
+        var currentScan = await _atlasRepository.GetCurrentSnapshotAsync(cancellationToken);
+        var expectedKind = codebase == CodebaseKind.S1Api
+            ? DependencyKind.S1Api
+            : DependencyKind.S1Mapi;
+        var dependency = currentScan?.Dependencies.SingleOrDefault(
+            item => item.Kind == expectedKind);
+        if (currentScan is null
+            || dependency is null
+            || !dependency.IsInstalled
+            || string.IsNullOrWhiteSpace(dependency.BinarySha256))
+        {
+            var reason = currentScan is null || dependency is null || !dependency.IsInstalled
+                ? "the API is not installed in the current scan"
+                : "the current scan recorded no DLL hash for it; re-run 's1atlas scan'";
+            return new ResolvedApiSelection(
+                new ApiIndexSelection(
+                    codebase,
+                    CodeChannel.Installed,
+                    ApiIndexAvailability.Stale,
+                    run.IndexId,
+                    run.SnapshotId,
+                    snapshot.SourceIdentity,
+                    snapshot.EnvironmentSnapshotId,
+                    $"The completed installed {codebase} API index is stale: {reason}."),
+                run);
+        }
+
+        if (!string.Equals(snapshot.SourceIdentity, dependency.BinarySha256, StringComparison.Ordinal))
+        {
+            return new ResolvedApiSelection(
+                new ApiIndexSelection(
+                    codebase,
+                    CodeChannel.Installed,
+                    ApiIndexAvailability.Stale,
+                    run.IndexId,
+                    run.SnapshotId,
+                    snapshot.SourceIdentity,
+                    snapshot.EnvironmentSnapshotId,
+                    $"The completed installed {codebase} API index is stale: it was built from DLL hash " +
+                    $"'{snapshot.SourceIdentity}' but the current scan recorded '{dependency.BinarySha256}'."),
+                run);
+        }
+
+        return null;
     }
 
     private async Task<BuildAuthority> ResolveBuildAsync(

@@ -193,6 +193,8 @@ internal static class IndexCommand
                 string codebase;
                 string channel;
                 string? codeBuildId = null;
+                var apiIndexes = new List<InstalledApiIndexOutput>();
+                var apiWarnings = new List<string>();
                 if (requestedCodebase is null && requestedChannel is null && requestedCommit is null)
                 {
                     codeBuildId = requestedBuild ?? snapshot?.Build.BuildId;
@@ -205,6 +207,50 @@ internal static class IndexCommand
                         requestedInteropPath).GetAwaiter().GetResult();
                     codebase = "ScheduleI";
                     channel = "Installed";
+                    if (requestedBuild is null && snapshot is not null)
+                    {
+                        foreach (var apiCodebase in new[] { CodebaseKind.S1Api, CodebaseKind.S1MApi })
+                        {
+                            var dependencyKind = apiCodebase == CodebaseKind.S1Api
+                                ? DependencyKind.S1Api
+                                : DependencyKind.S1Mapi;
+                            var apiDependency = snapshot.Dependencies.SingleOrDefault(
+                                item => item.Kind == dependencyKind);
+                            if (apiDependency is null
+                                || !apiDependency.IsInstalled
+                                || string.IsNullOrWhiteSpace(apiDependency.Path))
+                            {
+                                continue;
+                            }
+
+                            try
+                            {
+                                var apiResult = apiWorkflow.RunInstalledAsync(
+                                    apiCodebase,
+                                    EnvironmentSnapshotId.Create(snapshot),
+                                    apiDependency.Path,
+                                    options.Force,
+                                    cancellationToken).GetAwaiter().GetResult();
+                                apiIndexes.Add(new InstalledApiIndexOutput(
+                                    apiCodebase.ToString(),
+                                    CodeChannel.Installed.ToString(),
+                                    apiResult.IndexId,
+                                    apiResult.Reused,
+                                    apiResult.SymbolCount));
+                            }
+                            catch (Exception exception) when (exception is FileNotFoundException
+                                or InvalidDataException
+                                or IOException
+                                or UnauthorizedAccessException)
+                            {
+                                var detail = exception.Message
+                                    .Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries)
+                                    .FirstOrDefault() ?? exception.GetType().Name;
+                                apiWarnings.Add(
+                                    $"Installed {apiCodebase} index skipped ({detail}); re-run 's1atlas scan' if the DLL moved.");
+                            }
+                        }
+                    }
                 }
                 else
                 {
@@ -273,7 +319,10 @@ internal static class IndexCommand
                     result.SymbolCount,
                     result.SourceFileCount,
                     result.RelationshipCount,
-                    result.Warnings);
+                    result.Warnings.Concat(apiWarnings).ToArray())
+                {
+                    ApiIndexes = apiIndexes
+                };
                 if (performance is not null)
                 {
                     performance.SetCounter("index.symbols", result.SymbolCount);
@@ -283,10 +332,24 @@ internal static class IndexCommand
                 }
                 return commandOutput.Success(
                     data,
-                    writer => writer.WriteLine(
-                        $"{codebase} {channel} | {result.IndexId} | " +
-                        (result.Reused ? "reused" : "rebuilt") +
-                        $" | symbols {result.SymbolCount} | source files {result.SourceFileCount} | relationships {result.RelationshipCount}"));
+                    writer =>
+                    {
+                        writer.WriteLine(
+                            $"{codebase} {channel} | {result.IndexId} | " +
+                            (result.Reused ? "reused" : "rebuilt") +
+                            $" | symbols {result.SymbolCount} | source files {result.SourceFileCount} | relationships {result.RelationshipCount}");
+                        foreach (var api in data.ApiIndexes)
+                        {
+                            writer.WriteLine(
+                                $"{api.Codebase} {api.Channel} | {api.IndexId} | " +
+                                (api.Reused ? "reused" : "rebuilt") +
+                                $" | symbols {api.SymbolCount}");
+                        }
+                        foreach (var warning in apiWarnings)
+                        {
+                            writer.WriteLine("Warning: " + warning);
+                        }
+                    });
             },
                 commandOutput,
                 cancellationToken,

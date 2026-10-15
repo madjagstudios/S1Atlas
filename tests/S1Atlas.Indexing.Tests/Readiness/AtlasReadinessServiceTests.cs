@@ -20,6 +20,8 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     private const string ExecutableVersion = "2022.3.62f1";
     private const string OldCommit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string NewCommit = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string InstalledS1ApiHash = "s1api-installed";
+    private const string InstalledS1MapiHash = "s1mapi-installed";
 
     private readonly string _gameDir;
     private readonly string _gameAssemblyPath;
@@ -573,7 +575,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     public async Task Evaluate_SnapshotWithoutApiIndexes_ReportsApiMissing()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();
-        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await harness.Repository.SaveSnapshotAsync(TestApiSnapshot(), CancellationToken.None);
         var service = CreateService(harness);
 
         var report = await service.EvaluateAsync(CancellationToken.None);
@@ -589,7 +591,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     public async Task Evaluate_InstalledApiIndexes_ReportsOk()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();
-        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await harness.Repository.SaveSnapshotAsync(TestApiSnapshot(), CancellationToken.None);
         await SeedInstalledApiIndexesAsync(harness);
         var service = CreateService(harness);
 
@@ -602,7 +604,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     public async Task Evaluate_ReleaseIndexOlderThanCachedCommit_ReportsApiStale()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();
-        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await harness.Repository.SaveSnapshotAsync(TestApiSnapshot(), CancellationToken.None);
         await SeedInstalledApiIndexesAsync(harness);
         await ReadinessFixtures.SeedCompletedCodeIndexAsync(
             harness.Repository,
@@ -633,7 +635,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
     public async Task Evaluate_CachedCommitWithoutReleaseIndex_KeepsApiOk()
     {
         await using var harness = await AuthorityHarness.EmptyAsync();
-        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await harness.Repository.SaveSnapshotAsync(TestApiSnapshot(), CancellationToken.None);
         await SeedInstalledApiIndexesAsync(harness);
         var service = CreateService(
             harness,
@@ -670,6 +672,115 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
         var api = Item(report, ReadinessItemIds.ApiIndex);
         Assert.Equal(ReadinessState.NotApplicable, api.State);
         Assert.Equal(ReadinessFixCommands.Scan, api.FixCommand);
+    }
+
+    [Fact]
+    public async Task Evaluate_NoInstalledApiDependencies_ReportsApiNotApplicable()
+    {
+        await using var harness = await AuthorityHarness.EmptyAsync();
+        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        var service = CreateService(harness);
+
+        var report = await service.EvaluateAsync(CancellationToken.None);
+
+        var api = Item(report, ReadinessItemIds.ApiIndex);
+        Assert.Equal(ReadinessState.NotApplicable, api.State);
+        Assert.Null(api.FixCommand);
+        Assert.True(api.IsOptional);
+    }
+
+    [Fact]
+    public async Task Evaluate_InstalledApiHashChanged_ReportsApiStale()
+    {
+        await using var harness = await AuthorityHarness.EmptyAsync();
+        var snapshot = TestSnapshot() with
+        {
+            Dependencies =
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api, "3.2.1.0",
+                    Path.Combine(_gameDir, "Mods", "S1API.dll"), true, "new-dll-hash")
+            ]
+        };
+        await harness.Repository.SaveSnapshotAsync(snapshot, CancellationToken.None);
+        await ReadinessFixtures.SeedCompletedCodeIndexAsync(
+            harness.Repository,
+            CodebaseKind.S1Api,
+            CodeChannel.Installed,
+            InstalledS1ApiHash,
+            EnvironmentSnapshotId.Create(snapshot),
+            "index-s1api-installed",
+            "snapshot-s1api-installed",
+            TestContext.Current.CancellationToken);
+        var service = CreateService(harness);
+
+        var report = await service.EvaluateAsync(CancellationToken.None);
+
+        var api = Item(report, ReadinessItemIds.ApiIndex);
+        Assert.Equal(ReadinessState.Stale, api.State);
+        Assert.Equal(ReadinessFixCommands.IndexApiInstalled(CodebaseKind.S1Api), api.FixCommand);
+    }
+
+    [Fact]
+    public async Task Evaluate_OnlyS1MapiInstalled_RequiresOnlyS1MapiIndex()
+    {
+        await using var harness = await AuthorityHarness.EmptyAsync();
+        var snapshot = TestSnapshot() with
+        {
+            Dependencies =
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Mapi, "1.0.0",
+                    Path.Combine(_gameDir, "Mods", "S1MAPI.dll"), true, InstalledS1MapiHash)
+            ]
+        };
+        await harness.Repository.SaveSnapshotAsync(snapshot, CancellationToken.None);
+        await ReadinessFixtures.SeedCompletedCodeIndexAsync(
+            harness.Repository,
+            CodebaseKind.S1MApi,
+            CodeChannel.Installed,
+            InstalledS1MapiHash,
+            EnvironmentSnapshotId.Create(snapshot),
+            "index-s1mapi-installed",
+            "snapshot-s1mapi-installed",
+            TestContext.Current.CancellationToken);
+        var service = CreateService(harness);
+
+        var report = await service.EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(ReadinessState.Ok, Item(report, ReadinessItemIds.ApiIndex).State);
+    }
+
+    [Fact]
+    public async Task Evaluate_RebuiltApiIndexAfterHashChange_ReportsOk()
+    {
+        await using var harness = await AuthorityHarness.EmptyAsync();
+        var snapshot = TestSnapshot() with
+        {
+            Dependencies =
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api, "3.2.1.0",
+                    Path.Combine(_gameDir, "Mods", "S1API.dll"), true, "new-dll-hash")
+            ]
+        };
+        await harness.Repository.SaveSnapshotAsync(snapshot, CancellationToken.None);
+        var environmentSnapshotId = EnvironmentSnapshotId.Create(snapshot);
+        await ReadinessFixtures.SeedCompletedCodeIndexAsync(
+            harness.Repository, CodebaseKind.S1Api, CodeChannel.Installed,
+            InstalledS1ApiHash, environmentSnapshotId,
+            "index-s1api-installed-a", "snapshot-s1api-installed-a",
+            TestContext.Current.CancellationToken);
+        await ReadinessFixtures.SeedCompletedCodeIndexAsync(
+            harness.Repository, CodebaseKind.S1Api, CodeChannel.Installed,
+            "new-dll-hash", environmentSnapshotId,
+            "index-s1api-installed-b", "snapshot-s1api-installed-b",
+            TestContext.Current.CancellationToken);
+        var service = CreateService(harness);
+
+        var report = await service.EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(ReadinessState.Ok, Item(report, ReadinessItemIds.ApiIndex).State);
     }
 
     [Fact]
@@ -759,7 +870,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
         await using var harness = await AuthorityHarness.EmptyAsync();
         var extractionId = await harness.SeedPreferredVerifiedExtractionAsync(BuildId);
         await harness.SeedCompletedInstalledIndexAsync(extractionId, BuildId);
-        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await harness.Repository.SaveSnapshotAsync(TestApiSnapshot(), CancellationToken.None);
         var service = CreateService(harness);
 
         var report = await service.EvaluateAsync(CancellationToken.None);
@@ -813,14 +924,28 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
             },
             CapturedAt);
 
+    private EnvironmentSnapshot TestApiSnapshot() =>
+        TestSnapshot() with
+        {
+            Dependencies =
+            [
+                new DependencyVersion(
+                    DependencyKind.S1Api, "3.2.1.0",
+                    Path.Combine(_gameDir, "Mods", "S1API.dll"), true, InstalledS1ApiHash),
+                new DependencyVersion(
+                    DependencyKind.S1Mapi, "1.0.0",
+                    Path.Combine(_gameDir, "Mods", "S1MAPI.dll"), true, InstalledS1MapiHash)
+            ]
+        };
+
     private async Task SeedInstalledApiIndexesAsync(AuthorityHarness harness)
     {
-        var environmentSnapshotId = EnvironmentSnapshotId.Create(TestSnapshot());
+        var environmentSnapshotId = EnvironmentSnapshotId.Create(TestApiSnapshot());
         await ReadinessFixtures.SeedCompletedCodeIndexAsync(
             harness.Repository,
             CodebaseKind.S1Api,
             CodeChannel.Installed,
-            "s1api-installed",
+            InstalledS1ApiHash,
             environmentSnapshotId,
             "index-s1api-installed",
             "snapshot-s1api-installed");
@@ -828,7 +953,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
             harness.Repository,
             CodebaseKind.S1MApi,
             CodeChannel.Installed,
-            "s1mapi-installed",
+            InstalledS1MapiHash,
             environmentSnapshotId,
             "index-s1mapi-installed",
             "snapshot-s1mapi-installed");
@@ -839,7 +964,7 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
         var extractionId = await harness.SeedPreferredVerifiedExtractionAsync(BuildId);
         var indexId = "index-" + extractionId;
         await harness.SeedCompletedInstalledIndexAsync(extractionId, BuildId, indexId);
-        await harness.Repository.SaveSnapshotAsync(TestSnapshot(), CancellationToken.None);
+        await harness.Repository.SaveSnapshotAsync(TestApiSnapshot(), CancellationToken.None);
         await SeedInstalledApiIndexesAsync(harness);
         await ReadinessFixtures.SeedCompletedSceneSnapshotAsync(
             harness.Repository, harness.DatabasePath, BuildId, "scene-ready",

@@ -111,7 +111,8 @@ internal static class ReadinessFixtures
     public static EnvironmentSnapshot Snapshot(
         string buildId,
         InstallationObservation installation,
-        DateTimeOffset capturedAtUtc) =>
+        DateTimeOffset capturedAtUtc,
+        IReadOnlyList<DependencyVersion>? dependencies = null) =>
         new(
             IdentityVersion: 2,
             Build: new GameBuild(
@@ -121,7 +122,7 @@ internal static class ReadinessFixtures
                 capturedAtUtc,
                 IsValid: true),
             Installation: installation,
-            Dependencies: [],
+            Dependencies: dependencies ?? [],
             AtlasVersion: "readiness-test",
             CapturedAtUtc: capturedAtUtc);
 

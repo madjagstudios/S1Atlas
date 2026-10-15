@@ -109,6 +109,21 @@ public sealed partial class SqliteAtlasRepository :
                         cancellationToken);
                 }
             }
+            else
+            {
+                // The snapshot ID excludes the DLL hash so rescans stay idempotent;
+                // a hash-only rescan therefore refreshes the stored hashes in place.
+                for (var ordinal = 0; ordinal < orderedDependencies.Length; ordinal++)
+                {
+                    await UpdateDependencyHashAsync(
+                        connection,
+                        transaction,
+                        snapshotId,
+                        ordinal,
+                        orderedDependencies[ordinal],
+                        cancellationToken);
+                }
+            }
 
             await PromoteCurrentSnapshotAsync(
                 connection,
@@ -360,14 +375,16 @@ public sealed partial class SqliteAtlasRepository :
                 kind,
                 version,
                 path,
-                is_installed)
+                is_installed,
+                binary_sha256)
             VALUES (
                 $snapshotId,
                 $ordinal,
                 $kind,
                 $version,
                 $path,
-                $isInstalled);
+                $isInstalled,
+                $binarySha256);
             """;
         command.Parameters.AddWithValue("$snapshotId", snapshotId);
         command.Parameters.AddWithValue("$ordinal", ordinal);
@@ -377,6 +394,32 @@ public sealed partial class SqliteAtlasRepository :
             (object?)dependency.Version ?? DBNull.Value);
         command.Parameters.AddWithValue("$path", (object?)dependency.Path ?? DBNull.Value);
         command.Parameters.AddWithValue("$isInstalled", dependency.IsInstalled ? 1 : 0);
+        command.Parameters.AddWithValue(
+            "$binarySha256",
+            (object?)dependency.BinarySha256 ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task UpdateDependencyHashAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string snapshotId,
+        int ordinal,
+        DependencyVersion dependency,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE dependencies
+            SET binary_sha256 = $binarySha256
+            WHERE snapshot_id = $snapshotId AND ordinal = $ordinal;
+            """;
+        command.Parameters.AddWithValue("$snapshotId", snapshotId);
+        command.Parameters.AddWithValue("$ordinal", ordinal);
+        command.Parameters.AddWithValue(
+            "$binarySha256",
+            (object?)dependency.BinarySha256 ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -404,7 +447,7 @@ public sealed partial class SqliteAtlasRepository :
     {
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT kind, version, path, is_installed
+            SELECT kind, version, path, is_installed, binary_sha256
             FROM dependencies
             WHERE snapshot_id = $snapshotId
             ORDER BY ordinal;
@@ -419,7 +462,8 @@ public sealed partial class SqliteAtlasRepository :
                 Enum.Parse<DependencyKind>(reader.GetString(0), ignoreCase: false),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2),
-                reader.GetInt64(3) == 1));
+                reader.GetInt64(3) == 1,
+                reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
 
         return dependencies;
