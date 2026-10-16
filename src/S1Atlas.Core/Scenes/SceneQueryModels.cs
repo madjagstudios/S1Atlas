@@ -180,11 +180,10 @@ public sealed record SceneIncomingReferenceRecord(
 }
 
 /// <summary>
-/// The script field sets an incoming-reference search read. Unavailable sets were not decoded
-/// and truncated sets were capped, so either can hide a pointer: they bound what an empty or
-/// short answer proves.
+/// The script field sets an incoming-reference search read: decoded, unavailable (not decoded),
+/// truncated (capped), and script owners with no field set because they were never parsed.
 /// </summary>
-public sealed record SceneFieldSetCoverage(int DecodedCount, int UnavailableCount, int TruncatedCount);
+public sealed record SceneFieldSetCoverage(int DecodedCount, int UnavailableCount, int TruncatedCount, int NotParsedCount);
 
 public sealed record SceneIncomingReferencePage(
     int TotalCount,

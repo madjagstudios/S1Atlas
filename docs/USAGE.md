@@ -555,12 +555,12 @@ s1atlas component <component-id> --incoming
   those. Engine pointers (`m_GameObject`, `m_Component`, `m_Father`,
   `m_Children`) are attachment and hierarchy links, reported by
   `--components` and `--children`, not here. The summary line reports how many
-  field sets were searched and how many were unavailable or truncated: a
-  pointer in one of those cannot be seen, and code that finds an object at
-  runtime (`Resources.Load`, `FindObjectOfType`) leaves no pointer at all. An
-  empty answer is bounded by that coverage, not proof that nothing uses the
-  object. MCP: `includeIncoming` (`externalOnly`) on `get_gameobject` and
-  `get_component`.
+  field sets were searched, how many were unavailable or truncated, and how
+  many script owners were never parsed at all. A pointer in one of those cannot
+  be seen, and code that finds an object at runtime (`Resources.Load`,
+  `FindObjectOfType`) leaves no pointer at all, so an empty answer is limited
+  to that coverage and is not proof that nothing uses the object. MCP:
+  `includeIncoming` (`externalOnly`) on `get_gameobject` and `get_component`.
 - `--offset <n>` on `scene`, `prefab`, `game-object`, `component`,
   `game-objects`, and `components` skips that many rows in every returned list,
   and the output ends with the next offset when more rows remain. The MCP

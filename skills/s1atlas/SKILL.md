@@ -166,10 +166,9 @@ treat a setup error as an empty index.
    call use CLI `components <Namespace.Class> --fields a,b [--derived]` or MCP
    `list_components` (`fields`, `includeDerived`). To ask what points at an
    object use `game-object`/`component --incoming [--external]` or MCP
-   `includeIncoming` (`externalOnly`): it reads decoded script-field pointers
-   only and reports how many field sets were unavailable or truncated, so an
-   empty answer is bounded by that coverage, not proof of no reference.
-   For environment/dependency facts use CLI
+   `includeIncoming` (`externalOnly`). It reads decoded script-field pointers
+   only, so check its coverage counts before treating an empty answer as no
+   reference. For environment/dependency facts use CLI
    `env --json` or MCP `get_environment`.
 6. **Recheck after change.** After a Schedule I game update, use CLI `builds`
    and `diff <build-before> <build-after>`, or MCP `list_builds` and

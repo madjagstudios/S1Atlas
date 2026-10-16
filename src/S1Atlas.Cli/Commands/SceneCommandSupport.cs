@@ -49,7 +49,10 @@ internal static class SceneCommandSupport
             writer.WriteLine($"Component: {component.ScriptNamespace}.{component.ScriptClass} ({component.Kind}) | id {component.ComponentId} | object {row.GameObject?.Name ?? "unknown"} ({component.GameObjectId}) | {ContainerText(component.ContainerId, data.Containers)} | recovery {component.RecoveryStatus}");
             if (row.ScriptFields is { Status: SceneScriptFieldSetStatus.Unavailable } unavailable) writer.WriteLine($"  Fields: unavailable ({unavailable.UnavailableReason})");
             else if (row.ScriptFields is not null)
+            {
+                if (row.ScriptFields.Truncated) writer.WriteLine("  Fields: truncated (the stored field set was capped, so a requested path may be incomplete)");
                 foreach (var field in row.ScriptFields.Fields) writer.WriteLine($"  Field: {field.Path} ({field.TypeName}) = {field.Value}{TargetText(field.Target)}");
+            }
         }
         WriteNextOffset(data.NextOffset, writer);
     }
@@ -57,7 +60,7 @@ internal static class SceneCommandSupport
     public static void WriteIncoming(SceneIncomingReferencePage? incoming, IReadOnlyList<SceneContainerRecord>? containers, TextWriter writer)
     {
         if (incoming is null) return;
-        writer.WriteLine($"Incoming: total {incoming.TotalCount} | returned {incoming.ReturnedCount} | from outside the target {incoming.ExternalCount} | searched {incoming.Coverage.DecodedCount} decoded field sets ({incoming.Coverage.UnavailableCount} unavailable, {incoming.Coverage.TruncatedCount} truncated)");
+        writer.WriteLine($"Incoming: total {incoming.TotalCount} | returned {incoming.ReturnedCount} | from outside the target {incoming.ExternalCount} | searched {incoming.Coverage.DecodedCount} decoded field sets ({incoming.Coverage.UnavailableCount} unavailable, {incoming.Coverage.TruncatedCount} truncated, {incoming.Coverage.NotParsedCount} script owners not parsed)");
         foreach (var row in incoming.Rows)
             writer.WriteLine($"Incoming: {(row.WithinTarget ? "inside" : "outside")} | {row.SourceOwnerKind} {row.SourceType ?? "unknown"} on {row.SourceName ?? "unknown"} | id {row.SourceOwnerId} | field {row.FieldPath} ({row.FieldTypeName}) = {row.Value} | target {row.TargetKind} {row.TargetId} | {ContainerText(row.SourceContainerId, containers)} | evidence {row.Evidence}");
     }

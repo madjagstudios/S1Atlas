@@ -135,6 +135,22 @@ internal static class SceneGraphRows
         GROUP BY field_set.status, field_set.truncated;
         """;
 
+    // Script owners (MonoBehaviour components and scriptable assets) whose fields were never
+    // parsed, so they have no field set row at all.
+    private const string NotParsedOwnerCountSql = $"""
+        SELECT (SELECT COUNT(*)
+                FROM game_objects AS game_object
+                INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
+                INNER JOIN components AS component ON component.game_object_id = game_object.game_object_id AND component.kind = 'MonoBehaviour'
+                WHERE {PublishedSnapshot} AND game_object.scene_snapshot_id = $snapshot
+                  AND NOT EXISTS (SELECT 1 FROM script_field_sets AS field_set WHERE field_set.owner_id = component.component_id))
+             + (SELECT COUNT(*)
+                FROM scriptable_assets AS asset
+                INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = asset.scene_snapshot_id
+                WHERE {PublishedSnapshot} AND asset.scene_snapshot_id = $snapshot
+                  AND NOT EXISTS (SELECT 1 FROM script_field_sets AS field_set WHERE field_set.owner_id = asset.asset_id));
+        """;
+
     public static async Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(SqliteConnection connection, GameObjectListQueryOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -276,8 +292,7 @@ internal static class SceneGraphRows
                 Add(command, "$root", options.HierarchyRootGameObjectId);
             }, reader => reader.GetString(0), cancellationToken)).ToHashSet(StringComparer.Ordinal);
 
-        // A component's container is its GameObject's; a dangling owner row (none expected) has
-        // no container to report and is skipped rather than invented.
+        // Skip owner rows with no component or asset row behind them, so no container to report.
         var classified = matched
             .Where(row => row.SourceContainerId is not null)
             .Select(row => new SceneIncomingReferenceRecord(
@@ -303,10 +318,10 @@ internal static class SceneGraphRows
     {
         var groups = await ReadAllAsync(connection, CoverageSql, command => Add(command, "$snapshot", sceneSnapshotId),
             reader => (Status: reader.GetString(0), Truncated: reader.GetInt64(1) != 0, Count: reader.GetInt32(2)), cancellationToken);
-        return new SceneFieldSetCoverage(
-            groups.Where(group => group.Status == nameof(SceneScriptFieldSetStatus.Decoded)).Sum(group => group.Count),
-            groups.Where(group => group.Status == nameof(SceneScriptFieldSetStatus.Unavailable)).Sum(group => group.Count),
-            groups.Where(group => group.Truncated).Sum(group => group.Count));
+        var decoded = groups.Where(group => group.Status == nameof(SceneScriptFieldSetStatus.Decoded)).Sum(group => group.Count);
+        var unavailable = groups.Where(group => group.Status == nameof(SceneScriptFieldSetStatus.Unavailable)).Sum(group => group.Count);
+        var notParsed = await CountAsync(connection, NotParsedOwnerCountSql, command => Add(command, "$snapshot", sceneSnapshotId), cancellationToken);
+        return new SceneFieldSetCoverage(decoded, unavailable, groups.Where(group => group.Truncated).Sum(group => group.Count), notParsed);
     }
 
     private static async Task<int> CountAsync(SqliteConnection connection, string sql, Action<SqliteCommand> bind, CancellationToken cancellationToken)

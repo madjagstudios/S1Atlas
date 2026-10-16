@@ -56,9 +56,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   list the decoded script-field pointers elsewhere in the snapshot that point at
   the selected object or its components. Each row says whether its source is
   inside the target's own hierarchy, `--external` (MCP `externalOnly`) keeps
-  only the ones from outside, and the summary reports how many field sets were
-  unavailable or truncated, so an empty answer is not read as proof. For example,
-  the unregistered Flatbed Truck prefab is pointed at only by its own
+  only the ones from outside, and the summary reports field-set coverage. The
+  unregistered Flatbed Truck prefab, for example, is pointed at only by its own
   components (AT-147).
 - `components <type> --fields a,b` (MCP `list_components`) lists every
   component of one type with only the requested decoded field values, in one

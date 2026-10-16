@@ -219,7 +219,6 @@ public sealed class SceneToolTests
         Assert.Equal("NoCompletedSceneIndex", envelope.Error!.Code);
     }
 
-    // AT-146: a case-insensitive name fragment, scoped to one scene, paged by cursor.
     [Fact]
     public async Task ListGameObjects_FindsANameFragmentInOneSceneAndPagesByCursor()
     {
@@ -237,7 +236,6 @@ public sealed class SceneToolTests
         Assert.Null(second.Data.NextCursor);
     }
 
-    // AT-146: scene --children pages like the other paged tools.
     [Fact]
     public async Task GetScene_PagesChildrenByCursor()
     {
@@ -253,8 +251,6 @@ public sealed class SceneToolTests
         Assert.Null(second.Data.NextCursor);
     }
 
-    // AT-147: references pointing at an object or its components, split by whether the source
-    // sits inside the object's own hierarchy, with the coverage that bounds an empty answer.
     [Fact]
     public async Task GetGameObject_IncludeIncoming_ReportsInsideAndOutsideReferencesWithCoverage()
     {
@@ -269,6 +265,7 @@ public sealed class SceneToolTests
         Assert.Equal(2, incoming.TotalCount);
         Assert.Equal(1, incoming.ExternalCount);
         Assert.Equal(3, incoming.Coverage.DecodedCount);
+        Assert.Equal(1, incoming.Coverage.NotParsedCount);
         Assert.Collection(incoming.Rows,
             outside =>
             {
@@ -284,25 +281,23 @@ public sealed class SceneToolTests
         Assert.Equal(1, external.Data.Incoming.TotalCount);
     }
 
-    // AT-148: one call lists a type's components with only the requested fields; a path also
-    // selects the leaves nested under it, and decoded values keep their FACT provenance.
+    // A requested path keeps the array elements under it but not a same-prefix sibling.
     [Fact]
     public async Task ListComponents_ReturnsOnlyRequestedFieldPathsWithFactProvenance()
     {
         await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
         var tools = CreateTools(atlas);
 
-        var envelope = await tools.ListComponentsAsync(type: "Demo.KioskController", fields: ["Stock"], buildId: atlas.BuildIdA, ct: CancellationToken.None);
+        var envelope = await tools.ListComponentsAsync(type: "Demo.KioskController", fields: ["Stock.Array"], buildId: atlas.BuildIdA, ct: CancellationToken.None);
 
         Assert.Equal(ToolStatus.Resolved, envelope.Status);
         Assert.Equal(ComponentTypeMatch.ScriptText, envelope.Data!.MatchedBy);
         var row = Assert.Single(envelope.Data.Page.Rows);
         Assert.Equal("downtown kiosk", row.GameObject!.Name);
-        Assert.Equal("Stock.Array.size", Assert.Single(row.ScriptFields!.Fields).Path);
+        Assert.Equal(["Stock.Array.size", "Stock.Array[0]"], row.ScriptFields!.Fields.Select(field => field.Path));
         Assert.Contains(envelope.Provenance, entry => entry.Classification == ProvenanceClassification.Fact && entry.Source == "serialized-script-fields");
     }
 
-    // AT-148: --derived adds components whose resolved type derives from the requested one.
     [Fact]
     public async Task ListComponents_IncludeDerived_MatchesSubclassesByResolvedSymbol()
     {

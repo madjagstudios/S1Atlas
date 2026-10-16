@@ -855,13 +855,19 @@ public sealed class McpTestAtlas : IAsyncDisposable
         var childComponent = new SceneComponentRecord(
             "component-kiosk-" + buildId, childObject.GameObjectId, container.ContainerId, 7, 114, "MonoBehaviour",
             "Assembly-CSharp", "Demo", "KioskController", null, null, SceneResolutionStatus.NotIndexed, recoveryStatus);
+        // A script whose fields were never parsed: it has no field set, so incoming coverage counts it.
+        var unparsedComponent = new SceneComponentRecord(
+            "component-sign-" + buildId, childObject.GameObjectId, container.ContainerId, 8, 114, "MonoBehaviour",
+            "Assembly-CSharp", "Demo", "SignController", null, null, SceneResolutionStatus.NotIndexed, recoveryStatus);
         SceneScriptFieldSetRecord[] fieldSets =
         [
             new(childComponent.ComponentId, sceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false,
                 [new SceneScriptField("Owner", "PPtr<GameObject>", SceneScriptFieldValueKind.PPtr, $"0:{gameObject.LocalFileId}",
                     new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Resolved, SceneScriptFieldTargetKind.GameObject,
                         gameObject.GameObjectId, gameObject.Name, null, container.ContainerId, gameObject.LocalFileId)),
-                 new SceneScriptField("Stock.Array.size", "int", SceneScriptFieldValueKind.ArraySize, "3")]),
+                 new SceneScriptField("Stock.Array.size", "int", SceneScriptFieldValueKind.ArraySize, "1"),
+                 new SceneScriptField("Stock.Array[0]", "int", SceneScriptFieldValueKind.Integer, "12"),
+                 new SceneScriptField("Stock.ArrayLabel", "string", SceneScriptFieldValueKind.String, "Kiosk")]),
             new(component.ComponentId, sceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false,
                 [new SceneScriptField("Price", "float", SceneScriptFieldValueKind.Float, "50000")]),
             new(scriptableAsset.AssetId, sceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset, SceneScriptFieldSetStatus.Decoded, null, false,
@@ -885,7 +891,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                     new SceneTransformRecord(gameObject.GameObjectId, null, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered),
                     new SceneTransformRecord(childObject.GameObjectId, gameObject.GameObjectId, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered)
                 ],
-                [component, childComponent],
+                [component, childComponent, unparsedComponent],
                 [],
                 [scriptableAsset],
                 fieldSets),

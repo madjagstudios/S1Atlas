@@ -304,7 +304,8 @@ public sealed class SceneQueryService
             found.Count >= MaxDerivedTypes ? $"Derived types were capped at {MaxDerivedTypes}." : null);
     }
 
-    // Keeps the leaves at a requested path or nested under it ("a" selects "a", "a.b" and "a.Array[0]").
+    // Keeps the leaves at a requested path or nested under it: "a" selects "a", "a.b" and
+    // "a.Array[0]", and "a.Array" selects "a.Array.size" and each "a.Array[n]".
     private static SceneScriptFieldSetRecord Project(SceneScriptFieldSetRecord fields, IReadOnlyList<string> paths) =>
         fields.Status != SceneScriptFieldSetStatus.Decoded
             ? fields
@@ -312,7 +313,7 @@ public sealed class SceneQueryService
             {
                 Fields = fields.Fields.Where(field => paths.Any(path =>
                     field.Path == path ||
-                    (field.Path.Length > path.Length && field.Path.StartsWith(path, StringComparison.Ordinal) && field.Path[path.Length] == '.'))).ToArray()
+                    (field.Path.Length > path.Length && field.Path.StartsWith(path, StringComparison.Ordinal) && field.Path[path.Length] is '.' or '['))).ToArray()
             };
 
     private static bool HasMore(int offset, int totalCount, int returnedCount) => (long)offset + returnedCount < totalCount;
