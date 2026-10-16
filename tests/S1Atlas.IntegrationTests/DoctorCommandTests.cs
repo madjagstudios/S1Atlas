@@ -40,7 +40,7 @@ internal static class ReadinessReportBuilder
                 new ReadinessItem(
                     ReadinessItemIds.Scene, "Scene snapshot (optional)",
                     ReadinessState.NotApplicable, "Optional; needs a scanned build first.",
-                    "s1atlas index --scene", true)
+                    ReadinessFixCommands.SetupScene, true)
             ],
             new ReadinessNextStep(false, "Next: s1atlas tools install cpp2il", "s1atlas tools install cpp2il"),
             false,

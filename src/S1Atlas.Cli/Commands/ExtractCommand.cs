@@ -139,12 +139,15 @@ internal static class ExtractCommand
     internal static ExtractionOptions DefaultOptions =>
         new(null, null, null, DefaultProfileId, false, false, false, null);
 
+    /// <param name="succeeded">Receives the authoritative result, so setup can
+    /// chain the archived snapshot and extraction IDs into its next steps.</param>
     internal static int Execute(
         ValidatedExtractionWorkflow workflow,
         ExtractionOptions options,
         CommandOutput commandOutput,
         PerformanceMeasurement? performance,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<ExtractionOutput>? succeeded = null)
     {
         ArgumentNullException.ThrowIfNull(workflow);
         ArgumentNullException.ThrowIfNull(options);
@@ -210,6 +213,7 @@ internal static class ExtractCommand
                     result.InputSource?.ToString(),
                     result.InputSnapshotId,
                     result.InputSnapshotReplayVerified);
+                succeeded?.Invoke(data);
                 return commandOutput.Success(
                     data,
                     writer => WriteHuman(writer, data));

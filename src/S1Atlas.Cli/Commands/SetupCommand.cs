@@ -1,15 +1,27 @@
 using System.CommandLine;
 using S1Atlas.Application.Readiness;
 using S1Atlas.Extraction;
+using S1Atlas.Indexing.Scene;
 
 namespace S1Atlas.Cli.Commands;
+
+/// <summary>
+/// An extract step's exit code plus the IDs a later scene step consumes: the
+/// archived input snapshot to replay and the extraction the replay produced.
+/// </summary>
+internal sealed record SetupExtractResult(
+    int ExitCode,
+    string? ExtractionId = null,
+    string? InputSnapshotId = null);
 
 internal sealed record SetupStepRunners(
     Func<string?, CancellationToken, Task<int>> Scan,
     Func<string, CancellationToken, Task<int>> InstallTool,
-    Func<ExtractionOptions, CancellationToken, Task<int>> Extract,
+    Func<ExtractionOptions, CancellationToken, Task<SetupExtractResult>> Extract,
+    Func<string, CancellationToken, Task<int>> Promote,
     Func<IndexCommandOptions, CancellationToken, Task<int>> Index,
-    Func<CancellationToken, Task<int>> IndexScene);
+    Func<CancellationToken, Task<int>> IndexScene,
+    Func<CancellationToken, Task<SceneInputState>> InspectSceneInput);
 
 internal static class SetupCommand
 {
@@ -26,13 +38,17 @@ internal static class SetupCommand
         {
             Description = "Run without asking for confirmation."
         };
-        var includeOptionalOption = new Option<bool>("--include-optional")
+        var sceneOption = new Option<bool>("--scene", "--include-optional")
         {
-            Description = "Include optional steps such as the scene snapshot."
+            Description =
+                "Also build the scene snapshot, first archiving and replay-verifying the extraction " +
+                "input it requires."
         };
-        var command = new Command("setup", CliExamples.With("Run the missing pipeline steps in order.", "s1atlas setup --yes"));
+        var command = new Command(
+            "setup",
+            CliExamples.With("Run the missing pipeline steps in order.", "s1atlas setup --yes", "s1atlas setup --scene"));
         command.Options.Add(yesOption);
-        command.Options.Add(includeOptionalOption);
+        command.Options.Add(sceneOption);
         command.SetAction(parseResult =>
         {
             return Run(
@@ -43,7 +59,7 @@ internal static class SetupCommand
                 output,
                 error,
                 parseResult.GetValue(yesOption),
-                parseResult.GetValue(includeOptionalOption),
+                parseResult.GetValue(sceneOption),
                 cancellationToken);
         });
         return command;
@@ -57,7 +73,7 @@ internal static class SetupCommand
         TextWriter output,
         TextWriter error,
         bool assumeYes,
-        bool includeOptional,
+        bool includeScene,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(readiness);
@@ -78,7 +94,7 @@ internal static class SetupCommand
             return 1;
         }
 
-        var plan = BuildPlan(initial, includeOptional, runners);
+        var plan = BuildPlan(initial, includeScene, runners, error, cancellationToken);
         if (plan.Count == 0)
         {
             if (initial.IsReady)
@@ -94,6 +110,7 @@ internal static class SetupCommand
         }
 
         var scanSwitches = initialScan is not null && SwitchesInstalls(initialScan);
+        var refreshScenePlanAfterScan = includeScene && initialScan is { State: not ReadinessState.Ok };
         output.WriteLine("Setup plan:");
         for (var index = 0; index < plan.Count; index++)
         {
@@ -107,6 +124,13 @@ internal static class SetupCommand
                     $"   The recorded install at {initialScan!.ScanRecordedGamePath} no longer exists; " +
                     $"this would switch to {initialScan.ScanGamePath}.");
             }
+        }
+
+        if (refreshScenePlanAfterScan)
+        {
+            output.WriteLine(
+                "After scanning, scene certification is planned for the selected build. " +
+                "It may archive inputs, replay them, promote the replay, and rebuild the code index.");
         }
 
         if (scanSwitches && (assumeYes || inputRedirected))
@@ -137,13 +161,34 @@ internal static class SetupCommand
             }
         }
 
-        var networkConfirmed = assumeYes;
-        foreach (var step in plan)
+        void RefreshScenePlan(ReadinessReport report)
         {
+            initial = report;
+            plan = BuildPlan(initial, includeScene, runners, error, cancellationToken);
+            plan.RemoveAll(candidate => candidate.ItemId == ReadinessItemIds.Scan);
+            output.WriteLine("Remaining setup plan after scan:");
+            foreach (var remaining in plan)
+            {
+                output.WriteLine(remaining.Display);
+            }
+
+            refreshScenePlanAfterScan = false;
+        }
+
+        var networkConfirmed = assumeYes;
+        for (var stepIndex = 0; stepIndex < plan.Count; stepIndex++)
+        {
+            var step = plan[stepIndex];
             var fresh = readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult();
             if (IsSatisfiedSincePlanning(step, initial, fresh))
             {
                 output.WriteLine($"Skipping {step.Display}: already satisfied.");
+                if (refreshScenePlanAfterScan && step.ItemId == ReadinessItemIds.Scan)
+                {
+                    RefreshScenePlan(fresh);
+                    stepIndex = -1;
+                }
+
                 continue;
             }
 
@@ -173,6 +218,15 @@ internal static class SetupCommand
                 error.WriteLine("Run 's1atlas doctor' to re-check readiness.");
                 return 1;
             }
+
+            if (refreshScenePlanAfterScan && step.ItemId == ReadinessItemIds.Scan)
+            {
+                // A conditional extraction can be skipped when a rescan keeps the
+                // same build. Plan from the actual post-scan input instead of
+                // assuming that extraction supplied an archived snapshot ID.
+                RefreshScenePlan(readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult());
+                stepIndex = -1;
+            }
         }
 
         var final = readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult();
@@ -191,8 +245,10 @@ internal static class SetupCommand
 
     private static List<SetupPlanStep> BuildPlan(
         ReadinessReport report,
-        bool includeOptional,
-        SetupStepRunners runners)
+        bool includeScene,
+        SetupStepRunners runners,
+        TextWriter error,
+        CancellationToken cancellationToken)
     {
         var items = new Dictionary<string, ReadinessItem>(StringComparer.Ordinal);
         foreach (var item in report.Items)
@@ -202,6 +258,8 @@ internal static class SetupCommand
 
         var plan = new List<SetupPlanStep>();
         var rescanPending = false;
+        var extractionPlanned = false;
+        var scene = new SceneInputProgress(runners);
         if (items.TryGetValue(ReadinessItemIds.Scan, out var scan) &&
             scan.State != ReadinessState.Ok)
         {
@@ -239,16 +297,24 @@ internal static class SetupCommand
             // while running the defaults.
             var retry = string.Equals(
                 extraction.FixCommand, ReadinessFixCommands.ExtractRetry, StringComparison.Ordinal);
-            var display = retry ? ReadinessFixCommands.ExtractRetry : ReadinessFixCommands.Extract;
-            var options = retry
-                ? ExtractCommand.DefaultOptions with { Retry = true }
-                : ExtractCommand.DefaultOptions;
+            var display = (retry, includeScene) switch
+            {
+                (true, true) => ReadinessFixCommands.ExtractSnapshotInputsRetry,
+                (true, false) => ReadinessFixCommands.ExtractRetry,
+                (false, true) => ReadinessFixCommands.ExtractSnapshotInputs,
+                _ => ReadinessFixCommands.Extract
+            };
+            // With --scene the extraction also archives its inputs, so the snapshot
+            // the preferred extraction points at needs only one certifying replay
+            // later: no second extraction, promotion, or code index.
+            var options = ExtractCommand.DefaultOptions with { Retry = retry, SnapshotInputs = includeScene };
             plan.Add(new SetupPlanStep(
                 ReadinessItemIds.Extraction,
                 display,
                 false,
                 null,
-                cancellationToken => runners.Extract(options, cancellationToken)));
+                scene.Extract(options)));
+            extractionPlanned = true;
         }
         else if (rescanPending && extraction is not null)
         {
@@ -258,11 +324,12 @@ internal static class SetupCommand
             // rescan kept the same build.
             plan.Add(new SetupPlanStep(
                 ReadinessItemIds.Extraction,
-                ReadinessFixCommands.Extract,
+                includeScene ? ReadinessFixCommands.ExtractSnapshotInputs : ReadinessFixCommands.Extract,
                 false,
                 null,
-                cancellationToken => runners.Extract(ExtractCommand.DefaultOptions, cancellationToken),
+                scene.Extract(ExtractCommand.DefaultOptions with { SnapshotInputs = includeScene }),
                 OnlyIfRescanChangesBuild: true));
+            extractionPlanned = true;
         }
 
         if (items.TryGetValue(ReadinessItemIds.Index, out var index) &&
@@ -307,31 +374,88 @@ internal static class SetupCommand
                     cancellationToken => runners.Scan(satisfiedScan.ScanGamePath, cancellationToken)));
         }
 
-        if (includeOptional &&
-            items.TryGetValue(ReadinessItemIds.Scene, out var scene))
+        if (includeScene &&
+            items.TryGetValue(ReadinessItemIds.Scene, out var sceneItem) &&
+            (sceneItem.State != ReadinessState.Ok || rescanPending))
         {
-            if (scene.State != ReadinessState.Ok)
-            {
-                plan.Add(new SetupPlanStep(
-                    ReadinessItemIds.Scene,
-                    scene.FixCommand ?? ReadinessFixCommands.IndexScene,
-                    false,
-                    null,
-                    runners.IndexScene));
-            }
-            else if (rescanPending)
-            {
-                plan.Add(new SetupPlanStep(
-                    ReadinessItemIds.Scene,
-                    ReadinessFixCommands.IndexScene,
-                    false,
-                    null,
-                    runners.IndexScene,
-                    OnlyIfRescanChangesBuild: true));
-            }
+            // An extraction this run makes decides the scene input, so only an
+            // existing preferred extraction is inspected now.
+            var input = extractionPlanned
+                ? null
+                : runners.InspectSceneInput(cancellationToken).GetAwaiter().GetResult();
+            AddSceneSteps(
+                plan, runners, scene, input, error, onlyIfRescanChangesBuild: sceneItem.State == ReadinessState.Ok);
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// Plans the scene snapshot from the scene index gate's own verdict on the
+    /// preferred extraction input (null when an earlier extraction step in this
+    /// plan archives it). Every step is an existing command: the replay is the
+    /// only thing that certifies a snapshot, and index --scene re-checks the gate.
+    /// </summary>
+    private static void AddSceneSteps(
+        List<SetupPlanStep> plan,
+        SetupStepRunners runners,
+        SceneInputProgress scene,
+        SceneInputState? input,
+        TextWriter error,
+        bool onlyIfRescanChangesBuild)
+    {
+        void Add(string display, Func<CancellationToken, Task<int>> invoke) =>
+            plan.Add(new SetupPlanStep(
+                ReadinessItemIds.Scene, display, false, null, invoke, onlyIfRescanChangesBuild));
+
+        if (input?.Certification == SceneInputCertification.ReplayVerified)
+        {
+            Add(ReadinessFixCommands.IndexScene, runners.IndexScene);
+            return;
+        }
+
+        // A replay is preference-blocked (same recipe, different output), so an
+        // extraction that never archived its inputs is replaced by promoting the
+        // replay of a fresh archive, and the code index is rebuilt for it.
+        var promoteReplay = input is not null &&
+            input.Certification != SceneInputCertification.NotReplayVerified;
+        if (promoteReplay)
+        {
+            Add(ReadinessFixCommands.ExtractSnapshotInputsRetry, scene.Extract(
+                ExtractCommand.DefaultOptions with { Retry = true, SnapshotInputs = true }));
+        }
+        else if (input is not null)
+        {
+            scene.InputSnapshotId = input.InputSnapshot!.InputSnapshotId;
+        }
+
+        Add(
+            ReadinessFixCommands.ExtractFromInputSnapshot(scene.InputSnapshotId),
+            async cancellationToken =>
+            {
+                if (scene.InputSnapshotId is not { } inputSnapshotId)
+                {
+                    error.WriteLine(
+                        "No archived input snapshot is available to replay for the preferred extraction. " +
+                        $"Run '{ReadinessFixCommands.SetupScene}' again to archive and certify one.");
+                    return 1;
+                }
+
+                var result = await runners.Extract(
+                    ExtractCommand.DefaultOptions with { Retry = true, InputSnapshotId = inputSnapshotId },
+                    cancellationToken);
+                scene.ExtractionId = result.ExtractionId;
+                return result.ExitCode;
+            });
+        if (promoteReplay)
+        {
+            Add(
+                ReadinessFixCommands.PromoteExtraction(null),
+                cancellationToken => runners.Promote(scene.ExtractionId!, cancellationToken));
+            Add(ReadinessFixCommands.Index, cancellationToken => runners.Index(new IndexCommandOptions(), cancellationToken));
+        }
+
+        Add(ReadinessFixCommands.IndexScene, runners.IndexScene);
     }
 
     private static string ScanDisplay(ReadinessItem scan) =>
@@ -394,4 +518,23 @@ internal static class SetupCommand
         string? ToolId,
         Func<CancellationToken, Task<int>> Invoke,
         bool OnlyIfRescanChangesBuild = false);
+
+    /// <summary>
+    /// The IDs one setup run hands from step to step on the way to a scene
+    /// snapshot, which are known only once the step producing them has run.
+    /// </summary>
+    private sealed class SceneInputProgress(SetupStepRunners runners)
+    {
+        public string? InputSnapshotId { get; set; }
+
+        public string? ExtractionId { get; set; }
+
+        public Func<CancellationToken, Task<int>> Extract(ExtractionOptions options) =>
+            async cancellationToken =>
+            {
+                var result = await runners.Extract(options, cancellationToken);
+                InputSnapshotId = result.InputSnapshotId;
+                return result.ExitCode;
+            };
+    }
 }

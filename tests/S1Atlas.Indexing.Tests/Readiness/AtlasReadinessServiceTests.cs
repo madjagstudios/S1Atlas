@@ -540,7 +540,8 @@ public sealed class AtlasReadinessServiceTests : IAsyncDisposable
 
         var scene = Item(report, ReadinessItemIds.Scene);
         Assert.Equal(ReadinessState.Missing, scene.State);
-        Assert.Equal(ReadinessFixCommands.IndexScene, scene.FixCommand);
+        Assert.Equal("s1atlas setup --scene", scene.FixCommand);
+        Assert.Contains("'s1atlas setup --scene'", scene.Detail, StringComparison.Ordinal);
         Assert.True(scene.IsOptional);
     }
 

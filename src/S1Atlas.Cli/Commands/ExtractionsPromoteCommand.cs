@@ -32,48 +32,60 @@ internal static class ExtractionsPromoteCommand
                 parseResult.GetValue(jsonOption),
                 output,
                 error);
-            var id = parseResult.GetRequiredValue(idArgument);
-            return CommandExecution.Run(
-                () =>
-                {
-                    if (IsLowerHex(id, 32))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "AttemptNotPromotable",
-                            $"Manual promotion requires a 64-character validated extraction ID; " +
-                            $"'{id}' is a 32-character attempt ID.");
-                    }
-
-                    if (!IsLowerHex(id, 64))
-                    {
-                        return commandOutput.Failure(
-                            1,
-                            "InvalidExtractionId",
-                            $"'{id}' is not a 64-character lower-case hexadecimal extraction ID.");
-                    }
-
-                    repository.InitializeAsync(cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
-                    var outcome = historyService.PromoteAsync(id, cancellationToken)
-                        .GetAwaiter()
-                        .GetResult();
-                    var data = new ExtractionPromoteOutput(
-                        outcome.Extraction.ExtractionId,
-                        outcome.Extraction.BuildId,
-                        outcome.Outcome.ToString(),
-                        outcome.ToolTrustLevel.ToString(),
-                        Preferred: true,
-                        outcome.WasAlreadyPreferred,
-                        outcome.Revalidated);
-                    return commandOutput.Success(data, writer => WriteHuman(writer, data));
-                },
+            return Execute(
+                historyService,
+                repository,
+                parseResult.GetRequiredValue(idArgument),
                 commandOutput,
                 cancellationToken);
         });
         return command;
     }
+
+    internal static int Execute(
+        ExtractionHistoryService historyService,
+        IAtlasRepository repository,
+        string id,
+        CommandOutput commandOutput,
+        CancellationToken cancellationToken) =>
+        CommandExecution.Run(
+            () =>
+            {
+                if (IsLowerHex(id, 32))
+                {
+                    return commandOutput.Failure(
+                        1,
+                        "AttemptNotPromotable",
+                        $"Manual promotion requires a 64-character validated extraction ID; " +
+                        $"'{id}' is a 32-character attempt ID.");
+                }
+
+                if (!IsLowerHex(id, 64))
+                {
+                    return commandOutput.Failure(
+                        1,
+                        "InvalidExtractionId",
+                        $"'{id}' is not a 64-character lower-case hexadecimal extraction ID.");
+                }
+
+                repository.InitializeAsync(cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                var outcome = historyService.PromoteAsync(id, cancellationToken)
+                    .GetAwaiter()
+                    .GetResult();
+                var data = new ExtractionPromoteOutput(
+                    outcome.Extraction.ExtractionId,
+                    outcome.Extraction.BuildId,
+                    outcome.Outcome.ToString(),
+                    outcome.ToolTrustLevel.ToString(),
+                    Preferred: true,
+                    outcome.WasAlreadyPreferred,
+                    outcome.Revalidated);
+                return commandOutput.Success(data, writer => WriteHuman(writer, data));
+            },
+            commandOutput,
+            cancellationToken);
 
     private static void WriteHuman(TextWriter writer, ExtractionPromoteOutput data)
     {

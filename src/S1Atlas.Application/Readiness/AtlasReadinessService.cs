@@ -571,7 +571,7 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
         if (!databaseUsable && !databaseMissing)
         {
             return DatabaseBlockedItem(
-                ReadinessItemIds.Scene, "Scene snapshot (optional)", ReadinessFixCommands.IndexScene, true);
+                ReadinessItemIds.Scene, "Scene snapshot (optional)", ReadinessFixCommands.SetupScene, true);
         }
 
         if (snapshot is null)
@@ -580,11 +580,14 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 ReadinessItemIds.Scene,
                 "Scene snapshot (optional)",
                 ReadinessState.NotApplicable,
-                "Optional; needs a scanned build first.",
-                ReadinessFixCommands.IndexScene,
+                $"Optional; needs a scanned build first ('{ReadinessFixCommands.SetupScene}' does both).",
+                ReadinessFixCommands.SetupScene,
                 true);
         }
 
+        // The scene index also needs a replay-verified input snapshot, which plain
+        // setup never creates, so the fix is the guided setup that certifies one,
+        // not a bare index --scene that the gate would refuse.
         var scene = await _indexRepository.RequireSceneRepository()
             .GetLatestCompletedSceneSnapshotAsync(snapshot.Build.BuildId, cancellationToken);
         return scene is null
@@ -592,8 +595,8 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 ReadinessItemIds.Scene,
                 "Scene snapshot (optional)",
                 ReadinessState.Missing,
-                "No scene snapshot is present.",
-                ReadinessFixCommands.IndexScene,
+                $"No scene snapshot is present; run '{ReadinessFixCommands.SetupScene}' to build one.",
+                ReadinessFixCommands.SetupScene,
                 true)
             : new ReadinessItem(
                 ReadinessItemIds.Scene,

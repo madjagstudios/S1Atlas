@@ -45,9 +45,11 @@ numbered plan, and asks before changing anything. Tool downloads get a second
 confirmation because they reach the network; `--yes` answers both, and piped
 input without `--yes` fails fast instead of hanging. Each step re-checks
 readiness first, so work that is already satisfied is skipped, and the run
-stops at the first failure with the next step to take. `--include-optional`
-adds the scene snapshot; without it, an otherwise-ready atlas prints
-`Already ready` and touches nothing.
+stops at the first failure with the next step to take. `--scene` adds the
+scene snapshot and everything it needs (see
+[Scene intelligence](#scene-intelligence)); without it, an otherwise-ready
+atlas prints `Already ready` and touches nothing. `--include-optional` is an
+older name for `--scene`.
 
 After a game update the scan is stale while extract and index still read Ok
 for the old build. A rescan can record a new build, so the plan also lists the
@@ -565,13 +567,60 @@ s1atlas upstream sync --codebase s1api --commit <40-character-sha>
 s1atlas index --codebase s1api --channel release --commit <40-character-sha>
 ```
 
-Build and query the static scene intelligence index after the same build has a
-preferred integrity-verified extraction, a replay-verified input snapshot, and a
-completed Schedule I Installed code index:
+Compare two indexed builds to see what changed:
 
 ```powershell
-s1atlas index --scene
-s1atlas index --scene --build <64-character-build-id> --json
+s1atlas diff <build-id-before> <build-id-after>
+s1atlas diff <build-id-before> <build-id-after> --kind Method --json
+s1atlas diff <build-id-before> <build-id-after> --limit 100
+```
+
+`diff` compares existing indexed data and classifies each symbol as Added,
+Removed, MethodBodyChanged, RelationshipsChanged, or Unchanged. It requires both
+builds to have a completed, preferred, integrity-verified index. The command is
+entirely offline.
+
+## Scene intelligence
+
+The scene index holds the game's scenes, prefabs, GameObjects, components, and
+decoded serialized field values. One command builds it, from an empty atlas or
+from one that plain `setup` already made ready:
+
+```powershell
+s1atlas setup --scene
+```
+
+`index --scene` refuses to run until the build's preferred extraction is tied to
+a replay-verified input snapshot: archived game inputs that a second Cpp2IL run
+reproduced as an authoritative validated extraction. If that replay reproduces
+the exact preferred extraction, its verified attempt link supplies the input
+without changing the extraction's original source record. Plain `setup` never
+archives its inputs, so `setup --scene` plans the missing certification from
+the same check `index --scene` enforces and runs only existing commands:
+
+- No extraction yet (an empty atlas or a new build): the extraction runs as
+  `extract --snapshot-inputs`, so a single
+  `extract --input-snapshot <id> --retry` replay certifies the snapshot the
+  preferred extraction already points at, then `index --scene` runs.
+- An extraction that never archived its inputs, which is what plain `setup`
+  leaves: `extract --snapshot-inputs --retry`, the replay, then
+  `extractions promote <id>` for the replay (a replay never replaces a
+  preferred extraction automatically), `index` for the promoted extraction,
+  and `index --scene`.
+- An archived snapshot that is not yet replay-verified: the replay, then
+  `index --scene`.
+- An already replay-verified input: `index --scene` only.
+
+The plan prints with placeholders for IDs that earlier steps produce, asks once
+(`--yes` skips it), and stops at the first failure. Each Cpp2IL run takes a few
+minutes. After a rescan, the remaining plan uses the selected build's actual
+extraction input, including when the scan keeps the same build.
+`doctor` names `s1atlas setup --scene` on its scene line while no scene
+snapshot exists.
+
+Then query the snapshot, or rebuild it directly once the input is certified:
+
+```powershell
 s1atlas scenes --kind scene --limit 50
 s1atlas scenes --kind prefab --limit 50 --json
 s1atlas scene <scene-id-or-exact-name> --children --components --refs
@@ -580,14 +629,21 @@ s1atlas prefab <prefab-id-or-exact-name> --objects --components
 s1atlas component <component-id-or-exact-type> --refs --code --json
 s1atlas scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
 s1atlas game-objects --query forklift
-s1atlas game-objects --query truck --scene Main --offset 50
-s1atlas components ScheduleOne.Vehicles.LandVehicle --fields vehicleName,vehicleCode,vehiclePrice
-s1atlas components ScheduleOne.Vehicles.LandVehicle --derived --scene Main
+s1atlas components ScheduleOne.Vehicles.LandVehicle --derived --fields vehicleName,vehicleCode,vehiclePrice
 s1atlas game-object <game-object-id> --incoming --external
-s1atlas component <component-id> --incoming
+s1atlas index --scene
+s1atlas index --scene --build <64-character-build-id> --json
 ```
 
-#### Searching, listing, and incoming references
+Scene indexing is static, offline, and read-only with respect to the game install.
+It parses only the supported Unity 2022.3 SerializedFile containers and sidecars;
+it never launches the game, Unity, a managed game assembly, or a parser subprocess,
+and it makes no network request. Inputs are hashed before and after parsing. A
+completed immutable snapshot is written beneath the local Atlas data root, with
+its marker written last; failed imports are not queryable. List and nested queries
+are counted in SQLite and bounded to 50 rows by default unless `--limit` is given.
+
+### Searching, listing, and incoming references
 
 - `game-objects` finds objects whose name contains a case-insensitive fragment,
   across the whole snapshot or within one scene or prefab document (`--scene`,
@@ -621,27 +677,6 @@ s1atlas component <component-id> --incoming
   `game-objects`, and `components` skips that many rows in every returned list,
   and the output ends with the next offset when more rows remain. The MCP
   tools return `nextCursor` instead.
-
-Compare two indexed builds to see what changed:
-
-```powershell
-s1atlas diff <build-id-before> <build-id-after>
-s1atlas diff <build-id-before> <build-id-after> --kind Method --json
-s1atlas diff <build-id-before> <build-id-after> --limit 100
-```
-
-`diff` compares existing indexed data and classifies each symbol as Added,
-Removed, MethodBodyChanged, RelationshipsChanged, or Unchanged. It requires both
-builds to have a completed, preferred, integrity-verified index. The command is
-entirely offline.
-
-Scene indexing is static, offline, and read-only with respect to the game install.
-It parses only the supported Unity 2022.3 SerializedFile containers and sidecars;
-it never launches the game, Unity, a managed game assembly, or a parser subprocess,
-and it makes no network request. Inputs are hashed before and after parsing. A
-completed immutable snapshot is written beneath the local Atlas data root, with
-its marker written last; failed imports are not queryable. List and nested queries
-are counted in SQLite and bounded to 50 rows by default unless `--limit` is given.
 
 ### Scene fidelity boundary
 
@@ -1369,7 +1404,7 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas scriptable-object <asset-id|exact-name|namespace.class> [--json]` | Query one indexed scriptable asset (ScriptableObject) and its decoded fields. |
 | `s1atlas search <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | Query the normalized code index across symbols, types, and methods. |
 | `s1atlas serve [--port] [--open]` | Start the local read-only web app on loopback. |
-| `s1atlas setup [--yes] [--include-optional]` | Run the missing pipeline steps in order. |
+| `s1atlas setup [--yes] [--scene]` | Run the missing pipeline steps in order. |
 | `s1atlas source <query> [--codebase] [--channel] [--build] [--scope] [--collection] [--candidate-limit] [--context] [--file] [--output] [--full-type] [--related-limit] [--json]` | Show integrity-checked source for one resolved symbol. |
 | `s1atlas status [--json]` | Show the current Atlas build status. |
 | `s1atlas tools install <tool-id> [--repair] [--json]` | Download, verify, and register a repository-pinned tool. |
