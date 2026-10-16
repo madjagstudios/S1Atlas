@@ -87,6 +87,11 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ### Fixed
 
+- Scene setup replans certification after a rescan, including when another
+  session already satisfied it, so keeping the same build does not leave the
+  replay without an input snapshot. A certified replay that reproduces the
+  exact preferred extraction can supply its scene input without rewriting
+  that extraction's original source attempt (AT-145).
 - `recover-native-body --json` now writes only the JSON envelope to stdout.
   LibCpp2IL's progress and diagnostic messages go to stderr instead, and its
   verbose progress lines appear only with the new `--verbose` flag (AT-132).

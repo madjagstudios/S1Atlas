@@ -534,9 +534,11 @@ from one that plain `setup` already made ready:
 s1atlas setup --scene
 ```
 
-`index --scene` refuses to run until the build's preferred extraction came from
+`index --scene` refuses to run until the build's preferred extraction is tied to
 a replay-verified input snapshot: archived game inputs that a second Cpp2IL run
-reproduced as an authoritative validated extraction. Plain `setup` never
+reproduced as an authoritative validated extraction. If that replay reproduces
+the exact preferred extraction, its verified attempt link supplies the input
+without changing the extraction's original source record. Plain `setup` never
 archives its inputs, so `setup --scene` plans the missing certification from
 the same check `index --scene` enforces and runs only existing commands:
 
@@ -555,7 +557,9 @@ the same check `index --scene` enforces and runs only existing commands:
 
 The plan prints with placeholders for IDs that earlier steps produce, asks once
 (`--yes` skips it), and stops at the first failure. Each Cpp2IL run takes a few
-minutes. `doctor` names `s1atlas setup --scene` on its scene line while no scene
+minutes. After a rescan, the remaining plan uses the selected build's actual
+extraction input, including when the scan keeps the same build.
+`doctor` names `s1atlas setup --scene` on its scene line while no scene
 snapshot exists.
 
 Then query the snapshot, or rebuild it directly once the input is certified:
