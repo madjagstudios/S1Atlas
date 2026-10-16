@@ -6,15 +6,39 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16: Scene discovery and attribute search
+
+`s1atlas setup --scene` now takes an atlas through input certification and scene
+indexing in one command. Scene queries point to that command when the current
+build has no scene snapshot. Name-fragment searches, typed component lists with
+selected fields, and incoming references make serialized vehicle names and
+registrations practical to inspect. Custom-attribute search finds RPC methods,
+serialized fields, and obsolete API members. This release also adds FishNet
+coverage and automatic installed API indexing. Update both CLI and MCP tools
+together, then follow the one-time upgrade steps below.
+
+This release was updated on 2026-10-16 to include attribute search (AT-69).
+If you installed the initial 2.2.0 build, reinstall both tools with the updated
+packages before migrating; the version number remains 2.2.0.
+
 ### Upgrading
 
-- Update the CLI and MCP tools together. Run `s1atlas doctor`, then the
-  `s1atlas status` command it prints, to migrate to schema 21 for indexed
-  custom attributes. S1Atlas 2.2.0 and earlier cannot open a migrated atlas.
-- Run `s1atlas scan`, then `s1atlas index`. The index format moves to version
-  19, so the game and installed API indexes rebuild. Scan first so installed
-  API indexes bind to the current environment snapshot. Re-index older builds
-  before comparing them with `check-mod` or `diff` (AT-69).
+- Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
+  to migrate the database to schema 21, which stores each installed
+  dependency DLL's hash (AT-131) and indexed custom attributes (AT-69). The
+  pre-migration backup is a full copy of `atlas.db`, so make sure you have that
+  much free disk space. Until the upgrade runs, serve and the MCP server
+  refuse queries with the `s1atlas status` hint,
+  and S1Atlas 2.1.0 and earlier, plus the initial 2.2.0 build, cannot open a
+  migrated atlas, so reinstall the CLI and MCP tools together.
+- Then run `s1atlas scan` once so the installed S1API/S1MAPI DLL hashes are
+  recorded; until then `doctor` asks for a rescan (AT-131).
+- Run `s1atlas index` once, after the scan. The code index format is now 19
+  (AT-140, AT-69), so the current build is re-indexed instead of reused and
+  callable evidence is rebuilt. API and reference-mod indexes also rebuild
+  the next time they run.
+- To compare against an older build with `check-mod` or `diff`, re-index that
+  build too: `s1atlas index --build <build-id>` (AT-140).
 
 ### Added
 
@@ -24,36 +48,6 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   index. `--arg` filters on attribute arguments. `type`/`method` and
   `get_type`/`get_method` now list each symbol's attributes. Attributes that
   Cpp2IL injects (`Cpp2ILInjected.*`) are never reported (AT-69).
-
-## [2.2.0] - 2026-10-16: Guided scene setup and vehicle discovery
-
-`s1atlas setup --scene` now takes an atlas through input certification and scene
-indexing in one command. Scene queries point to that command when the current
-build has no scene snapshot. Name-fragment searches, typed component lists with
-selected fields, and incoming references make serialized vehicle names and
-registrations practical to inspect. This release also adds FishNet coverage and
-automatic installed API indexing. Update both CLI and MCP tools together, then
-follow the one-time upgrade steps below.
-
-### Upgrading
-
-- Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
-  to migrate the database to schema 20, which stores each installed
-  dependency DLL's hash (AT-131). The pre-migration backup is a full copy of
-  `atlas.db`, so make sure you have that much free disk space. Until the upgrade
-  runs, serve and the MCP server refuse queries with the `s1atlas status` hint,
-  and S1Atlas 2.1.0 and earlier cannot open a migrated atlas, so update the CLI
-  and MCP tools together.
-- Then run `s1atlas scan` once so the installed S1API/S1MAPI DLL hashes are
-  recorded; until then `doctor` asks for a rescan (AT-131).
-- Run `s1atlas index` once. The code index format changed (AT-140), so
-  the current build is re-indexed instead of reused and callable evidence is
-  rebuilt. API and reference-mod indexes also rebuild the next time they run.
-- To compare against an older build with `check-mod` or `diff`, re-index that
-  build too: `s1atlas index --build <build-id>` (AT-140).
-
-### Added
-
 - The game index now covers the FishNet multiplayer runtime the game ships,
   not only the game-owned assemblies. Types in `FishNet.*` (network objects,
   the server manager, spawnable prefabs) can be searched, resolved and diffed,
