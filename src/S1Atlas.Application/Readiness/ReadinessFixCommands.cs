@@ -19,8 +19,21 @@ public static class ReadinessFixCommands
     public const string Index = "s1atlas index";
     public const string IndexForce = "s1atlas index --force";
     public const string IndexScene = "s1atlas index --scene";
+    public const string SetupScene = "s1atlas setup --scene";
+    public const string ExtractSnapshotInputs = "s1atlas extract --snapshot-inputs";
+    public const string ExtractSnapshotInputsRetry = "s1atlas extract --snapshot-inputs --retry";
     public const string Status = "s1atlas status";
     public const string Doctor = "s1atlas doctor";
+
+    /// <summary>
+    /// The replay that certifies an archived input snapshot. A null ID prints a
+    /// placeholder for a snapshot an earlier step has yet to create.
+    /// </summary>
+    public static string ExtractFromInputSnapshot(string? inputSnapshotId) =>
+        $"s1atlas extract --input-snapshot {inputSnapshotId ?? "<snapshot-id>"} --retry";
+
+    public static string PromoteExtraction(string? extractionId) =>
+        $"s1atlas extractions promote {extractionId ?? "<extraction-id>"}";
 
     /// <summary>
     /// Builds the runnable rescan command for an explicit game folder. The

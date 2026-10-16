@@ -12,6 +12,7 @@ Point S1Atlas at your installed copy of Schedule I and it:
 - **Extracts and decompiles** the IL2CPP game assemblies through a verified Cpp2IL + ILSpy pipeline.
 - **Indexes** every type, method, field, and relationship, searchable by name, with decompiled source, callers, callees, and references.
 - **Traces static engine/BCL relationships** so you can ask who calls a Unity or framework API and who reads or writes a field, across the verified game index and explicitly selected local reference collections.
+- **Indexes scenes and prefabs** (GameObjects, components, and decoded serialized field values such as item or vehicle data) after one `s1atlas setup --scene`.
 - **Diffs builds** so you can see exactly what a game update changed.
 - **Deep-indexes S1API and S1MAPI** so you can check the modding API before patching the game directly.
 - **Indexes explicitly selected local reference-mod collections** so prior-art symbols and relationships can be queried beside the verified game index.
@@ -64,6 +65,10 @@ s1atlas index
 s1atlas search "Player" --limit 20
 s1atlas call-sites "UnityEngine.AI.NavMeshAgent.CompleteOffMeshLink"
 s1atlas field-refs "MoneyManager.cashBalance" --writers
+
+# add the scene index (archives and replay-verifies the extraction input first)
+s1atlas setup --scene
+s1atlas scenes --kind prefab --limit 20
 
 # validate and index a local reference-mod collection selected by a manifest
 s1atlas reference collections validate "C:\path\to\reference-manifest.json"

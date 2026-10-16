@@ -1,7 +1,9 @@
 using System.CommandLine;
 using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Commands;
+using S1Atlas.Core.Extraction;
 using S1Atlas.Extraction;
+using S1Atlas.Indexing.Scene;
 using Xunit;
 
 namespace S1Atlas.IntegrationTests;
@@ -58,7 +60,7 @@ internal static class SetupReportBuilder
                     "s1atlas tools install cpp2il", false),
                 NotApplicable(ReadinessItemIds.Extraction, "Preferred extraction", "Needs a scanned build first.", ReadinessFixCommands.Extract),
                 NotApplicable(ReadinessItemIds.Index, "Schedule I index", "Needs a verified extraction first.", ReadinessFixCommands.Index),
-                NotApplicable(ReadinessItemIds.Scene, "Scene snapshot (optional)", "Optional; needs a scanned build first.", ReadinessFixCommands.IndexScene, true)
+                NotApplicable(ReadinessItemIds.Scene, "Scene snapshot (optional)", "Optional; needs a scanned build first.", ReadinessFixCommands.SetupScene, true)
             ],
             new ReadinessNextStep(false, "Next: s1atlas tools install cpp2il", "s1atlas tools install cpp2il"),
             false,
@@ -107,10 +109,30 @@ internal static class SetupReportBuilder
                 new ReadinessItem(
                     ReadinessItemIds.Scene, "Scene snapshot (optional)",
                     ReadinessState.Missing, "No scene snapshot is present.",
-                    ReadinessFixCommands.IndexScene, true)
+                    ReadinessFixCommands.SetupScene, true)
             ],
             new ReadinessNextStep(true, "Ready", ReadinessFixCommands.ExampleQuery),
             true,
+            ReadinessFixCommands.ExampleQuery,
+            []);
+
+    public static ReadinessReport NoExtractionYet() =>
+        new(
+            [
+                Ok(ReadinessItemIds.Scan, "Build scan", "Build scanned."),
+                Ok(ReadinessItemIds.Tools, "Managed tools", "Tools verified."),
+                new ReadinessItem(
+                    ReadinessItemIds.Extraction, "Preferred extraction",
+                    ReadinessState.Missing, "No preferred verified extraction exists for the build.",
+                    ReadinessFixCommands.Extract, false),
+                NotApplicable(ReadinessItemIds.Index, "Schedule I index", "Needs a verified extraction first.", ReadinessFixCommands.Index),
+                new ReadinessItem(
+                    ReadinessItemIds.Scene, "Scene snapshot (optional)",
+                    ReadinessState.Missing, "No scene snapshot is present.",
+                    ReadinessFixCommands.SetupScene, true)
+            ],
+            new ReadinessNextStep(false, "Next: s1atlas extract", ReadinessFixCommands.Extract),
+            false,
             ReadinessFixCommands.ExampleQuery,
             []);
 
@@ -329,7 +351,7 @@ public sealed class SetupCommandTests
             Extract: (_, _) =>
             {
                 calls.Add("extract");
-                return Task.FromResult(0);
+                return Task.FromResult(new SetupExtractResult(0));
             },
             Index: (_, _) =>
             {
@@ -340,7 +362,9 @@ public sealed class SetupCommandTests
             {
                 calls.Add("scene");
                 return Task.FromResult(0);
-            });
+            },
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => throw new InvalidOperationException("Scene input must not be inspected."));
         using var output = new StringWriter();
         using var error = new StringWriter();
         var command = SetupCommand.Create(
@@ -439,11 +463,11 @@ public sealed class SetupCommandTests
     }
 
     [Fact]
-    public void IncludeOptional_AddsSceneStep()
+    public void IncludeOptionalAlias_ReplayVerifiedInput_PlansOnlyTheSceneIndex()
     {
         var readiness = new ScriptedReadinessService(SetupReportBuilder.SceneMissing());
         var calls = new List<string>();
-        var runners = RecordingRunners(null, calls);
+        var runners = RecordingRunners(null, calls, SceneInput(SceneInputCertification.ReplayVerified));
         using var output = new StringWriter();
         using var error = new StringWriter();
         var command = SetupCommand.Create(
@@ -455,7 +479,154 @@ public sealed class SetupCommandTests
 
         Assert.Equal(0, exitCode);
         Assert.Equal(["scene"], calls);
-        Assert.Contains("s1atlas index --scene", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("1. s1atlas index --scene", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(SceneInputCertification.NoInputSnapshot, 2, false)]
+    [InlineData(SceneInputCertification.NotReplayVerified, 1, false)]
+    [InlineData(SceneInputCertification.ReplayVerified, 0, false)]
+    [InlineData(SceneInputCertification.NoInputSnapshot, 2, true)]
+    [InlineData(SceneInputCertification.NotReplayVerified, 1, true)]
+    [InlineData(SceneInputCertification.ReplayVerified, 0, true)]
+    public void Scene_SameBuildRescan_UsesTheExistingExtractionInput(
+        SceneInputCertification certification, int expectedExtractions, bool scanAlreadySatisfied)
+    {
+        var sameBuild = SetupReportBuilder.SceneMissing();
+        var stale = sameBuild with
+        {
+            Items = sameBuild.Items.Select(item => item.Id == ReadinessItemIds.Scan
+                ? item with { State = ReadinessState.Stale, FixCommand = ReadinessFixCommands.Scan }
+                : item).ToArray()
+        };
+        var readiness = new QueueReadinessService([stale, scanAlreadySatisfied ? sameBuild : stale, sameBuild]);
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, SceneRunners(calls, extractions, SceneInput(certification)),
+            new StringReader(string.Empty), inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.True(exitCode == 0, error.ToString());
+        Assert.Equal(expectedExtractions, extractions.Count);
+        Assert.Equal(!scanAlreadySatisfied, calls.Contains("scan"));
+        Assert.Equal("scene", calls[^1]);
+        Assert.Equal(certification == SceneInputCertification.NoInputSnapshot,
+            calls.Contains("promote:" + ReplayExtractionId));
+    }
+
+    [Fact]
+    public void Scene_ExtractionWithoutArchive_ArchivesReplaysPromotesAndReindexes()
+    {
+        var readiness = new ScriptedReadinessService(SetupReportBuilder.SceneMissing());
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        var runners = SceneRunners(calls, extractions, SceneInput(SceneInputCertification.NoInputSnapshot));
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["extract", "extract", "promote:" + ReplayExtractionId, "index", "scene"], calls);
+        Assert.True(extractions[0] is { SnapshotInputs: true, Retry: true, InputSnapshotId: null });
+        Assert.True(extractions[1] is { SnapshotInputs: false, Retry: true, InputSnapshotId: ArchivedSnapshotId });
+        var text = output.ToString();
+        Assert.Contains("1. s1atlas extract --snapshot-inputs --retry", text, StringComparison.Ordinal);
+        Assert.Contains("2. s1atlas extract --input-snapshot <snapshot-id> --retry", text, StringComparison.Ordinal);
+        Assert.Contains("3. s1atlas extractions promote <extraction-id>", text, StringComparison.Ordinal);
+        Assert.Contains("4. s1atlas index", text, StringComparison.Ordinal);
+        Assert.Contains("5. s1atlas index --scene", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Scene_NewBuildRescan_ArchivesAndReplaysTheNewExtraction()
+    {
+        var sameBuild = SetupReportBuilder.SceneMissing();
+        var stale = sameBuild with
+        {
+            Items = sameBuild.Items.Select(item => item.Id == ReadinessItemIds.Scan
+                ? item with { State = ReadinessState.Stale, FixCommand = ReadinessFixCommands.Scan }
+                : item).ToArray()
+        };
+        var fresh = SetupReportBuilder.NoExtractionYet();
+        var readiness = new QueueReadinessService(
+            [stale, stale, fresh, fresh, fresh, fresh, fresh, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, SceneRunners(calls, extractions, sceneInput: null),
+            new StringReader(string.Empty), inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.True(exitCode == 0, error.ToString());
+        Assert.Equal(["scan", "extract", "index", "extract", "scene"], calls);
+        Assert.True(extractions[0] is { SnapshotInputs: true, InputSnapshotId: null });
+        Assert.Equal(ArchivedSnapshotId, extractions[1].InputSnapshotId);
+    }
+
+    [Fact]
+    public void Scene_FreshExtraction_ArchivesItsInputsSoOneReplayCertifiesThem()
+    {
+        var fresh = SetupReportBuilder.NoExtractionYet();
+        var readiness = new QueueReadinessService(
+            [fresh, fresh, fresh, fresh, fresh, fresh, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        var runners = SceneRunners(calls, extractions, sceneInput: null);
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["scan", "extract", "index", "extract", "scene"], calls);
+        Assert.True(extractions[0] is { SnapshotInputs: true, Retry: false });
+        Assert.True(extractions[1] is { Retry: true, InputSnapshotId: ArchivedSnapshotId });
+        var text = output.ToString();
+        Assert.Contains("2. s1atlas extract --snapshot-inputs", text, StringComparison.Ordinal);
+        Assert.Contains("4. s1atlas extract --input-snapshot <snapshot-id> --retry", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Scene_UnverifiedArchive_ReplaysItThenIndexesTheScene()
+    {
+        var readiness = new ScriptedReadinessService(SetupReportBuilder.SceneMissing());
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        var runners = SceneRunners(calls, extractions, SceneInput(SceneInputCertification.NotReplayVerified));
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, runners, new StringReader(string.Empty),
+            inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(["extract", "scene"], calls);
+        Assert.True(Assert.Single(extractions) is { Retry: true, InputSnapshotId: ArchivedSnapshotId });
+        Assert.Contains(
+            $"1. s1atlas extract --input-snapshot {ArchivedSnapshotId} --retry",
+            output.ToString(),
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -553,7 +724,9 @@ public sealed class SetupCommandTests
                 received = options;
                 return Task.FromResult(0);
             },
-            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."),
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => throw new InvalidOperationException("Scene input must not be inspected."));
         using var output = new StringWriter();
         using var error = new StringWriter();
         var command = SetupCommand.Create(
@@ -590,10 +763,12 @@ public sealed class SetupCommandTests
             Extract: (options, _) =>
             {
                 received = options;
-                return Task.FromResult(0);
+                return Task.FromResult(new SetupExtractResult(0));
             },
             Index: (_, _) => throw new InvalidOperationException("Index must not run."),
-            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."),
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => throw new InvalidOperationException("Scene input must not be inspected."));
         using var output = new StringWriter();
         using var error = new StringWriter();
         var command = SetupCommand.Create(
@@ -630,10 +805,12 @@ public sealed class SetupCommandTests
             Extract: (options, _) =>
             {
                 received = options;
-                return Task.FromResult(0);
+                return Task.FromResult(new SetupExtractResult(0));
             },
             Index: (_, _) => throw new InvalidOperationException("Index must not run."),
-            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."),
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => throw new InvalidOperationException("Scene input must not be inspected."));
         using var output = new StringWriter();
         using var error = new StringWriter();
         var command = SetupCommand.Create(
@@ -655,11 +832,64 @@ public sealed class SetupCommandTests
             InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
             Extract: (_, _) => throw new InvalidOperationException("Extract must not run."),
             Index: (_, _) => throw new InvalidOperationException("Index must not run."),
-            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."),
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => throw new InvalidOperationException("Scene input must not be inspected."));
+
+    private const string ArchivedSnapshotId = "1111111111111111111111111111111111111111111111111111111111111111";
+    private const string ReplayExtractionId = "2222222222222222222222222222222222222222222222222222222222222222";
+
+    private static SceneInputState SceneInput(SceneInputCertification certification) =>
+        new(
+            certification,
+            certification is SceneInputCertification.NotReplayVerified or SceneInputCertification.ReplayVerified
+                ? new InputSnapshot(
+                    ArchivedSnapshotId, new string('a', 64), "inputs", new string('d', 64), DateTimeOffset.UnixEpoch,
+                    certification == SceneInputCertification.ReplayVerified, null, new InputManifest([]))
+                : null);
+
+    // An archiving extraction reports ArchivedSnapshotId; a replay reports ReplayExtractionId.
+    private static SetupStepRunners SceneRunners(
+        List<string> calls,
+        List<ExtractionOptions> extractions,
+        SceneInputState? sceneInput) =>
+        new(
+            Scan: (_, _) =>
+            {
+                calls.Add("scan");
+                return Task.FromResult(0);
+            },
+            InstallTool: (_, _) => throw new InvalidOperationException("Install must not run."),
+            Extract: (options, _) =>
+            {
+                calls.Add("extract");
+                extractions.Add(options);
+                return Task.FromResult(options.InputSnapshotId is null
+                    ? new SetupExtractResult(0, new string('3', 64), options.SnapshotInputs ? ArchivedSnapshotId : null)
+                    : new SetupExtractResult(0, ReplayExtractionId, options.InputSnapshotId));
+            },
+            Index: (_, _) =>
+            {
+                calls.Add("index");
+                return Task.FromResult(0);
+            },
+            IndexScene: _ =>
+            {
+                calls.Add("scene");
+                return Task.FromResult(0);
+            },
+            Promote: (extractionId, _) =>
+            {
+                calls.Add("promote:" + extractionId);
+                return Task.FromResult(0);
+            },
+            InspectSceneInput: _ => Task.FromResult(
+                sceneInput ?? throw new InvalidOperationException("Scene input must not be inspected.")));
 
     private static SetupStepRunners RecordingRunners(
         EvolvingReadinessService? readiness,
-        List<string> calls) =>
+        List<string> calls,
+        SceneInputState? sceneInput = null) =>
         new(
             Scan: (_, _) =>
             {
@@ -677,7 +907,7 @@ public sealed class SetupCommandTests
             {
                 calls.Add("extract");
                 readiness?.Complete("extract");
-                return Task.FromResult(0);
+                return Task.FromResult(new SetupExtractResult(0));
             },
             Index: (_, _) =>
             {
@@ -689,7 +919,10 @@ public sealed class SetupCommandTests
             {
                 calls.Add("scene");
                 return Task.FromResult(0);
-            });
+            },
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => Task.FromResult(
+                sceneInput ?? throw new InvalidOperationException("Scene input must not be inspected.")));
 
     [Fact]
     public void StaleRecordedScan_PassesRecordedPathToRunnerAndShowsItInPlan()
@@ -911,10 +1144,12 @@ public sealed class SetupCommandTests
             Extract: (_, _) =>
             {
                 calls.Add("extract");
-                return Task.FromResult(0);
+                return Task.FromResult(new SetupExtractResult(0));
             },
             Index: (_, _) => throw new InvalidOperationException("Index must not run."),
-            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."));
+            IndexScene: _ => throw new InvalidOperationException("Scene index must not run."),
+            Promote: (_, _) => throw new InvalidOperationException("Promote must not run."),
+            InspectSceneInput: _ => throw new InvalidOperationException("Scene input must not be inspected."));
 
     private static int InvokeSetup(Command command, string[] args)
     {
