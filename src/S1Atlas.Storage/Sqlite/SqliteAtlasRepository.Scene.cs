@@ -386,36 +386,14 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     public async Task<ScenePageResult<SceneGameObjectRecord>> ListGameObjectsAsync(GameObjectListQueryOptions options, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        var escaped = options.Query is null ? null : "%" + EscapeSceneLikePattern(options.Query) + "%";
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        var total = await CountAsync(connection, """
-            SELECT COUNT(*) FROM game_objects AS game_object
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            LEFT JOIN transforms AS transform ON transform.game_object_id = game_object.game_object_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR game_object.scene_id = $scene)
-              AND ($parent IS NULL OR transform.parent_game_object_id = $parent)
-              AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\' COLLATE NOCASE);
-            """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$parent", options.ParentGameObjectId), ("$query", escaped));
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT game_object.game_object_id, game_object.scene_id, game_object.container_id, game_object.local_file_id, game_object.name, game_object.active, game_object.layer, game_object.tag, game_object.recovery_status
-            FROM game_objects AS game_object
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            LEFT JOIN transforms AS transform ON transform.game_object_id = game_object.game_object_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR game_object.scene_id = $scene)
-              AND ($parent IS NULL OR transform.parent_game_object_id = $parent)
-              AND ($query IS NULL OR game_object.name LIKE $query ESCAPE '\' COLLATE NOCASE)
-            ORDER BY game_object.name COLLATE BINARY, game_object.game_object_id COLLATE BINARY
-            LIMIT $limit;
-            """;
-        AddPageParameters(command, options.SceneSnapshotId, options.SceneId, options.ParentGameObjectId, escaped, options.Limit);
-        var rows = new List<SceneGameObjectRecord>(Math.Min(options.Limit, 256));
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadGameObject(reader));
-        return new ScenePageResult<SceneGameObjectRecord>(total, rows.Count, rows);
+        return await SceneGraphRows.ListGameObjectsAsync(connection, options, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SceneGameObjectRecord>> GetGameObjectsAsync(string sceneSnapshotId, IReadOnlyList<string> gameObjectIds, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        return await SceneGraphRows.GetGameObjectsAsync(connection, sceneSnapshotId, gameObjectIds, cancellationToken);
     }
 
     public async Task<SceneGameObjectRecord?> GetGameObjectAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken)
@@ -448,41 +426,20 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     public async Task<ScenePageResult<SceneComponentRecord>> ListComponentsAsync(ComponentListQueryOptions options, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        var escaped = options.Query is null ? null : "%" + EscapeSceneLikePattern(options.Query) + "%";
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        var total = await CountAsync(connection, """
-            SELECT COUNT(*) FROM components AS component
-            INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR game_object.scene_id = $scene)
-              AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
-              AND ($kind IS NULL OR component.kind = $kind)
-              AND ($query IS NULL OR component.kind LIKE $query ESCAPE '\' COLLATE NOCASE);
-            """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$kind", options.ExactKind), ("$query", escaped));
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT component.component_id, component.game_object_id, component.container_id, component.local_file_id,
-                   component.unity_class_id, component.kind, component.script_assembly, component.script_namespace,
-                   component.script_class, component.resolved_type_symbol_id, component.resolved_code_index_id,
-                   component.type_resolution_status, component.recovery_status
-            FROM components AS component
-            INNER JOIN game_objects AS game_object ON game_object.game_object_id = component.game_object_id
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = game_object.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND game_object.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR game_object.scene_id = $scene)
-              AND ($gameObject IS NULL OR component.game_object_id = $gameObject)
-              AND ($kind IS NULL OR component.kind = $kind)
-              AND ($query IS NULL OR component.kind LIKE $query ESCAPE '\' COLLATE NOCASE)
-            ORDER BY component.kind COLLATE BINARY, component.component_id COLLATE BINARY
-            LIMIT $limit;
-            """;
-        AddPageParameters(command, options.SceneSnapshotId, options.SceneId, options.GameObjectId, options.ExactKind, escaped, options.Limit);
-        var rows = new List<SceneComponentRecord>(Math.Min(options.Limit, 256));
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadComponent(reader));
-        return new ScenePageResult<SceneComponentRecord>(total, rows.Count, rows);
+        return await SceneGraphRows.ListComponentsAsync(connection, options, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SceneScriptFieldSetRecord>> GetScriptFieldSetsAsync(string sceneSnapshotId, IReadOnlyList<string> ownerIds, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        return await SceneGraphRows.GetScriptFieldSetsAsync(connection, sceneSnapshotId, ownerIds, cancellationToken);
+    }
+
+    public async Task<SceneIncomingReferencePage> ListIncomingReferencesAsync(IncomingReferenceQueryOptions options, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken);
+        return await SceneGraphRows.ListIncomingReferencesAsync(connection, options, cancellationToken);
     }
 
     public async Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken)
@@ -586,70 +543,8 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
 
     public async Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        var escaped = options.Query is null ? null : "%" + EscapeSceneLikePattern(options.Query) + "%";
         await using var connection = await OpenConnectionAsync(cancellationToken);
-        var total = await CountAsync(connection, """
-            SELECT COUNT(*) FROM serialized_refs AS reference
-            LEFT JOIN components AS component ON component.component_id = reference.source_component_id
-            LEFT JOIN game_objects AS component_game_object ON component_game_object.game_object_id = component.game_object_id
-            LEFT JOIN game_objects AS source_game_object
-              ON reference.source_component_id IS NULL
-             AND source_game_object.scene_snapshot_id = reference.scene_snapshot_id
-             AND source_game_object.container_id = reference.source_container_id
-             AND source_game_object.local_file_id = reference.source_local_file_id
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
-              AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
-              AND ($component IS NULL OR reference.source_component_id = $component)
-              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\' COLLATE NOCASE);
-            """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$component", options.SourceComponentId), ("$query", escaped));
-        var unresolved = await CountAsync(connection, """
-            SELECT COUNT(*) FROM serialized_refs AS reference
-            LEFT JOIN components AS component ON component.component_id = reference.source_component_id
-            LEFT JOIN game_objects AS component_game_object ON component_game_object.game_object_id = component.game_object_id
-            LEFT JOIN game_objects AS source_game_object
-              ON reference.source_component_id IS NULL
-             AND source_game_object.scene_snapshot_id = reference.scene_snapshot_id
-             AND source_game_object.container_id = reference.source_container_id
-             AND source_game_object.local_file_id = reference.source_local_file_id
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
-              AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
-              AND ($component IS NULL OR reference.source_component_id = $component)
-              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\' COLLATE NOCASE)
-              AND reference.resolution_status <> 'Resolved';
-            """, cancellationToken, ("$snapshot", options.SceneSnapshotId), ("$scene", options.SceneId), ("$gameObject", options.GameObjectId), ("$component", options.SourceComponentId), ("$query", escaped));
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT reference.reference_id, reference.scene_snapshot_id, reference.source_component_id, reference.field_path, reference.declared_type,
-                   reference.source_container_id, reference.source_local_file_id, reference.target_container_id, reference.target_local_file_id,
-                   reference.target_game_object_id, reference.target_component_id, reference.target_symbol_id, reference.target_text,
-                   reference.resolution_status, reference.evidence, reference.recovery_status
-            FROM serialized_refs AS reference
-            LEFT JOIN components AS component ON component.component_id = reference.source_component_id
-            LEFT JOIN game_objects AS component_game_object ON component_game_object.game_object_id = component.game_object_id
-            LEFT JOIN game_objects AS source_game_object
-              ON reference.source_component_id IS NULL
-             AND source_game_object.scene_snapshot_id = reference.scene_snapshot_id
-             AND source_game_object.container_id = reference.source_container_id
-             AND source_game_object.local_file_id = reference.source_local_file_id
-            INNER JOIN scene_snapshots AS snapshot ON snapshot.scene_snapshot_id = reference.scene_snapshot_id
-            WHERE snapshot.status = 'Completed' AND snapshot.published_at_utc IS NOT NULL AND reference.scene_snapshot_id = $snapshot
-              AND ($scene IS NULL OR COALESCE(component_game_object.scene_id, source_game_object.scene_id) = $scene)
-              AND ($gameObject IS NULL OR COALESCE(component.game_object_id, source_game_object.game_object_id) = $gameObject)
-              AND ($component IS NULL OR reference.source_component_id = $component)
-              AND ($query IS NULL OR reference.field_path LIKE $query ESCAPE '\' COLLATE NOCASE OR reference.target_text LIKE $query ESCAPE '\' COLLATE NOCASE)
-            ORDER BY reference.field_path COLLATE BINARY, reference.reference_id COLLATE BINARY
-            LIMIT $limit;
-            """;
-        AddReferencePageParameters(command, options.SceneSnapshotId, options.SceneId, options.GameObjectId, options.SourceComponentId, escaped, options.Limit);
-        var rows = new List<SceneReferenceRecord>(Math.Min(options.Limit, 256));
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken)) rows.Add(ReadReference(reader));
-        return new ScenePageResult<SceneReferenceRecord>(total, rows.Count, rows, unresolved);
+        return await SceneGraphRows.ListReferencesAsync(connection, options, cancellationToken);
     }
 
     public async Task<SceneTransformRecord?> GetTransformAsync(string sceneSnapshotId, string gameObjectId, CancellationToken cancellationToken)
@@ -953,27 +848,11 @@ public sealed partial class SqliteAtlasRepository : ISceneRepository
             command.Parameters.AddWithValue(names[index], arguments[index] ?? DBNull.Value);
     }
 
-    private static void AddPageParameters(SqliteCommand command, string snapshot, string? scene, string? parent, string? query, int limit)
-    {
-        command.Parameters.AddWithValue("$snapshot", snapshot); command.Parameters.AddWithValue("$scene", (object?)scene ?? DBNull.Value); command.Parameters.AddWithValue("$parent", (object?)parent ?? DBNull.Value); command.Parameters.AddWithValue("$query", (object?)query ?? DBNull.Value); command.Parameters.AddWithValue("$limit", limit);
-    }
-
-    private static void AddPageParameters(SqliteCommand command, string snapshot, string? scene, string? gameObject, string? kind, string? query, int limit)
-    {
-        command.Parameters.AddWithValue("$snapshot", snapshot); command.Parameters.AddWithValue("$scene", (object?)scene ?? DBNull.Value); command.Parameters.AddWithValue("$gameObject", (object?)gameObject ?? DBNull.Value); command.Parameters.AddWithValue("$kind", (object?)kind ?? DBNull.Value); command.Parameters.AddWithValue("$query", (object?)query ?? DBNull.Value); command.Parameters.AddWithValue("$limit", limit);
-    }
-
-    private static void AddReferencePageParameters(SqliteCommand command, string snapshot, string? scene, string? gameObject, string? component, string? query, int limit)
-    {
-        command.Parameters.AddWithValue("$snapshot", snapshot); command.Parameters.AddWithValue("$scene", (object?)scene ?? DBNull.Value); command.Parameters.AddWithValue("$gameObject", (object?)gameObject ?? DBNull.Value); command.Parameters.AddWithValue("$component", (object?)component ?? DBNull.Value); command.Parameters.AddWithValue("$query", (object?)query ?? DBNull.Value); command.Parameters.AddWithValue("$limit", limit);
-    }
-
     private static string EscapeSceneLikePattern(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal);
 
     private static SceneSnapshotRecord ReadSceneSnapshot(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8), Enum.Parse<SceneSnapshotStatus>(reader.GetString(9)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(10)), reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), reader.IsDBNull(13) ? null : reader.GetString(13), reader.IsDBNull(14) ? null : reader.GetString(14), reader.IsDBNull(15) ? null : reader.GetString(15), reader.IsDBNull(16) ? null : reader.GetString(16));
     private static SceneContainerRecord ReadContainer(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5), reader.GetInt64(6), reader.GetString(7), reader.GetString(8));
     private static SceneDocumentRecord ReadDocument(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), Enum.Parse<SceneDocumentKind>(reader.GetString(3)), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5), reader.GetInt32(6), reader.GetInt32(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));
-    private static SceneGameObjectRecord ReadGameObject(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetInt64(5) != 0, reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetString(7), Enum.Parse<SceneRecoveryStatus>(reader.GetString(8)));
-    private static SceneComponentRecord ReadComponent(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetInt32(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8), reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetString(10), Enum.Parse<SceneResolutionStatus>(reader.GetString(11)), Enum.Parse<SceneRecoveryStatus>(reader.GetString(12)));
-    private static SceneReferenceRecord ReadReference(SqliteDataReader reader) => new(reader.GetString(0), reader.GetString(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetInt64(6), reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetInt64(8), reader.IsDBNull(9) ? null : reader.GetString(9), reader.IsDBNull(10) ? null : reader.GetString(10), reader.IsDBNull(11) ? null : reader.GetString(11), reader.IsDBNull(12) ? null : reader.GetString(12), Enum.Parse<SceneResolutionStatus>(reader.GetString(13)), reader.GetString(14), Enum.Parse<SceneRecoveryStatus>(reader.GetString(15)));
+    private static SceneGameObjectRecord ReadGameObject(SqliteDataReader reader) => SceneGraphRows.ReadGameObject(reader);
+    private static SceneComponentRecord ReadComponent(SqliteDataReader reader) => SceneGraphRows.ReadComponent(reader);
 }

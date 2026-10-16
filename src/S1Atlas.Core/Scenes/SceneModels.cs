@@ -304,6 +304,12 @@ internal static class SceneContract
         return value;
     }
 
+    public static int RequireNonNegativeOffset(int value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        return value;
+    }
+
     public static long RequirePositiveLocalFileId(long value, string parameterName)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, parameterName);

@@ -253,6 +253,139 @@ public sealed class SceneToolTests
         Assert.Null(other.Error.Hint);
     }
 
+    [Theory]
+    [InlineData("list_scenes")]
+    [InlineData("get_scene")]
+    [InlineData("get_gameobject")]
+    [InlineData("list_gameobjects")]
+    [InlineData("get_component")]
+    [InlineData("list_components")]
+    [InlineData("get_scriptable_object")]
+    public async Task SceneTools_NoSceneIndex_HintTargetsCurrentBuildOnly(string tool)
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var current = await QueryAsync(null, null);
+        var explicitCurrent = await QueryAsync(atlas.BuildIdB, null);
+        var other = await QueryAsync(atlas.BuildIdA, null);
+        var missingSnapshot = await QueryAsync(atlas.BuildIdB, "missing-scene-snapshot");
+
+        Assert.Equal((ToolStatus.NotFound, "NoCompletedSceneIndex", ReadinessFixCommands.SetupScene), current);
+        Assert.Equal((ToolStatus.NotFound, "NoCompletedSceneIndex", ReadinessFixCommands.SetupScene), explicitCurrent);
+        Assert.Equal((ToolStatus.NotFound, "NoCompletedSceneIndex", (string?)null), other);
+        Assert.Equal((ToolStatus.Invalid, "SceneSnapshotNotFound", (string?)null), missingSnapshot);
+
+        async Task<(ToolStatus Status, string Code, string? Hint)> QueryAsync(string? buildId, string? snapshotId) => tool switch
+        {
+            "list_scenes" => ErrorOf(await tools.ListScenesAsync(buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_scene" => ErrorOf(await tools.GetSceneAsync("scene", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_gameobject" => ErrorOf(await tools.GetGameObjectAsync("object", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "list_gameobjects" => ErrorOf(await tools.ListGameObjectsAsync(buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_component" => ErrorOf(await tools.GetComponentAsync("component", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "list_components" => ErrorOf(await tools.ListComponentsAsync("Transform", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_scriptable_object" => ErrorOf(await tools.GetScriptableObjectAsync("asset", buildId: buildId, sceneSnapshotId: snapshotId)),
+            _ => throw new ArgumentOutOfRangeException(nameof(tool))
+        };
+
+        static (ToolStatus Status, string Code, string? Hint) ErrorOf<T>(ToolEnvelope<T> envelope) where T : class =>
+            (envelope.Status, envelope.Error!.Code, envelope.Error.Hint);
+    }
+
+    [Fact]
+    public async Task ListGameObjects_FindsANameFragmentInOneSceneAndPagesByCursor()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var first = await tools.ListGameObjectsAsync(query: "DOWNTOWN", scene: atlas.SceneNameA, buildId: atlas.BuildIdA, limit: 1, ct: CancellationToken.None);
+        var second = await tools.ListGameObjectsAsync(query: "DOWNTOWN", scene: atlas.SceneNameA, buildId: atlas.BuildIdA, limit: 1, ct: CancellationToken.None, cursor: first.Data!.NextCursor);
+
+        Assert.Equal(ToolStatus.Resolved, first.Status);
+        Assert.Equal(2, first.Data.Page.TotalCount);
+        Assert.Equal("Downtown Root", Assert.Single(first.Data.Page.Rows).Name);
+        Assert.Equal(atlas.SceneNameA, first.Data.Scene!.Name);
+        Assert.Equal("downtown kiosk", Assert.Single(second.Data!.Page.Rows).Name);
+        Assert.Null(second.Data.NextCursor);
+    }
+
+    [Fact]
+    public async Task GetScene_PagesChildrenByCursor()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var first = await tools.GetSceneAsync(selector: atlas.SceneNameA, buildId: atlas.BuildIdA, includeChildren: true, limit: 1, ct: CancellationToken.None);
+        var second = await tools.GetSceneAsync(selector: atlas.SceneNameA, buildId: atlas.BuildIdA, includeChildren: true, limit: 1, ct: CancellationToken.None, cursor: first.Data!.NextCursor);
+
+        Assert.Equal(2, first.Data.Children.TotalCount);
+        Assert.NotNull(first.Data.NextCursor);
+        Assert.NotEqual(Assert.Single(first.Data.Children.Rows).GameObjectId, Assert.Single(second.Data!.Children.Rows).GameObjectId);
+        Assert.Null(second.Data.NextCursor);
+    }
+
+    [Fact]
+    public async Task GetGameObject_IncludeIncoming_ReportsInsideAndOutsideReferencesWithCoverage()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+        var root = "game-object-" + atlas.BuildIdA;
+
+        var all = await tools.GetGameObjectAsync(selector: root, buildId: atlas.BuildIdA, ct: CancellationToken.None, includeIncoming: true);
+        var external = await tools.GetGameObjectAsync(selector: root, buildId: atlas.BuildIdA, ct: CancellationToken.None, includeIncoming: true, externalOnly: true);
+
+        var incoming = all.Data!.Incoming!;
+        Assert.Equal(2, incoming.TotalCount);
+        Assert.Equal(1, incoming.ExternalCount);
+        Assert.Equal(3, incoming.Coverage.DecodedCount);
+        Assert.Equal(1, incoming.Coverage.NotParsedCount);
+        Assert.Collection(incoming.Rows,
+            outside =>
+            {
+                Assert.False(outside.WithinTarget);
+                Assert.Equal(("SCD_Bikers", "Leader.Data", SceneScriptFieldTargetKind.Component), (outside.SourceName, outside.FieldPath, outside.TargetKind));
+            },
+            inside =>
+            {
+                Assert.True(inside.WithinTarget);
+                Assert.Equal(("downtown kiosk", "Owner", root), (inside.SourceName, inside.FieldPath, inside.TargetId));
+            });
+        Assert.Equal("SCD_Bikers", Assert.Single(external.Data!.Incoming!.Rows).SourceName);
+        Assert.Equal(1, external.Data.Incoming.TotalCount);
+    }
+
+    // A requested path keeps the array elements under it but not a same-prefix sibling.
+    [Fact]
+    public async Task ListComponents_ReturnsOnlyRequestedFieldPathsWithFactProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.ListComponentsAsync(type: "Demo.KioskController", fields: ["Stock.Array"], buildId: atlas.BuildIdA, ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(ComponentTypeMatch.ScriptText, envelope.Data!.MatchedBy);
+        var row = Assert.Single(envelope.Data.Page.Rows);
+        Assert.Equal("downtown kiosk", row.GameObject!.Name);
+        Assert.Equal(["Stock.Array.size", "Stock.Array[0]"], row.ScriptFields!.Fields.Select(field => field.Path));
+        Assert.Contains(envelope.Provenance, entry => entry.Classification == ProvenanceClassification.Fact && entry.Source == "serialized-script-fields");
+    }
+
+    [Fact]
+    public async Task ListComponents_IncludeDerived_MatchesSubclassesByResolvedSymbol()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var exact = await tools.ListComponentsAsync(type: atlas.HierarchyBaseTypeSelector, buildId: atlas.BuildIdA, ct: CancellationToken.None);
+        var derived = await tools.ListComponentsAsync(type: atlas.HierarchyBaseTypeSelector, includeDerived: true, buildId: atlas.BuildIdA, ct: CancellationToken.None);
+
+        Assert.Equal(0, exact.Data!.Page.TotalCount);
+        Assert.Equal(ComponentTypeMatch.ResolvedCodeSymbol, derived.Data!.MatchedBy);
+        Assert.Equal(["Demo.Widget", "Demo.WidgetBase"], derived.Data.IncludedTypes);
+        Assert.Equal("component-" + atlas.BuildIdA, Assert.Single(derived.Data.Page.Rows).Component.ComponentId);
+    }
+
     private static SceneTools CreateTools(McpTestAtlas atlas) =>
         new(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 }

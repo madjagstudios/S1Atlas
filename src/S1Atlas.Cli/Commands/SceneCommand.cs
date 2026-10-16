@@ -9,13 +9,13 @@ internal static class SceneCommand
 {
     public static Command Create(SceneQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var selector = new Argument<string>("scene-id|exact-name") { Description = "Scene ID or exact scene name." }; var children = new Option<bool>("--children") { Description = "Include child game objects." }; var components = new Option<bool>("--components") { Description = "Include components." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
-        var command = new Command("scene", CliExamples.With("Query one indexed scene document.", "s1atlas scene Main --children --limit 20")); command.Arguments.Add(selector); command.Options.Add(children); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(json);
+        var selector = new Argument<string>("scene-id|exact-name") { Description = "Scene ID or exact scene name." }; var children = new Option<bool>("--children") { Description = "Include child game objects." }; var components = new Option<bool>("--components") { Description = "Include components." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var limit = SceneCommandSupport.CreateLimitOption(); var offset = SceneCommandSupport.CreateOffsetOption(); var json = CommandOutput.CreateJsonOption();
+        var command = new Command("scene", CliExamples.With("Query one indexed scene document.", "s1atlas scene Main --children --limit 20 --offset 20")); command.Arguments.Add(selector); command.Options.Add(children); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(offset); command.Options.Add(json);
         command.SetAction(result => SceneCommandSupport.Run("scene", result.GetValue(json), output, error, cancellationToken, repository, () =>
         {
-            if (result.GetValue(limit) <= 0) return new CommandOutput("scene", result.GetValue(json), output, error).Failure(1, "InvalidLimit", "--limit must be greater than zero.");
-            var data = service.SceneAsync(new SceneQueryRequest(null, result.GetValue(selector)!, null, result.GetValue(children), result.GetValue(components), result.GetValue(refs), result.GetValue(limit)), cancellationToken).GetAwaiter().GetResult();
-            var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References, data.Containers);
+            if (SceneCommandSupport.InvalidPage("scene", result.GetValue(json), output, error, result.GetValue(limit), result.GetValue(offset)) is int invalid) return invalid;
+            var data = service.SceneAsync(new SceneQueryRequest(null, result.GetValue(selector)!, null, result.GetValue(children), result.GetValue(components), result.GetValue(refs), result.GetValue(limit), result.GetValue(offset)), cancellationToken).GetAwaiter().GetResult();
+            var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References, data.Containers, SceneCommandSupport.NextOffset(data.HasMore, result.GetValue(offset), result.GetValue(limit)));
             return SceneCommandSupport.Write(new CommandOutput("scene", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, null, null), writer => SceneCommandSupport.WriteScene(outputData, writer));
         })); return command;
     }

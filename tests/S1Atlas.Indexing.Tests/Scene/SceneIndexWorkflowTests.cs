@@ -59,6 +59,142 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Deduplicated_archived_replay_certifies_the_preferred_live_extraction_without_rewriting_its_source()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var replay = repository.Attempt with
+        {
+            AttemptId = "certified-replay",
+            PreInputManifestDigest = repository.Input.ManifestDigest,
+            PostInputManifestDigest = repository.Input.ManifestDigest
+        };
+        repository.Attempt = repository.Attempt with { InputSource = ExtractionInputSource.Live, InputSnapshotId = null };
+        repository.LinkedAttempts.Add(replay with { AttemptId = "archive-retry" });
+        repository.LinkedAttempts.Add(replay);
+        var authority = await Authority()(_buildId, TestContext.Current.CancellationToken);
+        var workflow = CreateWorkflow(repository, (_, _) => Task.FromResult(authority));
+
+        var state = await workflow.InspectInputAsync(_buildId, TestContext.Current.CancellationToken);
+        var result = await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.Equal(SceneInputCertification.ReplayVerified, state.Certification);
+        Assert.Equal(_inputId, state.InputSnapshot?.InputSnapshotId);
+        Assert.Equal(_inputId, repository.CompletedSnapshot?.InputSnapshotId);
+        Assert.Equal(_extractionId, repository.CompletedSnapshot?.ExtractionId);
+        Assert.Single(repository.PublishedSnapshotIds);
+        Assert.False(result.Reused);
+        Assert.Equal("attempt", authority!.Extraction.SourceAttemptId);
+        Assert.Null(repository.Attempt.InputSnapshotId);
+    }
+
+    [Theory]
+    [InlineData("extraction")]
+    [InlineData("build")]
+    [InlineData("recipe")]
+    [InlineData("source")]
+    [InlineData("status")]
+    [InlineData("pre-digest")]
+    [InlineData("post-digest")]
+    [InlineData("missing-digest")]
+    [InlineData("missing-input")]
+    [InlineData("input-build")]
+    [InlineData("unverified")]
+    public async Task Deduplicated_replay_requires_matching_successful_certified_attempt_evidence(string mismatch)
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var replay = repository.Attempt with
+        {
+            AttemptId = "certified-replay",
+            PreInputManifestDigest = repository.Input.ManifestDigest,
+            PostInputManifestDigest = repository.Input.ManifestDigest
+        };
+        replay = mismatch switch
+        {
+            "extraction" => replay with { ResultExtractionId = new string('f', 64) },
+            "build" => replay with { BuildId = new string('f', 64) },
+            "recipe" => replay with { RecipeId = "other-recipe" },
+            "source" => replay with { InputSource = ExtractionInputSource.Live },
+            "status" => replay with { Status = ExtractionAttemptStatus.ProcessCompleted },
+            "pre-digest" => replay with { PreInputManifestDigest = new string('f', 64) },
+            "post-digest" => replay with { PostInputManifestDigest = new string('f', 64) },
+            "missing-digest" => replay with { PreInputManifestDigest = null, PostInputManifestDigest = null },
+            "missing-input" => replay with { InputSnapshotId = new string('f', 64) },
+            _ => replay
+        };
+        if (mismatch == "input-build")
+            repository.Input = repository.Input with { BuildId = new string('f', 64) };
+        if (mismatch == "unverified")
+            repository.Input = repository.Input with { ReplayVerified = false, ReplayVerifiedAtUtc = null };
+        repository.Attempt = repository.Attempt with { InputSource = ExtractionInputSource.Live, InputSnapshotId = null };
+        repository.LinkedAttempts.Add(replay);
+        var workflow = CreateWorkflow(repository, Authority());
+
+        var state = await workflow.InspectInputAsync(_buildId, TestContext.Current.CancellationToken);
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.NotEqual(SceneInputCertification.ReplayVerified, state.Certification);
+        Assert.Equal(SceneQueryStatus.NoReplayVerifiedExtractionInput, exception.Status);
+        Assert.Equal(0, repository.ParserCalls);
+        Assert.Empty(repository.CreatedSnapshots);
+    }
+
+    [Fact]
+    public async Task Deduplicated_replay_selection_is_stable_when_attempt_history_order_changes()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        var replay = repository.Attempt with
+        {
+            AttemptId = "a-replay",
+            PreInputManifestDigest = repository.Input.ManifestDigest,
+            PostInputManifestDigest = repository.Input.ManifestDigest
+        };
+        var otherInput = repository.Input with { InputSnapshotId = new string('f', 64) };
+        repository.OtherInputs.Add(otherInput.InputSnapshotId, otherInput);
+        repository.Attempt = repository.Attempt with { InputSource = ExtractionInputSource.Live, InputSnapshotId = null };
+        repository.LinkedAttempts.Add(replay with { AttemptId = "z-replay", InputSnapshotId = otherInput.InputSnapshotId });
+        repository.LinkedAttempts.Add(replay);
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) =>
+        {
+            repository.LinkedAttempts.Reverse();
+            return Parsed(containers);
+        });
+
+        var state = await workflow.InspectInputAsync(_buildId, TestContext.Current.CancellationToken);
+        await workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken);
+
+        Assert.Equal(_inputId, state.InputSnapshot?.InputSnapshotId);
+        Assert.Equal(_inputId, repository.CompletedSnapshot?.InputSnapshotId);
+        Assert.Single(repository.PublishedSnapshotIds);
+    }
+
+    [Fact]
+    public async Task Deduplicated_replay_manifest_change_after_parsing_is_rejected_before_completion()
+    {
+        var repository = CreateRepository(replayVerified: true);
+        repository.LinkedAttempts.Add(repository.Attempt with
+        {
+            AttemptId = "certified-replay",
+            PreInputManifestDigest = repository.Input.ManifestDigest,
+            PostInputManifestDigest = repository.Input.ManifestDigest
+        });
+        repository.Attempt = repository.Attempt with { InputSource = ExtractionInputSource.Live, InputSnapshotId = null };
+        var workflow = CreateWorkflow(repository, Authority(), (containers, _) =>
+        {
+            repository.Input = repository.Input with { ManifestDigest = new string('f', 64) };
+            return Parsed(containers);
+        });
+
+        var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
+            workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
+
+        Assert.Equal(SceneQueryStatus.NoReplayVerifiedExtractionInput, exception.Status);
+        Assert.Null(repository.CompletedSnapshot);
+        Assert.Empty(repository.PublishedSnapshotIds);
+        Assert.Contains(Assert.Single(repository.CreatedSnapshots).SceneSnapshotId, repository.FailedSnapshotIds);
+    }
+
+    [Fact]
     public async Task Cross_build_code_index_is_rejected_before_a_scene_snapshot_starts()
     {
         var repository = CreateRepository(replayVerified: true);
@@ -763,10 +899,12 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         ExtractionAttempt attempt,
         EnvironmentSnapshot environment,
         IndexRunRecord indexRun,
-        CodeSnapshotRecord codeSnapshot) : IIndexRepository, ISceneRepository, IExtractionRepository, IAtlasRepository
+        CodeSnapshotRecord codeSnapshot) : IIndexRepository, ISceneRepository, IExtractionRepository, IAtlasRepository, IValidatedExtractionRepository
     {
-        public InputSnapshot Input { get; } = input;
-        public ExtractionAttempt Attempt { get; } = attempt;
+        public InputSnapshot Input { get; set; } = input;
+        public ExtractionAttempt Attempt { get; set; } = attempt;
+        public List<ExtractionAttempt> LinkedAttempts { get; } = [];
+        public Dictionary<string, InputSnapshot> OtherInputs { get; } = new(StringComparer.Ordinal);
         public EnvironmentSnapshot Environment { get; } = environment;
         public IndexRunRecord IndexRun { get; set; } = indexRun;
         public CodeSnapshotRecord CodeSnapshot { get; set; } = codeSnapshot;
@@ -789,8 +927,25 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public TaskCompletionSource? SecondCompletedLookupEntered { get; set; }
         private int _completedSnapshotLookupCount;
 
+        public Task<IReadOnlyList<ExtractionAttempt>> ListAttemptsAsync(string? buildId, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ExtractionAttempt>>(LinkedAttempts);
+        public Task<IReadOnlyList<ExtractionAttempt>> ListProcessCompletedAttemptsAsync(string recipeId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ValidatedExtraction?> GetValidatedExtractionAsync(string extractionId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ArtifactManifestEntry>> GetExtractionArtifactsAsync(string extractionId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ValidatedExtraction>> ListValidatedExtractionsAsync(string? buildId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<ValidatedExtraction>> ListValidatedExtractionsByRecipeAsync(string recipeId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<StoredValidationResult?> GetLatestValidationResultAsync(string extractionId, string policyDigest, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<PreferredExtraction?> GetPreferredExtractionAsync(string buildId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task SaveValidationFailureAsync(ValidationPersistence validation, ExtractionAttemptStatus expectedStatus, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task CommitValidatedExtractionAsync(ValidatedExtractionPromotion promotion, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task LinkAttemptToValidatedExtractionAsync(ValidationPersistence validation, ValidatedExtraction extraction, ExtractionAttemptStatus expectedStatus, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task SaveRevalidationAsync(ValidationPersistence validation, ExtractionAttemptStatus expectedStatus, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task SetPreferredExtractionAsync(PreferredExtraction preference, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task ClearPreferredExtractionAsync(string buildId, string expectedExtractionId, ExtractionPreferenceReason reason, DateTimeOffset occurredAtUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task DeleteCleanupEligibleAttemptAsync(string attemptId, ExtractionAttemptStatus expectedStatus, DateTimeOffset expectedCompletedAtUtc, CancellationToken cancellationToken) => throw new NotSupportedException();
+
         public Task<ExtractionAttempt?> GetAttemptAsync(string attemptId, CancellationToken cancellationToken) => Task.FromResult<ExtractionAttempt?>(Attempt);
-        public Task<InputSnapshot?> GetInputSnapshotAsync(string inputSnapshotId, CancellationToken cancellationToken) => Task.FromResult<InputSnapshot?>(Input);
+        public Task<InputSnapshot?> GetInputSnapshotAsync(string inputSnapshotId, CancellationToken cancellationToken) =>
+            Task.FromResult(inputSnapshotId == Input.InputSnapshotId ? Input : OtherInputs.GetValueOrDefault(inputSnapshotId));
         public Task<EnvironmentSnapshot?> GetCurrentSnapshotAsync(CancellationToken cancellationToken) => Task.FromResult<EnvironmentSnapshot?>(Environment);
         public Task<IndexRunRecord?> GetLatestCompletedIndexAsync(CodebaseKind codebase, CodeChannel channel, string? environmentSnapshotId, CancellationToken cancellationToken) => Task.FromResult<IndexRunRecord?>(IndexRun);
         public Task<CodeSnapshotRecord?> GetCodeSnapshotAsync(string snapshotId, CancellationToken cancellationToken) => Task.FromResult<CodeSnapshotRecord?>(CodeSnapshot);
@@ -899,6 +1054,9 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         public Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken) => Task.FromResult(new ScenePageResult<SceneReferenceRecord>(CompletedWriteSet?.References.Count ?? 0, 0, []));
         public Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken) => Task.FromResult(CompletedWriteSet?.ScriptFieldSets.SingleOrDefault(row => row.OwnerId == ownerId));
+        public Task<IReadOnlyList<SceneScriptFieldSetRecord>> GetScriptFieldSetsAsync(string sceneSnapshotId, IReadOnlyList<string> ownerIds, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SceneGameObjectRecord>> GetGameObjectsAsync(string sceneSnapshotId, IReadOnlyList<string> gameObjectIds, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<SceneIncomingReferencePage> ListIncomingReferencesAsync(IncomingReferenceQueryOptions options, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken) => Task.FromResult(CompletedWriteSet?.ScriptableAssets.SingleOrDefault(row => row.AssetId == assetId));
         public Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<SceneScriptableAssetRecord>>([]);
         public Task<IReadOnlyList<GameBuild>> ListBuildsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();

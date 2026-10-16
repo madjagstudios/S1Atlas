@@ -110,6 +110,7 @@ internal static class SetupCommand
         }
 
         var scanSwitches = initialScan is not null && SwitchesInstalls(initialScan);
+        var refreshScenePlanAfterScan = includeScene && initialScan is { State: not ReadinessState.Ok };
         output.WriteLine("Setup plan:");
         for (var index = 0; index < plan.Count; index++)
         {
@@ -123,6 +124,13 @@ internal static class SetupCommand
                     $"   The recorded install at {initialScan!.ScanRecordedGamePath} no longer exists; " +
                     $"this would switch to {initialScan.ScanGamePath}.");
             }
+        }
+
+        if (refreshScenePlanAfterScan)
+        {
+            output.WriteLine(
+                "After scanning, scene certification is planned for the selected build. " +
+                "It may archive inputs, replay them, promote the replay, and rebuild the code index.");
         }
 
         if (scanSwitches && (assumeYes || inputRedirected))
@@ -153,13 +161,34 @@ internal static class SetupCommand
             }
         }
 
-        var networkConfirmed = assumeYes;
-        foreach (var step in plan)
+        void RefreshScenePlan(ReadinessReport report)
         {
+            initial = report;
+            plan = BuildPlan(initial, includeScene, runners, error, cancellationToken);
+            plan.RemoveAll(candidate => candidate.ItemId == ReadinessItemIds.Scan);
+            output.WriteLine("Remaining setup plan after scan:");
+            foreach (var remaining in plan)
+            {
+                output.WriteLine(remaining.Display);
+            }
+
+            refreshScenePlanAfterScan = false;
+        }
+
+        var networkConfirmed = assumeYes;
+        for (var stepIndex = 0; stepIndex < plan.Count; stepIndex++)
+        {
+            var step = plan[stepIndex];
             var fresh = readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult();
             if (IsSatisfiedSincePlanning(step, initial, fresh))
             {
                 output.WriteLine($"Skipping {step.Display}: already satisfied.");
+                if (refreshScenePlanAfterScan && step.ItemId == ReadinessItemIds.Scan)
+                {
+                    RefreshScenePlan(fresh);
+                    stepIndex = -1;
+                }
+
                 continue;
             }
 
@@ -188,6 +217,15 @@ internal static class SetupCommand
                 error.WriteLine(fresh.NextStep.Summary);
                 error.WriteLine("Run 's1atlas doctor' to re-check readiness.");
                 return 1;
+            }
+
+            if (refreshScenePlanAfterScan && step.ItemId == ReadinessItemIds.Scan)
+            {
+                // A conditional extraction can be skipped when a rescan keeps the
+                // same build. Plan from the actual post-scan input instead of
+                // assuming that extraction supplied an archived snapshot ID.
+                RefreshScenePlan(readiness.EvaluateAsync(cancellationToken).GetAwaiter().GetResult());
+                stepIndex = -1;
             }
         }
 

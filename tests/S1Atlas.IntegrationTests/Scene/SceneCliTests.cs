@@ -43,14 +43,23 @@ public sealed class SceneCliTests : IAsyncDisposable
         Assert.Equal(string.Empty, jsonError.ToString());
     }
 
-    [Fact]
-    public void Scenes_no_completed_scene_index_reports_setup_scene_hint_in_json()
+    [Theory]
+    [InlineData("scenes", null)]
+    [InlineData("scene", "scene-a")]
+    [InlineData("prefab", "prefab-a")]
+    [InlineData("game-object", "object-a")]
+    [InlineData("game-objects", null)]
+    [InlineData("component", "component-a")]
+    [InlineData("components", "ScheduleOne.Vehicles.LandVehicle")]
+    [InlineData("scriptable-object", "asset-a")]
+    public void Scenes_no_completed_scene_index_reports_setup_scene_hint_in_json(string command, string? selector)
     {
         var application = new CliApplication(_dataDirectory, "0.1.0-test");
         using var output = new StringWriter();
         using var error = new StringWriter();
 
-        var exit = application.Invoke(["scenes", "--json"], output, error, TestContext.Current.CancellationToken);
+        var arguments = selector is null ? new[] { command, "--json" } : [command, selector, "--json"];
+        var exit = application.Invoke(arguments, output, error, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, exit);
         using var json = System.Text.Json.JsonDocument.Parse(output.ToString());
@@ -59,6 +68,36 @@ public sealed class SceneCliTests : IAsyncDisposable
         Assert.True(jsonError.TryGetProperty("hint", out var hint), "Expected error.hint to be present for the current build.");
         Assert.Equal(ReadinessFixCommands.SetupScene, hint.GetString());
         Assert.Equal(string.Empty, error.ToString());
+    }
+
+    [Theory]
+    [InlineData("scenes", null)]
+    [InlineData("game-objects", null)]
+    [InlineData("components", "Game.Widget")]
+    public async Task Scene_list_hint_is_limited_to_the_current_build(string command, string? selector)
+    {
+        await SeedPublishedSceneAsync();
+        await InsertAsync("PRAGMA foreign_keys = OFF; DELETE FROM scene_snapshots;");
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        foreach (var buildId in new[] { "build-a", "other-build" })
+        {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+            var arguments = selector is null
+                ? new[] { command, "--build", buildId, "--json" }
+                : [command, selector, "--build", buildId, "--json"];
+
+            var exit = application.Invoke(arguments, output, error, TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, exit);
+            using var json = System.Text.Json.JsonDocument.Parse(output.ToString());
+            var jsonError = json.RootElement.GetProperty("error");
+            Assert.Equal("NoCompletedSceneIndex", jsonError.GetProperty("code").GetString());
+            if (buildId == "build-a")
+                Assert.Equal(ReadinessFixCommands.SetupScene, jsonError.GetProperty("hint").GetString());
+            else
+                Assert.False(jsonError.TryGetProperty("hint", out var hint) && hint.ValueKind != System.Text.Json.JsonValueKind.Null);
+        }
     }
 
     [Fact]

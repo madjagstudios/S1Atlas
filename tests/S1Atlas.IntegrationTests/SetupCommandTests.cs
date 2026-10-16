@@ -482,6 +482,43 @@ public sealed class SetupCommandTests
         Assert.Contains("1. s1atlas index --scene", output.ToString(), StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(SceneInputCertification.NoInputSnapshot, 2, false)]
+    [InlineData(SceneInputCertification.NotReplayVerified, 1, false)]
+    [InlineData(SceneInputCertification.ReplayVerified, 0, false)]
+    [InlineData(SceneInputCertification.NoInputSnapshot, 2, true)]
+    [InlineData(SceneInputCertification.NotReplayVerified, 1, true)]
+    [InlineData(SceneInputCertification.ReplayVerified, 0, true)]
+    public void Scene_SameBuildRescan_UsesTheExistingExtractionInput(
+        SceneInputCertification certification, int expectedExtractions, bool scanAlreadySatisfied)
+    {
+        var sameBuild = SetupReportBuilder.SceneMissing();
+        var stale = sameBuild with
+        {
+            Items = sameBuild.Items.Select(item => item.Id == ReadinessItemIds.Scan
+                ? item with { State = ReadinessState.Stale, FixCommand = ReadinessFixCommands.Scan }
+                : item).ToArray()
+        };
+        var readiness = new QueueReadinessService([stale, scanAlreadySatisfied ? sameBuild : stale, sameBuild]);
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, SceneRunners(calls, extractions, SceneInput(certification)),
+            new StringReader(string.Empty), inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.True(exitCode == 0, error.ToString());
+        Assert.Equal(expectedExtractions, extractions.Count);
+        Assert.Equal(!scanAlreadySatisfied, calls.Contains("scan"));
+        Assert.Equal("scene", calls[^1]);
+        Assert.Equal(certification == SceneInputCertification.NoInputSnapshot,
+            calls.Contains("promote:" + ReplayExtractionId));
+    }
+
     [Fact]
     public void Scene_ExtractionWithoutArchive_ArchivesReplaysPromotesAndReindexes()
     {
@@ -508,6 +545,36 @@ public sealed class SetupCommandTests
         Assert.Contains("3. s1atlas extractions promote <extraction-id>", text, StringComparison.Ordinal);
         Assert.Contains("4. s1atlas index", text, StringComparison.Ordinal);
         Assert.Contains("5. s1atlas index --scene", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Scene_NewBuildRescan_ArchivesAndReplaysTheNewExtraction()
+    {
+        var sameBuild = SetupReportBuilder.SceneMissing();
+        var stale = sameBuild with
+        {
+            Items = sameBuild.Items.Select(item => item.Id == ReadinessItemIds.Scan
+                ? item with { State = ReadinessState.Stale, FixCommand = ReadinessFixCommands.Scan }
+                : item).ToArray()
+        };
+        var fresh = SetupReportBuilder.NoExtractionYet();
+        var readiness = new QueueReadinessService(
+            [stale, stale, fresh, fresh, fresh, fresh, fresh, ReadinessReportBuilder.Ready()]);
+        var calls = new List<string>();
+        var extractions = new List<ExtractionOptions>();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var command = SetupCommand.Create(
+            readiness, SceneRunners(calls, extractions, sceneInput: null),
+            new StringReader(string.Empty), inputRedirected: false, output, error,
+            TestContext.Current.CancellationToken);
+
+        var exitCode = InvokeSetup(command, ["setup", "--scene", "--yes"]);
+
+        Assert.True(exitCode == 0, error.ToString());
+        Assert.Equal(["scan", "extract", "index", "extract", "scene"], calls);
+        Assert.True(extractions[0] is { SnapshotInputs: true, InputSnapshotId: null });
+        Assert.Equal(ArchivedSnapshotId, extractions[1].InputSnapshotId);
     }
 
     [Fact]

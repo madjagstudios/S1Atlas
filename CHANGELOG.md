@@ -56,9 +56,42 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - `doctor`'s scene line now names `s1atlas setup --scene` while no scene
   snapshot exists. `--include-optional` keeps working as another name for
   `--scene` (AT-145).
+- `game-objects --query <fragment>` (MCP `list_gameobjects`) finds game objects
+  whose name contains a case-insensitive fragment, across the scene snapshot or
+  within one scene (`--scene`), in one paged call. Finding every object named
+  like "Forklift" no longer means paging all 139,523 Main-scene objects (AT-146).
+- `scene`, `prefab`, `game-object`, and `component` take `--offset` to page
+  their nested lists, and print the next offset when more rows remain. MCP
+  `get_scene`, `get_gameobject`, and `get_component` return a `nextCursor`
+  (AT-146).
+- `game-object --incoming` and `component --incoming` (MCP `includeIncoming`)
+  list the decoded script-field pointers elsewhere in the snapshot that point at
+  the selected object or its components. Each row says whether its source is
+  inside the target's own hierarchy, `--external` (MCP `externalOnly`) keeps
+  only the ones from outside, and the summary reports field-set coverage. The
+  unregistered Flatbed Truck prefab, for example, is pointed at only by its own
+  components (AT-147).
+- `components <type> --fields a,b` (MCP `list_components`) lists every
+  component of one type with only the requested decoded field values, in one
+  paged call. `--derived` (MCP `includeDerived`) adds subclasses from the code
+  index, so `components ScheduleOne.Vehicles.LandVehicle --derived` returns the
+  `Shitbox` vehicles too. Values keep the FACT `serialized-script-fields`
+  provenance (AT-148).
+
+### Changed
+
+- `game-object --children` and `--components` read only the selected object's
+  rows instead of scanning every game object in the snapshot. On the real
+  snapshot each of their queries took 9 to 13 seconds; the whole command now
+  returns in about 0.2 seconds (AT-146).
 
 ### Fixed
 
+- Scene setup replans certification after a rescan, including when another
+  session already satisfied it, so keeping the same build does not leave the
+  replay without an input snapshot. A certified replay that reproduces the
+  exact preferred extraction can supply its scene input without rewriting
+  that extraction's original source attempt (AT-145).
 - `recover-native-body --json` now writes only the JSON envelope to stdout.
   LibCpp2IL's progress and diagnostic messages go to stderr instead, and its
   verbose progress lines appear only with the new `--verbose` flag (AT-132).
@@ -69,8 +102,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - Re-indexing an installed or upstream S1API/S1MAPI index after an index-format
   change, or with `--force`, no longer fails with a UNIQUE constraint error on
   `source_files` (AT-142).
-- Scene queries (`scenes`, `scene`, `game-object`, `prefab`, `component`,
-  `scriptable-object`, and the matching MCP scene tools) now point at
+- Scene queries (`scenes`, `scene`, `game-object`, `game-objects`, `prefab`,
+  `component`, `components`, `scriptable-object`, and the matching MCP tools) now point at
   `s1atlas setup --scene` when no scene snapshot exists for the current
   build; an explicit request for a different build carries no hint (AT-149).
 

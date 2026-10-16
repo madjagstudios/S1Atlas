@@ -295,6 +295,48 @@ public sealed class SceneIndexWorkflow
         string buildId,
         CancellationToken cancellationToken)
     {
+        var sourceState = await InspectSourceInputAsync(authority, buildId, cancellationToken);
+        if (sourceState.Certification == SceneInputCertification.ReplayVerified)
+            return sourceState;
+
+        // Deduplication preserves the extraction's original source attempt. A later
+        // archived replay can certify that same immutable output through its result
+        // link. Repositories without attempt history retain the fail-closed verdict.
+        if (_extractionRepository is not IValidatedExtractionRepository history)
+            return sourceState;
+
+        var attempts = await history.ListAttemptsAsync(buildId, cancellationToken);
+        foreach (var attempt in attempts
+                     .Where(attempt =>
+                         attempt.Status == ExtractionAttemptStatus.Succeeded &&
+                         attempt.InputSource == ExtractionInputSource.ArchivedSnapshot &&
+                         attempt.InputSnapshotId is { Length: > 0 } &&
+                         string.Equals(attempt.BuildId, buildId, StringComparison.Ordinal) &&
+                         string.Equals(attempt.RecipeId, authority.Extraction.RecipeId, StringComparison.Ordinal) &&
+                         string.Equals(attempt.ResultExtractionId, authority.Extraction.ExtractionId, StringComparison.Ordinal))
+                     .OrderBy(attempt => attempt.CreatedAtUtc)
+                     .ThenBy(attempt => attempt.AttemptId, StringComparer.Ordinal))
+        {
+            var input = await _extractionRepository.GetInputSnapshotAsync(attempt.InputSnapshotId!, cancellationToken);
+            if (input is not null && input.ReplayVerified &&
+                string.Equals(input.BuildId, buildId, StringComparison.Ordinal) &&
+                string.Equals(input.InputSnapshotId, attempt.InputSnapshotId, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(input.ManifestDigest) &&
+                string.Equals(input.ManifestDigest, attempt.PreInputManifestDigest, StringComparison.Ordinal) &&
+                string.Equals(input.ManifestDigest, attempt.PostInputManifestDigest, StringComparison.Ordinal))
+            {
+                return new SceneInputState(SceneInputCertification.ReplayVerified, input);
+            }
+        }
+
+        return sourceState;
+    }
+
+    private async Task<SceneInputState> InspectSourceInputAsync(
+        PreferredVerifiedExtraction authority,
+        string buildId,
+        CancellationToken cancellationToken)
+    {
         var attempt = await _extractionRepository.GetAttemptAsync(authority.Extraction.SourceAttemptId, cancellationToken);
         if (attempt?.InputSnapshotId is not { Length: > 0 } inputSnapshotId ||
             !string.Equals(attempt.BuildId, buildId, StringComparison.Ordinal))
