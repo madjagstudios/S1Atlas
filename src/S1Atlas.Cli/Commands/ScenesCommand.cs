@@ -20,7 +20,8 @@ internal static class ScenesCommand
             if (!TryKind(result.GetValue(kind), out var parsedKind)) return new CommandOutput("scenes", result.GetValue(json), output, error).Failure(1, "InvalidKind", "--kind must be scene or prefab.");
             var data = service.ScenesAsync(new SceneListRequest(result.GetValue(build), result.GetValue(snapshot), parsedKind, result.GetValue(query), result.GetValue(limit)), cancellationToken).GetAwaiter().GetResult();
             var outputData = new SceneListOutput(data.Status, data.Snapshot, data.Page.TotalCount, data.Page.ReturnedCount, data.Page.Rows, data.Containers);
-            return SceneCommandSupport.Write(new CommandOutput("scenes", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer =>
+            var requestedBuild = result.GetValue(build); string? currentBuildId = null; if (data.Status == SceneQueryStatus.NoCompletedSceneIndex && requestedBuild is not null) currentBuildId = repository.GetCurrentSnapshotAsync(cancellationToken).GetAwaiter().GetResult()?.Build.BuildId;
+            return SceneCommandSupport.Write(new CommandOutput("scenes", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, requestedBuild, currentBuildId), writer =>
             {
                 if (outputData.Snapshot is not null) writer.WriteLine($"Snapshot: {outputData.Snapshot.SceneSnapshotId} | build {outputData.Snapshot.BuildId} | parser {outputData.Snapshot.ParserId} {outputData.Snapshot.ParserVersion} | type tree {outputData.Snapshot.TypeTreeSource ?? "unknown"} | recovery {outputData.Snapshot.RecoveryStatus}");
                 writer.WriteLine($"Found {outputData.TotalCount} scenes. Showing {outputData.ReturnedCount}.");

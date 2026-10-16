@@ -102,6 +102,10 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - Re-indexing an installed or upstream S1API/S1MAPI index after an index-format
   change, or with `--force`, no longer fails with a UNIQUE constraint error on
   `source_files` (AT-142).
+- Scene queries (`scenes`, `scene`, `game-object`, `game-objects`, `prefab`,
+  `component`, `components`, `scriptable-object`, and the matching MCP tools) now point at
+  `s1atlas setup --scene` when no scene snapshot exists for the current
+  build; an explicit request for a different build carries no hint (AT-149).
 
 ## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
 

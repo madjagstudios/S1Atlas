@@ -16,7 +16,7 @@ internal static class GameObjectCommand
             if (SceneCommandSupport.InvalidPage("game-object", result.GetValue(json), output, error, result.GetValue(limit), result.GetValue(offset)) is int invalid) return invalid;
             var data = service.GameObjectAsync(new GameObjectQueryRequest(null, result.GetValue(selector)!, result.GetValue(children), result.GetValue(components), result.GetValue(refs), result.GetValue(limit), result.GetValue(incoming), result.GetValue(external), result.GetValue(offset)), cancellationToken).GetAwaiter().GetResult();
             var outputData = new GameObjectOutput(data.Status, data.Snapshot, data.GameObject, data.Candidates, data.Children, data.Components, data.References, data.Containers, data.Transform, data.Incoming, SceneCommandSupport.NextOffset(data.HasMore, result.GetValue(offset), result.GetValue(limit)));
-            return SceneCommandSupport.Write(new CommandOutput("game-object", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteGameObject(outputData, writer));
+            return SceneCommandSupport.Write(new CommandOutput("game-object", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, null, null), writer => SceneCommandSupport.WriteGameObject(outputData, writer));
         })); return command;
     }
 }
