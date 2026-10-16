@@ -1,3 +1,4 @@
+using S1Atlas.Application.Readiness;
 using S1Atlas.Cli;
 using S1Atlas.Cli.Commands;
 using S1Atlas.Cli.Output;
@@ -40,6 +41,24 @@ public sealed class SceneCliTests : IAsyncDisposable
         Assert.Contains(code, humanError.ToString(), StringComparison.Ordinal);
         Assert.Contains(code, jsonOutput.ToString(), StringComparison.Ordinal);
         Assert.Equal(string.Empty, jsonError.ToString());
+    }
+
+    [Fact]
+    public void Scenes_no_completed_scene_index_reports_setup_scene_hint_in_json()
+    {
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+
+        var exit = application.Invoke(["scenes", "--json"], output, error, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, exit);
+        using var json = System.Text.Json.JsonDocument.Parse(output.ToString());
+        var jsonError = json.RootElement.GetProperty("error");
+        Assert.Equal("NoCompletedSceneIndex", jsonError.GetProperty("code").GetString());
+        Assert.True(jsonError.TryGetProperty("hint", out var hint), "Expected error.hint to be present for the current build.");
+        Assert.Equal(ReadinessFixCommands.SetupScene, hint.GetString());
+        Assert.Equal(string.Empty, error.ToString());
     }
 
     [Fact]

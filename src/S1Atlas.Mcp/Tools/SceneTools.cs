@@ -2,6 +2,7 @@ using System.ComponentModel;
 using ModelContextProtocol.Server;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Mcp.Mapping;
@@ -56,7 +57,7 @@ public sealed class SceneTools
                     }
 
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
-                    return FromResult(authority, result.Status, nextCursor is null ? result : result with { NextCursor = nextCursor }, [], "scene-list");
+                    return FromResult(authority, result.Status, nextCursor is null ? result : result with { NextCursor = nextCursor }, [], "scene-list", await SceneIndexHintForAsync(authority, result.Status, ct));
                 });
             }
             catch (ArgumentOutOfRangeException exception)
@@ -104,7 +105,7 @@ public sealed class SceneTools
                 {
                     var result = await _services.SceneQueryService.GameObjectAsync(
                         new GameObjectQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "game-object-query");
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "game-object-query", await SceneIndexHintForAsync(resolvedAuthority, result.Status, ct));
                 });
             }
             catch (ArgumentOutOfRangeException exception)
@@ -129,7 +130,7 @@ public sealed class SceneTools
             {
                 var result = await _services.SceneQueryService.ScriptableAssetAsync(
                     new ScriptableAssetQueryRequest(snapshot.SceneSnapshotId, selector), ct);
-                return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scriptable-asset-query", DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
+                return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scriptable-asset-query", await SceneIndexHintForAsync(resolvedAuthority, result.Status, ct), DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
             });
         });
     }
@@ -154,7 +155,7 @@ public sealed class SceneTools
                 {
                     var result = await _services.SceneQueryService.ComponentAsync(
                         new ComponentQueryRequest(snapshot.SceneSnapshotId, selector, includeReferences, includeCode, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query", DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query", await SceneIndexHintForAsync(resolvedAuthority, result.Status, ct), DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
                 });
             }
             catch (ArgumentOutOfRangeException exception)
@@ -179,7 +180,7 @@ public sealed class SceneTools
                 return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
                 {
                     var result = await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query");
+                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query", await SceneIndexHintForAsync(resolvedAuthority, result.Status, ct));
                 });
             }
             catch (ArgumentOutOfRangeException exception)
@@ -206,10 +207,32 @@ public sealed class SceneTools
         Func<InstalledBuildAuthority, SceneSnapshotRecord, Task<ToolEnvelope<T>>> onResolved) where T : class
     {
         var resolution = await ResolveSnapshotAsync(authority, sceneSnapshotId, ct);
-        return resolution.Snapshot is null
-            ? SnapshotError<T>(authority, sceneSnapshotId, resolution.AuthorityMismatch)
-            : await onResolved(authority, resolution.Snapshot);
+        if (resolution.Snapshot is not null)
+        {
+            return await onResolved(authority, resolution.Snapshot);
+        }
+
+        var hint = string.IsNullOrWhiteSpace(sceneSnapshotId) && !resolution.AuthorityMismatch
+            ? await SceneIndexHintAsync(authority, ct)
+            : null;
+        return SnapshotError<T>(authority, sceneSnapshotId, resolution.AuthorityMismatch, hint);
     }
+
+    private async Task<string?> SceneIndexHintAsync(InstalledBuildAuthority authority, CancellationToken ct)
+    {
+        if (authority.RequestedBuildId is null)
+        {
+            return ReadinessFixCommands.HintForNoCompletedSceneIndex(null, null);
+        }
+
+        var currentBuildId = (await _services.Repository.GetCurrentSnapshotAsync(ct))?.Build.BuildId;
+        return ReadinessFixCommands.HintForNoCompletedSceneIndex(authority.ResolvedBuildId, currentBuildId);
+    }
+
+    private async Task<string?> SceneIndexHintForAsync(InstalledBuildAuthority authority, SceneQueryStatus status, CancellationToken ct) =>
+        status == SceneQueryStatus.NoCompletedSceneIndex
+            ? await SceneIndexHintAsync(authority, ct)
+            : null;
 
     private async Task<SceneSnapshotResolution> ResolveSnapshotAsync(InstalledBuildAuthority authority, string? sceneSnapshotId, CancellationToken ct)
     {
@@ -231,7 +254,7 @@ public sealed class SceneTools
                 : new SceneSnapshotResolution(null, true);
     }
 
-    private static ToolEnvelope<T> SnapshotError<T>(InstalledBuildAuthority authority, string? sceneSnapshotId, bool authorityMismatch) where T : class =>
+    private static ToolEnvelope<T> SnapshotError<T>(InstalledBuildAuthority authority, string? sceneSnapshotId, bool authorityMismatch, string? hint) where T : class =>
         string.IsNullOrWhiteSpace(sceneSnapshotId)
             ? authorityMismatch
                 ? ToolEnvelope<T>.Unavailable(
@@ -240,7 +263,7 @@ public sealed class SceneTools
                     Derived(authority, "scene-snapshot-selection"))
                 : ToolEnvelope<T>.NotFound(
                 EnvelopeMapper.BuildFrom(authority),
-                new ToolError("NoCompletedSceneIndex", "No completed scene index exists for the requested build."),
+                new ToolError("NoCompletedSceneIndex", "No completed scene index exists for the requested build.", hint),
                 Derived(authority, "scene-snapshot-selection"))
             : ToolEnvelope<T>.Invalid(
                 new ToolError("SceneSnapshotNotFound", "The requested scene snapshot was not found for the selected build."),
@@ -254,7 +277,7 @@ public sealed class SceneTools
 
     private sealed record SceneSnapshotResolution(SceneSnapshotRecord? Snapshot, bool AuthorityMismatch);
 
-    private static ToolEnvelope<T> FromResult<T>(InstalledBuildAuthority authority, SceneQueryStatus status, T result, IReadOnlyList<object> candidates, string source, ProvenanceEntry? fact = null) where T : class
+    private static ToolEnvelope<T> FromResult<T>(InstalledBuildAuthority authority, SceneQueryStatus status, T result, IReadOnlyList<object> candidates, string source, string? hint, ProvenanceEntry? fact = null) where T : class
     {
         var build = EnvelopeMapper.BuildFrom(authority);
         var provenance = Derived(authority, source);
@@ -262,7 +285,7 @@ public sealed class SceneTools
         {
             SceneQueryStatus.Resolved or SceneQueryStatus.PartialRecovery or SceneQueryStatus.UnresolvedSceneReference =>
                 fact is null ? ToolEnvelope<T>.Resolved(build, result, provenance) : ToolEnvelope<T>.Resolved(build, result, fact, provenance),
-            SceneQueryStatus.NoCompletedSceneIndex => ToolEnvelope<T>.NotFound(build, new ToolError("NoCompletedSceneIndex", "No completed scene index exists for the requested build."), provenance),
+            SceneQueryStatus.NoCompletedSceneIndex => ToolEnvelope<T>.NotFound(build, new ToolError("NoCompletedSceneIndex", "No completed scene index exists for the requested build.", hint), provenance),
             SceneQueryStatus.SceneSnapshotNotFound => ToolEnvelope<T>.Invalid(new ToolError("SceneSnapshotNotFound", "The requested scene snapshot was not found."), build, provenance),
             SceneQueryStatus.SceneNotFound => ToolEnvelope<T>.NotFound(build, new ToolError("SceneNotFound", "No indexed scene matched the selector."), provenance),
             SceneQueryStatus.GameObjectNotFound => ToolEnvelope<T>.NotFound(build, new ToolError("GameObjectNotFound", "No indexed game object matched the selector."), provenance),

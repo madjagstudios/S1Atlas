@@ -1,4 +1,5 @@
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Mcp;
@@ -217,6 +218,39 @@ public sealed class SceneToolTests
 
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Equal("NoCompletedSceneIndex", envelope.Error!.Code);
+    }
+
+    [Fact]
+    public async Task ListScenes_NoSceneIndex_HintsSetupSceneOnlyForCurrentBuild()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        // SeedTwoInstalledBuildsAsync seeds BuildIdB last, so it is current;
+        // BuildIdA is the explicit non-current build.
+        var current = await tools.ListScenesAsync(
+            buildId: null,
+            sceneSnapshotId: null,
+            kind: null,
+            query: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, current.Status);
+        Assert.Equal("NoCompletedSceneIndex", current.Error!.Code);
+        Assert.Equal(ReadinessFixCommands.SetupScene, current.Error.Hint);
+
+        var other = await tools.ListScenesAsync(
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            kind: null,
+            query: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, other.Status);
+        Assert.Equal("NoCompletedSceneIndex", other.Error!.Code);
+        Assert.Null(other.Error.Hint);
     }
 
     private static SceneTools CreateTools(McpTestAtlas atlas) =>
