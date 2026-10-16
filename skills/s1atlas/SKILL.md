@@ -160,7 +160,16 @@ treat a setup error as an empty index.
    fields carry a `target` (kind, name, type, and an ID to look up next);
    follow that ID rather than guessing from the raw `fileId:localFileId`.
    ScriptableObjects such as `SpecialCustomerData` are not components; use
-   `get_scriptable_object`. For environment/dependency facts use CLI
+   `get_scriptable_object`. To find objects by a name fragment use CLI
+   `game-objects --query <fragment> [--scene <scene>]` or MCP `list_gameobjects`
+   instead of paging a whole scene. To read every component of a type in one
+   call use CLI `components <Namespace.Class> --fields a,b [--derived]` or MCP
+   `list_components` (`fields`, `includeDerived`). To ask what points at an
+   object use `game-object`/`component --incoming [--external]` or MCP
+   `includeIncoming` (`externalOnly`): it reads decoded script-field pointers
+   only and reports how many field sets were unavailable or truncated, so an
+   empty answer is bounded by that coverage, not proof of no reference.
+   For environment/dependency facts use CLI
    `env --json` or MCP `get_environment`.
 6. **Recheck after change.** After a Schedule I game update, use CLI `builds`
    and `diff <build-before> <build-after>`, or MCP `list_builds` and
@@ -188,6 +197,7 @@ treat a setup error as an empty index.
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
 | Scenes | `scenes`, `scene`, `game-object`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
+| Scene search and lists | `game-objects --query`, `components <type> --fields`, `--incoming`, `--offset` | `list_gameobjects`, `list_components`, `includeIncoming`, `cursor` |
 | S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes` plus the shared code tools with `codebase: s1api` or `s1mapi` and an optional `channel` |
 
 Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.

@@ -848,8 +848,20 @@ public sealed class McpTestAtlas : IAsyncDisposable
             null,
             SceneResolutionStatus.NotIndexed,
             SceneRecoveryStatus.FullyRecovered);
+        // A child object whose script points back at its parent: an incoming reference from
+        // inside the parent's hierarchy (the asset's Leader.Data pointer comes from outside).
+        var childObject = new SceneGameObjectRecord(
+            "game-object-kiosk-" + buildId, scene.SceneId, container.ContainerId, 6, "downtown kiosk", true, 0, "Untagged", recoveryStatus);
+        var childComponent = new SceneComponentRecord(
+            "component-kiosk-" + buildId, childObject.GameObjectId, container.ContainerId, 7, 114, "MonoBehaviour",
+            "Assembly-CSharp", "Demo", "KioskController", null, null, SceneResolutionStatus.NotIndexed, recoveryStatus);
         SceneScriptFieldSetRecord[] fieldSets =
         [
+            new(childComponent.ComponentId, sceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false,
+                [new SceneScriptField("Owner", "PPtr<GameObject>", SceneScriptFieldValueKind.PPtr, $"0:{gameObject.LocalFileId}",
+                    new SceneScriptFieldTarget(SceneScriptFieldTargetStatus.Resolved, SceneScriptFieldTargetKind.GameObject,
+                        gameObject.GameObjectId, gameObject.Name, null, container.ContainerId, gameObject.LocalFileId)),
+                 new SceneScriptField("Stock.Array.size", "int", SceneScriptFieldValueKind.ArraySize, "3")]),
             new(component.ComponentId, sceneSnapshotId, SceneScriptFieldOwnerKind.Component, SceneScriptFieldSetStatus.Decoded, null, false,
                 [new SceneScriptField("Price", "float", SceneScriptFieldValueKind.Float, "50000")]),
             new(scriptableAsset.AssetId, sceneSnapshotId, SceneScriptFieldOwnerKind.ScriptableAsset, SceneScriptFieldSetStatus.Decoded, null, false,
@@ -868,9 +880,12 @@ public sealed class McpTestAtlas : IAsyncDisposable
                 snapshot,
                 [container],
                 [scene, prefab],
-                [gameObject],
-                [new SceneTransformRecord(gameObject.GameObjectId, null, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered)],
-                [component],
+                [gameObject, childObject],
+                [
+                    new SceneTransformRecord(gameObject.GameObjectId, null, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered),
+                    new SceneTransformRecord(childObject.GameObjectId, gameObject.GameObjectId, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, SceneRecoveryStatus.FullyRecovered)
+                ],
+                [component, childComponent],
                 [],
                 [scriptableAsset],
                 fieldSets),

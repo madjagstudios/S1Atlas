@@ -219,6 +219,105 @@ public sealed class SceneToolTests
         Assert.Equal("NoCompletedSceneIndex", envelope.Error!.Code);
     }
 
+    // AT-146: a case-insensitive name fragment, scoped to one scene, paged by cursor.
+    [Fact]
+    public async Task ListGameObjects_FindsANameFragmentInOneSceneAndPagesByCursor()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var first = await tools.ListGameObjectsAsync(query: "DOWNTOWN", scene: atlas.SceneNameA, buildId: atlas.BuildIdA, limit: 1, ct: CancellationToken.None);
+        var second = await tools.ListGameObjectsAsync(query: "DOWNTOWN", scene: atlas.SceneNameA, buildId: atlas.BuildIdA, limit: 1, ct: CancellationToken.None, cursor: first.Data!.NextCursor);
+
+        Assert.Equal(ToolStatus.Resolved, first.Status);
+        Assert.Equal(2, first.Data.Page.TotalCount);
+        Assert.Equal("Downtown Root", Assert.Single(first.Data.Page.Rows).Name);
+        Assert.Equal(atlas.SceneNameA, first.Data.Scene!.Name);
+        Assert.Equal("downtown kiosk", Assert.Single(second.Data!.Page.Rows).Name);
+        Assert.Null(second.Data.NextCursor);
+    }
+
+    // AT-146: scene --children pages like the other paged tools.
+    [Fact]
+    public async Task GetScene_PagesChildrenByCursor()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var first = await tools.GetSceneAsync(selector: atlas.SceneNameA, buildId: atlas.BuildIdA, includeChildren: true, limit: 1, ct: CancellationToken.None);
+        var second = await tools.GetSceneAsync(selector: atlas.SceneNameA, buildId: atlas.BuildIdA, includeChildren: true, limit: 1, ct: CancellationToken.None, cursor: first.Data!.NextCursor);
+
+        Assert.Equal(2, first.Data.Children.TotalCount);
+        Assert.NotNull(first.Data.NextCursor);
+        Assert.NotEqual(Assert.Single(first.Data.Children.Rows).GameObjectId, Assert.Single(second.Data!.Children.Rows).GameObjectId);
+        Assert.Null(second.Data.NextCursor);
+    }
+
+    // AT-147: references pointing at an object or its components, split by whether the source
+    // sits inside the object's own hierarchy, with the coverage that bounds an empty answer.
+    [Fact]
+    public async Task GetGameObject_IncludeIncoming_ReportsInsideAndOutsideReferencesWithCoverage()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+        var root = "game-object-" + atlas.BuildIdA;
+
+        var all = await tools.GetGameObjectAsync(selector: root, buildId: atlas.BuildIdA, ct: CancellationToken.None, includeIncoming: true);
+        var external = await tools.GetGameObjectAsync(selector: root, buildId: atlas.BuildIdA, ct: CancellationToken.None, includeIncoming: true, externalOnly: true);
+
+        var incoming = all.Data!.Incoming!;
+        Assert.Equal(2, incoming.TotalCount);
+        Assert.Equal(1, incoming.ExternalCount);
+        Assert.Equal(3, incoming.Coverage.DecodedCount);
+        Assert.Collection(incoming.Rows,
+            outside =>
+            {
+                Assert.False(outside.WithinTarget);
+                Assert.Equal(("SCD_Bikers", "Leader.Data", SceneScriptFieldTargetKind.Component), (outside.SourceName, outside.FieldPath, outside.TargetKind));
+            },
+            inside =>
+            {
+                Assert.True(inside.WithinTarget);
+                Assert.Equal(("downtown kiosk", "Owner", root), (inside.SourceName, inside.FieldPath, inside.TargetId));
+            });
+        Assert.Equal("SCD_Bikers", Assert.Single(external.Data!.Incoming!.Rows).SourceName);
+        Assert.Equal(1, external.Data.Incoming.TotalCount);
+    }
+
+    // AT-148: one call lists a type's components with only the requested fields; a path also
+    // selects the leaves nested under it, and decoded values keep their FACT provenance.
+    [Fact]
+    public async Task ListComponents_ReturnsOnlyRequestedFieldPathsWithFactProvenance()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var envelope = await tools.ListComponentsAsync(type: "Demo.KioskController", fields: ["Stock"], buildId: atlas.BuildIdA, ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.Resolved, envelope.Status);
+        Assert.Equal(ComponentTypeMatch.ScriptText, envelope.Data!.MatchedBy);
+        var row = Assert.Single(envelope.Data.Page.Rows);
+        Assert.Equal("downtown kiosk", row.GameObject!.Name);
+        Assert.Equal("Stock.Array.size", Assert.Single(row.ScriptFields!.Fields).Path);
+        Assert.Contains(envelope.Provenance, entry => entry.Classification == ProvenanceClassification.Fact && entry.Source == "serialized-script-fields");
+    }
+
+    // AT-148: --derived adds components whose resolved type derives from the requested one.
+    [Fact]
+    public async Task ListComponents_IncludeDerived_MatchesSubclassesByResolvedSymbol()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoSceneBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var exact = await tools.ListComponentsAsync(type: atlas.HierarchyBaseTypeSelector, buildId: atlas.BuildIdA, ct: CancellationToken.None);
+        var derived = await tools.ListComponentsAsync(type: atlas.HierarchyBaseTypeSelector, includeDerived: true, buildId: atlas.BuildIdA, ct: CancellationToken.None);
+
+        Assert.Equal(0, exact.Data!.Page.TotalCount);
+        Assert.Equal(ComponentTypeMatch.ResolvedCodeSymbol, derived.Data!.MatchedBy);
+        Assert.Equal(["Demo.Widget", "Demo.WidgetBase"], derived.Data.IncludedTypes);
+        Assert.Equal("component-" + atlas.BuildIdA, Assert.Single(derived.Data.Page.Rows).Component.ComponentId);
+    }
+
     private static SceneTools CreateTools(McpTestAtlas atlas) =>
         new(McpServerComposition.BuildReadOnlyServices(atlas.DataRoot));
 }

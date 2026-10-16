@@ -44,6 +44,35 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   or S1MAPI DLL, and reports it stale when the DLL changed since the index was
   built. Installed-channel `s1api`/`s1mapi` queries then report the index as
   stale instead of answering from the old DLL's members (AT-131).
+- `game-objects --query <fragment>` (MCP `list_gameobjects`) finds game objects
+  whose name contains a case-insensitive fragment, across the scene snapshot or
+  within one scene (`--scene`), in one paged call. Finding every object named
+  like "Forklift" no longer means paging all 139,523 Main-scene objects (AT-146).
+- `scene`, `prefab`, `game-object`, and `component` take `--offset` to page
+  their nested lists, and print the next offset when more rows remain. MCP
+  `get_scene`, `get_gameobject`, and `get_component` return a `nextCursor`
+  (AT-146).
+- `game-object --incoming` and `component --incoming` (MCP `includeIncoming`)
+  list the decoded script-field pointers elsewhere in the snapshot that point at
+  the selected object or its components. Each row says whether its source is
+  inside the target's own hierarchy, `--external` (MCP `externalOnly`) keeps
+  only the ones from outside, and the summary reports how many field sets were
+  unavailable or truncated, so an empty answer is not read as proof. For example,
+  the unregistered Flatbed Truck prefab is pointed at only by its own
+  components (AT-147).
+- `components <type> --fields a,b` (MCP `list_components`) lists every
+  component of one type with only the requested decoded field values, in one
+  paged call. `--derived` (MCP `includeDerived`) adds subclasses from the code
+  index, so `components ScheduleOne.Vehicles.LandVehicle --derived` returns the
+  `Shitbox` vehicles too. Values keep the FACT `serialized-script-fields`
+  provenance (AT-148).
+
+### Changed
+
+- `game-object --children` and `--components` read only the selected object's
+  rows instead of scanning every game object in the snapshot. On the real
+  snapshot each of their queries took 9 to 13 seconds; the whole command now
+  returns in about 0.2 seconds (AT-146).
 
 ### Fixed
 

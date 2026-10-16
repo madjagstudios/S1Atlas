@@ -511,8 +511,10 @@ public sealed class CliApplication
         root.Subcommands.Add(ScenesCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(SceneCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(GameObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(GameObjectsCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(PrefabCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ComponentCommand.Create(sceneQueryService, indexQueryService, repository, output, error, cancellationToken));
+        root.Subcommands.Add(ComponentsCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ScriptableObjectCommand.Create(sceneQueryService, repository, output, error, cancellationToken));
         root.Subcommands.Add(ServeCommand.Create(_paths.RootDirectory, _browserLauncher, output, error, cancellationToken));
         root.Subcommands.Add(UpstreamCommand.Create(_paths.RootDirectory, output, error, cancellationToken));
