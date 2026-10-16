@@ -153,7 +153,7 @@ Inspect validated extraction history and manage the preferred output:
 
 ```powershell
 s1atlas extractions list
-s1atlas extractions list --build <64-character-build-id>
+s1atlas extractions list --build <build-id-or-prefix>
 s1atlas extractions list --include-failed
 s1atlas extractions show <extraction-id-or-attempt-id>
 s1atlas extractions promote <extraction-id>
@@ -165,8 +165,10 @@ s1atlas extractions cleanup --json
 
 `extractions` commands never issue a network request. `list` and `show` report
 validated extraction history and attempt state; `promote` explicitly verifies
-and selects a validated extraction. Known states exit `0`, invalid or failed
-operations exit `1`, and cancellation exits `2`.
+and selects a validated extraction. `list --build` takes a full 64-character
+build ID or a unique short-ID prefix; an unknown or malformed build ID is an
+error. Known states exit `0`, invalid or failed operations exit `1`, and
+cancellation exits `2`.
 
 `cleanup` is preview-first and never automatic. Without `--apply` it reports
 eligible data without deleting anything; `--apply` removes only proven

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using S1Atlas.Cli.Output;
+using S1Atlas.Core;
 using S1Atlas.Core.Storage;
 using S1Atlas.Extraction.History;
 
@@ -16,7 +17,7 @@ internal static class ExtractionsListCommand
     {
         var buildOption = new Option<string?>("--build")
         {
-            Description = "Restrict history to a known 64-character Atlas build ID."
+            Description = "Restrict history to one build: a 64-character Atlas build ID or a unique short-ID prefix. Unknown or malformed build IDs are an error."
         };
         var includeFailedOption = new Option<bool>("--include-failed")
         {
@@ -43,8 +44,52 @@ internal static class ExtractionsListCommand
                     repository.InitializeAsync(cancellationToken)
                         .GetAwaiter()
                         .GetResult();
+                    var requestedBuild = parseResult.GetValue(buildOption);
+                    var builds = repository.ListBuildsAsync(cancellationToken)
+                        .GetAwaiter()
+                        .GetResult();
+                    string? buildFilter;
+                    if (string.IsNullOrWhiteSpace(requestedBuild))
+                    {
+                        buildFilter = null;
+                    }
+                    else
+                    {
+                        buildFilter = requestedBuild;
+                        var match = ShortId.MatchPrefix(
+                            builds.Select(build => build.BuildId),
+                            requestedBuild);
+
+                        string DescribeBuild(string candidateId)
+                        {
+                            var candidate = builds.First(entry => string.Equals(
+                                entry.BuildId, candidateId, StringComparison.Ordinal));
+                            return $"{ShortId.Display(candidateId)} (first seen {candidate.FirstSeenAtUtc:O})";
+                        }
+
+                        if (match.Kind == ShortIdMatchKind.Resolved && match.Id is not null)
+                        {
+                            buildFilter = match.Id;
+                        }
+                        else if (match.Kind == ShortIdMatchKind.Ambiguous)
+                        {
+                            return commandOutput.Failure(
+                                1,
+                                "AmbiguousBuildPrefix",
+                                $"The build prefix '{requestedBuild}' matches {match.TotalCount} builds; " +
+                                $"re-run with a full build ID or one of these short IDs: {ShortId.FormatMatchList(match, DescribeBuild)}.");
+                        }
+                        else
+                        {
+                            return commandOutput.Failure(
+                                1,
+                                "BuildNotFound",
+                                $"Build '{Truncate(requestedBuild)}' not found.");
+                        }
+                    }
+
                     var items = historyService.ListAsync(
-                            parseResult.GetValue(buildOption),
+                            buildFilter,
                             parseResult.GetValue(includeFailedOption),
                             cancellationToken)
                         .GetAwaiter()
@@ -58,6 +103,9 @@ internal static class ExtractionsListCommand
         });
         return command;
     }
+
+    private static string Truncate(string id) =>
+        id.Length > 16 ? id[..8] + "..." + id[^8..] : id;
 
     private static ExtractionHistoryEntryOutput ToOutput(ExtractionHistoryItem item) => new(
         item.Kind == ExtractionHistoryEntryKind.ValidatedExtraction ? "Extraction" : "Attempt",
