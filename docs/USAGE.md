@@ -1029,7 +1029,7 @@ read-only mode; it does not create the root or database, run migrations, or
 change stored data.
 
 The read-only server exposes the Schedule I `Installed` surface, completed
-local reference collections, and completed S1API/S1MAPI indexes through 27
+local reference collections, and completed S1API/S1MAPI indexes through 30
 tools:
 
 | Area | Tools |
