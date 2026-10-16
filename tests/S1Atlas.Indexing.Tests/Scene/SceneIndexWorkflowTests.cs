@@ -47,9 +47,13 @@ public sealed class SceneIndexWorkflowTests : IAsyncDisposable
         var repository = CreateRepository(replayVerified: false);
         var workflow = CreateWorkflow(repository, Authority());
 
+        // setup --scene plans from the same verdict the gate enforces.
+        var input = await workflow.InspectInputAsync(_buildId, TestContext.Current.CancellationToken);
         var exception = await Assert.ThrowsAsync<SceneIndexFailureException>(() =>
             workflow.RunScheduleOneAsync(_buildId, false, TestContext.Current.CancellationToken));
 
+        Assert.Equal(SceneInputCertification.NotReplayVerified, input.Certification);
+        Assert.Equal(_inputId, input.InputSnapshot?.InputSnapshotId);
         Assert.Equal(SceneQueryStatus.NoReplayVerifiedExtractionInput, exception.Status);
         Assert.Equal(0, repository.ParserCalls);
     }

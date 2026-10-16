@@ -413,11 +413,24 @@ public sealed class CliApplication
                             new CommandOutput("tools install", json: false, output, error),
                             cancellation)),
                     (options, cancellation) =>
-                        Task.FromResult(ExtractCommand.Execute(
+                    {
+                        ExtractionOutput? extracted = null;
+                        var exitCode = ExtractCommand.Execute(
                             workflow,
                             options,
                             new CommandOutput("extract", json: false, output, error),
                             null,
+                            cancellation,
+                            data => extracted = data);
+                        return Task.FromResult(new SetupExtractResult(
+                            exitCode, extracted?.ExtractionId, extracted?.InputSnapshotId));
+                    },
+                    (extractionId, cancellation) =>
+                        Task.FromResult(ExtractionsPromoteCommand.Execute(
+                            historyService,
+                            repository,
+                            extractionId,
+                            new CommandOutput("extractions promote", json: false, output, error),
                             cancellation)),
                     (options, cancellation) =>
                         Task.FromResult(IndexCommand.Execute(
@@ -438,7 +451,14 @@ public sealed class CliApplication
                             new IndexCommandOptions(Scene: true),
                             new CommandOutput("index", json: false, output, error),
                             null,
-                            cancellation))),
+                            cancellation)),
+                    async cancellation =>
+                    {
+                        var current = await repository.GetCurrentSnapshotAsync(cancellation);
+                        return current is null
+                            ? new SceneInputState(SceneInputCertification.NoPreferredExtraction, null)
+                            : await sceneIndexingWorkflow.InspectInputAsync(current.Build.BuildId, cancellation);
+                    }),
                 Console.In,
                 Console.IsInputRedirected,
                 output,

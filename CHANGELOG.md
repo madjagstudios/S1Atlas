@@ -44,6 +44,18 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   or S1MAPI DLL, and reports it stale when the DLL changed since the index was
   built. Installed-channel `s1api`/`s1mapi` queries then report the index as
   stale instead of answering from the old DLL's members (AT-131).
+- `s1atlas setup --scene` builds the scene index in one command. After plain
+  `setup`, `index --scene` was refused with `NoReplayVerifiedExtractionInput`
+  until you archived the game inputs, replayed them, promoted the replay, and
+  re-indexed by hand. `setup --scene` plans exactly the steps the current
+  atlas is missing and runs them with the usual confirmation and
+  stop-at-first-failure rules. On an empty atlas or a new build, the first
+  extraction archives its inputs, so one replay certifies them with no
+  promotion or second index. The replay-verification check itself is
+  unchanged; setup only runs the existing commands (AT-145).
+- `doctor`'s scene line now names `s1atlas setup --scene` while no scene
+  snapshot exists. `--include-optional` keeps working as another name for
+  `--scene` (AT-145).
 
 ### Fixed
 

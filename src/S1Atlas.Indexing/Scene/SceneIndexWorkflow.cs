@@ -239,22 +239,58 @@ public sealed class SceneIndexWorkflow
         }
     }
 
+    /// <summary>
+    /// Reports how far the build's preferred extraction input is from the replay
+    /// verification this workflow requires. It applies the same checks as the gate
+    /// in <see cref="RunScheduleOneAsync"/>, so <c>setup --scene</c> plans from the
+    /// gate's own verdict. Read-only.
+    /// </summary>
+    public async Task<SceneInputState> InspectInputAsync(string buildId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
+        var authority = await _authorityResolver(buildId, cancellationToken);
+        return IsAuthorityFor(authority, buildId)
+            ? await InspectInputAsync(authority!, buildId, cancellationToken)
+            : new SceneInputState(SceneInputCertification.NoPreferredExtraction, null);
+    }
+
     private async Task<PreferredVerifiedExtraction> RequireAuthorityAsync(string buildId, CancellationToken cancellationToken)
     {
         var authority = await _authorityResolver(buildId, cancellationToken);
-        if (authority is null ||
-            !string.Equals(authority.BuildId, buildId, StringComparison.Ordinal) ||
-            !string.Equals(authority.Extraction.BuildId, buildId, StringComparison.Ordinal))
+        if (!IsAuthorityFor(authority, buildId))
         {
             throw new SceneIndexFailureException(
                 SceneQueryStatus.NoPreferredVerifiedExtraction,
                 "No preferred replay-verified extraction exists for the requested build.");
         }
 
-        return authority;
+        return authority!;
     }
 
+    private static bool IsAuthorityFor(PreferredVerifiedExtraction? authority, string buildId) =>
+        authority is not null &&
+        string.Equals(authority.BuildId, buildId, StringComparison.Ordinal) &&
+        string.Equals(authority.Extraction.BuildId, buildId, StringComparison.Ordinal);
+
     private async Task<InputSnapshot> RequireReplayVerifiedInputAsync(
+        PreferredVerifiedExtraction authority,
+        string buildId,
+        CancellationToken cancellationToken)
+    {
+        var state = await InspectInputAsync(authority, buildId, cancellationToken);
+        return state.Certification switch
+        {
+            SceneInputCertification.ReplayVerified => state.InputSnapshot!,
+            SceneInputCertification.NoInputSnapshot => throw new SceneIndexFailureException(
+                SceneQueryStatus.NoReplayVerifiedExtractionInput,
+                "The preferred extraction does not identify a replay-verified input snapshot for the requested build."),
+            _ => throw new SceneIndexFailureException(
+                SceneQueryStatus.NoReplayVerifiedExtractionInput,
+                "The preferred extraction input snapshot is not replay-verified for the requested build.")
+        };
+    }
+
+    private async Task<SceneInputState> InspectInputAsync(
         PreferredVerifiedExtraction authority,
         string buildId,
         CancellationToken cancellationToken)
@@ -263,21 +299,18 @@ public sealed class SceneIndexWorkflow
         if (attempt?.InputSnapshotId is not { Length: > 0 } inputSnapshotId ||
             !string.Equals(attempt.BuildId, buildId, StringComparison.Ordinal))
         {
-            throw new SceneIndexFailureException(
-                SceneQueryStatus.NoReplayVerifiedExtractionInput,
-                "The preferred extraction does not identify a replay-verified input snapshot for the requested build.");
+            return new SceneInputState(SceneInputCertification.NoInputSnapshot, null);
         }
 
         var input = await _extractionRepository.GetInputSnapshotAsync(inputSnapshotId, cancellationToken);
-        if (input is null || !input.ReplayVerified ||
-            !string.Equals(input.BuildId, buildId, StringComparison.Ordinal))
+        if (input is null || !string.Equals(input.BuildId, buildId, StringComparison.Ordinal))
         {
-            throw new SceneIndexFailureException(
-                SceneQueryStatus.NoReplayVerifiedExtractionInput,
-                "The preferred extraction input snapshot is not replay-verified for the requested build.");
+            return new SceneInputState(SceneInputCertification.InputSnapshotUnavailable, null);
         }
 
-        return input;
+        return new SceneInputState(
+            input.ReplayVerified ? SceneInputCertification.ReplayVerified : SceneInputCertification.NotReplayVerified,
+            input);
     }
 
     private async Task<EnvironmentSnapshot> RequireEnvironmentAsync(string buildId, CancellationToken cancellationToken)
