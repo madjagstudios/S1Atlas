@@ -129,6 +129,84 @@ public sealed class CodeSymbolTools
             });
     }
 
+    [McpServerTool(Name = "find_by_attribute", Title = "Find by attribute", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find indexed symbols carrying a custom attribute (RPCs, SerializeField, etc.) in the integrity-verified game index or a selected installed-API index. Release and Preview API channels carry no attributes.")]
+    public async Task<ToolEnvelope<AttributeSearchResult>> FindByAttributeAsync(
+        [Description("Full attribute type name, or the suffix after the last '.' (case-insensitive).")] string attribute,
+        [Description("Argument filters: name=value matches a named argument, or a bare value matches any fixed argument. All must match.")] string[]? args = null,
+        [Description("Codebase to query.")] McpCodebase codebase = McpCodebase.scheduleI,
+        [Description("Channel; scheduleI has Installed only.")] CodeChannel channel = CodeChannel.Installed,
+        [Description("Build ID; omit for current.")] string? buildId = null,
+        [Description("Max results (1-500).")] int limit = 50,
+        [Description("Include compiler-generated members with raw sources.")] bool includeGenerated = false,
+        CancellationToken ct = default)
+    {
+        var filters = args ?? [];
+        if (codebase is not McpCodebase.scheduleI)
+        {
+            if (ToolArguments.TryValidateSelector<AttributeSearchResult>(attribute, null, out var attributeError))
+            {
+                return attributeError;
+            }
+
+            if (!ToolArguments.TryBoundLimit(limit, null, out var boundedLimit, out ToolEnvelope<AttributeSearchResult> limitError))
+            {
+                return limitError;
+            }
+
+            return await WithApiSelectionAsync<AttributeSearchResult>(
+                codebase,
+                channel,
+                buildId,
+                IndexQueryScope.Game,
+                null,
+                async (catalog, selection) =>
+                {
+                    var result = await _services.ApiIndexQueryService.FindByAttributeSelectedAsync(
+                        selection,
+                        attribute,
+                        filters,
+                        boundedLimit,
+                        ct,
+                        includeGenerated);
+                    return EnvelopeMapper.FromApiAttributeSearch(catalog, selection, result);
+                },
+                ct);
+        }
+
+        if (channel != CodeChannel.Installed)
+        {
+            return EnvelopeMapper.Invalid<AttributeSearchResult>("InvalidChannel", "Only the Installed channel exists for the scheduleI codebase.");
+        }
+
+        return await EnvelopeMapper.WithAuthorityAsync(
+            _services.AuthorityResolver,
+            buildId,
+            ct,
+            async authority =>
+            {
+                if (ToolArguments.TryValidateSelector(attribute, authority, out ToolEnvelope<AttributeSearchResult> attributeError))
+                {
+                    return attributeError;
+                }
+
+                if (!ToolArguments.TryBoundLimit(limit, authority, out var boundedLimit, out ToolEnvelope<AttributeSearchResult> limitError))
+                {
+                    return limitError;
+                }
+
+                var result = await _services.IndexQueryService.FindByAttributeInIndexAsync(
+                    authority.IndexRun!,
+                    CodebaseKind.ScheduleI,
+                    CodeChannel.Installed,
+                    attribute,
+                    filters,
+                    boundedLimit,
+                    ct,
+                    includeGenerated);
+                return EnvelopeMapper.FromAttributeSearch(authority, result);
+            });
+    }
+
     [McpServerTool(Name = "get_type", Title = "Get type", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one type from the integrity-verified code index.")]
     public async Task<ToolEnvelope<SymbolQueryResult>> GetTypeAsync(
         [Description("Exact or fuzzy type selector.")] string selector,
@@ -1283,6 +1361,7 @@ public sealed class CodeSymbolTools
                         resolution = resolution with { Candidates = resolution.Candidates.Take(boundedLimit).ToArray() };
                     }
 
+                    resolution = await WithAttributesAsync(resolution, ct);
                     return EnvelopeMapper.FromApiTypeMethod(catalog, selection, resolution, kinds);
                 },
                 ct);
@@ -1321,8 +1400,22 @@ public sealed class CodeSymbolTools
                     resolution = resolution with { Candidates = resolution.Candidates.Take(boundedLimit).ToArray() };
                 }
 
+                resolution = await WithAttributesAsync(resolution, ct);
                 return EnvelopeMapper.FromSymbolResolution(authority, resolution, kinds);
             });
+    }
+
+    private async Task<SymbolResolutionResult> WithAttributesAsync(
+        SymbolResolutionResult resolution,
+        CancellationToken ct)
+    {
+        // Candidates and suggestions slim to SlimSymbolCandidate on the wire,
+        // so only the resolved symbol carries attributes.
+        if (resolution.Status != SymbolResolutionStatus.Resolved || resolution.Symbol is null)
+            return resolution;
+
+        var populated = await _services.IndexQueryService.PopulateAttributesAsync([resolution.Symbol], ct);
+        return resolution with { Symbol = populated[0] };
     }
 
     private async Task<ToolEnvelope<RelationshipQuerySetResult>> FindRelationshipsAsync(

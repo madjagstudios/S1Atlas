@@ -82,6 +82,7 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
         var typeProvider = new MetadataTypeNameProvider();
         var methodImplDeclarations = ReadMethodImplDeclarations(metadata, definition, typeProvider);
         var typeAttributes = ReadGeneratedAttributes(metadata, definition.GetCustomAttributes());
+        var attributeFacts = ManagedAttributeReader.ReadTypeAttributes(metadata, typeHandle);
         foreach (var fieldHandle in definition.GetFields())
         {
             var field = metadata.GetFieldDefinition(fieldHandle);
@@ -94,7 +95,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 [],
                 ValueType: valueType,
                 IsPublic: IsPublic(field.Attributes),
-                IsCompilerGenerated: ReadGeneratedAttributes(metadata, field.GetCustomAttributes()).IsCompilerGenerated));
+                IsCompilerGenerated: ReadGeneratedAttributes(metadata, field.GetCustomAttributes()).IsCompilerGenerated,
+                Attributes: attributeFacts.Fields.GetValueOrDefault(fieldHandle)));
         }
 
         foreach (var propertyHandle in definition.GetProperties())
@@ -112,7 +114,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 ParameterTypes: parameterTypes,
                 ValueType: signature.ReturnType,
                 IsPublic: IsPublic(metadata, property.GetAccessors().Getter, property.GetAccessors().Setter),
-                IsCompilerGenerated: ReadGeneratedAttributes(metadata, property.GetCustomAttributes()).IsCompilerGenerated));
+                IsCompilerGenerated: ReadGeneratedAttributes(metadata, property.GetCustomAttributes()).IsCompilerGenerated,
+                Attributes: attributeFacts.Properties.GetValueOrDefault(propertyHandle)));
         }
 
         foreach (var eventHandle in definition.GetEvents())
@@ -128,7 +131,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 [],
                 ValueType: valueType,
                 IsPublic: IsPublic(metadata, @event.GetAccessors().Adder, @event.GetAccessors().Remover, @event.GetAccessors().Raiser),
-                IsCompilerGenerated: ReadGeneratedAttributes(metadata, @event.GetCustomAttributes()).IsCompilerGenerated));
+                IsCompilerGenerated: ReadGeneratedAttributes(metadata, @event.GetCustomAttributes()).IsCompilerGenerated,
+                Attributes: attributeFacts.Events.GetValueOrDefault(eventHandle)));
         }
 
         var typePatches = HarmonyPatchReader.ReadTypePatches(metadata, typeHandle);
@@ -188,7 +192,9 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
                 IsAsyncStateMachine: generatedAttributes.IsAsyncStateMachine,
                 Patches: CombinePatches(typePatches, methodHandle, interpreted.Patches),
                 Reflections: interpreted.Reflections.Count == 0 ? null : interpreted.Reflections,
-                TypeReferences: bodyAnalysis.TypeReferences.Count == 0 ? null : bodyAnalysis.TypeReferences));
+                TypeReferences: bodyAnalysis.TypeReferences.Count == 0 ? null : bodyAnalysis.TypeReferences,
+                Attributes: attributeFacts.Methods.GetValueOrDefault(methodHandle),
+                ParameterAttributes: attributeFacts.Parameters.GetValueOrDefault(methodHandle)));
         }
 
         return new ManagedTypeFacts(
@@ -199,7 +205,8 @@ public sealed class IlSpyManagedDecompiler : IManagedDecompiler
             interfaces,
             members,
             IsInterface: (definition.Attributes & TypeAttributes.Interface) != 0,
-            IsCompilerGenerated: typeAttributes.IsCompilerGenerated);
+            IsCompilerGenerated: typeAttributes.IsCompilerGenerated,
+            Attributes: attributeFacts.Type);
     }
 
     private sealed record GeneratedAttributeFacts(bool IsCompilerGenerated, string? StateMachineTypeName, bool IsAsyncStateMachine);

@@ -154,6 +154,27 @@ public static class EnvelopeMapper
             Derived(authority, "search-ranking"));
     }
 
+    public static ToolEnvelope<AttributeSearchResult> FromAttributeSearch(
+        InstalledBuildAuthority authority,
+        AttributeSearchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var build = BuildFrom(authority);
+        if (result.TotalCount == 0)
+        {
+            return ToolEnvelope<AttributeSearchResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed symbol carries the requested attribute."),
+                Derived(authority, "attribute-search"));
+        }
+
+        return ToolEnvelope<AttributeSearchResult>.Resolved(
+            build,
+            result,
+            Fact(authority, "attribute-search"));
+    }
+
     public static ToolEnvelope<ApiIndexCatalogResult> FromApiCatalog(ApiIndexCatalogResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -222,6 +243,31 @@ public static class EnvelopeMapper
                 new ToolError("SymbolNotFound", "No indexed API symbol matched the selector."),
                 provenance)
             : ToolEnvelope<SymbolSearchResult>.Resolved(build, result, provenance);
+    }
+
+    public static ToolEnvelope<AttributeSearchResult> FromApiAttributeSearch(
+        ApiIndexCatalogResult catalog,
+        ApiIndexSelection selection,
+        AttributeSearchResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var build = ApiBuildFrom(catalog, selection);
+        var provenance = ApiProvenance(catalog, selection);
+        if (result.ResolutionStatus == SymbolResolutionStatus.NoCompletedIndex)
+        {
+            return ToolEnvelope<AttributeSearchResult>.NotFound(
+                build,
+                new ToolError("NoCompletedIndex", "No completed API index exists for the requested scope.", ReadinessFixCommands.HintForNoCompletedIndex(selection.Codebase, selection.Channel)),
+                provenance);
+        }
+
+        return result.TotalCount == 0
+            ? ToolEnvelope<AttributeSearchResult>.NotFound(
+                build,
+                new ToolError("SymbolNotFound", "No indexed API symbol carries the requested attribute."),
+                provenance)
+            : ToolEnvelope<AttributeSearchResult>.Resolved(build, result, provenance);
     }
 
     public static ToolEnvelope<SourceSnippetQueryResult> FromApiSource(

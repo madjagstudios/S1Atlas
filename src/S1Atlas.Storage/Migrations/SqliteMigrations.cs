@@ -1071,6 +1071,27 @@ internal static class SqliteMigrations
         ADD COLUMN binary_sha256 TEXT NULL;
         """;
 
+    private const string CustomAttributesV21Sql = """
+        CREATE TABLE custom_attributes (
+            attribute_id TEXT NOT NULL PRIMARY KEY,
+            snapshot_id TEXT NOT NULL,
+            symbol_id TEXT NOT NULL,
+            target TEXT NOT NULL CHECK (target IN ('Type', 'Member', 'Parameter')),
+            parameter_index INTEGER NULL,
+            parameter_name TEXT NULL,
+            attribute_type TEXT NOT NULL,
+            args_json TEXT NOT NULL,
+            FOREIGN KEY (snapshot_id) REFERENCES code_snapshots(snapshot_id),
+            FOREIGN KEY (symbol_id) REFERENCES symbols(symbol_id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX ix_custom_attributes_snapshot_type
+        ON custom_attributes(snapshot_id, attribute_type);
+
+        CREATE INDEX ix_custom_attributes_symbol
+        ON custom_attributes(symbol_id);
+        """;
+
     public static IReadOnlyList<SqliteMigration> All { get; } =
     [
         new(1, "foundation-v1", FoundationV1Sql),
@@ -1092,6 +1113,7 @@ internal static class SqliteMigrations
         new(17, "generated-body-credit-v17", GeneratedBodyCreditV17Sql),
         new(18, "simple-name-correction-v18", SimpleNameCorrectionV18Sql, RequiresFts5Trigram: true),
         new(19, "callable-surface-unknown-v19", CallableSurfaceUnknownV19Sql),
-        new(20, "dependency-binary-hash-v20", DependencyBinaryHashV20Sql)
+        new(20, "dependency-binary-hash-v20", DependencyBinaryHashV20Sql),
+        new(21, "custom-attributes-v21", CustomAttributesV21Sql)
     ];
 }

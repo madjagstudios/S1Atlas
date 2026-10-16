@@ -1,5 +1,6 @@
 using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Metadata;
 using S1Atlas.Core.Storage;
 
 namespace S1Atlas.Indexing.Query;
@@ -404,7 +405,9 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken,
         bool includeGenerated = false)
     {
-        return (await SearchAsync(query, options, cancellationToken, kind, includeGenerated)).Results;
+        return await PopulateAttributesAsync(
+            (await SearchAsync(query, options, cancellationToken, kind, includeGenerated)).Results,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<SymbolQueryResult>> FindInIndexAsync(
@@ -417,8 +420,216 @@ public sealed class IndexQueryService
         CancellationToken cancellationToken,
         bool includeGenerated = false)
     {
-        return (await SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken, includeGenerated)).Results;
+        return await PopulateAttributesAsync(
+            (await SearchInRunAsync(run, codebase, channel, query, limit, kind, cancellationToken, includeGenerated)).Results,
+            cancellationToken);
     }
+
+    public async Task<AttributeSearchResult> FindByAttributeAsync(
+        string attributeType,
+        IReadOnlyList<string> args,
+        IndexQueryOptions options,
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeType);
+        ArgumentNullException.ThrowIfNull(args);
+        if (options.Limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options), "The query result limit must be positive.");
+
+        var totalCount = 0;
+        var completedIndexCount = 0;
+        var candidates = new List<AttributeHitQueryResult>();
+        foreach (var channel in Channels(options))
+        {
+            var run = await _repository.GetLatestCompletedIndexAsync(options.Codebase, channel, null, cancellationToken);
+            if (run is null) continue;
+            completedIndexCount++;
+            var result = await FindByAttributeInIndexAsync(
+                run,
+                options.Codebase,
+                channel,
+                attributeType,
+                args,
+                options.Limit,
+                cancellationToken,
+                includeGenerated);
+            totalCount += result.TotalCount;
+            candidates.AddRange(result.Results);
+        }
+
+        var results = candidates
+            .OrderBy(hit => hit.Symbol.QualifiedName, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Symbol.Signature, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Symbol.Channel, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Symbol.SymbolId, StringComparer.Ordinal)
+            .Take(options.Limit)
+            .ToArray();
+        return new AttributeSearchResult(
+            totalCount,
+            results.Length,
+            results,
+            completedIndexCount == 0 ? SymbolResolutionStatus.NoCompletedIndex : null);
+    }
+
+    public async Task<AttributeSearchResult> FindByAttributeInIndexAsync(
+        IndexRunRecord run,
+        CodebaseKind codebase,
+        CodeChannel channel,
+        string attributeType,
+        IReadOnlyList<string> args,
+        int limit,
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeType);
+        ArgumentNullException.ThrowIfNull(args);
+        if (limit <= 0)
+            throw new ArgumentOutOfRangeException(nameof(limit), "The query result limit must be positive.");
+
+        var matches = new List<(IndexCustomAttributeRecord Record, AttributeQueryResult Attribute)>();
+        foreach (var record in await GetAttributeCandidatesAsync(run.IndexId, cancellationToken))
+        {
+            if (!AttributeTypeMatches(record.AttributeType, attributeType)) continue;
+            var decoded = CustomAttributeJson.FromJson(record.ArgsJson);
+            if (!AttributeArgumentsMatch(decoded, args)) continue;
+            matches.Add((record, ToAttributeQueryResult(record, decoded)));
+        }
+
+        var bySymbol = matches.GroupBy(match => match.Record.SymbolId, StringComparer.Ordinal).ToArray();
+        if (bySymbol.Length == 0)
+            return new AttributeSearchResult(0, 0, []);
+
+        var symbols = await _repository.GetCompletedSymbolsByIdsAsync(
+            run.IndexId,
+            bySymbol.Select(group => group.Key).ToArray(),
+            cancellationToken);
+        var symbolById = symbols
+            .Where(symbol => includeGenerated || !symbol.IsGenerated)
+            .ToDictionary(symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var hits = bySymbol
+            .Where(group => symbolById.ContainsKey(group.Key))
+            .Select(group => new AttributeHitQueryResult(
+                SymbolResolver.ToQueryResult(run.IndexId, codebase, channel, symbolById[group.Key], SymbolResolver.OriginFor(codebase)),
+                group.OrderBy(match => match.Record.AttributeId, StringComparer.Ordinal).Select(match => match.Attribute).ToArray()))
+            .OrderBy(hit => hit.Symbol.QualifiedName, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Symbol.Signature, StringComparer.Ordinal)
+            .ThenBy(hit => hit.Symbol.SymbolId, StringComparer.Ordinal)
+            .ToArray();
+
+        var results = hits.Take(limit).ToArray();
+        return new AttributeSearchResult(hits.Length, results.Length, results);
+    }
+
+    /// <summary>
+    /// Attaches each symbol's indexed custom attributes, so single-symbol
+    /// resolutions (which bypass the <c>Find</c> paths) can carry the same
+    /// per-symbol attributes. Reference-mod symbols keep <c>Attributes</c>
+    /// <c>null</c>; every other symbol gets its rows or an empty list.
+    /// </summary>
+    public async Task<IReadOnlyList<SymbolQueryResult>> PopulateAttributesAsync(
+        IReadOnlyList<SymbolQueryResult> results,
+        CancellationToken cancellationToken)
+    {
+        var groups = results
+            .Where(result => !string.Equals(result.Codebase, nameof(CodebaseKind.ReferenceMod), StringComparison.Ordinal))
+            .GroupBy(result => result.IndexId, StringComparer.Ordinal)
+            .ToArray();
+        if (groups.Length == 0)
+            return results;
+
+        var attributesBySymbol = new Dictionary<(string IndexId, string SymbolId), List<AttributeQueryResult>>();
+        foreach (var group in groups)
+        {
+            var records = await _repository.GetCompletedAttributesBySymbolIdsAsync(
+                group.Key,
+                group.Select(result => result.SymbolId).ToArray(),
+                cancellationToken);
+            foreach (var record in records)
+            {
+                var decoded = CustomAttributeJson.FromJson(record.ArgsJson);
+                var key = (group.Key, record.SymbolId);
+                if (!attributesBySymbol.TryGetValue(key, out var list))
+                    attributesBySymbol[key] = list = [];
+                list.Add(ToAttributeQueryResult(record, decoded));
+            }
+        }
+
+        return results
+            .Select(result => string.Equals(result.Codebase, nameof(CodebaseKind.ReferenceMod), StringComparison.Ordinal)
+                ? result
+                : result with
+                {
+                    Attributes = attributesBySymbol.TryGetValue((result.IndexId, result.SymbolId), out var list)
+                        ? list.ToArray()
+                        : []
+                })
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<IndexCustomAttributeRecord>> GetAttributeCandidatesAsync(
+        string indexId,
+        CancellationToken cancellationToken)
+    {
+        // SQLite COLLATE NOCASE folds ASCII only, so filter in C# with
+        // OrdinalIgnoreCase to keep full-name and suffix matching consistent.
+        var total = await _repository.CountCompletedSymbolsAsync(indexId, cancellationToken);
+        const int pageSize = 512;
+        var candidates = new List<IndexCustomAttributeRecord>();
+        for (var offset = 0; offset < total; offset += pageSize)
+        {
+            var records = await _repository.GetCompletedSymbolPageAsync(indexId, offset, pageSize, cancellationToken);
+            if (records.Count == 0) break;
+            candidates.AddRange(await _repository.GetCompletedAttributesBySymbolIdsAsync(
+                indexId,
+                records.Select(record => record.SymbolId).ToArray(),
+                cancellationToken));
+        }
+
+        return candidates;
+    }
+
+    private static bool AttributeTypeMatches(string stored, string query)
+    {
+        if (query.Contains('.'))
+            return string.Equals(stored, query, StringComparison.OrdinalIgnoreCase);
+        var suffix = stored[(stored.LastIndexOf('.') + 1)..];
+        return string.Equals(suffix, query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool AttributeArgumentsMatch(DecodedCustomAttribute decoded, IReadOnlyList<string> args)
+    {
+        foreach (var filter in args)
+        {
+            var separator = filter.IndexOf('=');
+            if (separator >= 0)
+            {
+                var name = filter[..separator];
+                var value = filter[(separator + 1)..];
+                if (!decoded.NamedArguments.Any(argument =>
+                        string.Equals(argument.Name, name, StringComparison.Ordinal) &&
+                        string.Equals(CustomAttributeRendering.CanonicalValue(argument.Value), value, StringComparison.Ordinal)))
+                    return false;
+            }
+            else if (!decoded.FixedArguments.Any(argument =>
+                         string.Equals(CustomAttributeRendering.CanonicalValue(argument), filter, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static AttributeQueryResult ToAttributeQueryResult(IndexCustomAttributeRecord record, DecodedCustomAttribute decoded) =>
+        new(
+            record.AttributeType,
+            record.Target,
+            record.ParameterIndex,
+            record.ParameterName,
+            decoded.FixedArguments,
+            decoded.NamedArguments);
 
     public Task<RelationshipQuerySetResult> RefsAsync(
         string selector,

@@ -16,7 +16,8 @@ internal sealed record IndexQueryOutput(
     string? CompletenessNotice = null,
     CallableSurfaceResolutionResult? CallableSurface = null,
     IReadOnlyList<HierarchyNodeQueryResult>? HierarchyNodes = null,
-    string? SearchNotice = null)
+    string? SearchNotice = null,
+    IReadOnlyList<AttributeHitQueryResult>? AttributeHits = null)
 {
     public IReadOnlyList<SymbolQueryResult> Results => Symbols;
 }

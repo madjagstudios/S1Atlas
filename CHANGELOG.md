@@ -6,6 +6,25 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Upgrading
+
+- Update the CLI and MCP tools together. Run `s1atlas doctor`, then the
+  `s1atlas status` command it prints, to migrate to schema 21 for indexed
+  custom attributes. S1Atlas 2.2.0 and earlier cannot open a migrated atlas.
+- Run `s1atlas scan`, then `s1atlas index`. The index format moves to version
+  19, so the game and installed API indexes rebuild. Scan first so installed
+  API indexes bind to the current environment snapshot. Re-index older builds
+  before comparing them with `check-mod` or `diff` (AT-69).
+
+### Added
+
+- `s1atlas attributes <AttributeType>` and the MCP tool `find_by_attribute` find
+  indexed symbols by custom attribute, for example FishNet `[ServerRpc]` methods
+  or `[SerializeField]` fields, in the game index or an installed S1API/S1MAPI
+  index. `--arg` filters on attribute arguments. `type`/`method` and
+  `get_type`/`get_method` now list each symbol's attributes. Attributes that
+  Cpp2IL injects (`Cpp2ILInjected.*`) are never reported (AT-69).
+
 ## [2.2.0] - 2026-10-16: Guided scene setup and vehicle discovery
 
 `s1atlas setup --scene` now takes an atlas through input certification and scene

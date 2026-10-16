@@ -281,6 +281,50 @@ outcomes. A missing policy gate or authority starts at `Stop`; otherwise the
 initial decision is `Inconclusive` until runtime observations satisfy the
 declared controls.
 
+## Attribute search contract
+
+The CLI `attributes` command and the MCP `find_by_attribute` tool share one
+read-only attribute-search surface over custom attributes captured during
+indexing. The attribute selector accepts a full type name
+(`FishNet.Object.ServerRpcAttribute`) or the suffix after the last `.`
+(`ServerRpcAttribute`); matching is case-insensitive. A query containing `.`
+must equal the full type name, while a query without `.` matches any indexed
+attribute type with that suffix. Each argument filter is either `name=value`,
+which matches a named argument with that exact name and canonical value, or a
+bare `value`, which matches any fixed (positional) argument with that canonical
+value; all filters must match (AND). Canonical values render `null` as
+`null`, strings verbatim, booleans lowercased, `typeof` references as the
+type name, enums as their underlying numeric value (never the member name),
+and arrays as comma-joined element renderings.
+
+Coverage is game Installed plus installed S1API/S1MAPI only, which is why the
+surfaces take `codebase`/`channel` (CLI) or `codebase`/`channel`/`buildId`
+(MCP) but no `scope` or `collection`. Release and Preview API channels are
+cached-source indexes and carry no attributes; reference-mod indexes record
+none. Tool-injected analysis attributes (`Cpp2ILInjected.*`, such as
+`[Address]`, `[Token]`, `[FieldOffset]`, and `[Calls]`) describe the
+extraction rather than the game and are filtered at read time, so they never
+appear in results. Attributes are captured on types, methods, constructors,
+fields, properties, events, and parameters; return-value attributes are out
+of scope and are not read.
+
+`type`/`method` and `get_type`/`get_method` carry each resolved symbol's
+attributes with the same shape the search returns per hit: `attributeType`,
+`target` (`Type`, `Member`, or `Parameter`), `parameterIndex` and
+`parameterName` for parameter targets, and decoded `fixedArguments` and
+`namedArguments`. A zero-match CLI query exits `0` with zero counts; MCP
+reports `not_found` with code `SymbolNotFound`. A missing index reports the
+existing readiness errors (`NoCompletedIndex` on the CLI,
+`no_completed_index` over MCP) with the `s1atlas index` remedy.
+
+Attributes persist as one `custom_attributes` row per attribute (schema
+migration 21) with decoded arguments stored as canonical JSON; filters apply
+in C# over the decoded values, never in SQL. Index content version 19
+introduces attribute rows, so querying requires one `s1atlas index` rebuild
+after upgrading (plain `index` also rebuilds the installed API indexes).
+Indexes built before attribute coverage hold no rows and report no matches
+rather than an error.
+
 ## Design documents
 
 - [V1 design specification](design/2026-08-12-s1atlas-design.md)

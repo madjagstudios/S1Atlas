@@ -210,6 +210,9 @@ s1atlas overrides "<TypeName.MethodName>"
 s1atlas overridden-by "<TypeName.MethodName>" --depth 5
 s1atlas derived "<Namespace.TypeName>" --limit 20 --offset 20
 s1atlas callable "<TypeName.MethodName>"
+s1atlas attributes "FishNet.Object.ServerRpcAttribute" --arg RequireOwnership=false
+s1atlas attributes "UnityEngine.SerializeField" --limit 10
+s1atlas attributes "System.ObsoleteAttribute" --codebase s1api
 ```
 
 Plain `s1atlas index` also builds or reuses the installed S1API/S1MAPI indexes
@@ -296,6 +299,59 @@ bounding the walk. `derived` lists the subclasses and implementers of one
 type, transitively, with `--depth` (default `10`) and `--offset` paging over
 true totals. All three are metadata facts, so they work from reconstructed
 assemblies without method bodies.
+
+`attributes` finds indexed symbols carrying a custom attribute, such as RPC
+methods or serialized fields:
+
+```powershell
+s1atlas attributes "FishNet.Object.ServerRpcAttribute"
+s1atlas attributes "ServerRpcAttribute" --arg RequireOwnership=false --arg 42
+s1atlas attributes "UnityEngine.SerializeField" --codebase schedule-i --build <64-character-build-id>
+s1atlas attributes "System.ObsoleteAttribute" --codebase s1api --channel installed --json
+```
+
+The attribute argument accepts the full type name
+(`FishNet.Object.ServerRpcAttribute`) or the suffix after the last `.`
+(`ServerRpcAttribute`); matching is case-insensitive. A query containing `.`
+must equal the full type name, while a query without `.` matches any
+attribute type with that suffix. Each repeatable `--arg` entry is either
+`name=value`, which matches a named argument with that exact name and
+canonical value, or a bare `value`, which matches any fixed (positional)
+argument with that canonical value; all entries must match (AND). Canonical
+values render `null` as `null`, strings verbatim, booleans lowercased,
+`typeof` references as the type name, enums as their underlying numeric
+value (never the member name), and arrays as comma-joined elements, so
+`--arg RequireOwnership=false` matches a `false` named argument while
+`--arg 42` matches a fixed `42` of any numeric type.
+
+`--codebase` routes the search: `schedule-i` (the default) queries the
+installed game index and honors `--build` for an earlier indexed build, while
+`s1api` and `s1mapi` query the installed API index for that codebase.
+`--channel` defaults to `installed`; `--channel all` merges every channel of
+an API codebase. `--limit` (default `50`) bounds the returned hits, and
+`--include-generated` reveals compiler-generated members, which are hidden by
+default. There is intentionally no `--scope`/`--collection`: attribute search
+covers the game index and installed-API indexes only. Release and Preview API
+channels are cached-source indexes and carry no attributes, and reference-mod
+indexes record none, so those scopes always return empty. Tool-injected
+analysis attributes (`Cpp2ILInjected.*`, such as `[Address]`, `[Token]`, and
+`[Calls]`) describe the extraction rather than the game and are never
+indexed, so querying them returns nothing.
+
+Attributes are indexed facts: after upgrading, run `s1atlas index` once to
+rebuild the game index (plain `index` also rebuilds the installed API
+indexes), or target an API codebase with
+`index --codebase s1api|s1mapi --channel installed`. Indexes built before
+attribute coverage report no matches rather than an error, so an unexpected
+empty result on a previously indexed build means reindex first. `type` and
+`method` output lists each resolved symbol's attributes in both human and
+`--json` output: human rows read
+`[FishNet.Object.ServerRpcAttribute(42, RequireOwnership=false)] Member`,
+with `Type` or `Parameter[0] 'name'` as the target, and JSON carries the
+same data as an `attributes` array of `attributeType`, `target`,
+`parameterIndex`, `parameterName`, `fixedArguments`, and `namedArguments`.
+The `attributes --json` envelope reports `totalCount`, `returnedCount`, and
+`attributeHits`, each pairing a `symbol` with its `matchingAttributes`.
 
 ## Investigate seams
 
@@ -973,22 +1029,24 @@ read-only mode; it does not create the root or database, run migrations, or
 change stored data.
 
 The read-only server exposes the Schedule I `Installed` surface, completed
-local reference collections, and completed S1API/S1MAPI indexes through 26
+local reference collections, and completed S1API/S1MAPI indexes through 30
 tools:
 
 | Area | Tools |
 |---|---|
-| Symbol search | `search_symbols`, `get_type`, `get_method`, `get_source`, `get_callable_surface` |
+| Symbol search | `search_symbols`, `get_type`, `get_method`, `get_source`, `get_callable_surface`, `find_by_attribute` |
 | Relationships | `find_callers`, `find_callees`, `find_call_sites`, `find_field_references`, `find_patches`, `find_references`, `find_related_types` |
 | Hierarchy | `find_overrides`, `find_overriders`, `find_derived_types` |
 | Scenes | `list_scenes`, `get_scene`, `get_gameobject`, `list_gameobjects`, `get_component`, `list_components`, `get_scriptable_object` |
 | Builds and collections | `list_builds`, `get_environment`, `list_api_indexes`, `list_reference_collections` |
 | Analysis | `compare_symbol`, `investigate_seam`, `plan_runtime_proof` |
 
-Fourteen code tools take an optional `codebase` (`scheduleI`, `s1api`, or
+Fifteen code tools take an optional `codebase` (`scheduleI`, `s1api`, or
 `s1mapi`; default `scheduleI`) and an optional `channel` (default
 `Installed`); Schedule I has only the Installed channel. `find_patches`
 rejects `s1api` and `s1mapi` since patches only target the game index.
+`find_by_attribute` covers the game index and installed-API indexes;
+Release and Preview API channels carry no attributes.
 `get_callable_surface` is game-only and takes neither. Fixed vocabularies
 are advertised as schema enums: `codebase`,
 `channel`, `scope` (`Game`, `Reference`, `All`), and the symbol-kind and
@@ -1019,7 +1077,13 @@ routes, so overrides of external framework methods add no derived rows. `list_re
 completed collections, their recorded base index/build, and local-only mod
 metadata. `investigate_seam` accepts the same selector/question/limit options as
 the CLI and returns the same ordered candidate, warning, unknown-dimension, and
-next-action payload fields.
+next-action payload fields. `find_by_attribute` takes `attribute` (required,
+full type name or suffix after the last `.`, case-insensitive), `args` (array
+of `name=value` or bare-value filters, all of which must match), `codebase`,
+`channel`, `buildId`, `limit` (default `50`), and `includeGenerated`; it takes
+no `scope` or `collection` because attribute search covers the game index and
+installed-API indexes only. `get_type` and `get_method` results carry the
+resolved symbol's `attributes` array with the same shape as the CLI.
 
 The ten `find_*` tools and the four `list_*` tools page with an opaque
 `cursor`. Responses carry `nextCursor` only when more rows remain; pass it
@@ -1027,9 +1091,9 @@ back with otherwise identical arguments to fetch the next page. Cursors are
 bound to the tool, the effective arguments, the limit, and the resolved
 build/index, so reuse with different arguments or after a re-index fails
 with `invalid_cursor`. `find_patches` cursors additionally bind the resolved
-reference index. `search_symbols` stays limit-only and takes no
-cursor. Merged `all`-scope totals are exact when both sides fit the page
-window and null when truncated.
+reference index. `search_symbols` and `find_by_attribute` stay limit-only
+and take no cursor. Merged `all`-scope totals are exact when both sides fit
+the page window and null when truncated.
 
 Envelopes omit empty `candidates` and `suggestions` arrays. Provenance
 entries omit build, extraction, and index IDs that duplicate the envelope
@@ -1299,6 +1363,7 @@ eval "$(s1atlas completion zsh)"
 <!-- cli-table:begin -->
 | Command | Purpose |
 |---|---|
+| `s1atlas attributes <attribute> [--arg] [--codebase] [--channel] [--build] [--limit] [--include-generated] [--json]` | Find indexed symbols carrying a custom attribute. |
 | `s1atlas builds [--json]` | List all indexed Schedule I builds. |
 | `s1atlas call-sites <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Find static call-site edges for a resolved target symbol or raw target text. |
 | `s1atlas callable <query> [--codebase] [--channel] [--build] [--limit] [--json]` | Show the callable surface of a resolved symbol. |

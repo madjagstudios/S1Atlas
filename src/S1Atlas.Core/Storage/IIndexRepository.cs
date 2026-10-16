@@ -105,6 +105,16 @@ public sealed record IndexRelationshipRecord(
     string? GeneratedSourceSymbolId = null,
     string? GeneratedDetail = null);
 
+public sealed record IndexCustomAttributeRecord(
+    string AttributeId,
+    string SnapshotId,
+    string SymbolId,
+    string Target,
+    int? ParameterIndex,
+    string? ParameterName,
+    string AttributeType,
+    string ArgsJson);
+
 public sealed record IndexWriteSet(
     IReadOnlyList<IndexSymbolRecord> Symbols,
     IReadOnlyList<IndexSourceFileRecord> SourceFiles,
@@ -114,7 +124,8 @@ public sealed record IndexWriteSet(
     IReadOnlyList<IndexCallableSurfaceRecord>? CallableSurface = null,
     ReferenceIndexContextRecord? ReferenceIndexContext = null,
     IReadOnlyList<IndexReferenceModRecord>? ReferenceMods = null,
-    IReadOnlyList<IndexReferenceDocumentRecord>? ReferenceDocuments = null);
+    IReadOnlyList<IndexReferenceDocumentRecord>? ReferenceDocuments = null,
+    IReadOnlyList<IndexCustomAttributeRecord>? CustomAttributes = null);
 
 public interface INativeRecoveryRepository<TRecord, TRequest>
     where TRecord : class
@@ -241,4 +252,20 @@ public interface IIndexRepository
     Task<IndexRunRecord?> GetLatestCompletedIndexForBuildAsync(CodebaseKind codebase, CodeChannel channel, string buildId, CancellationToken cancellationToken);
     Task<string?> GetCompletedIndexBuildIdAsync(string indexId, CancellationToken cancellationToken) =>
         Task.FromResult<string?>(null);
+    Task<IReadOnlyList<IndexCustomAttributeRecord>> GetCompletedAttributesBySymbolIdsAsync(
+        string indexId,
+        IReadOnlyList<string> symbolIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexCustomAttributeRecord>>([]);
+    Task<int> CountCompletedAttributesByTypeAsync(
+        string indexId,
+        string attributeType,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(0);
+    Task<IReadOnlyList<IndexCustomAttributeRecord>> FindCompletedAttributesByTypeAsync(
+        string indexId,
+        string attributeType,
+        int limit,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<IndexCustomAttributeRecord>>([]);
 }

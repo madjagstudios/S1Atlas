@@ -109,6 +109,12 @@ treat a setup error as an empty index.
    reference collection, use `search --scope reference --collection <id>` or
    MCP `search_symbols` with `scope: "reference"` and the collection. Qualify
    ambiguous matches instead of choosing one.
+   To find symbols by custom attribute, use CLI `attributes <AttributeType>`
+   or MCP `find_by_attribute` with `attribute`. Select a full attribute type
+   name or its suffix (for example `ServerRpcAttribute`), and filter arguments
+   with CLI `--arg name=value` or MCP `args`. Coverage is the game index and
+   installed S1API/S1MAPI indexes; cached-source API and reference-mod indexes
+   carry no attributes. `Cpp2ILInjected.*` attributes are excluded.
 3. **Inspect behavior.** When behavior, side effects, ownership, lifetime, or
    persistence matters, inspect the decompiled span first: CLI `source` or MCP
    `get_source`. Add `--scope`/`--collection` or the matching MCP arguments

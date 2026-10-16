@@ -21,6 +21,7 @@ Roots: tests
 | tests/S1Atlas.Core.Tests/Extraction/ |
 | tests/S1Atlas.Core.Tests/Identity/ |
 | tests/S1Atlas.Core.Tests/Indexing/ |
+| tests/S1Atlas.Core.Tests/Metadata/ |
 | tests/S1Atlas.Core.Tests/Scenes/ |
 | tests/S1Atlas.Core.Tests/Tools/ |
 | tests/S1Atlas.Extraction.Tests/ |

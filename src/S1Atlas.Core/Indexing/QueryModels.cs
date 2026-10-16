@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using S1Atlas.Core.Metadata;
 using S1Atlas.Core.Storage;
 
 namespace S1Atlas.Core.Indexing;
@@ -104,7 +105,26 @@ public sealed record SymbolQueryResult(
     string? License = null,
     string? RelativePath = null,
     string? Sha256 = null,
-    string? ShortId = null);
+    string? ShortId = null,
+    IReadOnlyList<AttributeQueryResult>? Attributes = null);
+
+public sealed record AttributeQueryResult(
+    string AttributeType,
+    string Target,
+    int? ParameterIndex,
+    string? ParameterName,
+    IReadOnlyList<CustomAttributeValue> FixedArguments,
+    IReadOnlyList<CustomAttributeNamedArgument> NamedArguments);
+
+public sealed record AttributeHitQueryResult(
+    SymbolQueryResult Symbol,
+    IReadOnlyList<AttributeQueryResult> MatchingAttributes);
+
+public sealed record AttributeSearchResult(
+    int TotalCount,
+    int ReturnedCount,
+    IReadOnlyList<AttributeHitQueryResult> Results,
+    SymbolResolutionStatus? ResolutionStatus = null);
 
 public enum SymbolResolutionStatus
 {
