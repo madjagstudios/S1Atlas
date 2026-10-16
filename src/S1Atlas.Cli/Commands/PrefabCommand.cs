@@ -9,13 +9,13 @@ internal static class PrefabCommand
 {
     public static Command Create(SceneQueryService service, IAtlasRepository repository, TextWriter output, TextWriter error, CancellationToken cancellationToken)
     {
-        var selector = new Argument<string>("prefab-id|exact-name") { Description = "Prefab ID or exact prefab name." }; var objects = new Option<bool>("--objects") { Description = "Include the prefab's root game objects." }; var components = new Option<bool>("--components") { Description = "Include components." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var limit = SceneCommandSupport.CreateLimitOption(); var json = CommandOutput.CreateJsonOption();
-        var command = new Command("prefab", CliExamples.With("Query one proven prefab document.", "s1atlas prefab <name> --objects")); command.Arguments.Add(selector); command.Options.Add(objects); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(json);
+        var selector = new Argument<string>("prefab-id|exact-name") { Description = "Prefab ID or exact prefab name." }; var objects = new Option<bool>("--objects") { Description = "Include the prefab's root game objects." }; var components = new Option<bool>("--components") { Description = "Include components." }; var refs = new Option<bool>("--refs") { Description = "Include references." }; var limit = SceneCommandSupport.CreateLimitOption(); var offset = SceneCommandSupport.CreateOffsetOption(); var json = CommandOutput.CreateJsonOption();
+        var command = new Command("prefab", CliExamples.With("Query one proven prefab document.", "s1atlas prefab <name> --objects")); command.Arguments.Add(selector); command.Options.Add(objects); command.Options.Add(components); command.Options.Add(refs); command.Options.Add(limit); command.Options.Add(offset); command.Options.Add(json);
         command.SetAction(result => SceneCommandSupport.Run("prefab", result.GetValue(json), output, error, cancellationToken, repository, () =>
         {
-            if (result.GetValue(limit) <= 0) return new CommandOutput("prefab", result.GetValue(json), output, error).Failure(1, "InvalidLimit", "--limit must be greater than zero.");
-            var data = service.PrefabAsync(new PrefabQueryRequest(null, result.GetValue(selector)!, result.GetValue(objects), result.GetValue(components), result.GetValue(refs), result.GetValue(limit)), cancellationToken).GetAwaiter().GetResult();
-            var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References, data.Containers);
+            if (SceneCommandSupport.InvalidPage("prefab", result.GetValue(json), output, error, result.GetValue(limit), result.GetValue(offset)) is int invalid) return invalid;
+            var data = service.PrefabAsync(new PrefabQueryRequest(null, result.GetValue(selector)!, result.GetValue(objects), result.GetValue(components), result.GetValue(refs), result.GetValue(limit), result.GetValue(offset)), cancellationToken).GetAwaiter().GetResult();
+            var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References, data.Containers, SceneCommandSupport.NextOffset(data.HasMore, result.GetValue(offset), result.GetValue(limit)));
             return SceneCommandSupport.Write(new CommandOutput("prefab", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteScene(outputData, writer));
         })); return command;
     }

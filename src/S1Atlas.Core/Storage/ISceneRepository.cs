@@ -25,6 +25,9 @@ public interface ISceneRepository
     Task<SceneComponentRecord?> GetComponentAsync(string sceneSnapshotId, string componentId, CancellationToken cancellationToken);
     Task<ScenePageResult<SceneReferenceRecord>> ListReferencesAsync(ReferenceListQueryOptions options, CancellationToken cancellationToken);
     Task<SceneScriptFieldSetRecord?> GetScriptFieldSetAsync(string sceneSnapshotId, string ownerId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SceneScriptFieldSetRecord>> GetScriptFieldSetsAsync(string sceneSnapshotId, IReadOnlyList<string> ownerIds, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SceneGameObjectRecord>> GetGameObjectsAsync(string sceneSnapshotId, IReadOnlyList<string> gameObjectIds, CancellationToken cancellationToken);
+    Task<SceneIncomingReferencePage> ListIncomingReferencesAsync(IncomingReferenceQueryOptions options, CancellationToken cancellationToken);
     Task<SceneScriptableAssetRecord?> GetScriptableAssetAsync(string sceneSnapshotId, string assetId, CancellationToken cancellationToken);
     // Exact asset name, or exact Namespace.Class.
     Task<IReadOnlyList<SceneScriptableAssetRecord>> FindScriptableAssetsAsync(string sceneSnapshotId, string selector, int limit, CancellationToken cancellationToken);

@@ -109,6 +109,12 @@ treat a setup error as an empty index.
    reference collection, use `search --scope reference --collection <id>` or
    MCP `search_symbols` with `scope: "reference"` and the collection. Qualify
    ambiguous matches instead of choosing one.
+   To find symbols by custom attribute, use CLI `attributes <AttributeType>`
+   or MCP `find_by_attribute` with `attribute`. Select a full attribute type
+   name or its suffix (for example `ServerRpcAttribute`), and filter arguments
+   with CLI `--arg name=value` or MCP `args`. Coverage is the game index and
+   installed S1API/S1MAPI indexes; cached-source API and reference-mod indexes
+   carry no attributes. `Cpp2ILInjected.*` attributes are excluded.
 3. **Inspect behavior.** When behavior, side effects, ownership, lifetime, or
    persistence matters, inspect the decompiled span first: CLI `source` or MCP
    `get_source`. Add `--scope`/`--collection` or the matching MCP arguments
@@ -160,7 +166,15 @@ treat a setup error as an empty index.
    fields carry a `target` (kind, name, type, and an ID to look up next);
    follow that ID rather than guessing from the raw `fileId:localFileId`.
    ScriptableObjects such as `SpecialCustomerData` are not components; use
-   `get_scriptable_object`. For environment/dependency facts use CLI
+   `get_scriptable_object`. To find objects by a name fragment use CLI
+   `game-objects --query <fragment> [--scene <scene>]` or MCP `list_gameobjects`
+   instead of paging a whole scene. To read every component of a type in one
+   call use CLI `components <Namespace.Class> --fields a,b [--derived]` or MCP
+   `list_components` (`fields`, `includeDerived`). To ask what points at an
+   object use `game-object`/`component --incoming [--external]` or MCP
+   `includeIncoming` (`externalOnly`). It reads decoded script-field pointers
+   only, so check its coverage counts before treating an empty answer as no
+   reference. For environment/dependency facts use CLI
    `env --json` or MCP `get_environment`.
 6. **Recheck after change.** After a Schedule I game update, use CLI `builds`
    and `diff <build-before> <build-after>`, or MCP `list_builds` and
@@ -188,6 +202,7 @@ treat a setup error as an empty index.
 | Builds/history | `status`, `builds`, `diff <a> <b>` | `list_builds`, `compare_symbol` |
 | Environment | `env --json` | `get_environment` |
 | Scenes | `scenes`, `scene`, `game-object`, `prefab`, `component`, `scriptable-object` | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
+| Scene search and lists | `game-objects --query`, `components <type> --fields`, `--incoming`, `--offset` | `list_gameobjects`, `list_components`, `includeIncoming`, `cursor` |
 | S1API/S1MAPI | `search`/`type`/`method`/`source`/`refs`/`callers`/`callees --codebase <s1api-or-s1mapi> --channel <channel>` | `list_api_indexes` plus the shared code tools with `codebase: s1api` or `s1mapi` and an optional `channel` |
 
 Use `upstream status --codebase s1api|s1mapi` to inspect cached upstream state.

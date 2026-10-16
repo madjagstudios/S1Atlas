@@ -60,6 +60,8 @@ public sealed class McpTrustBoundaryTests
                 "investigate_seam",
                 "list_api_indexes",
                 "list_builds",
+                "list_components",
+                "list_gameobjects",
                 "list_reference_collections",
                 "list_scenes",
                 "plan_runtime_proof",
@@ -238,7 +240,7 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        Assert.Equal(28, schemas.Count);
+        Assert.Equal(30, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
         AssertSchema(schemas["find_by_attribute"], ["attribute", "args", "codebase", "channel", "buildId", "limit", "includeGenerated"], ["attribute"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
@@ -252,11 +254,11 @@ public sealed class McpTrustBoundaryTests
         AssertSchema(schemas["find_references"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated"], ["selector"]);
         AssertSchema(schemas["find_related_types"], ["selector", "codebase", "channel", "buildId", "relationKinds", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["get_callable_surface"], ["selector", "buildId"], ["selector"]);
-        AssertSchema(schemas["get_component"], ["selector", "buildId", "sceneSnapshotId", "includeReferences", "includeCode", "limit"], ["selector"]);
+        AssertSchema(schemas["get_component"], ["selector", "buildId", "sceneSnapshotId", "includeReferences", "includeCode", "limit", "includeIncoming", "externalOnly", "cursor"], ["selector"]);
         AssertSchema(schemas["get_environment"], ["buildId"], []);
-        AssertSchema(schemas["get_gameobject"], ["selector", "buildId", "sceneSnapshotId", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
+        AssertSchema(schemas["get_gameobject"], ["selector", "buildId", "sceneSnapshotId", "includeChildren", "includeComponents", "includeReferences", "limit", "includeIncoming", "externalOnly", "cursor"], ["selector"]);
         AssertSchema(schemas["get_method"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector"]);
-        AssertSchema(schemas["get_scene"], ["selector", "buildId", "sceneSnapshotId", "kind", "includeChildren", "includeComponents", "includeReferences", "limit"], ["selector"]);
+        AssertSchema(schemas["get_scene"], ["selector", "buildId", "sceneSnapshotId", "kind", "includeChildren", "includeComponents", "includeReferences", "limit", "cursor"], ["selector"]);
         AssertSchema(schemas["get_scriptable_object"], ["selector", "buildId", "sceneSnapshotId"], ["selector"]);
         AssertSchema(schemas["get_source"], ["selector", "codebase", "channel", "buildId", "context", "scope", "collection", "fullType", "relatedLimit"], ["selector"]);
         AssertSchema(schemas["get_type"], ["selector", "codebase", "channel", "buildId", "limit"], ["selector"]);
@@ -266,6 +268,8 @@ public sealed class McpTrustBoundaryTests
             ["behavioralQuestion", "selector"]);
         AssertSchema(schemas["list_api_indexes"], ["buildId", "limit", "cursor"], []);
         AssertSchema(schemas["list_builds"], ["limit", "cursor"], []);
+        AssertSchema(schemas["list_components"], ["type", "includeDerived", "fields", "scene", "buildId", "sceneSnapshotId", "limit", "cursor"], ["type"]);
+        AssertSchema(schemas["list_gameobjects"], ["query", "scene", "buildId", "sceneSnapshotId", "limit", "cursor"], []);
         AssertSchema(schemas["list_reference_collections"], ["limit", "cursor"], []);
         AssertSchema(schemas["list_scenes"], ["buildId", "sceneSnapshotId", "kind", "query", "limit", "cursor"], []);
         AssertSchema(
@@ -306,6 +310,8 @@ public sealed class McpTrustBoundaryTests
             },
             ["list_api_indexes"] = new Dictionary<string, object?>(),
             ["list_builds"] = new Dictionary<string, object?>(),
+            ["list_components"] = new Dictionary<string, object?> { ["type"] = "Demo.DealerController" },
+            ["list_gameobjects"] = new Dictionary<string, object?>(),
             ["list_reference_collections"] = new Dictionary<string, object?>(),
             ["list_scenes"] = new Dictionary<string, object?>(),
             ["plan_runtime_proof"] = new Dictionary<string, object?>
