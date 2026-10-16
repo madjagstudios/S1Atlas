@@ -6,6 +6,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16: Guided scene setup and vehicle discovery
+
+`s1atlas setup --scene` now takes an atlas through input certification and scene
+indexing in one command. Scene queries point to that command when the current
+build has no scene snapshot. Name-fragment searches, typed component lists with
+selected fields, and incoming references make serialized vehicle names and
+registrations practical to inspect. This release also adds FishNet coverage and
+automatic installed API indexing. Update both CLI and MCP tools together, then
+follow the one-time upgrade steps below.
+
 ### Upgrading
 
 - Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
