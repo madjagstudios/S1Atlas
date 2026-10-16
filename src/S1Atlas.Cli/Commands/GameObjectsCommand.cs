@@ -18,7 +18,7 @@ internal static class GameObjectsCommand
             if (SceneCommandSupport.InvalidPage("game-objects", result.GetValue(json), output, error, result.GetValue(limit), result.GetValue(offset)) is int invalid) return invalid;
             var data = service.GameObjectsAsync(new GameObjectListRequest(result.GetValue(build), result.GetValue(snapshot), result.GetValue(query), result.GetValue(scene), result.GetValue(limit), result.GetValue(offset)), cancellationToken).GetAwaiter().GetResult();
             var outputData = new GameObjectListOutput(data.Status, data.Snapshot, data.Scene, data.SceneCandidates, data.Page.TotalCount, data.Page.ReturnedCount, data.Page.Rows, data.Scenes, data.Containers, SceneCommandSupport.NextOffset(data.HasMore, result.GetValue(offset), result.GetValue(limit)));
-            return SceneCommandSupport.Write(new CommandOutput("game-objects", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteGameObjectList(outputData, writer));
+            return SceneCommandSupport.Write(new CommandOutput("game-objects", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, result.GetValue(build), repository, cancellationToken), writer => SceneCommandSupport.WriteGameObjectList(outputData, writer));
         }));
         return command;
     }

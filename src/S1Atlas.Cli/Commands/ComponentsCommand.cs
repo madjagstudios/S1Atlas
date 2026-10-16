@@ -19,7 +19,7 @@ internal static class ComponentsCommand
             var paths = result.GetValue(fields)?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal).ToArray();
             var data = service.ComponentsAsync(new ComponentListRequest(result.GetValue(type)!, result.GetValue(build), result.GetValue(snapshot), result.GetValue(derived), paths, result.GetValue(scene), result.GetValue(limit), result.GetValue(offset)), cancellationToken).GetAwaiter().GetResult();
             var outputData = new ComponentListOutput(data.Status, data.Snapshot, data.Scene, data.SceneCandidates, data.Type, data.MatchedBy, data.IncludedTypes, data.DerivedTypesUnavailable, data.Page.TotalCount, data.Page.ReturnedCount, data.Page.Rows, data.Containers, SceneCommandSupport.NextOffset(data.HasMore, result.GetValue(offset), result.GetValue(limit)));
-            return SceneCommandSupport.Write(new CommandOutput("components", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteComponentList(outputData, writer));
+            return SceneCommandSupport.Write(new CommandOutput("components", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, result.GetValue(build), repository, cancellationToken), writer => SceneCommandSupport.WriteComponentList(outputData, writer));
         }));
         return command;
     }

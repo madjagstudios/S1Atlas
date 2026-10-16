@@ -6,6 +6,16 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16: Guided scene setup and vehicle discovery
+
+`s1atlas setup --scene` now takes an atlas through input certification and scene
+indexing in one command. Scene queries point to that command when the current
+build has no scene snapshot. Name-fragment searches, typed component lists with
+selected fields, and incoming references make serialized vehicle names and
+registrations practical to inspect. This release also adds FishNet coverage and
+automatic installed API indexing. Update both CLI and MCP tools together, then
+follow the one-time upgrade steps below.
+
 ### Upgrading
 
 - Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
@@ -109,6 +119,10 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 - Re-indexing an installed or upstream S1API/S1MAPI index after an index-format
   change, or with `--force`, no longer fails with a UNIQUE constraint error on
   `source_files` (AT-142).
+- Scene queries (`scenes`, `scene`, `game-object`, `game-objects`, `prefab`,
+  `component`, `components`, `scriptable-object`, and the matching MCP tools) now point at
+  `s1atlas setup --scene` when no scene snapshot exists for the current
+  build; an explicit request for a different build carries no hint (AT-149).
 
 ## [2.1.0] - 2026-10-10: ScheduleOne.Core coverage, manual Harmony patches, and callable fixes
 

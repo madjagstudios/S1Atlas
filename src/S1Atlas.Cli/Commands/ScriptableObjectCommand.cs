@@ -15,7 +15,7 @@ internal static class ScriptableObjectCommand
         {
             var data = service.ScriptableAssetAsync(new ScriptableAssetQueryRequest(null, result.GetValue(selector)!), cancellationToken).GetAwaiter().GetResult();
             var outputData = new ScriptableAssetOutput(data.Status, data.Snapshot, data.Asset, data.Candidates, data.ScriptFields, data.Containers);
-            return SceneCommandSupport.Write(new CommandOutput("scriptable-object", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteScriptableAsset(outputData, writer));
+            return SceneCommandSupport.Write(new CommandOutput("scriptable-object", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, null, null), writer => SceneCommandSupport.WriteScriptableAsset(outputData, writer));
         })); return command;
     }
 }

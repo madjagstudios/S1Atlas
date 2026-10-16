@@ -138,18 +138,22 @@ internal sealed class CommandOutput
         return exitCode;
     }
 
-    public int FailureWithData<T>(string code, string message, T data, Action<TextWriter> writeHuman)
+    public int FailureWithData<T>(string code, string message, T data, Action<TextWriter> writeHuman, string? hint = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code); ArgumentException.ThrowIfNullOrWhiteSpace(message); ArgumentNullException.ThrowIfNull(writeHuman);
         if (IsJson)
         {
-            WriteJson(new CliEnvelope<T>(1, _commandName, false, 1, data, new CliError(null, null, code, message)));
+            WriteJson(new CliEnvelope<T>(1, _commandName, false, 1, data, new CliError(null, null, code, message, hint)));
         }
         else
         {
             writeHuman(_standardOutput);
             _standardError.WriteLine(message);
             _standardError.WriteLine($"Code:    {code}");
+            if (hint is not null)
+            {
+                _standardError.WriteLine($"Next:    {hint}");
+            }
         }
         return 1;
     }

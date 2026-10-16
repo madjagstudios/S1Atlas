@@ -62,6 +62,17 @@ public static class ReadinessFixCommands
         return $"s1atlas tools install {toolId}";
     }
 
+    /// <summary>
+    /// Hint for scene queries that fail with NoCompletedSceneIndex. Only a
+    /// request targeting the current build can be fixed with setup --scene.
+    /// MCP callers pass the resolved build id (prefix-safe); CLI callers pass
+    /// the requested --build value (exact match).
+    /// </summary>
+    public static string? HintForNoCompletedSceneIndex(string? buildId, string? currentBuildId) =>
+        buildId is null || string.Equals(buildId, currentBuildId, StringComparison.Ordinal)
+            ? SetupScene
+            : null;
+
     public static string? HintForNoCompletedIndex(CodebaseKind codebase, CodeChannel? channel) =>
         codebase switch
         {

@@ -16,7 +16,7 @@ internal static class SceneCommand
             if (SceneCommandSupport.InvalidPage("scene", result.GetValue(json), output, error, result.GetValue(limit), result.GetValue(offset)) is int invalid) return invalid;
             var data = service.SceneAsync(new SceneQueryRequest(null, result.GetValue(selector)!, null, result.GetValue(children), result.GetValue(components), result.GetValue(refs), result.GetValue(limit), result.GetValue(offset)), cancellationToken).GetAwaiter().GetResult();
             var outputData = new SceneDocumentOutput(data.Status, data.Snapshot, data.Scene, data.Candidates, data.Children, data.Components, data.References, data.Containers, SceneCommandSupport.NextOffset(data.HasMore, result.GetValue(offset), result.GetValue(limit)));
-            return SceneCommandSupport.Write(new CommandOutput("scene", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status), writer => SceneCommandSupport.WriteScene(outputData, writer));
+            return SceneCommandSupport.Write(new CommandOutput("scene", result.GetValue(json), output, error), outputData, SceneCommandSupport.FailureFor(data.Status, null, null), writer => SceneCommandSupport.WriteScene(outputData, writer));
         })); return command;
     }
 }

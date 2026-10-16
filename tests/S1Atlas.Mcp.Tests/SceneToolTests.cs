@@ -1,4 +1,5 @@
 using S1Atlas.Application.Envelope;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Indexing.Scene;
 using S1Atlas.Mcp;
@@ -217,6 +218,78 @@ public sealed class SceneToolTests
 
         Assert.Equal(ToolStatus.NotFound, envelope.Status);
         Assert.Equal("NoCompletedSceneIndex", envelope.Error!.Code);
+    }
+
+    [Fact]
+    public async Task ListScenes_NoSceneIndex_HintsSetupSceneOnlyForCurrentBuild()
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        // SeedTwoInstalledBuildsAsync seeds BuildIdB last, so it is current;
+        // BuildIdA is the explicit non-current build.
+        var current = await tools.ListScenesAsync(
+            buildId: null,
+            sceneSnapshotId: null,
+            kind: null,
+            query: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, current.Status);
+        Assert.Equal("NoCompletedSceneIndex", current.Error!.Code);
+        Assert.Equal(ReadinessFixCommands.SetupScene, current.Error.Hint);
+
+        var other = await tools.ListScenesAsync(
+            buildId: atlas.BuildIdA,
+            sceneSnapshotId: null,
+            kind: null,
+            query: null,
+            limit: 50,
+            ct: CancellationToken.None);
+
+        Assert.Equal(ToolStatus.NotFound, other.Status);
+        Assert.Equal("NoCompletedSceneIndex", other.Error!.Code);
+        Assert.Null(other.Error.Hint);
+    }
+
+    [Theory]
+    [InlineData("list_scenes")]
+    [InlineData("get_scene")]
+    [InlineData("get_gameobject")]
+    [InlineData("list_gameobjects")]
+    [InlineData("get_component")]
+    [InlineData("list_components")]
+    [InlineData("get_scriptable_object")]
+    public async Task SceneTools_NoSceneIndex_HintTargetsCurrentBuildOnly(string tool)
+    {
+        await using var atlas = await McpTestAtlas.SeedTwoInstalledBuildsAsync();
+        var tools = CreateTools(atlas);
+
+        var current = await QueryAsync(null, null);
+        var explicitCurrent = await QueryAsync(atlas.BuildIdB, null);
+        var other = await QueryAsync(atlas.BuildIdA, null);
+        var missingSnapshot = await QueryAsync(atlas.BuildIdB, "missing-scene-snapshot");
+
+        Assert.Equal((ToolStatus.NotFound, "NoCompletedSceneIndex", ReadinessFixCommands.SetupScene), current);
+        Assert.Equal((ToolStatus.NotFound, "NoCompletedSceneIndex", ReadinessFixCommands.SetupScene), explicitCurrent);
+        Assert.Equal((ToolStatus.NotFound, "NoCompletedSceneIndex", (string?)null), other);
+        Assert.Equal((ToolStatus.Invalid, "SceneSnapshotNotFound", (string?)null), missingSnapshot);
+
+        async Task<(ToolStatus Status, string Code, string? Hint)> QueryAsync(string? buildId, string? snapshotId) => tool switch
+        {
+            "list_scenes" => ErrorOf(await tools.ListScenesAsync(buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_scene" => ErrorOf(await tools.GetSceneAsync("scene", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_gameobject" => ErrorOf(await tools.GetGameObjectAsync("object", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "list_gameobjects" => ErrorOf(await tools.ListGameObjectsAsync(buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_component" => ErrorOf(await tools.GetComponentAsync("component", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "list_components" => ErrorOf(await tools.ListComponentsAsync("Transform", buildId: buildId, sceneSnapshotId: snapshotId)),
+            "get_scriptable_object" => ErrorOf(await tools.GetScriptableObjectAsync("asset", buildId: buildId, sceneSnapshotId: snapshotId)),
+            _ => throw new ArgumentOutOfRangeException(nameof(tool))
+        };
+
+        static (ToolStatus Status, string Code, string? Hint) ErrorOf<T>(ToolEnvelope<T> envelope) where T : class =>
+            (envelope.Status, envelope.Error!.Code, envelope.Error.Hint);
     }
 
     [Fact]
