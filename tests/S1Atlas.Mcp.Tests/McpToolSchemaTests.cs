@@ -27,6 +27,8 @@ public sealed class McpToolSchemaTests : IClassFixture<SharedHealthyServerFixtur
     [InlineData("find_callers", "channel", new[] { "Installed", "Release", "Preview" })]
     [InlineData("get_type", "codebase", new[] { "scheduleI", "s1api", "s1mapi" })]
     [InlineData("get_type", "channel", new[] { "Installed", "Release", "Preview" })]
+    [InlineData("find_by_attribute", "codebase", new[] { "scheduleI", "s1api", "s1mapi" })]
+    [InlineData("find_by_attribute", "channel", new[] { "Installed", "Release", "Preview" })]
     [InlineData("investigate_seam", "scope", new[] { "Game", "Reference", "All" })]
     [InlineData("plan_runtime_proof", "executionBoundary", new[] { "SinglePlayer", "ListenHost", "DedicatedServer", "Client" })]
     public async Task Enum_parameters_advertise_allowed_values(string tool, string parameter, string[] expected)
@@ -90,7 +92,7 @@ public sealed class McpToolSchemaTests : IClassFixture<SharedHealthyServerFixtur
                 schema.RootElement.GetProperty("properties").GetProperty("codebase").GetProperty("default").GetString());
         }
 
-        Assert.Equal(14, toolsWithCodebase.Count);
+        Assert.Equal(15, toolsWithCodebase.Count);
     }
 
     [Fact]

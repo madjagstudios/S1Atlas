@@ -2,6 +2,7 @@ using S1Atlas.Core.Builds;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Extraction;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Metadata;
 using S1Atlas.Core.ReferenceMods;
 using S1Atlas.Core.Scenes;
 using S1Atlas.Core.Storage;
@@ -335,7 +336,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
         bool includeGeneratedCredit = false,
         bool includeDelegates = false,
-        bool includeRelatedTypesWindow = false)
+        bool includeRelatedTypesWindow = false,
+        bool includeAttributes = false)
     {
         var root = Path.Combine(
             Path.GetTempPath(),
@@ -352,7 +354,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             methodBodyStatus,
             includeGeneratedCredit,
             includeDelegates,
-            includeRelatedTypesWindow);
+            includeRelatedTypesWindow,
+            includeAttributes);
         atlas.IndexId = seeded.IndexId;
         atlas.IndexIdA = seeded.IndexId;
         atlas.ExtractionIdA = seeded.ExtractionId;
@@ -722,7 +725,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
         bool includeGeneratedCredit = false,
         bool includeDelegates = false,
-        bool includeRelatedTypesWindow = false)
+        bool includeRelatedTypesWindow = false,
+        bool includeAttributes = false)
     {
         await SeedCurrentBuildAsync(buildId);
         var seeded = await ExtractionSeed.SeedValidatedExtractionAsync(
@@ -752,7 +756,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
             methodBodyStatus,
             includeGeneratedCredit,
             includeDelegates,
-            includeRelatedTypesWindow);
+            includeRelatedTypesWindow,
+            includeAttributes);
 
         return new HealthySeed(buildId, seeded.Extraction.ExtractionId, seeded.InputSnapshot.InputSnapshotId, resolvedIndexId);
     }
@@ -891,7 +896,8 @@ public sealed class McpTestAtlas : IAsyncDisposable
         BodyRecoveryStatus methodBodyStatus = BodyRecoveryStatus.Unknown,
         bool includeGeneratedCredit = false,
         bool includeDelegates = false,
-        bool includeRelatedTypesWindow = false)
+        bool includeRelatedTypesWindow = false,
+        bool includeAttributes = false)
     {
         var ct = CancellationToken.None;
         string Id(string value) => extractionId == NonAuthoritativeExtractionId
@@ -1110,6 +1116,51 @@ public sealed class McpTestAtlas : IAsyncDisposable
 
             return edges;
         }
+
+        IReadOnlyList<IndexCustomAttributeRecord>? customAttributes = includeAttributes
+            ? [
+                Attribute(
+                    Id("attr-rpc-run"),
+                    snapshotId,
+                    Id(MethodSymbolId),
+                    "Member",
+                    null,
+                    null,
+                    "FishNet.Object.ServerRpcAttribute",
+                    [Primitive(42)],
+                    [Named("RequireOwnership", Primitive(false))]),
+                Attribute(
+                    Id("attr-rpc-execute"),
+                    snapshotId,
+                    Id("method-service-execute"),
+                    "Member",
+                    null,
+                    null,
+                    "Other.ServerRpcAttribute",
+                    [],
+                    []),
+                Attribute(
+                    Id("attr-obsolete-widget"),
+                    snapshotId,
+                    Id("type-widget"),
+                    "Type",
+                    null,
+                    null,
+                    "System.ObsoleteAttribute",
+                    [StringValue("Use Demo.Widget2")],
+                    []),
+                Attribute(
+                    Id("attr-validate-run"),
+                    snapshotId,
+                    Id(MethodSymbolId),
+                    "Parameter",
+                    0,
+                    "payload",
+                    "Demo.Annotations.ValidateAttribute",
+                    [],
+                    [])
+            ]
+            : null;
 
         await _repository.CompleteIndexRunAsync(
             indexId,
@@ -1419,10 +1470,49 @@ public sealed class McpTestAtlas : IAsyncDisposable
                     false,
                     CallableSurfaceStatus.Resolved,
                     InteropInputTrust.LocalOnly,
-                    "wrapper forwards through il2cpp_runtime_invoke")]),
+                    "wrapper forwards through il2cpp_runtime_invoke")],
+                CustomAttributes: customAttributes),
             BaseTime.AddMinutes(21).ToString("O"),
             ct);
     }
+
+    private static IndexCustomAttributeRecord Attribute(
+        string attributeId,
+        string snapshotId,
+        string symbolId,
+        string target,
+        int? parameterIndex,
+        string? parameterName,
+        string attributeType,
+        IReadOnlyList<CustomAttributeValue> fixedArguments,
+        IReadOnlyList<CustomAttributeNamedArgument> namedArguments) =>
+        new(
+            attributeId,
+            snapshotId,
+            symbolId,
+            target,
+            parameterIndex,
+            parameterName,
+            attributeType,
+            CustomAttributeJson.ToJson(new DecodedCustomAttribute(attributeType, fixedArguments, namedArguments)));
+
+    private static CustomAttributeValue Primitive(object value) =>
+        new(
+            CustomAttributeValueKind.Primitive,
+            value,
+            value switch
+            {
+                int => "System.Int32",
+                bool => "System.Boolean",
+                _ => throw new ArgumentOutOfRangeException(nameof(value), "Unsupported test primitive.")
+            },
+            null);
+
+    private static CustomAttributeValue StringValue(string value) =>
+        new(CustomAttributeValueKind.String, value, "System.String", null);
+
+    private static CustomAttributeNamedArgument Named(string name, CustomAttributeValue value) =>
+        new(name, value);
 
     private sealed record HealthySeed(
         string BuildId,

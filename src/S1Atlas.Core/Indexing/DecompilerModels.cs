@@ -1,3 +1,5 @@
+using S1Atlas.Core.Metadata;
+
 namespace S1Atlas.Core.Indexing;
 
 public sealed record ManagedDecompilation(
@@ -13,7 +15,8 @@ public sealed record ManagedTypeFacts(
     IReadOnlyList<string> Interfaces,
     IReadOnlyList<ManagedMemberFacts> Members,
     bool IsInterface = false,
-    bool IsCompilerGenerated = false);
+    bool IsCompilerGenerated = false,
+    IReadOnlyList<DecodedCustomAttribute>? Attributes = null);
 
 public sealed record ManagedMemberFacts(
     string Name,
@@ -36,14 +39,23 @@ public sealed record ManagedMemberFacts(
     bool IsAsyncStateMachine = false,
     IReadOnlyList<ManagedPatchFact>? Patches = null,
     IReadOnlyList<ManagedReflectionFact>? Reflections = null,
-    IReadOnlyList<string>? TypeReferences = null)
+    IReadOnlyList<string>? TypeReferences = null,
+    IReadOnlyList<DecodedCustomAttribute>? Attributes = null,
+    IReadOnlyList<ManagedParameterAttributes>? ParameterAttributes = null)
 {
     public IReadOnlyList<string> ParameterTypesOrEmpty => ParameterTypes ?? [];
     public IReadOnlyList<string> MethodImplDeclarationsOrEmpty => MethodImplDeclarations ?? [];
     public IReadOnlyList<ManagedPatchFact> PatchesOrEmpty => Patches ?? [];
     public IReadOnlyList<ManagedReflectionFact> ReflectionsOrEmpty => Reflections ?? [];
     public IReadOnlyList<string> TypeReferencesOrEmpty => TypeReferences ?? [];
+    public IReadOnlyList<DecodedCustomAttribute> AttributesOrEmpty => Attributes ?? [];
+    public IReadOnlyList<ManagedParameterAttributes> ParameterAttributesOrEmpty => ParameterAttributes ?? [];
 }
+
+public sealed record ManagedParameterAttributes(
+    int Index,
+    string Name,
+    IReadOnlyList<DecodedCustomAttribute> Attributes);
 
 public enum ManagedReflectionKind
 {

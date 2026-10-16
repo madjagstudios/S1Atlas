@@ -3,6 +3,7 @@ using System.Text;
 using ICSharpCode.Decompiler.CSharp;
 using S1Atlas.Core.Environment;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Metadata;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Decompilation;
 using S1Atlas.Indexing.Fingerprints;
@@ -134,6 +135,7 @@ public sealed class ApiIndexingWorkflow
                 BuildMethodEvidence(decompilation, symbols, codebase),
                 BuildSourceEvidence(sourceSymbols, symbols, decompilation.SourceText));
             var relationships = BuildRelationships(decompilation, symbols, snapshotId, codebase);
+            var attributes = BuildAttributes(decompilation, symbols, snapshotId, codebase);
 
             var writtenPath = Path.Combine(paths.StagingRoot, sourceFile.RelativePath.Replace('/', Path.DirectorySeparatorChar));
             var writtenHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(writtenPath, cancellationToken))).ToLowerInvariant();
@@ -142,7 +144,7 @@ public sealed class ApiIndexingWorkflow
 
             await _repository.CompleteIndexRunAsync(
                 indexId,
-                new IndexWriteSet(symbols, [sourceFile], sourceLocations, fingerprints, relationships),
+                new IndexWriteSet(symbols, [sourceFile], sourceLocations, fingerprints, relationships, CustomAttributes: attributes),
                 DateTimeOffset.UtcNow.ToString("O"),
                 cancellationToken);
             databaseCompleted = true;
@@ -361,7 +363,7 @@ public sealed class ApiIndexingWorkflow
         _ => throw new ArgumentOutOfRangeException(nameof(codebase))
     };
 
-    private static IReadOnlyList<IndexSymbolRecord> BuildSymbols(
+    internal static IReadOnlyList<IndexSymbolRecord> BuildSymbols(
         ManagedDecompilation decompilation,
         string snapshotId,
         CodebaseKind codebase)
@@ -482,6 +484,85 @@ public sealed class ApiIndexingWorkflow
             .Select(group => group.First())
             .OrderBy(relationship => relationship.RelationshipId, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    internal static IReadOnlyList<IndexCustomAttributeRecord> BuildAttributes(
+        ManagedDecompilation decompilation,
+        IReadOnlyList<IndexSymbolRecord> symbols,
+        string snapshotId,
+        CodebaseKind codebase)
+    {
+        var symbolIds = symbols.ToDictionary(symbol => symbol.CanonicalKey, symbol => symbol.SymbolId, StringComparer.Ordinal);
+        var attributes = new List<IndexCustomAttributeRecord>();
+        var ordinals = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var type in decompilation.Types)
+        {
+            var typeKey = SymbolIdentity.Create(codebase, CodeChannel.Installed, SymbolKind.Type, type.FullName).CanonicalKey;
+            if (symbolIds.TryGetValue(typeKey, out var typeSymbolId))
+            {
+                foreach (var attribute in type.Attributes ?? [])
+                    AddAttribute(attributes, ordinals, snapshotId, typeSymbolId, "Type", null, null, attribute);
+            }
+            foreach (var member in type.Members)
+            {
+                var memberName = ManagedMemberIdentity.Render(type.FullName, member);
+                var key = SymbolIdentity.Create(codebase, CodeChannel.Installed, ToSymbolKind(member.Kind), memberName).CanonicalKey;
+                if (!symbolIds.TryGetValue(key, out var symbolId))
+                    continue;
+                foreach (var attribute in member.AttributesOrEmpty)
+                    AddAttribute(attributes, ordinals, snapshotId, symbolId, "Member", null, null, attribute);
+                foreach (var parameter in member.ParameterAttributesOrEmpty)
+                {
+                    foreach (var attribute in parameter.Attributes)
+                        AddAttribute(attributes, ordinals, snapshotId, symbolId, "Parameter", parameter.Index, parameter.Name, attribute);
+                }
+            }
+        }
+        return attributes
+            .OrderBy(attribute => attribute.AttributeId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static void AddAttribute(
+        List<IndexCustomAttributeRecord> attributes,
+        Dictionary<string, int> ordinals,
+        string snapshotId,
+        string symbolId,
+        string target,
+        int? parameterIndex,
+        string? parameterName,
+        DecodedCustomAttribute attribute)
+    {
+        var attributeType = attribute.AttributeTypeName;
+        // The metadata reader already drops injected analysis attributes; the
+        // workflow repeats the filter so a stale or synthetic fact set can never
+        // persist them as game attributes either.
+        if (string.IsNullOrEmpty(attributeType) || AnalysisAttributeFilter.IsAnalysisAttribute(attributeType))
+            return;
+        var argsJson = CustomAttributeJson.ToJson(attribute);
+        // The per-symbol ordinal keeps the id unique when one target repeats the
+        // same attribute with identical arguments (AllowMultiple); enumeration
+        // order is deterministic, so the id stays deterministic too.
+        var ordinal = ordinals.TryGetValue(symbolId, out var count) ? count : 0;
+        ordinals[symbolId] = ordinal + 1;
+        attributes.Add(new IndexCustomAttributeRecord(
+            HashId(string.Join(
+                "\n",
+                snapshotId,
+                symbolId,
+                target,
+                parameterIndex?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                parameterName ?? string.Empty,
+                attributeType,
+                argsJson,
+                ordinal.ToString(System.Globalization.CultureInfo.InvariantCulture))),
+            snapshotId,
+            symbolId,
+            target,
+            parameterIndex,
+            parameterName,
+            attributeType,
+            argsJson));
     }
 
     private static SymbolKind ToSymbolKind(ManagedMemberKind kind) => kind switch

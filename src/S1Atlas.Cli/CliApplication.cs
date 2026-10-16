@@ -330,6 +330,7 @@ public sealed class CliApplication
             sqliteRepository,
             new IlSpyManagedDecompiler());
         var indexQueryService = new IndexQueryService(sqliteRepository, _paths.RootDirectory);
+        var apiIndexQueryService = new ApiIndexQueryService(sqliteRepository, indexQueryService);
         var referenceQueryService = new ReferenceModQueryService(sqliteRepository, _paths.RootDirectory);
         var federatedIndexQueryService = new FederatedIndexQueryService(sqliteRepository, _paths.RootDirectory);
         var seamInvestigationService = new SeamInvestigationService(
@@ -495,6 +496,7 @@ public sealed class CliApplication
         root.Subcommands.Add(SearchCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(TypeCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(MethodCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
+        root.Subcommands.Add(AttributesCommand.Create(indexQueryService, apiIndexQueryService, authorityResolver, repository, output, error, cancellationToken));
         root.Subcommands.Add(OpenCommand.Create(indexQueryService, authorityResolver, repository, _browserLauncher, output, error, cancellationToken));
         root.Subcommands.Add(InvestigateSeamCommand.Create(seamInvestigationService, referenceQueryService, authorityResolver, repository, sqliteRepository, _paths.RootDirectory, output, error, cancellationToken));
         root.Subcommands.Add(SourceCommand.Create(indexQueryService, federatedIndexQueryService, authorityResolver, repository, _paths.RootDirectory, output, error, cancellationToken));

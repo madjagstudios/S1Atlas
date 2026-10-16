@@ -115,6 +115,41 @@ public sealed class ApiIndexQueryService
             includeGenerated);
     }
 
+    public async Task<AttributeSearchResult> FindByAttributeSelectedAsync(
+        ApiIndexSelection selection,
+        string attributeType,
+        IReadOnlyList<string> args,
+        int limit,
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
+    {
+        ArgumentNullException.ThrowIfNull(selection);
+        ValidateApiScope(selection.Codebase, selection.Channel);
+        ArgumentException.ThrowIfNullOrWhiteSpace(attributeType);
+        ArgumentNullException.ThrowIfNull(args);
+        ValidateLimit(limit, nameof(limit));
+
+        var run = await GetSelectedRunAsync(selection, cancellationToken);
+        if (run is null)
+        {
+            return new AttributeSearchResult(
+                0,
+                0,
+                [],
+                SymbolResolutionStatus.NoCompletedIndex);
+        }
+
+        return await _indexQueryService.FindByAttributeInIndexAsync(
+            run,
+            selection.Codebase,
+            selection.Channel,
+            attributeType,
+            args,
+            limit,
+            cancellationToken,
+            includeGenerated);
+    }
+
     public async Task<SymbolSearchResult> SearchRankedSelectedAsync(
         ApiIndexSelection selection,
         string selector,

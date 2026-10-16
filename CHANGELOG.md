@@ -9,17 +9,18 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 ### Upgrading
 
 - Run `s1atlas doctor` first, then run the command it prints (`s1atlas status`)
-  to migrate the database to schema 20, which stores each installed
-  dependency DLL's hash (AT-131). The pre-migration backup is a full copy of
-  `atlas.db`, so make sure you have that much free disk space. Until the upgrade
-  runs, serve and the MCP server refuse queries with the `s1atlas status` hint,
-  and S1Atlas 2.1.0 and earlier cannot open a migrated atlas, so update the CLI
-  and MCP tools together.
+  to migrate the database to schema 21, which stores each installed
+  dependency DLL's hash (AT-131) and each indexed custom attribute (AT-69).
+  The pre-migration backup is a full copy of `atlas.db`, so make sure you have
+  that much free disk space. Until the upgrade runs, serve and the MCP server
+  refuse queries with the `s1atlas status` hint, and S1Atlas 2.1.0 and earlier
+  cannot open a migrated atlas, so update the CLI and MCP tools together.
 - Then run `s1atlas scan` once so the installed S1API/S1MAPI DLL hashes are
   recorded; until then `doctor` asks for a rescan (AT-131).
-- Run `s1atlas index` once. The code index format changed (AT-140), so
-  the current build is re-indexed instead of reused and callable evidence is
-  rebuilt. API and reference-mod indexes also rebuild the next time they run.
+- Run `s1atlas index` once, after the scan. The code index format changed
+  (AT-140, AT-69), so the current build is re-indexed instead of reused and
+  callable evidence is rebuilt. API and reference-mod indexes also rebuild the
+  next time they run.
 - To compare against an older build with `check-mod` or `diff`, re-index that
   build too: `s1atlas index --build <build-id>` (AT-140).
 
@@ -44,6 +45,12 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
   or S1MAPI DLL, and reports it stale when the DLL changed since the index was
   built. Installed-channel `s1api`/`s1mapi` queries then report the index as
   stale instead of answering from the old DLL's members (AT-131).
+- `s1atlas attributes <AttributeType>` and the MCP tool `find_by_attribute` find
+  indexed symbols by custom attribute, for example FishNet `[ServerRpc]` methods
+  or `[SerializeField]` fields, in the game index or an installed S1API/S1MAPI
+  index. `--arg` filters on attribute arguments. `type`/`method` and
+  `get_type`/`get_method` now list each symbol's attributes. Attributes that
+  Cpp2IL injects (`Cpp2ILInjected.*`) are never reported (AT-69).
 
 ### Fixed
 

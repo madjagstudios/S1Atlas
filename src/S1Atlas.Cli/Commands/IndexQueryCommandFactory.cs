@@ -5,6 +5,7 @@ using S1Atlas.Application.Readiness;
 using S1Atlas.Cli.Output;
 using S1Atlas.Core;
 using S1Atlas.Core.Indexing;
+using S1Atlas.Core.Metadata;
 using S1Atlas.Core.Storage;
 using S1Atlas.Indexing.Query;
 
@@ -338,6 +339,17 @@ internal static class IndexQueryCommandFactory
         Resolution: result.Resolution,
         CompletenessNotice: result.CompletenessNotice);
 
+    internal static IndexQueryOutput ToOutput(AttributeSearchResult result) => new(
+        [],
+        [],
+        [],
+        TotalCount: result.TotalCount,
+        ReturnedCount: result.ReturnedCount,
+        Resolution: result.ResolutionStatus is { } status
+            ? new SymbolResolutionResult(status, null, [])
+            : null,
+        AttributeHits: result.Results);
+
     internal static IndexQueryOutput ToOutput(HierarchyQueryResult result) => new(
         [],
         result.Nodes.Select(node => node.Edge).ToArray(),
@@ -374,7 +386,20 @@ internal static class IndexQueryCommandFactory
             writer.WriteLine($"Exact {exactCount}. Derived {derivedCount}.");
 
         foreach (var symbol in data.Symbols)
+        {
             writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.ShortId ?? ShortId.Display(symbol.SymbolId)}");
+            WriteAttributes(writer, symbol.Attributes);
+        }
+
+        if (data.AttributeHits is { } attributeHits)
+        {
+            foreach (var hit in attributeHits)
+            {
+                var symbol = hit.Symbol;
+                writer.WriteLine($"{symbol.Channel} | {symbol.Kind} | {symbol.QualifiedName} | {symbol.Signature} | {symbol.ShortId ?? ShortId.Display(symbol.SymbolId)}");
+                WriteAttributes(writer, hit.MatchingAttributes);
+            }
+        }
 
         if (data.HierarchyNodes is { } hierarchyNodes)
         {
@@ -425,6 +450,30 @@ internal static class IndexQueryCommandFactory
 
         foreach (var source in data.Sources)
             writer.WriteLine($"{source.RelativePath} | {source.Provenance}");
+    }
+
+    internal static void WriteAttributes(TextWriter writer, IReadOnlyList<AttributeQueryResult>? attributes)
+    {
+        if (attributes is null)
+            return;
+
+        foreach (var attribute in attributes)
+        {
+            var rendered = attribute.FixedArguments
+                .Select(CustomAttributeRendering.CanonicalValue)
+                .Concat(attribute.NamedArguments.Select(named =>
+                    $"{named.Name}={CustomAttributeRendering.CanonicalValue(named.Value)}"));
+            var target = attribute.Target;
+            if (string.Equals(target, "Parameter", StringComparison.Ordinal))
+            {
+                if (attribute.ParameterIndex.HasValue)
+                    target += $"[{attribute.ParameterIndex.Value}]";
+                if (!string.IsNullOrEmpty(attribute.ParameterName))
+                    target += $" '{attribute.ParameterName}'";
+            }
+
+            writer.WriteLine($"  [{attribute.AttributeType}({string.Join(", ", rendered)})] {target}");
+        }
     }
 
     private static string FormatEndpoint(RelationshipEndpointQueryResult endpoint)

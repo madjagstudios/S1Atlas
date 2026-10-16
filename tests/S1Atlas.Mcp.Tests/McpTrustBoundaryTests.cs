@@ -37,6 +37,7 @@ public sealed class McpTrustBoundaryTests
         Assert.Equal(
             [
                 "compare_symbol",
+                "find_by_attribute",
                 "find_call_sites",
                 "find_callees",
                 "find_callers",
@@ -237,8 +238,9 @@ public sealed class McpTrustBoundaryTests
         var atlas = _scenes.Atlas;
 
         var schemas = await McpTestHost.GetToolSchemasAsync(_scenes.Client);
-        Assert.Equal(27, schemas.Count);
+        Assert.Equal(28, schemas.Count);
         AssertSchema(schemas["compare_symbol"], ["selector", "buildIdA", "buildIdB"], ["selector"]);
+        AssertSchema(schemas["find_by_attribute"], ["attribute", "args", "codebase", "channel", "buildId", "limit", "includeGenerated"], ["attribute"]);
         AssertSchema(schemas["find_call_sites"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection"], ["selector"]);
         AssertSchema(schemas["find_callees"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "includeGenerated", "includeDelegates"], ["selector"]);
         AssertSchema(schemas["find_callers"], ["selector", "codebase", "channel", "buildId", "limit", "cursor", "scope", "collection", "exact", "includeGenerated", "includeDelegates"], ["selector"]);
@@ -276,6 +278,7 @@ public sealed class McpTrustBoundaryTests
         {
             ["compare_symbol"] = new Dictionary<string, object?> { ["selector"] = atlas.CompareSelector },
 
+            ["find_by_attribute"] = new Dictionary<string, object?> { ["attribute"] = "ServerRpcAttribute" },
             ["find_call_sites"] = new Dictionary<string, object?> { ["selector"] = atlas.EngineCallSiteSelector },
             ["find_callees"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
             ["find_callers"] = new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector },
@@ -905,6 +908,8 @@ internal static class McpTestHost
             policyGateSatisfied: true);
 
         await code.SearchSymbolsAsync(atlas.KnownSymbolFragment, McpCodebase.scheduleI, CodeChannel.Installed, null, null, 50, ct);
+        await code.FindByAttributeAsync("ServerRpcAttribute", null, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, false, ct);
+        await code.FindByAttributeAsync(" ", null, McpCodebase.scheduleI, CodeChannel.Installed, null, 50, false, ct);
         await code.GetTypeAsync(atlas.TypeSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, ct: ct);
         await code.GetTypeAsync(" ", McpCodebase.scheduleI, CodeChannel.Installed, null, ct: ct);
         await code.GetMethodAsync(atlas.MethodSelector, McpCodebase.scheduleI, CodeChannel.Installed, null, ct: ct);

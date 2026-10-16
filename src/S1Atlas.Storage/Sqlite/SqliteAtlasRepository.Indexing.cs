@@ -94,7 +94,8 @@ public sealed partial class SqliteAtlasRepository
 
             if (writeSet.Symbols.Any(symbol => !string.Equals(symbol.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
                 writeSet.SourceFiles.Any(file => !string.Equals(file.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
-                writeSet.Relationships.Any(edge => !string.Equals(edge.SnapshotId, snapshotId, StringComparison.Ordinal)))
+                writeSet.Relationships.Any(edge => !string.Equals(edge.SnapshotId, snapshotId, StringComparison.Ordinal)) ||
+                (writeSet.CustomAttributes ?? []).Any(attribute => !string.Equals(attribute.SnapshotId, snapshotId, StringComparison.Ordinal)))
                 throw new InvalidOperationException("Index write-set rows must belong to the running snapshot.");
 
             ValidateCallableSurfaceOwnership(indexId, snapshotId, writeSet.Symbols, writeSet.CallableSurface ?? []);
@@ -115,6 +116,7 @@ public sealed partial class SqliteAtlasRepository
             await InsertSourceLocationsAsync(connection, transaction, writeSet.SourceLocations, cancellationToken);
             await InsertFingerprintsAsync(connection, transaction, writeSet.Fingerprints, cancellationToken);
             await InsertRelationshipsAsync(connection, transaction, writeSet.Relationships, cancellationToken);
+            await InsertCustomAttributesAsync(connection, transaction, writeSet.CustomAttributes ?? [], cancellationToken);
             await InsertCallableSurfaceAsync(connection, transaction, writeSet.CallableSurface ?? [], cancellationToken);
 
             await using var update = connection.CreateCommand();
