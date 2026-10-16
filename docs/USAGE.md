@@ -523,7 +523,48 @@ s1atlas game-object <game-object-id-or-scene-id/name> --children --components --
 s1atlas prefab <prefab-id-or-exact-name> --objects --components
 s1atlas component <component-id-or-exact-type> --refs --code --json
 s1atlas scriptable-object <asset-id-or-exact-name-or-Namespace.Class> --json
+s1atlas game-objects --query forklift
+s1atlas game-objects --query truck --scene Main --offset 50
+s1atlas components ScheduleOne.Vehicles.LandVehicle --fields vehicleName,vehicleCode,vehiclePrice
+s1atlas components ScheduleOne.Vehicles.LandVehicle --derived --scene Main
+s1atlas game-object <game-object-id> --incoming --external
+s1atlas component <component-id> --incoming
 ```
+
+#### Searching, listing, and incoming references
+
+- `game-objects` finds objects whose name contains a case-insensitive fragment,
+  across the whole snapshot or within one scene or prefab document (`--scene`,
+  a scene ID or exact name). Each row names its scene. MCP: `list_gameobjects`.
+- `components <type>` lists every component of one exact type (a Unity kind
+  such as `Transform`, or a script's `Namespace.Class`) with its game object.
+  `--fields a,b` adds only those decoded script-field paths; a path also
+  selects the leaves under it (`driveWheels` returns `driveWheels.Array.size`
+  and each `driveWheels.Array[n]`). The values are FACT, as with `component`.
+  When the type is in the same-build code index, components are matched by
+  their resolved type symbol (`matched by ResolvedCodeSymbol`), and `--derived`
+  adds every type the code index records as inheriting from or implementing
+  it. Otherwise they are matched by exact script text (`matched by ScriptText`),
+  which scans the snapshot's components and cannot add derived types. MCP:
+  `list_components` (`fields`, `includeDerived`).
+- `--incoming` on `game-object` and `component` lists the decoded script-field
+  pointers elsewhere in the snapshot whose target is the selected object (for a
+  game object, the object or any of its components). Each row says whether its
+  source sits `inside` the target's own hierarchy (the object or a descendant)
+  or `outside` it; rows from outside come first, and `--external` keeps only
+  those. Engine pointers (`m_GameObject`, `m_Component`, `m_Father`,
+  `m_Children`) are attachment and hierarchy links, reported by
+  `--components` and `--children`, not here. The summary line reports how many
+  field sets were searched, how many were unavailable or truncated, and how
+  many script owners were never parsed at all. A pointer in one of those cannot
+  be seen, and code that finds an object at runtime (`Resources.Load`,
+  `FindObjectOfType`) leaves no pointer at all, so an empty answer is limited
+  to that coverage and is not proof that nothing uses the object. MCP:
+  `includeIncoming` (`externalOnly`) on `get_gameobject` and `get_component`.
+- `--offset <n>` on `scene`, `prefab`, `game-object`, `component`,
+  `game-objects`, and `components` skips that many rows in every returned list,
+  and the output ends with the next offset when more rows remain. The MCP
+  tools return `nextCursor` instead.
 
 Compare two indexed builds to see what changed:
 
@@ -905,7 +946,7 @@ tools:
 | Symbol search | `search_symbols`, `get_type`, `get_method`, `get_source`, `get_callable_surface` |
 | Relationships | `find_callers`, `find_callees`, `find_call_sites`, `find_field_references`, `find_patches`, `find_references`, `find_related_types` |
 | Hierarchy | `find_overrides`, `find_overriders`, `find_derived_types` |
-| Scenes | `list_scenes`, `get_scene`, `get_gameobject`, `get_component`, `get_scriptable_object` |
+| Scenes | `list_scenes`, `get_scene`, `get_gameobject`, `list_gameobjects`, `get_component`, `list_components`, `get_scriptable_object` |
 | Builds and collections | `list_builds`, `get_environment`, `list_api_indexes`, `list_reference_collections` |
 | Analysis | `compare_symbol`, `investigate_seam`, `plan_runtime_proof` |
 
@@ -1230,7 +1271,8 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas callers <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--exact] [--include-generated] [--include-delegates] [--json]` | Find callers of one resolved symbol, including may-dispatch callers reached through overrides and interface implementations. |
 | `s1atlas check-mod <path-to-mod.dll> [--from] [--to] [--json]` | Check a mod's game dependencies after an update. |
 | `s1atlas completion <shell>` | Print a shell completion script that completes s1atlas commands and options. |
-| `s1atlas component <component-id|exact-type-selector> [--refs] [--code] [--limit] [--json]` | Query one indexed component. |
+| `s1atlas component <component-id|exact-type-selector> [--refs] [--code] [--incoming] [--external] [--limit] [--offset] [--json]` | Query one indexed component. |
+| `s1atlas components <exact-type> [--derived] [--fields] [--scene] [--build] [--snapshot] [--limit] [--offset] [--json]` | List indexed components of one type with selected decoded field values. |
 | `s1atlas derived <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--offset] [--json]` | Show the subclasses and implementers of a type, transitively. |
 | `s1atlas diff <id-a> <id-b> [--codebase] [--channel] [--kind] [--limit] [--json]` | Compare two indexed builds and report per-symbol changes. |
 | `s1atlas doctor [--json]` | Check atlas pipeline readiness. |
@@ -1241,7 +1283,8 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas extractions promote <extraction-id> [--json]` | Explicitly make a validated extraction the preferred output for its build. |
 | `s1atlas extractions show <id> [--json]` | Show a validated extraction (full integrity) or an attempt's facts. |
 | `s1atlas field-refs <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--readers] [--writers] [--include-generated] [--json]` | Find field read/write relationships for one resolved symbol. |
-| `s1atlas game-object <game-object-id|scene-id/name> [--children] [--components] [--refs] [--limit] [--json]` | Query one indexed game object. |
+| `s1atlas game-object <game-object-id|scene-id/name> [--children] [--components] [--refs] [--incoming] [--external] [--limit] [--offset] [--json]` | Query one indexed game object. |
+| `s1atlas game-objects [--query] [--scene] [--build] [--snapshot] [--limit] [--offset] [--json]` | Find indexed game objects by a name fragment, across the snapshot or within one scene. |
 | `s1atlas index [--force] [--scene] [--build] [--codebase] [--channel] [--commit] [--interop-path] [--performance] [--json]` | Build the installed Schedule I source and symbol index. |
 | `s1atlas investigate-seam <selector> --question [--codebase] [--channel] [--build] [--scope] [--collection] [--relationship-limit] [--owner-limit] [--context] [--details] [--native-symbol-id] [--native-traversal-budget] [--json]` | Investigate whether a resolved symbol is a supportable ownership seam. |
 | `s1atlas method <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | Resolve and inspect indexed method definitions. |
@@ -1249,14 +1292,14 @@ eval "$(s1atlas completion zsh)"
 | `s1atlas overridden-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--depth] [--json]` | Show the methods that override or implement a method, transitively. |
 | `s1atlas overrides <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Show the base and interface slots a method fills, up to the root. |
 | `s1atlas patched-by <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--json]` | Find reference-mod Harmony patches targeting one game method, including unresolved patches that name the method. |
-| `s1atlas prefab <prefab-id|exact-name> [--objects] [--components] [--refs] [--limit] [--json]` | Query one proven prefab document. |
+| `s1atlas prefab <prefab-id|exact-name> [--objects] [--components] [--refs] [--limit] [--offset] [--json]` | Query one proven prefab document. |
 | `s1atlas recover-native-body [--symbol-id] [--native-traversal-budget] [--build] [--verbose] [--json]` | Recover native method bodies for the selected symbols and persist the result. |
 | `s1atlas reference collections list [--json]` | List completed local reference-mod collections. |
 | `s1atlas reference collections validate <manifest> [--json]` | Validate and hash a local reference-mod collection manifest. |
 | `s1atlas reference index <manifest> [--force] [--json]` | Build a local reference-mod index. |
 | `s1atlas refs <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | List indexed references to a resolved symbol. |
 | `s1atlas scan [--game-path] [--performance]` | Discover the local Schedule I environment and save a build snapshot. |
-| `s1atlas scene <scene-id|exact-name> [--children] [--components] [--refs] [--limit] [--json]` | Query one indexed scene document. |
+| `s1atlas scene <scene-id|exact-name> [--children] [--components] [--refs] [--limit] [--offset] [--json]` | Query one indexed scene document. |
 | `s1atlas scenes [--build] [--snapshot] [--kind] [--query] [--limit] [--json]` | List indexed scene and proven prefab documents. |
 | `s1atlas scriptable-object <asset-id|exact-name|namespace.class> [--json]` | Query one indexed scriptable asset (ScriptableObject) and its decoded fields. |
 | `s1atlas search <query> [--codebase] [--channel] [--build] [--limit] [--scope] [--collection] [--include-generated] [--json]` | Query the normalized code index across symbols, types, and methods. |

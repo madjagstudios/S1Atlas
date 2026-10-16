@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using ModelContextProtocol.Server;
 using S1Atlas.Application.Authority;
 using S1Atlas.Application.Envelope;
@@ -80,10 +81,11 @@ public sealed class SceneTools
         [Description("Include components.")] bool includeComponents = false,
         [Description("Include references.")] bool includeReferences = false,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
-        CancellationToken ct = default) =>
-        GetDocumentAsync(selector, buildId, sceneSnapshotId, kind, includeChildren, includeComponents, includeReferences, limit, ct);
+        CancellationToken ct = default,
+        [Description("Cursor for the next page of every included list; reuse arguments verbatim.")] string? cursor = null) =>
+        GetDocumentAsync(selector, buildId, sceneSnapshotId, kind, includeChildren, includeComponents, includeReferences, limit, cursor, ct);
 
-    [McpServerTool(Name = "get_gameobject", Title = "Get game object", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I game object.")]
+    [McpServerTool(Name = "get_gameobject", Title = "Get game object", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I game object by ID or scene-id/exact-name. Use list_gameobjects to find objects by a name fragment.")]
     public async Task<ToolEnvelope<GameObjectQueryResult>> GetGameObjectAsync(
         [Description("Exact or fuzzy game object selector.")] string selector,
         [Description("Build ID; omit for current.")] string? buildId = null,
@@ -92,7 +94,10 @@ public sealed class SceneTools
         [Description("Include components.")] bool includeComponents = false,
         [Description("Include references.")] bool includeReferences = false,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Include decoded script-field references in the snapshot that point at this object or one of its components.")] bool includeIncoming = false,
+        [Description("With includeIncoming, keep only references from outside this object's own hierarchy.")] bool externalOnly = false,
+        [Description("Cursor for the next page of every included list; reuse arguments verbatim.")] string? cursor = null)
     {
         return await WithAuthorityAsync(buildId, ct, async authority =>
         {
@@ -100,12 +105,12 @@ public sealed class SceneTools
             try
             {
                 var boundedLimit = BoundLimit(limit);
-                return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
-                {
-                    var result = await _services.SceneQueryService.GameObjectAsync(
-                        new GameObjectQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "game-object-query");
-                });
+                return await PagedAsync(authority, sceneSnapshotId, cursor, "get_gameobject", boundedLimit,
+                    [buildId, sceneSnapshotId, selector, Flag(includeChildren), Flag(includeComponents), Flag(includeReferences), Flag(includeIncoming), Flag(externalOnly)],
+                    (snapshot, offset) => _services.SceneQueryService.GameObjectAsync(
+                        new GameObjectQueryRequest(snapshot.SceneSnapshotId, selector, includeChildren, includeComponents, includeReferences, boundedLimit, includeIncoming, externalOnly, offset), ct),
+                    result => result.HasMore, (result, next) => result with { NextCursor = next },
+                    (resolved, result) => FromResult(resolved, result.Status, result, result.Candidates.Cast<object>().ToArray(), "game-object-query"), ct);
             }
             catch (ArgumentOutOfRangeException exception)
             {
@@ -114,6 +119,34 @@ public sealed class SceneTools
         });
     }
 
+    [McpServerTool(Name = "list_gameobjects", Title = "List game objects", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find indexed game objects whose name contains a case-insensitive fragment, across the scene snapshot or within one scene or prefab document. Paged.")]
+    public async Task<ToolEnvelope<GameObjectListResult>> ListGameObjectsAsync(
+        [Description("Case-insensitive name fragment; omit to list every object in scope.")] string? query = null,
+        [Description("Optional scene or prefab document: scene ID or exact name.")] string? scene = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
+        [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
+        [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
+        CancellationToken ct = default,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null)
+    {
+        return await WithAuthorityAsync(buildId, ct, async authority =>
+        {
+            try
+            {
+                var boundedLimit = BoundLimit(limit);
+                return await PagedAsync(authority, sceneSnapshotId, cursor, "list_gameobjects", boundedLimit,
+                    [buildId, sceneSnapshotId, query, scene],
+                    (snapshot, offset) => _services.SceneQueryService.GameObjectsAsync(
+                        new GameObjectListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, query, scene, boundedLimit, offset), ct),
+                    result => result.HasMore, (result, next) => result with { NextCursor = next },
+                    (resolved, result) => FromResult(resolved, result.Status, result, result.SceneCandidates.Cast<object>().ToArray(), "game-object-list"), ct);
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return Invalid<GameObjectListResult>(authority, "InvalidLimit", exception.Message);
+            }
+        });
+    }
 
     [McpServerTool(Name = "get_scriptable_object", Title = "Get ScriptableObject", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one asset-level Schedule I ScriptableObject (no GameObject) by asset ID, exact asset name, or exact Namespace.Class, with decoded script field values when restored.")]
     public async Task<ToolEnvelope<ScriptableAssetQueryResult>> GetScriptableObjectAsync(
@@ -134,7 +167,7 @@ public sealed class SceneTools
         });
     }
 
-    [McpServerTool(Name = "get_component", Title = "Get component", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I component with decoded script field values when restored, plus its resolved code-symbol handoff when requested.")]
+    [McpServerTool(Name = "get_component", Title = "Get component", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Resolve one indexed Schedule I component with decoded script field values when restored, plus its resolved code-symbol handoff when requested. Use list_components to list every component of a type.")]
     public async Task<ToolEnvelope<ComponentQueryResult>> GetComponentAsync(
         [Description("Exact or fuzzy component selector.")] string selector,
         [Description("Build ID; omit for current.")] string? buildId = null,
@@ -142,7 +175,10 @@ public sealed class SceneTools
         [Description("Include scene references originating at the component.")] bool includeReferences = false,
         [Description("Require the component's exact resolved code-symbol handoff.")] bool includeCode = false,
         [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("Include decoded script-field references in the snapshot that point at this component.")] bool includeIncoming = false,
+        [Description("With includeIncoming, keep only references from outside the component's own game object hierarchy.")] bool externalOnly = false,
+        [Description("Cursor for the next page of every included list; reuse arguments verbatim.")] string? cursor = null)
     {
         return await WithAuthorityAsync(buildId, ct, async authority =>
         {
@@ -150,12 +186,12 @@ public sealed class SceneTools
             try
             {
                 var boundedLimit = BoundLimit(limit);
-                return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
-                {
-                    var result = await _services.SceneQueryService.ComponentAsync(
-                        new ComponentQueryRequest(snapshot.SceneSnapshotId, selector, includeReferences, includeCode, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query", DecodedFieldsFact(resolvedAuthority, result.ScriptFields));
-                });
+                return await PagedAsync(authority, sceneSnapshotId, cursor, "get_component", boundedLimit,
+                    [buildId, sceneSnapshotId, selector, Flag(includeReferences), Flag(includeCode), Flag(includeIncoming), Flag(externalOnly)],
+                    (snapshot, offset) => _services.SceneQueryService.ComponentAsync(
+                        new ComponentQueryRequest(snapshot.SceneSnapshotId, selector, includeReferences, includeCode, boundedLimit, includeIncoming, externalOnly, offset), ct),
+                    result => result.HasMore, (result, next) => result with { NextCursor = next },
+                    (resolved, result) => FromResult(resolved, result.Status, result, result.Candidates.Cast<object>().ToArray(), "component-query", DecodedFieldsFact(resolved, result.ScriptFields)), ct);
             }
             catch (ArgumentOutOfRangeException exception)
             {
@@ -164,9 +200,43 @@ public sealed class SceneTools
         });
     }
 
+    [McpServerTool(Name = "list_components", Title = "List components", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List indexed components of one type (exact Namespace.Class or Unity kind), optionally including types derived from it, each with its game object and only the requested decoded script-field paths. Paged.")]
+    public async Task<ToolEnvelope<ComponentListResult>> ListComponentsAsync(
+        [Description("Exact Namespace.Class (for example ScheduleOne.Vehicles.LandVehicle) or Unity kind (for example Transform).")] string type,
+        [Description("Also include components whose type derives from or implements this type in the code index.")] bool includeDerived = false,
+        [Description("Decoded script-field paths to return per component; a path also selects the leaves nested under it. Omit for none.")] string[]? fields = null,
+        [Description("Optional scene or prefab document: scene ID or exact name.")] string? scene = null,
+        [Description("Build ID; omit for current.")] string? buildId = null,
+        [Description("Optional completed scene snapshot ID for the selected build.")] string? sceneSnapshotId = null,
+        [Description("Max results (1-500). ")] int limit = SceneQueryService.DefaultLimit,
+        CancellationToken ct = default,
+        [Description("Cursor for the next page; reuse arguments verbatim.")] string? cursor = null)
+    {
+        return await WithAuthorityAsync(buildId, ct, async authority =>
+        {
+            if (TrySelectorError(type, authority, out ToolEnvelope<ComponentListResult> error)) return error;
+            try
+            {
+                var boundedLimit = BoundLimit(limit);
+                var paths = fields?.Where(path => !string.IsNullOrWhiteSpace(path)).Select(path => path.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+                return await PagedAsync(authority, sceneSnapshotId, cursor, "list_components", boundedLimit,
+                    [buildId, sceneSnapshotId, type, Flag(includeDerived), paths is null ? null : string.Join('\n', paths), scene],
+                    (snapshot, offset) => _services.SceneQueryService.ComponentsAsync(
+                        new ComponentListRequest(type, authority.ResolvedBuildId, snapshot.SceneSnapshotId, includeDerived, paths, scene, boundedLimit, offset), ct),
+                    result => result.HasMore, (result, next) => result with { NextCursor = next },
+                    (resolved, result) => FromResult(resolved, result.Status, result, result.SceneCandidates.Cast<object>().ToArray(), "component-list",
+                        result.Page.Rows.Any(row => row.ScriptFields?.Status == SceneScriptFieldSetStatus.Decoded) ? Fact(resolved, "serialized-script-fields") : null), ct);
+            }
+            catch (ArgumentOutOfRangeException exception)
+            {
+                return Invalid<ComponentListResult>(authority, "InvalidLimit", exception.Message);
+            }
+        });
+    }
+
     private async Task<ToolEnvelope<SceneDocumentQueryResult>> GetDocumentAsync(
         string selector, string? buildId, string? sceneSnapshotId, SceneDocumentKind? kind,
-        bool includeChildren, bool includeComponents, bool includeReferences, int limit,
+        bool includeChildren, bool includeComponents, bool includeReferences, int limit, string? cursor,
         CancellationToken ct)
     {
         return await WithAuthorityAsync(buildId, ct, async authority =>
@@ -176,11 +246,12 @@ public sealed class SceneTools
             {
                 var boundedLimit = BoundLimit(limit);
                 var parsedKind = kind ?? SceneDocumentKind.Scene;
-                return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolvedAuthority, snapshot) =>
-                {
-                    var result = await _services.SceneQueryService.SceneAsync(new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit), ct);
-                    return FromResult(resolvedAuthority, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query");
-                });
+                return await PagedAsync(authority, sceneSnapshotId, cursor, "get_scene", boundedLimit,
+                    [buildId, sceneSnapshotId, selector, parsedKind.ToString(), Flag(includeChildren), Flag(includeComponents), Flag(includeReferences)],
+                    (snapshot, offset) => _services.SceneQueryService.SceneAsync(
+                        new SceneQueryRequest(snapshot.SceneSnapshotId, selector, parsedKind, includeChildren, includeComponents, includeReferences, boundedLimit, offset), ct),
+                    result => result.HasMore, (result, next) => result with { NextCursor = next },
+                    (resolved, result) => FromResult(resolved, result.Status, result, result.Candidates.Cast<object>().ToArray(), "scene-query"), ct);
             }
             catch (ArgumentOutOfRangeException exception)
             {
@@ -192,6 +263,37 @@ public sealed class SceneTools
             }
         });
     }
+
+    // Decodes the page cursor, checks it was minted for these arguments on this build and
+    // snapshot, runs the query at its offset, and mints the next cursor when more rows remain.
+    private async Task<ToolEnvelope<T>> PagedAsync<T>(
+        InstalledBuildAuthority authority,
+        string? sceneSnapshotId,
+        string? cursor,
+        string tool,
+        int boundedLimit,
+        string?[] arguments,
+        Func<SceneSnapshotRecord, int, Task<T>> query,
+        Func<T, bool> hasMore,
+        Func<T, string, T> withCursor,
+        Func<InstalledBuildAuthority, T, ToolEnvelope<T>> envelope,
+        CancellationToken ct) where T : class
+    {
+        if (!CodeSymbolTools.ToolArguments.TryDecodeCursor<T>(cursor, authority, out var cursorHash, out var offset, out var cursorError))
+            return cursorError;
+        return await WithSnapshotForAuthorityAsync(authority, sceneSnapshotId, ct, async (resolved, snapshot) =>
+        {
+            var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
+                tool, resolved.ResolvedBuildId, snapshot.SceneSnapshotId, [.. arguments, boundedLimit.ToString(CultureInfo.InvariantCulture)]);
+            if (!CodeSymbolTools.ToolArguments.VerifyCursorHash<T>(cursorHash, expectedHash, resolved, out var hashError))
+                return hashError;
+            var result = await query(snapshot, offset);
+            var next = McpPageCursor.MintNextCursor(hasMore(result), expectedHash, offset, boundedLimit);
+            return envelope(resolved, next is null ? result : withCursor(result, next));
+        });
+    }
+
+    private static string Flag(bool value) => value ? "1" : "0";
 
     private Task<ToolEnvelope<T>> WithAuthorityAsync<T>(
         string? buildId,
