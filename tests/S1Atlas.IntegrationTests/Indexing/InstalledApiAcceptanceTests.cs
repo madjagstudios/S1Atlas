@@ -198,6 +198,45 @@ public sealed class InstalledApiAcceptanceTests : IAsyncDisposable
         Assert.Equal(hashB, selection.SourceIdentity);
     }
 
+    [Fact]
+    public async Task Default_index_completes_when_an_installed_s1api_index_already_exists_for_the_same_dll()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var buildId = new string('a', 64);
+        var assemblyPath = Path.Combine(_dataDirectory, "game", "Mods", "S1API.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(assemblyPath)!);
+        File.Copy(typeof(S1Atlas.ManagedAssemblyFixture.FixtureRoot).Assembly.Location, assemblyPath);
+        var dllHash = await Sha256OfFileAsync(assemblyPath, cancellationToken);
+        await SaveSnapshotAsync(
+            buildId,
+            new DependencyVersion(DependencyKind.S1Api, "fixture", assemblyPath, true, dllHash));
+        await SeedRunnableGameExtractionAsync(buildId, "rebuild");
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+
+        using var firstOutput = new StringWriter();
+        using var firstError = new StringWriter();
+        var firstExitCode = application.Invoke(
+            ["index", "--codebase", "s1api", "--channel", "installed", "--force"],
+            firstOutput,
+            firstError,
+            cancellationToken);
+        Assert.Equal(0, firstExitCode);
+
+        using var indexOutput = new StringWriter();
+        using var indexError = new StringWriter();
+        var indexExitCode = application.Invoke(["index"], indexOutput, indexError, cancellationToken);
+
+        Assert.Equal(0, indexExitCode);
+        Assert.Contains("S1Api Installed", indexOutput.ToString(), StringComparison.Ordinal);
+
+        var repository = new SqliteAtlasRepository(Path.Combine(_dataDirectory, "atlas.db"));
+        var service = new ApiIndexQueryService(repository, new IndexQueryService(repository, _dataDirectory));
+        var catalog = await service.ListAsync(null, cancellationToken);
+        var selection = S1ApiInstalledSelection(catalog);
+        Assert.Equal(ApiIndexAvailability.Current, selection.Availability);
+        Assert.Equal(dllHash, selection.SourceIdentity);
+    }
+
     private static ApiIndexSelection S1ApiInstalledSelection(ApiIndexCatalogResult catalog) =>
         catalog.Selections.Single(selection =>
             selection.Codebase == CodebaseKind.S1Api && selection.Channel == CodeChannel.Installed);

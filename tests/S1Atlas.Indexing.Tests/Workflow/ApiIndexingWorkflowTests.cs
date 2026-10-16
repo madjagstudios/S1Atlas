@@ -360,6 +360,147 @@ public sealed class ApiIndexingWorkflowTests
         }
     }
 
+    [Fact]
+    public async Task RunInstalledAsync_forced_rebuild_after_a_completed_run_succeeds_in_a_new_snapshot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-api-workflow-rebuild-" + Guid.NewGuid().ToString("N"));
+        var assemblyPath = Path.Combine(root, "inputs", "managed", "S1API.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(assemblyPath)!);
+        File.Copy(typeof(FixtureRoot).Assembly.Location, assemblyPath);
+
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+
+        try
+        {
+            await repository.InitializeAsync(TestContext.Current.CancellationToken);
+
+            var environmentSnapshot = new EnvironmentSnapshot(
+                2,
+                new GameBuild(
+                    new string('a', 64),
+                    new string('b', 64),
+                    new string('c', 64),
+                    DateTimeOffset.UtcNow,
+                    true),
+                new InstallationObservation("2022.3.62", "3164500", "fixture", root, null, null),
+                [],
+                "0.1.0-test",
+                DateTimeOffset.UtcNow);
+            await repository.SaveSnapshotAsync(environmentSnapshot, TestContext.Current.CancellationToken);
+            var environmentSnapshotId = EnvironmentSnapshotId.Create(environmentSnapshot);
+
+            var workflow = CreateWorkflow(root, repository, new IlSpyManagedDecompiler());
+            var first = await InvokeRunInstalledAsync(
+                workflow,
+                CodebaseKind.S1Api,
+                environmentSnapshotId,
+                assemblyPath,
+                force: false,
+                TestContext.Current.CancellationToken);
+            var second = await InvokeRunInstalledAsync(
+                workflow,
+                CodebaseKind.S1Api,
+                environmentSnapshotId,
+                assemblyPath,
+                force: true,
+                TestContext.Current.CancellationToken);
+
+            Assert.False(first.Reused);
+            Assert.False(second.Reused);
+            Assert.NotEqual(first.IndexId, second.IndexId);
+            Assert.NotEqual(first.SnapshotId, second.SnapshotId);
+
+            var firstSnapshot = await repository.GetCodeSnapshotAsync(first.SnapshotId, TestContext.Current.CancellationToken);
+            var secondSnapshot = await repository.GetCodeSnapshotAsync(second.SnapshotId, TestContext.Current.CancellationToken);
+            Assert.NotNull(firstSnapshot);
+            Assert.NotNull(secondSnapshot);
+            Assert.Equal(firstSnapshot!.SourceIdentity, secondSnapshot!.SourceIdentity);
+
+            var latest = await repository.GetLatestCompletedIndexAsync(
+                CodebaseKind.S1Api,
+                CodeChannel.Installed,
+                environmentSnapshotId,
+                TestContext.Current.CancellationToken);
+            Assert.NotNull(latest);
+            Assert.Equal(second.IndexId, latest!.IndexId);
+
+            Assert.NotEmpty(await repository.GetCompletedSourceFilesAsync(second.IndexId, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
+    [Fact]
+    public async Task RunCachedSourceAsync_forced_rebuild_after_a_completed_run_succeeds_in_a_new_snapshot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "s1atlas-api-cached-rebuild-" + Guid.NewGuid().ToString("N"));
+        var repository = new SqliteAtlasRepository(Path.Combine(root, "atlas.db"));
+        var commitSha = new string('f', 40);
+
+        try
+        {
+            await repository.InitializeAsync(TestContext.Current.CancellationToken);
+            await SeedCachedSnapshotAsync(
+                root,
+                CodebaseKind.S1Api,
+                commitSha,
+                [
+                    CachedFile("src/Demo/Rebuilt.cs", """
+                    namespace Demo;
+
+                    public sealed class Rebuilt
+                    {
+                        public int Value() => 7;
+                    }
+                    """)
+                ],
+                TestContext.Current.CancellationToken);
+
+            var workflow = CreateWorkflow(root, repository, new IlSpyManagedDecompiler());
+            var first = await InvokeRunCachedSourceAsync(
+                workflow,
+                CodebaseKind.S1Api,
+                CodeChannel.Release,
+                commitSha,
+                force: false,
+                TestContext.Current.CancellationToken);
+            var second = await InvokeRunCachedSourceAsync(
+                workflow,
+                CodebaseKind.S1Api,
+                CodeChannel.Release,
+                commitSha,
+                force: true,
+                TestContext.Current.CancellationToken);
+
+            Assert.False(first.Reused);
+            Assert.False(second.Reused);
+            Assert.NotEqual(first.IndexId, second.IndexId);
+            Assert.NotEqual(first.SnapshotId, second.SnapshotId);
+
+            var firstSnapshot = await repository.GetCodeSnapshotAsync(first.SnapshotId, TestContext.Current.CancellationToken);
+            var secondSnapshot = await repository.GetCodeSnapshotAsync(second.SnapshotId, TestContext.Current.CancellationToken);
+            Assert.NotNull(firstSnapshot);
+            Assert.NotNull(secondSnapshot);
+            Assert.Equal(firstSnapshot!.SourceIdentity, secondSnapshot!.SourceIdentity);
+
+            var latest = await repository.GetLatestCompletedIndexAsync(
+                CodebaseKind.S1Api,
+                CodeChannel.Release,
+                environmentSnapshotId: null,
+                TestContext.Current.CancellationToken);
+            Assert.NotNull(latest);
+            Assert.Equal(second.IndexId, latest!.IndexId);
+
+            Assert.NotEmpty(await repository.GetCompletedSourceFilesAsync(second.IndexId, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            await TestDirectory.DeleteTreeAsync(root);
+        }
+    }
+
     private static Type GetWorkflowType()
     {
         var workflowType = typeof(IndexingWorkflow).Assembly.GetType(

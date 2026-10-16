@@ -63,7 +63,7 @@ public sealed class ApiIndexingWorkflow
             DecompilerVersion,
             force ? "installed:forced:" + Guid.NewGuid().ToString("N") : "installed",
             IndexSchemaVersion);
-        var snapshotId = "api:" + codebase + ":installed:" + environmentSnapshotId + ":" + binarySha256;
+        var snapshotId = "api:" + codebase + ":installed:" + environmentSnapshotId + ":" + binarySha256 + ":" + indexId;
 
         var existingSnapshot = await _repository.GetCodeSnapshotAsync(snapshotId, cancellationToken);
         if (existingSnapshot is null)
@@ -191,7 +191,7 @@ public sealed class ApiIndexingWorkflow
             "1",
             force ? "cached-source:forced:" + Guid.NewGuid().ToString("N") : "cached-source",
             IndexSchemaVersion);
-        var snapshotId = "api:" + codebase + ":" + channel + ":" + commitSha;
+        var snapshotId = "api:" + codebase + ":" + channel + ":" + commitSha + ":" + indexId;
         if (await _repository.GetCodeSnapshotAsync(snapshotId, cancellationToken) is null)
         {
             await _repository.CreateCodeSnapshotAsync(
