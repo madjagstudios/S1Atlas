@@ -5,16 +5,22 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    # ready_for_review runs the first full verification after a draft's review.
+    types: [ opened, synchronize, reopened, ready_for_review ]
 
 permissions:
   contents: read
 
+# A new PR revision cancels the PR's previous run (AT-61). Each main push gets
+# its own group, so a queued main run is never replaced by a later one.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
+    # Draft PRs are reviewed with local runs; hosted CI runs once the PR is ready.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -110,6 +116,7 @@ jobs:
 
   tests:
     name: test ${{ matrix.name }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -191,20 +198,28 @@ jobs:
             TestResults/relationship-parity.json
           retention-days: 14
 
+  # build-test is the required check. On a draft this job reports under a
+  # different name, so a deferred run never satisfies build-test and merge
+  # stays blocked until the ready-state run passes.
   build-test:
+    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'deferred-result (draft)' || 'build-test' }}
     runs-on: ubuntu-latest
     needs: [checks, tests]
     if: always()
+    env:
+      DEFERRED: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        if: env.DEFERRED != 'true'
       - name: Download test results
+        if: env.DEFERRED != 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: test-results-*
           path: TestResults
           merge-multiple: true
       - name: Timing summary
-        if: always()
+        if: always() && env.DEFERRED != 'true'
         shell: pwsh
         run: ./scripts/summarize-test-timings.ps1 -ResultsDirectory TestResults
       - name: Verify pipeline
@@ -216,5 +231,11 @@ jobs:
         run: |
           $checks = $env:CHECKS_RESULT
           $tests = $env:TESTS_RESULT
-          Write-Output "checks=$checks tests=$tests"
+          Write-Output "checks=$checks tests=$tests deferred=$env:DEFERRED"
+          if ($env:DEFERRED -eq 'true') {
+            # Only the deliberate draft skip is accepted; anything else fails.
+            if ($checks -ne 'skipped' -or $tests -ne 'skipped') { exit 1 }
+            Write-Output 'Draft PR: validation deferred until ready for review. Nothing was verified.'
+            exit 0
+          }
           if ($checks -ne 'success' -or $tests -ne 'success') { exit 1 }
