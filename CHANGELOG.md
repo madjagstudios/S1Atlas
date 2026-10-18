@@ -6,6 +6,15 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Fixed
+
+- An error the MCP server does not handle now writes a crash log under
+  `%TEMP%\s1atlas\` and exits with code 1, instead of raising the Windows
+  crash dialog with no details (AT-141).
+- The MCP server now exits with code 0 when its client goes away during
+  shutdown, instead of crashing with an unhandled .NET exception and a
+  Windows "Application Error" dialog (AT-141).
+
 ## [2.2.0] - 2026-10-16: Scene discovery and attribute search
 
 `s1atlas setup --scene` now takes an atlas through input certification and scene
