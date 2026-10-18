@@ -356,7 +356,7 @@ public sealed class InputSnapshotServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateAsync_WhenDatabaseSaveFails_LeavesFinalSnapshotForRetry()
+    public async Task CreateAsync_WhenDatabaseSaveFails_RemovesPromotedSnapshotAndRetrySucceeds()
     {
         var repository = new RecordingRepository { Failure = new IOException("database unavailable") };
         var service = CreateService(repository: repository);
@@ -370,9 +370,8 @@ public sealed class InputSnapshotServiceTests : IDisposable
 
         Assert.Equal(ExtractionFailureStage.DatabasePromotion, exception.Stage);
         Assert.Equal(ExtractionFailureCode.DatabasePromotionFailed, exception.Code);
-        var finalRoot = Assert.Single(Directory.GetDirectories(InputsRoot),
+        Assert.DoesNotContain(Directory.GetDirectories(InputsRoot),
             path => !PathSafety.PathsEqual(path, StagingRoot));
-        Assert.True(File.Exists(Path.Combine(finalRoot, "complete.marker")));
         AssertStagingEmpty();
 
         repository.Failure = null;
@@ -382,9 +381,7 @@ public sealed class InputSnapshotServiceTests : IDisposable
             InputTestFixture.Profile,
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(Path.GetFileName(finalRoot), recovered.InputSnapshotId);
-        Assert.Equal(finalRoot, recovered.RootPath);
-        Assert.False(recovered.ReplayVerified);
+        Assert.True(File.Exists(Path.Combine(recovered.RootPath, "complete.marker")));
         Assert.Same(recovered, Assert.Single(repository.Saved));
         AssertStagingEmpty();
     }
@@ -407,7 +404,61 @@ public sealed class InputSnapshotServiceTests : IDisposable
         Assert.Equal(first.CreatedAtUtc, second.CreatedAtUtc);
         Assert.False(first.ReplayVerified);
         Assert.False(second.ReplayVerified);
-        Assert.Equal(2, repository.Saved.Count);
+        Assert.Single(repository.Saved);
+        AssertStagingEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRegisteredRowDiffersOnlyInCreationTime_ReusesRegisteredSnapshot()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = new RecordingRepository();
+        var service = CreateService(repository: repository);
+        var first = await service.CreateAsync(
+            ResolvedInput(), _input.Build, InputTestFixture.Profile, cancellationToken);
+
+        // The row was registered by an earlier run at another time, and its directory
+        // is gone. Re-archiving identical inputs must reuse the row, not re-register it.
+        Directory.Delete(first.RootPath, recursive: true);
+        var registered = first with
+        {
+            CreatedAtUtc = CreatedAt.AddDays(-3),
+            ReplayVerified = true,
+            ReplayVerifiedAtUtc = CreatedAt.AddDays(-2)
+        };
+        repository.CertifiedOverride = registered;
+
+        var second = await service.CreateAsync(
+            ResolvedInput(), _input.Build, InputTestFixture.Profile, cancellationToken);
+
+        Assert.Same(registered, second);
+        Assert.Single(repository.Saved);
+        using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+            Path.Combine(first.RootPath, "input-manifest.json"), cancellationToken));
+        Assert.Equal(registered.CreatedAtUtc,
+            manifest.RootElement.GetProperty("createdAtUtc").GetDateTimeOffset());
+        AssertStagingEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenRegisteredManifestDiffers_FailsWithManifestMismatch()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var repository = new RecordingRepository();
+        var service = CreateService(repository: repository);
+        var first = await service.CreateAsync(
+            ResolvedInput(), _input.Build, InputTestFixture.Profile, cancellationToken);
+        Directory.Delete(first.RootPath, recursive: true);
+        repository.CertifiedOverride = first with { ManifestDigest = new string('0', 64) };
+
+        var exception = await Assert.ThrowsAsync<ExtractionOperationException>(() =>
+            service.CreateAsync(
+                ResolvedInput(), _input.Build, InputTestFixture.Profile, cancellationToken));
+
+        Assert.Equal(ExtractionFailureStage.InputSnapshotCreation, exception.Stage);
+        Assert.Equal(ExtractionFailureCode.InputSnapshotManifestMismatch, exception.Code);
+        Assert.False(Directory.Exists(first.RootPath));
+        Assert.Single(repository.Saved);
         AssertStagingEmpty();
     }
 
