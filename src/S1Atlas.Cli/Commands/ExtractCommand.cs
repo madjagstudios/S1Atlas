@@ -41,7 +41,7 @@ internal static class ExtractCommand
         };
         var retryOption = new Option<bool>("--retry")
         {
-            Description = "Run a new Cpp2IL process even when reusable output exists."
+            Description = "Run a new Cpp2IL process and repair corrupt matching output after validation."
         };
         var snapshotInputsOption = new Option<bool>("--snapshot-inputs")
         {

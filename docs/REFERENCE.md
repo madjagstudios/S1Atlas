@@ -85,6 +85,42 @@ Unknown nonempty schemas are rejected without a migration ledger, schema mutatio
 
 Generated data, databases, backups, extraction artifacts, decompiled output, and logs are intentionally excluded from Git.
 
+### Extraction integrity recovery
+
+An integrity-failed preferred extraction remains selected but is not authoritative.
+Plain `s1atlas extract` exits `1` with `error.code: IntegrityMismatch` and
+`error.stage: Recovery`, preserves the preference, and suggests retry without
+starting a new attempt. Readiness keeps extraction non-OK and advertises
+`s1atlas extract --retry`; CLI/MCP authority hints use the same command for the
+current build. For an explicitly requested historical build, the hint includes
+`--build <full-build-id>` to avoid ambiguous prefixes.
+
+Explicit retry runs a new extraction attempt and validation. For output matching
+the stored recipe and artifact digest, recovery verifies a staged replacement,
+moves the existing corrupt directory to
+`builds\<build-id>\extractions\quarantine\<extraction-id>-<retry-attempt-id>`,
+and installs the replacement under the original extraction ID. Artifacts are not
+patched in place. The fresh attempt and its validation report record recovery;
+original extraction, artifact, validation, and preference records are preserved.
+Identical content therefore keeps its ID even though extraction and validation
+ran again. Quarantined damaged files remain as evidence; deleting the Atlas data
+root is unnecessary.
+
+Recovery obeys normal input, tool, validation, and promotion requirements.
+Live inputs must match the selected build before and after execution, including
+for historical-build retry; the command does not silently select a different build
+or invent a replay snapshot. Archived replay still requires an explicit
+`--input-snapshot <id> --retry` and a verified usable tool. Custom-tool output and
+same-recipe differing output do not gain automatic preference through retry;
+they retain the existing explicit-promotion rules, and differing output is not a
+same-ID repair.
+
+`setup` maps the readiness retry command to `Retry = true`; scene setup adds
+`SnapshotInputs = true` and displays `s1atlas extract --snapshot-inputs --retry`.
+It stops on extraction failure before indexing. Once verification succeeds,
+doctor marks extraction `ok` and suggests `s1atlas index` when a completed index
+is missing; its overall readiness exit code may still be nonzero.
+
 ## Build and environment identity
 
 The build ID remains derived only from the `GameAssembly.dll` and `global-metadata.dat` content hashes. Executable version, Steam app/build IDs, installation paths, dependency versions, and Atlas version describe an environment snapshot; they do not redefine the game build.

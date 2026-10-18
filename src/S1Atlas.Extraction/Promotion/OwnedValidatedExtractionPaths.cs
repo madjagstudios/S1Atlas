@@ -152,6 +152,15 @@ internal sealed record OwnedValidatedExtractionPaths
             quarantineRoot: quarantineRoot);
     }
 
+    public static string ForRepairQuarantine(string dataRoot, string buildId, string extractionId, string attemptId)
+    {
+        var extraction = ForExtraction(dataRoot, buildId, extractionId);
+        _ = OwnedAttemptPaths.Create(dataRoot, buildId, attemptId);
+        var destination = ResolveContained(extraction.QuarantineRoot, $"{extractionId}-{attemptId}");
+        OwnedAttemptPaths.EnsureSafeExistingPath(extraction.DataRoot, destination);
+        return destination;
+    }
+
     private static string ResolveContained(string root, params string[] segments)
     {
         var candidate = Path.GetFullPath(Path.Combine([root, .. segments]));

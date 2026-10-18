@@ -122,7 +122,8 @@ internal sealed class ValidatedExtractionWorkflow
         // process and validate/promote the candidate it returns.
         var processResult = await _runPreparedProcessAsync(context, options, cancellationToken);
         var result = await _validationService.ValidateAndPromoteCandidateAsync(
-            processResult.Attempt, context, processWasRun: true, cancellationToken);
+            processResult.Attempt, context, processWasRun: true, cancellationToken,
+            allowIntegrityRepair: options.Retry);
         result = result with
         {
             InputSource = processResult.InputSource,
@@ -241,13 +242,12 @@ internal sealed class ValidatedExtractionWorkflow
             _dataRoot, selected.BuildId, selected.ExtractionId, cancellationToken);
         if (integrity.Status != ValidatedExtractionIntegrityStatus.Valid)
         {
-            await ClearPreferredIfSelectedAsync(
-                selected, ExtractionPreferenceReason.IntegrityInvalidated, cancellationToken);
             throw new ExtractionOperationException(
                 ExtractionFailureStage.Recovery,
                 ExtractionFailureCode.IntegrityMismatch,
-                $"The reusable validated extraction '{selected.ExtractionId}' failed integrity " +
-                $"verification and cannot be returned as authoritative: {integrity.Message}");
+                $"The validated extraction '{selected.ExtractionId}' failed integrity " +
+                $"verification: {integrity.Message} Run 's1atlas extract --retry " +
+                $"--build {selected.BuildId}' to regenerate it.");
         }
 
         var preferred = await _validatedRepository.GetPreferredExtractionAsync(
@@ -268,25 +268,6 @@ internal sealed class ValidatedExtractionWorkflow
             ReusedExistingExtraction: true,
             IsPreferred: isPreferred,
             IsAuthoritative: true);
-    }
-
-    private async Task ClearPreferredIfSelectedAsync(
-        ValidatedExtraction extraction,
-        ExtractionPreferenceReason reason,
-        CancellationToken cancellationToken)
-    {
-        var preferred = await _validatedRepository.GetPreferredExtractionAsync(
-            extraction.BuildId, cancellationToken);
-        if (preferred is not null &&
-            string.Equals(preferred.ExtractionId, extraction.ExtractionId, StringComparison.Ordinal))
-        {
-            await _validatedRepository.ClearPreferredExtractionAsync(
-                extraction.BuildId,
-                extraction.ExtractionId,
-                reason,
-                _timeProvider.GetUtcNow().ToUniversalTime(),
-                cancellationToken);
-        }
     }
 
     private static ExtractionAttempt? SelectNewestCandidate(IReadOnlyList<ExtractionAttempt> candidates) =>

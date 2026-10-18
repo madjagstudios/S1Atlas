@@ -741,15 +741,21 @@ public sealed class SetupCommandTests
         Assert.True(Assert.IsType<IndexCommandOptions>(received).Force);
     }
 
-    [Fact]
-    public void RetryExtract_PlanShowsRetryAndRunnerReceivesRetry()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RetryExtract_PlanShowsRetryAndFailureStopsBeforeIndexing(bool includeScene)
     {
         var report = new ReadinessReport(
             [
                 new ReadinessItem(
                     ReadinessItemIds.Extraction, "Preferred extraction",
                     ReadinessState.Missing, "The preferred extraction failed integrity verification.",
-                    ReadinessFixCommands.ExtractRetry, false)
+                    ReadinessFixCommands.ExtractRetry, false),
+                new ReadinessItem(
+                    ReadinessItemIds.Index, "Schedule I index",
+                    ReadinessState.Missing, "Needs a verified extraction first.",
+                    ReadinessFixCommands.Index, false)
             ],
             new ReadinessNextStep(false, "Next: s1atlas extract --retry", ReadinessFixCommands.ExtractRetry),
             false,
@@ -763,7 +769,7 @@ public sealed class SetupCommandTests
             Extract: (options, _) =>
             {
                 received = options;
-                return Task.FromResult(new SetupExtractResult(0));
+                return Task.FromResult(new SetupExtractResult(1));
             },
             Index: (_, _) => throw new InvalidOperationException("Index must not run."),
             IndexScene: _ => throw new InvalidOperationException("Scene index must not run."),
@@ -776,11 +782,17 @@ public sealed class SetupCommandTests
             inputRedirected: false, output, error,
             TestContext.Current.CancellationToken);
 
-        var exitCode = InvokeSetup(command, ["setup", "--yes"]);
+        var exitCode = InvokeSetup(command, includeScene ? ["setup", "--scene", "--yes"] : ["setup", "--yes"]);
 
         Assert.Equal(1, exitCode);
-        Assert.Contains("1. s1atlas extract --retry", output.ToString(), StringComparison.Ordinal);
-        Assert.True(Assert.IsType<ExtractionOptions>(received).Retry);
+        var expectedCommand = includeScene
+            ? ReadinessFixCommands.ExtractSnapshotInputsRetry
+            : ReadinessFixCommands.ExtractRetry;
+        Assert.Contains($"1. {expectedCommand}", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("2. s1atlas index", output.ToString(), StringComparison.Ordinal);
+        var options = Assert.IsType<ExtractionOptions>(received);
+        Assert.True(options.Retry);
+        Assert.Equal(includeScene, options.SnapshotInputs);
     }
 
     [Fact]
@@ -790,7 +802,7 @@ public sealed class SetupCommandTests
             [
                 new ReadinessItem(
                     ReadinessItemIds.Extraction, "Preferred extraction",
-                    ReadinessState.Missing, "The preferred extraction failed integrity verification.",
+                    ReadinessState.Missing, "No preferred extraction exists.",
                     null, false)
             ],
             new ReadinessNextStep(false, "Next: s1atlas extract", ReadinessFixCommands.Extract),

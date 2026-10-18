@@ -81,7 +81,8 @@ internal sealed class ExtractionValidationService
         ExtractionAttempt processCompleted,
         PreparedExtractionContext context,
         bool processWasRun,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowIntegrityRepair = false)
     {
         ArgumentNullException.ThrowIfNull(processCompleted);
         ArgumentNullException.ThrowIfNull(context);
@@ -166,7 +167,8 @@ internal sealed class ExtractionValidationService
                     context.Tool.Instance.TrustLevel,
                     evaluation.DeduplicationTarget,
                     evaluation.AutomaticPreferenceReason,
-                    KeepInvalidOutput: processCompleted.KeepFailedArtifacts),
+                    KeepInvalidOutput: processCompleted.KeepFailedArtifacts,
+                    AllowIntegrityRepair: allowIntegrityRepair),
                 cancellationToken);
 
             return BuildCandidateResult(context, report, promoted, processWasRun);
@@ -202,13 +204,12 @@ internal sealed class ExtractionValidationService
                 _dataRoot, extraction.BuildId, extraction.ExtractionId, cancellationToken);
             if (integrity.Status != ValidatedExtractionIntegrityStatus.Valid)
             {
-                await ClearPreferredIfSelectedAsync(
-                    extraction, ExtractionPreferenceReason.IntegrityInvalidated, cancellationToken);
                 throw new ExtractionOperationException(
                     ExtractionFailureStage.Recovery,
                     ExtractionFailureCode.IntegrityMismatch,
-                    $"The validated extraction '{extraction.ExtractionId}' could not be reused " +
-                    $"because it failed integrity verification: {integrity.Message}");
+                    $"The validated extraction '{extraction.ExtractionId}' failed integrity " +
+                    $"verification: {integrity.Message} Run 's1atlas extract --retry " +
+                    $"--build {extraction.BuildId}' to regenerate it.");
             }
 
             var ownedAttempt = OwnedAttemptPaths.Create(_dataRoot, extraction.BuildId, attemptId);
@@ -348,7 +349,9 @@ internal sealed class ExtractionValidationService
     {
         var authoritative =
             report.Outcome != ValidationOutcome.Invalid &&
-            promoted.Disposition != PromotionDisposition.ValidationFailed;
+            promoted.Disposition is PromotionDisposition.NewExtraction
+                or PromotionDisposition.LinkedExistingExtraction
+                or PromotionDisposition.RepairedExistingExtraction;
         return new ExtractionWorkflowResult(
             promoted.Attempt.AttemptId,
             context.Build.BuildId,

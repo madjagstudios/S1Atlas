@@ -107,6 +107,12 @@ public static class ReadinessFixCommands
         return $"s1atlas extract --build {ShortId.Display(buildId)}";
     }
 
+    public static string ExtractRetryBuild(string buildId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
+        return $"s1atlas extract --retry --build {buildId}";
+    }
+
     public static string? HintForAuthorityStatus(
         InstalledBuildAuthorityStatus status,
         string? resolvedBuildId,
@@ -129,7 +135,10 @@ public static class ReadinessFixCommands
                 resolvedBuildId is not null && !targetsCurrentBuild
                     ? ExtractBuild(resolvedBuildId)
                     : Extract,
-            InstalledBuildAuthorityStatus.ExtractionIntegrityFailure => null,
+            InstalledBuildAuthorityStatus.ExtractionIntegrityFailure =>
+                resolvedBuildId is not null && !targetsCurrentBuild
+                    ? ExtractRetryBuild(resolvedBuildId)
+                    : ExtractRetry,
             // A code index always targets the current build: index --build is
             // scene-only, so no command can build the requested build's missing
             // index. The plain index command would silently act on a different
