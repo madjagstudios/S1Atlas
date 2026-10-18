@@ -161,13 +161,13 @@ internal sealed class ExtractionValidationService
 
             var preferenceReason = evaluation.AutomaticPreferenceReason;
             ValidatedExtraction? replacedCorruptPreference = null;
-            if (allowIntegrityRepair && preferenceReason is null &&
+            if (allowIntegrityRepair &&
                 CanReplaceIntegrityFailedPreference(report, context.Tool.Instance.TrustLevel) &&
                 await IntegrityFailedPreferredAsync(context.Build.BuildId, cancellationToken) is { } corrupt &&
                 !string.Equals(corrupt.ExtractionId, resolvedExtractionId, StringComparison.Ordinal))
             {
                 replacedCorruptPreference = corrupt;
-                preferenceReason = ExtractionPreferenceReason.ManagedAutomatic;
+                preferenceReason ??= ExtractionPreferenceReason.ManagedAutomatic;
             }
 
             var promoted = await _promoter.PromoteAsync(
@@ -414,7 +414,13 @@ internal sealed class ExtractionValidationService
 
         var integrity = await _integrityVerifier.VerifyAsync(
             _dataRoot, extraction.BuildId, extraction.ExtractionId, cancellationToken);
-        return integrity.Status == ValidatedExtractionIntegrityStatus.Valid ? null : extraction;
+        // Only damaged or missing content is replaced. An artifact another process holds
+        // open, or an unsafe path, says nothing about the bytes, so it keeps the preference.
+        return integrity.Status == ValidatedExtractionIntegrityStatus.Valid ||
+            integrity.Code is "ArtifactUnreadable" or "ExtractionRootUnsafe" or
+                "ReconstructedTreeUnsafe" or "LogsPathUnsafe"
+            ? null
+            : extraction;
     }
 
     private async Task<BaselineFacts> ResolveBaselineAsync(

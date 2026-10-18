@@ -256,7 +256,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
             {
-                return Mismatch("ArtifactContentMismatch", $"Artifact '{entry.RelativePath}' could not be inspected.");
+                return Mismatch("ArtifactUnreadable", $"Artifact '{entry.RelativePath}' could not be inspected.");
             }
 
             if (actualSize != entry.Size)
@@ -277,7 +277,7 @@ public sealed class ValidatedExtractionIntegrityVerifier : IValidatedExtractionI
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException)
             {
-                return Mismatch("ArtifactContentMismatch", $"Artifact '{entry.RelativePath}' could not be hashed.");
+                return Mismatch("ArtifactUnreadable", $"Artifact '{entry.RelativePath}' could not be hashed.");
             }
 
             if (!string.Equals(actualHash, entry.Sha256, StringComparison.Ordinal))

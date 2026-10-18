@@ -246,7 +246,7 @@ internal sealed class ValidatedExtractionPromoter
 
         // Step 12: only now delete the journal.
         _journalStore.DeleteBestEffort(attemptPaths.PromotionJournalPath!);
-        QuarantineReplacedPreference(request, cancellationToken);
+        QuarantineReplacedPreference(request);
 
         return new ValidatedExtractionPromotionResult(
             PromotionDisposition.NewExtraction,
@@ -324,7 +324,7 @@ internal sealed class ValidatedExtractionPromoter
                     target.BuildId, target.ExtractionId, report.ValidatedAtUtc, reason),
                 cancellationToken);
             isPreferred = true;
-            QuarantineReplacedPreference(request, cancellationToken);
+            QuarantineReplacedPreference(request);
         }
 
         return new ValidatedExtractionPromotionResult(
@@ -474,11 +474,12 @@ internal sealed class ValidatedExtractionPromoter
 
     // Cpp2IL output is not byte-reproducible, so a retry usually yields a new extraction
     // ID instead of repairing the corrupt one in place. Once the new preference is
-    // committed, move the replaced corrupt output aside. A failed move only leaves the
+    // committed, move the replaced corrupt output aside. The promotion has already
+    // succeeded, so this ignores cancellation, and a failed move only leaves the
     // corrupt, no longer preferred directory where it was.
-    private void QuarantineReplacedPreference(
-        ValidatedExtractionPromotionRequest request, CancellationToken cancellationToken)
+    private void QuarantineReplacedPreference(ValidatedExtractionPromotionRequest request)
     {
+        var cancellationToken = CancellationToken.None;
         if (request.ReplacedCorruptPreference is not { } corrupt)
         {
             return;
