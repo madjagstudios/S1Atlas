@@ -8,8 +8,8 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [2.3.0] - 2026-10-18: Day-one pipeline reliability
 
-A new Schedule I build now scans, extracts and indexes more reliably on the day
-it ships. A corrupt preferred extraction is replaced by a fresh, verified one
+A new Schedule I build now extracts and indexes more reliably on the day it
+ships. A corrupt preferred extraction is replaced by a fresh, verified one
 with `s1atlas extract --retry`, and `doctor` and `setup` point to that command.
 Re-archiving unchanged inputs no longer fails, the MCP server exits cleanly when
 its client goes away, MCP argument errors use the standard JSON envelope, and a
@@ -27,22 +27,22 @@ CLI and MCP tools together.
 
 - `s1atlas extract --retry` now recovers a preferred extraction that fails
   integrity verification (an output file was changed or deleted). It runs a new
-  extraction, validates it, makes the verified result the preferred extraction
-  and moves the corrupt output into the build's extraction quarantine. This
+  extraction with the managed Cpp2IL tool, validates it, makes the verified
+  result the preferred extraction and moves the corrupt output into the build's
+  extraction quarantine. This
   also replaces a manually promoted extraction once it is corrupt; a healthy
   preference, or one whose files are only locked by another process, is left
   alone. Cpp2IL output usually differs from run to run, so the result normally
   has a new extraction ID; when the bytes do match, the corrupt extraction is
   repaired in place under its own ID instead. If recovery fails, all evidence
-  is kept and the command returns a coded error (AT-113, AT-154).
+  is kept and the command returns a coded error. When the preferred extraction
+  changes, run `s1atlas index` afterwards; `doctor` asks for it (AT-113,
+  AT-154).
 - Plain `s1atlas extract` on a corrupt preference now fails with
   `IntegrityMismatch` and points to `--retry` instead of throwing, and it keeps
   the preference so `doctor` still reports the problem. `doctor`, authority
   hints and `setup` now suggest `s1atlas extract --retry` (with `--build <id>`
   for an older build) (AT-113).
-- After `extract --retry` replaces the preferred extraction, run
-  `s1atlas index` so the code index is rebuilt from the new extraction;
-  `doctor` asks for it (AT-154).
 - When an installed S1API/S1MAPI index was built before a rescan that changed
   the installed environment, the `StaleApiIndex` query error and `doctor` now
   say the environment changed and name the re-index command, instead of
@@ -53,9 +53,16 @@ CLI and MCP tools together.
   registered snapshot whose manifest differs fails with
   `InputSnapshotManifestMismatch`. If registration fails, the newly promoted
   snapshot directory is removed so the next run starts clean (AT-52).
-- MCP page cursors for `scope: Reference` and `scope: All` queries are now tied to the collection's resolved reference index, so re-indexing a collection between pages returns `invalid_cursor` instead of shifted pages. Mismatched cursors are also rejected before the query runs. (AT-119)
-- MCP enum parameters now reject numbers that are not defined members (for example `codebase: 99`) with `invalid_arguments`, instead of failing later as an unexpected error. (AT-119)
-- MCP argument-binding failures (wrong type, unknown enum name, missing required argument) now return the standard JSON envelope with error code `invalid_arguments` instead of plain text. (AT-119)
+- MCP page cursors for `scope: Reference` and `scope: All` queries are now
+  tied to the collection's resolved reference index, so re-indexing a
+  collection between pages returns `invalid_cursor` instead of shifted pages.
+  Mismatched cursors are also rejected before the query runs (AT-119).
+- MCP enum parameters now reject numbers that are not defined members (for
+  example `codebase: 99`) with `invalid_arguments`, instead of failing later
+  as an unexpected error (AT-119).
+- MCP argument-binding failures (wrong type, unknown enum name, missing
+  required argument) now return the standard JSON envelope with error code
+  `invalid_arguments` instead of plain text (AT-119).
 - An error the MCP server does not handle now writes a crash log under
   `%TEMP%\s1atlas\` and exits with code 1, instead of raising the Windows
   crash dialog with no details (AT-141).
