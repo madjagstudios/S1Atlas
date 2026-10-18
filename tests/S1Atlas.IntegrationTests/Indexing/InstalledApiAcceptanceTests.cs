@@ -78,6 +78,84 @@ public sealed class InstalledApiAcceptanceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Environment_only_rescan_explains_stale_api_index_and_doctor_until_reindex()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var buildId = new string('a', 64);
+        var assemblyPath = Path.Combine(_dataDirectory, "game", "Mods", "S1API.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(assemblyPath)!);
+        File.Copy(typeof(S1Atlas.ManagedAssemblyFixture.FixtureRoot).Assembly.Location, assemblyPath);
+        var dllHash = await Sha256OfFileAsync(assemblyPath, cancellationToken);
+        var first = await SaveSnapshotAsync(
+            buildId,
+            new DependencyVersion(DependencyKind.S1Api, "fixture", assemblyPath, true, dllHash));
+        await SeedRunnableGameExtractionAsync(buildId, "environment-only");
+        var application = new CliApplication(_dataDirectory, "0.1.0-test");
+
+        (int ExitCode, string Output, string Error) Run(params string[] args)
+        {
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+            var exitCode = application.Invoke(args, output, error, cancellationToken);
+            return (exitCode, output.ToString(), error.ToString());
+        }
+
+        var initialIndex = Run("index");
+        Assert.Equal(0, initialIndex.ExitCode);
+        Assert.Equal("ok", GetDoctorItemState(Run("doctor", "--json").Output, ReadinessItemIds.ApiIndex));
+
+        var second = first with
+        {
+            Dependencies = first.Dependencies.Select(dependency =>
+                dependency.Kind == DependencyKind.MelonLoader
+                    ? new DependencyVersion(
+                        DependencyKind.MelonLoader, "fixture",
+                        Path.Combine(_dataDirectory, "game", "MelonLoader", "MelonLoader.dll"), true)
+                    : dependency).ToArray(),
+            CapturedAtUtc = first.CapturedAtUtc.AddMinutes(1),
+            SnapshotId = null
+        };
+        Assert.Equal(first.Build.BuildId, second.Build.BuildId);
+        Assert.NotEqual(EnvironmentSnapshotId.Create(first), EnvironmentSnapshotId.Create(second));
+        Assert.Equal(dllHash, await Sha256OfFileAsync(assemblyPath, cancellationToken));
+        var repository = new SqliteAtlasRepository(Path.Combine(_dataDirectory, "atlas.db"));
+        await repository.SaveSnapshotAsync(second, cancellationToken);
+
+        var query = Run("attributes", "System.ObsoleteAttribute", "--codebase", "s1api", "--json");
+        Assert.Equal(1, query.ExitCode);
+        using var queryJson = JsonDocument.Parse(query.Output);
+        var queryError = queryJson.RootElement.GetProperty("error");
+        Assert.Equal("StaleApiIndex", queryError.GetProperty("code").GetString());
+        var message = queryError.GetProperty("message").GetString()!;
+        Assert.Contains("environment snapshot changed", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("s1atlas index", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("not selected build", message, StringComparison.Ordinal);
+        Assert.DoesNotContain(buildId, message, StringComparison.Ordinal);
+
+        var doctor = Run("doctor", "--json");
+        using var doctorJson = JsonDocument.Parse(doctor.Output);
+        var apiItem = doctorJson.RootElement.GetProperty("data").GetProperty("items")
+            .EnumerateArray().Single(item => item.GetProperty("id").GetString() == ReadinessItemIds.ApiIndex);
+        Assert.Equal("stale", apiItem.GetProperty("state").GetString());
+        var detail = apiItem.GetProperty("detail").GetString()!;
+        const string fix = "s1atlas index --codebase s1api --channel installed";
+        Assert.Contains("environment snapshot changed", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(fix, detail, StringComparison.Ordinal);
+        Assert.Equal(fix, apiItem.GetProperty("fixCommand").GetString());
+        Assert.DoesNotContain(buildId, detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("No installed S1API index exists", detail, StringComparison.Ordinal);
+
+        var humanDoctor = Run("doctor");
+        Assert.Contains("environment snapshot changed", humanDoctor.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(fix, humanDoctor.Output, StringComparison.Ordinal);
+
+        var reindex = Run("index", "--codebase", "s1api", "--channel", "installed");
+        Assert.Equal(0, reindex.ExitCode);
+        Assert.Equal("ok", GetDoctorItemState(Run("doctor", "--json").Output, ReadinessItemIds.ApiIndex));
+        Assert.Equal(0, Run("attributes", "System.ObsoleteAttribute", "--codebase", "s1api", "--json").ExitCode);
+    }
+
+    [Fact]
     public async Task Rescanned_dll_hash_marks_installed_index_stale_until_reindex()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

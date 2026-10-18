@@ -962,6 +962,11 @@ version. Any other argument exits `2` with usage text. The installed launch
 does not invoke restore or build work during MCP startup. After pulling source
 changes, reinstall the tools before restarting a registered host.
 
+When its client closes the connection or exits, the server shuts down and
+exits `0`. If the server stops on an error nothing else handled, it writes
+the details to `%TEMP%\s1atlas\mcp-crash-<time>-<pid>.log`, prints that path
+to stderr, and exits `1`. Attach that file when you report the problem.
+
 Register the installed `s1atlas-mcp` command (on your `PATH`, no arguments)
 in user-level host configuration. The four common shapes are:
 
