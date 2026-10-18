@@ -70,7 +70,7 @@ builder.Services
     .WithRequestFilters(filters =>
     {
         filters.AddCallToolFilter(next => McpSchemaGateFilter.Wrap(services.SchemaGate, toolJsonOptions, next));
-        filters.AddCallToolFilter(McpBindingErrorFilter.Wrap);
+        filters.AddCallToolFilter(next => McpBindingErrorFilter.Wrap(toolJsonOptions, next));
         filters.AddCallToolFilter(McpEnvelopeErrorFilter.Wrap);
     });
 builder.Services.Configure<McpServerOptions>(options =>

@@ -1055,8 +1055,9 @@ Release and Preview API channels carry no attributes.
 `get_callable_surface` is game-only and takes neither. Fixed vocabularies
 are advertised as schema enums: `codebase`,
 `channel`, `scope` (`Game`, `Reference`, `All`), and the symbol-kind and
-scene-kind filters. Binding is case-insensitive, and an invalid enum value
-fails with a readable error naming the parameter and the allowed values.
+scene-kind filters. Binding is case-insensitive. An invalid enum value,
+including a number that is not a defined member, fails with an
+`invalid_arguments` envelope naming the parameter and the allowed values.
 
 `search_symbols`, `get_source`, `find_callers`, `find_callees`,
 `find_call_sites`, `find_field_references`, `find_patches`, `find_references`,

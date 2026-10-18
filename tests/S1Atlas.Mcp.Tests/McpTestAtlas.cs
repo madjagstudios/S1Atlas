@@ -144,10 +144,16 @@ public sealed class McpTestAtlas : IAsyncDisposable
         return new ReferenceSeed(collection, result.IndexId);
     }
 
-    public async Task<ReferenceSeed> SeedTargetQueryReferenceCollectionAsync(string collection)
+    public async Task<ReferenceSeed> SeedTargetQueryReferenceCollectionAsync(
+        string collection,
+        string runSuffix = "",
+        string completedAtUtc = "2026-08-28T15:01:00Z")
     {
-        var snapshotId = "reference-target-query-snapshot-" + collection;
-        var indexId = "reference-target-query-index-" + collection;
+        // runSuffix keeps a re-index's IDs distinct while the collection name
+        // stays the same; the later completedAtUtc makes it the newest run.
+        var run = collection + runSuffix;
+        var snapshotId = "reference-target-query-snapshot-" + run;
+        var indexId = "reference-target-query-index-" + run;
         await _repository.CreateCodeSnapshotAsync(
             new CodeSnapshotRecord(
                 snapshotId,
@@ -161,7 +167,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
             CancellationToken.None);
 
         var referenceCallSource = new IndexSymbolRecord(
-            "reference-call-source-" + collection,
+            "reference-call-source-" + run,
             snapshotId,
             "ReferenceMod:Installed:Method:qol/Qol.Caller::Run()",
             "Method",
@@ -170,7 +176,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
             false,
             BodyRecoveryStatus.Recovered);
         var referenceFieldReader = new IndexSymbolRecord(
-            "reference-field-reader-" + collection,
+            "reference-field-reader-" + run,
             snapshotId,
             "ReferenceMod:Installed:Method:qol/Qol.Reader::Read()",
             "Method",
@@ -179,7 +185,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
             false,
             BodyRecoveryStatus.Recovered);
         var referenceFieldWriter = new IndexSymbolRecord(
-            "reference-field-writer-" + collection,
+            "reference-field-writer-" + run,
             snapshotId,
             "ReferenceMod:Installed:Method:qol/Qol.Writer::Write()",
             "Method",
@@ -188,7 +194,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
             false,
             BodyRecoveryStatus.Recovered);
         var referenceField = new IndexSymbolRecord(
-            "reference-field-" + collection,
+            "reference-field-" + run,
             snapshotId,
             "ReferenceMod:Installed:Field:qol/Qol.Config::System.Int32 Setting",
             "Field",
@@ -205,7 +211,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                 [],
                 [
                     new IndexRelationshipRecord(
-                        "reference-callsite-" + collection,
+                        "reference-callsite-" + run,
                         snapshotId,
                         referenceCallSource.SymbolId,
                         null,
@@ -213,7 +219,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "Calls",
                         "fixture:reference-callsite"),
                     new IndexRelationshipRecord(
-                        "reference-field-read-" + collection,
+                        "reference-field-read-" + run,
                         snapshotId,
                         referenceFieldReader.SymbolId,
                         referenceField.SymbolId,
@@ -221,7 +227,7 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "ReadsField",
                         "fixture:reference-field-read"),
                     new IndexRelationshipRecord(
-                        "reference-field-write-" + collection,
+                        "reference-field-write-" + run,
                         snapshotId,
                         referenceFieldWriter.SymbolId,
                         referenceField.SymbolId,
@@ -238,10 +244,10 @@ public sealed class McpTestAtlas : IAsyncDisposable
                         "1.0.0",
                         "MIT",
                         Path.Combine(DataRoot, "reference-input", collection),
-                        "reference-target-query-content-" + collection,
+                        "reference-target-query-content-" + run,
                         [referenceCallSource.SymbolId, referenceFieldReader.SymbolId, referenceFieldWriter.SymbolId, referenceField.SymbolId])
                 ]),
-            "2026-08-28T15:01:00Z",
+            completedAtUtc,
             CancellationToken.None);
 
         return new ReferenceSeed(collection, indexId);

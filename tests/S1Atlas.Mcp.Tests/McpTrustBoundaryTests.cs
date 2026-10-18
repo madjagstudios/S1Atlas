@@ -376,22 +376,19 @@ public sealed class McpTrustBoundaryTests
             _scenes.Client,
             "list_builds",
             new Dictionary<string, object?> { ["limit"] = "not-a-number" });
-        Assert.True(wrongType.IsError);
-        Assert.Contains("'limit'", Assert.IsType<TextContentBlock>(Assert.Single(wrongType.Content)).Text);
+        Assert.Contains("'limit'", McpToolSchemaTests.AssertInvalidArgumentsEnvelope(wrongType), StringComparison.Ordinal);
 
         var wrongItemType = await McpTestHost.CallToolRawAsync(
             _scenes.Client,
             "find_related_types",
             new Dictionary<string, object?> { ["selector"] = atlas.MethodSelector, ["relationKinds"] = new[] { 7 } });
-        Assert.True(wrongItemType.IsError);
-        Assert.Contains("'relationKinds'", Assert.IsType<TextContentBlock>(Assert.Single(wrongItemType.Content)).Text);
+        Assert.Contains("'relationKinds'", McpToolSchemaTests.AssertInvalidArgumentsEnvelope(wrongItemType), StringComparison.Ordinal);
 
         var missingRequired = await McpTestHost.CallToolRawAsync(
             _scenes.Client,
             "get_type",
             new Dictionary<string, object?> { ["codebase"] = "scheduleI" });
-        Assert.True(missingRequired.IsError);
-        Assert.Contains("'selector'", Assert.IsType<TextContentBlock>(Assert.Single(missingRequired.Content)).Text);
+        Assert.Contains("'selector'", McpToolSchemaTests.AssertInvalidArgumentsEnvelope(missingRequired), StringComparison.Ordinal);
     }
 
     [Fact]
