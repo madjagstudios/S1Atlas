@@ -6,8 +6,47 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-18: Day-one pipeline reliability
+
+A new Schedule I build now scans, extracts and indexes more reliably on the day
+it ships. A corrupt preferred extraction is replaced by a fresh, verified one
+with `s1atlas extract --retry`, and `doctor` and `setup` point to that command.
+Re-archiving unchanged inputs no longer fails, the MCP server exits cleanly when
+its client goes away, MCP argument errors use the standard JSON envelope, and a
+stale API index says when only the installed environment changed. Update both
+CLI and MCP tools together.
+
+### Upgrading
+
+- No database migration or re-index is needed. Reinstall the CLI and MCP tools
+  together.
+- MCP clients that read argument-binding errors as plain text now receive the
+  standard JSON envelope with error code `invalid_arguments` (AT-119).
+
 ### Fixed
 
+- `s1atlas extract --retry` now recovers a preferred extraction that fails
+  integrity verification (an output file was changed or deleted). It runs a new
+  extraction, validates it, makes the verified result the preferred extraction
+  and moves the corrupt output into the build's extraction quarantine. This
+  also replaces a manually promoted extraction once it is corrupt; a healthy
+  preference, or one whose files are only locked by another process, is left
+  alone. Cpp2IL output usually differs from run to run, so the result normally
+  has a new extraction ID; when the bytes do match, the corrupt extraction is
+  repaired in place under its own ID instead. If recovery fails, all evidence
+  is kept and the command returns a coded error (AT-113, AT-154).
+- Plain `s1atlas extract` on a corrupt preference now fails with
+  `IntegrityMismatch` and points to `--retry` instead of throwing, and it keeps
+  the preference so `doctor` still reports the problem. `doctor`, authority
+  hints and `setup` now suggest `s1atlas extract --retry` (with `--build <id>`
+  for an older build) (AT-113).
+- After `extract --retry` replaces the preferred extraction, run
+  `s1atlas index` so the code index is rebuilt from the new extraction;
+  `doctor` asks for it (AT-154).
+- When an installed S1API/S1MAPI index was built before a rescan that changed
+  the installed environment, the `StaleApiIndex` query error and `doctor` now
+  say the environment changed and name the re-index command, instead of
+  reporting the same build ID twice or calling the index missing (AT-144).
 - Running `extract --snapshot-inputs` again on unchanged inputs now reuses the
   input snapshot that is already registered and reports the same snapshot ID,
   instead of failing with `DatabasePromotionFailed` after promotion. A
