@@ -13,7 +13,8 @@ public sealed class AuthorityEnvelopeHintTests
         { InstalledBuildAuthorityStatus.BuildNotFound, ReadinessFixCommands.Builds },
         { InstalledBuildAuthorityStatus.AmbiguousBuildPrefix, null },
         { InstalledBuildAuthorityStatus.NoPreferredVerifiedExtraction, ReadinessFixCommands.Extract },
-        { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, null },
+        { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, ReadinessFixCommands.ExtractRetry },
+        { InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, "s1atlas extract --retry --build " + new string('a', 64) },
         { InstalledBuildAuthorityStatus.NoCompletedIndex, ReadinessFixCommands.Index },
         { InstalledBuildAuthorityStatus.IndexBuildMismatch, null }
     };

@@ -130,25 +130,32 @@ public sealed class AuthorityHintCliTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Search_CorruptedPreferredExtraction_OmitsHintInBothFormats()
+    public async Task Search_CorruptedPreferredExtraction_NamesRetryForSelectedBuildInBothFormats()
     {
         await _harness.SeedAsync(async repository =>
         {
             var ct = TestContext.Current.CancellationToken;
-            var extractionId = await SeedPreferredExtractionAsync(repository, BuildId);
+            var extractionId = await SeedPreferredExtractionAsync(repository, OtherBuildId);
             var validationPath = Path.Combine(
-                _harness.DataRoot, "builds", BuildId, "extractions", extractionId, "validation.json");
+                _harness.DataRoot, "builds", OtherBuildId, "extractions", extractionId, "validation.json");
             await File.AppendAllTextAsync(validationPath, "\n", ct);
         });
 
         await AssertHumanHintAsync(
             [],
             "ExtractionIntegrityFailure",
-            null);
+            ReadinessFixCommands.ExtractRetry);
         await AssertJsonHintAsync(
             [],
             "ExtractionIntegrityFailure",
-            null);
+            ReadinessFixCommands.ExtractRetry);
+
+        await _harness.SeedAsync(repository => repository.SaveSnapshotAsync(
+            ExtractionSeed.CreateSnapshot(BuildId, BaseTime), TestContext.Current.CancellationToken));
+        var args = new[] { "search", "Widget", "--build", OtherBuildId[..12] };
+        var expected = $"s1atlas extract --retry --build {OtherBuildId}";
+        await AssertHumanHintAsync(args, "ExtractionIntegrityFailure", expected);
+        await AssertJsonHintAsync(args, "ExtractionIntegrityFailure", expected);
     }
 
     [Fact]

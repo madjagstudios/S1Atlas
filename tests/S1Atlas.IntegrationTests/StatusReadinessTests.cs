@@ -70,14 +70,20 @@ public sealed class StatusReadinessTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Json_IncludesReadinessObjectWithoutChangingFields()
+    public async Task Json_IncludesRetryReadinessWithoutChangingFields()
     {
         using var repository = await CreateRepositoryAsync(seeded: true);
         using var output = new StringWriter();
         using var error = new StringWriter();
+        var report = new ReadinessReport(
+            [new ReadinessItem(
+                ReadinessItemIds.Extraction, "Preferred extraction", ReadinessState.Missing,
+                "The preferred extraction failed integrity verification.", ReadinessFixCommands.ExtractRetry, false)],
+            new ReadinessNextStep(false, "Next: s1atlas extract --retry", ReadinessFixCommands.ExtractRetry),
+            false, ReadinessFixCommands.ExampleQuery, []);
         var command = StatusCommand.Create(
             repository,
-            new ScriptedReadinessService(ReadinessReportBuilder.Blocked()),
+            new ScriptedReadinessService(report),
             output,
             error,
             TestContext.Current.CancellationToken);
@@ -92,10 +98,10 @@ public sealed class StatusReadinessTests : IAsyncDisposable
         var readiness = data.GetProperty("readiness");
         Assert.False(readiness.GetProperty("isReady").GetBoolean());
         Assert.Equal(
-            "Next: s1atlas tools install cpp2il",
+            "Next: s1atlas extract --retry",
             readiness.GetProperty("summary").GetString());
         Assert.Equal(
-            "s1atlas tools install cpp2il",
+            ReadinessFixCommands.ExtractRetry,
             readiness.GetProperty("nextCommand").GetString());
     }
 

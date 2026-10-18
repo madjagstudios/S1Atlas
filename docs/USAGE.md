@@ -151,6 +151,44 @@ non-authoritative. A matching validated extraction is reused after an integrity
 check unless `--retry` requests a new process. See
 **[docs/REFERENCE.md](REFERENCE.md)** for the lifecycle and integrity rules.
 
+If the preferred extraction fails integrity verification, repair it explicitly:
+
+```powershell
+s1atlas doctor
+s1atlas extract --retry
+s1atlas doctor
+```
+
+Plain `extract` exits `1` with a coded `IntegrityMismatch` failure at the
+`Recovery` stage and retry guidance. It preserves the corrupt preference and
+does not start an extraction attempt. That preference remains non-authoritative
+until integrity verification succeeds.
+
+`--retry` runs a fresh process and validation attempt. If the validated output
+matches the recorded recipe and content, S1Atlas stages and verifies a replacement,
+moves the damaged directory to extraction quarantine, and installs the replacement
+under the same content-derived extraction ID. The new attempt and validation
+report record the recovery; original records and preferences remain intact.
+There is no need to delete the Atlas data root.
+
+Retry still needs the normal matching game inputs and a usable verified tool;
+it does not install tools or bypass validation. An authority error for a historical
+build advertises `s1atlas extract --retry --build <full-build-id>`. That command
+still requires live inputs matching that build; it neither switches the current
+build nor chooses an archived input snapshot automatically. If replay is intended,
+select an existing snapshot explicitly with `--input-snapshot <id> --retry`.
+Custom-tool output and differing output from the same recipe retain the existing
+promotion rules: retry does not automatically prefer either or replace a selected
+extraction with different content. Inspect and explicitly promote eligible output
+with `s1atlas extractions promote <extraction-id>`.
+
+`doctor`, status readiness, and CLI/MCP authority errors all point to retry for an
+integrity-failed preferred extraction. `setup` uses that same command;
+`setup --scene` also passes `--snapshot-inputs`. A failed retry stops setup before indexing.
+After successful repair, doctor marks extraction `ok` and, if no completed index
+exists, suggests `s1atlas index`. Doctor can still exit nonzero while indexing or
+another prerequisite is missing.
+
 Inspect validated extraction history and manage the preferred output:
 
 ```powershell

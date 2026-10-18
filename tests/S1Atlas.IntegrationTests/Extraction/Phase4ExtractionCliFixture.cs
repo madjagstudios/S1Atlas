@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
 using S1Atlas.Cli;
 using S1Atlas.Storage.Sqlite;
@@ -101,6 +102,23 @@ internal sealed class Phase4ExtractionCliFixture : IAsyncDisposable
     {
         var install = Invoke("tools", "install", "cpp2il");
         Assert.Equal(0, install.ExitCode);
+    }
+
+    public void InstallReadinessTools()
+    {
+        InstallManagedTool();
+        // Doctor requires both tools. Reuse the offline fake package; this test
+        // never parses scenes or needs real Unity class data.
+        var toolsDirectory = Path.Combine(_configurationDirectory, "tools");
+        var definition = JsonNode.Parse(File.ReadAllText(
+            Path.Combine(toolsDirectory, "cpp2il.win-x64.json")))!;
+        definition["toolId"] = "unity-classdata";
+        definition["displayName"] = "Fake Unity class data";
+        definition["probes"] = new JsonArray();
+        File.WriteAllText(Path.Combine(toolsDirectory, "unity-classdata.win-x64.json"),
+            definition.ToJsonString());
+        var install = Invoke("tools", "install", "unity-classdata");
+        Assert.True(install.ExitCode == 0, install.StandardOutput + install.StandardError);
     }
 
     public async Task<SqliteAtlasRepository> OpenRepositoryAsync()

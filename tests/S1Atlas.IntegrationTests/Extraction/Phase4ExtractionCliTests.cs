@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
+using S1Atlas.Application.Readiness;
 using S1Atlas.Core.Extraction;
 using Xunit;
 
@@ -55,6 +57,101 @@ public sealed class Phase4ExtractionCliTests
         Assert.False(secondData.GetProperty("validationWasRun").GetBoolean());
         Assert.True(secondData.GetProperty("authoritative").GetBoolean());
         Assert.Equal(JsonValueKind.Null, secondData.GetProperty("attemptId").ValueKind);
+    }
+
+    [Fact]
+    public async Task Extract_CorruptPreference_ReturnsCodedFailure()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = new Phase4ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
+        fixture.InstallManagedTool();
+        var buildId = await fixture.SeedBuildAsync();
+        var first = fixture.Invoke("extract", "--json");
+        Assert.Equal(0, first.ExitCode);
+        using var firstJson = JsonDocument.Parse(first.StandardOutput);
+        var extractionId = firstJson.RootElement.GetProperty("data")
+            .GetProperty("extractionId").GetString()!;
+        var repository = await fixture.OpenRepositoryAsync();
+        var attemptCount = (await repository.ListAttemptsAsync(buildId, ct)).Count;
+        var artifact = Path.Combine(
+            fixture.ValidatedExtractionRoot(buildId, extractionId),
+            "reconstructed", "Assembly-CSharp.dll");
+        await File.AppendAllTextAsync(artifact, "corruption", ct);
+
+        var result = fixture.Invoke("extract", "--json");
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(string.Empty, result.StandardError);
+        using var json = JsonDocument.Parse(result.StandardOutput);
+        AssertFailureEnvelope(json.RootElement, "extract", 1);
+        var error = json.RootElement.GetProperty("error");
+        Assert.Equal("IntegrityMismatch", error.GetProperty("code").GetString());
+        Assert.Equal("Recovery", error.GetProperty("stage").GetString());
+        var jsonPreferred = await repository.GetPreferredExtractionAsync(buildId, ct);
+        var jsonAttemptCount = (await repository.ListAttemptsAsync(buildId, ct)).Count;
+
+        var human = fixture.Invoke("extract");
+        var humanPreferred = await repository.GetPreferredExtractionAsync(buildId, ct);
+        var humanAttemptCount = (await repository.ListAttemptsAsync(buildId, ct)).Count;
+        var retryCommand = $"s1atlas extract --retry --build {buildId}";
+        Assert.Multiple(
+            () => Assert.Contains(retryCommand, error.GetProperty("message").GetString()!),
+            () => Assert.Equal(extractionId, jsonPreferred?.ExtractionId),
+            () => Assert.Equal(attemptCount, jsonAttemptCount),
+            () => Assert.Equal(1, human.ExitCode),
+            () => Assert.Equal(string.Empty, human.StandardOutput),
+            () => Assert.Contains("integrity", human.StandardError, StringComparison.OrdinalIgnoreCase),
+            () => Assert.Contains(retryCommand, human.StandardError),
+            () => Assert.DoesNotContain("Exception", human.StandardError),
+            () => Assert.DoesNotMatch(@"(?m)^\s+at\s", human.StandardError),
+            () => Assert.Equal(extractionId, humanPreferred?.ExtractionId),
+            () => Assert.Equal(attemptCount, humanAttemptCount));
+    }
+
+    [Fact]
+    public async Task Doctor_CorruptExtraction_ProgressesFromRetryToIndexAfterRepair()
+    {
+        await using var fixture = new Phase4ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
+        fixture.InstallReadinessTools();
+        var buildId = await fixture.SeedBuildAsync();
+        var first = fixture.Invoke("extract", "--json");
+        Assert.Equal(0, first.ExitCode);
+        using var firstJson = JsonDocument.Parse(first.StandardOutput);
+        var extractionId = firstJson.RootElement.GetProperty("data")
+            .GetProperty("extractionId").GetString()!;
+        // No index is created, so a repaired extraction must advance to index.
+        await File.AppendAllTextAsync(Path.Combine(
+            fixture.ValidatedExtractionRoot(buildId, extractionId),
+            "reconstructed", "Assembly-CSharp.dll"), "corruption", TestContext.Current.CancellationToken);
+
+        AssertDoctor("missing", ReadinessFixCommands.ExtractRetry);
+
+        var plain = fixture.Invoke("extract", "--json");
+        Assert.Equal(1, plain.ExitCode);
+        using var plainJson = JsonDocument.Parse(plain.StandardOutput);
+        Assert.Equal("IntegrityMismatch", plainJson.RootElement.GetProperty("error")
+            .GetProperty("code").GetString());
+        AssertDoctor("missing", ReadinessFixCommands.ExtractRetry);
+
+        var retry = fixture.Invoke("extract", "--retry", "--json");
+        Assert.True(retry.ExitCode == 0, retry.StandardOutput + retry.StandardError);
+        AssertDoctor("ok", ReadinessFixCommands.Index);
+
+        void AssertDoctor(string extractionState, string nextCommand)
+        {
+            var doctor = fixture.Invoke("doctor", "--json");
+            using var document = JsonDocument.Parse(doctor.StandardOutput);
+            var data = document.RootElement.GetProperty("data");
+            var extraction = Assert.Single(data.GetProperty("items").EnumerateArray(),
+                item => item.GetProperty("id").GetString() == ReadinessItemIds.Extraction);
+            Assert.Equal(extractionState, extraction.GetProperty("state").GetString());
+            if (extractionState == "missing")
+            {
+                Assert.Equal(ReadinessFixCommands.ExtractRetry, extraction.GetProperty("fixCommand").GetString());
+            }
+            Assert.Equal(nextCommand, data.GetProperty("nextStep").GetProperty("command").GetString());
+        }
     }
 
     [Fact]
@@ -267,8 +364,9 @@ public sealed class Phase4ExtractionCliTests
     }
 
     [Fact]
-    public async Task Extract_RetryAfterCorruption_FailsIntegrityMismatchWithoutRepairing()
+    public async Task Extract_RetryAfterCorruption_RepairsSameExtraction()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var fixture = new Phase4ExtractionCliFixture(
             new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
         fixture.InstallManagedTool();
@@ -277,30 +375,112 @@ public sealed class Phase4ExtractionCliTests
         var first = fixture.Invoke("extract", "--json");
         Assert.Equal(0, first.ExitCode);
         using var firstDocument = JsonDocument.Parse(first.StandardOutput);
-        var extractionId = firstDocument.RootElement
-            .GetProperty("data").GetProperty("extractionId").GetString()!;
+        var firstData = firstDocument.RootElement.GetProperty("data");
+        var originalExtractionId = firstData.GetProperty("extractionId").GetString()!;
+        var originalAttemptId = firstData.GetProperty("attemptId").GetString()!;
+        // Repair must preserve even a manual selection, including its timestamp and history.
+        var repository = await fixture.OpenRepositoryAsync();
+        await repository.SetPreferredExtractionAsync(new PreferredExtraction(
+            buildId, originalExtractionId, DateTimeOffset.UtcNow, ExtractionPreferenceReason.ManualPromotion), ct);
+        var originalExtraction = await repository.GetValidatedExtractionAsync(originalExtractionId, ct);
+        var originalArtifacts = await repository.GetExtractionArtifactsAsync(originalExtractionId, ct);
+        var originalAttempts = await repository.ListAttemptsAsync(buildId, ct);
+        var originalPreference = await repository.GetPreferredExtractionAsync(buildId, ct);
+        Assert.Equal(ExtractionPreferenceReason.ManualPromotion, originalPreference!.SelectionReason);
+        await using var connection = new SqliteConnection($"Data Source={fixture.DatabasePath}");
+        await connection.OpenAsync(ct);
+        async Task<string> ReadHistoryAsync(string sql)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            var rows = new List<object[]>();
+            while (await reader.ReadAsync(ct))
+            {
+                var values = new object[reader.FieldCount];
+                reader.GetValues(values);
+                rows.Add(values);
+            }
+            return JsonSerializer.Serialize(rows);
+        }
+        var preferenceHistory = await ReadHistoryAsync("SELECT * FROM extraction_preference_events ORDER BY event_id");
+        var originalValidationSql = $"SELECT * FROM extraction_validation_results WHERE attempt_id = '{originalAttemptId}'";
+        var originalValidation = await ReadHistoryAsync(originalValidationSql);
 
         var artifact = Path.Combine(
-            fixture.ValidatedExtractionRoot(buildId, extractionId),
+            fixture.ValidatedExtractionRoot(buildId, originalExtractionId),
             "reconstructed",
             "Assembly-CSharp.dll");
-        await File.AppendAllTextAsync(
-            artifact, "corruption", TestContext.Current.CancellationToken);
+        var originalBytes = await File.ReadAllBytesAsync(artifact, ct);
+        await File.AppendAllTextAsync(artifact, "corruption", ct);
+        var damagedBytes = await File.ReadAllBytesAsync(artifact, ct);
 
         var retry = fixture.Invoke("extract", "--retry", "--json");
 
-        Assert.Equal(1, retry.ExitCode);
-        using var retryDocument = JsonDocument.Parse(retry.StandardOutput);
-        AssertFailureEnvelope(retryDocument.RootElement, "extract", 1);
-        Assert.Equal(
-            "IntegrityMismatch",
-            retryDocument.RootElement.GetProperty("error").GetProperty("code").GetString());
+        Assert.True(retry.ExitCode == 0, retry.StandardOutput + retry.StandardError);
+        using var retryJson = JsonDocument.Parse(retry.StandardOutput);
+        var data = retryJson.RootElement.GetProperty("data");
+        Assert.True(data.GetProperty("processWasRun").GetBoolean());
+        Assert.True(data.GetProperty("validationWasRun").GetBoolean());
+        Assert.True(data.GetProperty("authoritative").GetBoolean());
+        Assert.True(data.GetProperty("preferred").GetBoolean());
+        Assert.False(data.GetProperty("reusedExistingExtraction").GetBoolean());
+        Assert.Equal(originalExtractionId, data.GetProperty("extractionId").GetString());
+        var retryAttemptId = data.GetProperty("attemptId").GetString()!;
+        Assert.NotEqual(originalAttemptId, retryAttemptId);
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(artifact, ct));
+        var quarantine = Path.Combine(fixture.DataDirectory, "builds", buildId, "extractions",
+            "quarantine", $"{originalExtractionId}-{retryAttemptId}");
+        Assert.Equal(damagedBytes, await File.ReadAllBytesAsync(
+            Path.Combine(quarantine, "reconstructed", "Assembly-CSharp.dll"), ct));
 
-        var repository = await fixture.OpenRepositoryAsync();
-        var preferred = await repository.GetPreferredExtractionAsync(
-            buildId, TestContext.Current.CancellationToken);
-        Assert.NotNull(preferred);
-        Assert.Equal(extractionId, preferred.ExtractionId);
+        var show = fixture.Invoke("extractions", "show", originalExtractionId, "--json");
+        Assert.Equal(0, show.ExitCode);
+        using var showJson = JsonDocument.Parse(show.StandardOutput);
+        Assert.True(showJson.RootElement.GetProperty("data").GetProperty("extraction")
+            .GetProperty("integrityVerified").GetBoolean());
+        Assert.Equal(originalPreference, await repository.GetPreferredExtractionAsync(buildId, ct));
+        Assert.Equal(preferenceHistory, await ReadHistoryAsync("SELECT * FROM extraction_preference_events ORDER BY event_id"));
+        Assert.Equal(originalValidation, await ReadHistoryAsync(originalValidationSql));
+        var extractions = await repository.ListValidatedExtractionsAsync(buildId, ct);
+        var repaired = Assert.Single(extractions);
+        Assert.Equal(originalAttemptId, repaired.SourceAttemptId);
+        Assert.Equal(JsonSerializer.Serialize(originalExtraction), JsonSerializer.Serialize(repaired));
+        Assert.Equal(originalArtifacts, await repository.GetExtractionArtifactsAsync(originalExtractionId, ct));
+        var attempts = await repository.ListAttemptsAsync(buildId, ct);
+        Assert.Equal(originalAttempts.Count + 1, attempts.Count);
+        foreach (var original in originalAttempts)
+        {
+            Assert.Equal(JsonSerializer.Serialize(original),
+                JsonSerializer.Serialize(Assert.Single(attempts, item => item.AttemptId == original.AttemptId)));
+        }
+        var retryAttempt = Assert.Single(attempts, item => item.AttemptId == retryAttemptId);
+        Assert.Equal(ExtractionAttemptStatus.Succeeded, retryAttempt.Status);
+        Assert.Equal(originalExtractionId, retryAttempt.ResultExtractionId);
+        await using var validationCommand = connection.CreateCommand();
+        validationCommand.CommandText = "SELECT subject_extraction_id, outcome, report_path FROM extraction_validation_results WHERE attempt_id = $attempt";
+        validationCommand.Parameters.AddWithValue("$attempt", retryAttemptId);
+        await using (var reader = await validationCommand.ExecuteReaderAsync(ct))
+        {
+            Assert.True(await reader.ReadAsync(ct));
+            Assert.Equal(originalExtractionId, reader.GetString(0));
+            Assert.Equal("Valid", reader.GetString(1));
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(reader.GetString(2), ct));
+            Assert.Equal(retryAttemptId, report.RootElement.GetProperty("attemptId").GetString());
+        }
+
+        var noOp = fixture.Invoke("extract", "--json");
+        Assert.Equal(0, noOp.ExitCode);
+        using var noOpJson = JsonDocument.Parse(noOp.StandardOutput);
+        var noOpData = noOpJson.RootElement.GetProperty("data");
+        Assert.Equal(originalExtractionId, noOpData.GetProperty("extractionId").GetString());
+        Assert.True(noOpData.GetProperty("authoritative").GetBoolean());
+        Assert.True(noOpData.GetProperty("preferred").GetBoolean());
+        Assert.True(noOpData.GetProperty("reusedExistingExtraction").GetBoolean());
+        Assert.False(noOpData.GetProperty("processWasRun").GetBoolean());
+        Assert.False(noOpData.GetProperty("validationWasRun").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, noOpData.GetProperty("attemptId").ValueKind);
+        Assert.Equal(attempts.Count, (await repository.ListAttemptsAsync(buildId, ct)).Count);
     }
 
     [Fact]

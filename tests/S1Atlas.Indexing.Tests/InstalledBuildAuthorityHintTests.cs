@@ -58,16 +58,25 @@ public sealed class InstalledBuildAuthorityHintTests
     }
 
     [Fact]
-    public async Task Resolve_CorruptedPreferredExtraction_HasNoHint()
+    public async Task Resolve_CorruptedPreferredExtraction_NamesRetryForSelectedBuild()
     {
+        var buildId = new string('a', 64);
         await using var harness = await AuthorityHarness.EmptyAsync();
-        await harness.SeedCorruptedPreferenceAsync();
+        await harness.SeedCorruptedPreferenceAsync(buildId);
         var resolver = harness.CreateResolver();
 
         var result = await resolver.ResolveAsync(requestedBuildId: null, CancellationToken.None);
 
         Assert.Equal(InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, result.Status);
-        Assert.Null(result.Hint);
+        Assert.Equal(ReadinessFixCommands.ExtractRetry, result.Hint);
+
+        var explicitCurrent = await resolver.ResolveAsync(buildId[..12], CancellationToken.None);
+        Assert.Equal(ReadinessFixCommands.ExtractRetry, explicitCurrent.Hint);
+
+        await harness.SeedCurrentBuildAsync(new string('b', 64));
+        var historical = await resolver.ResolveAsync(buildId[..12], CancellationToken.None);
+        Assert.Equal(InstalledBuildAuthorityStatus.ExtractionIntegrityFailure, historical.Status);
+        Assert.Equal($"s1atlas extract --retry --build {buildId}", historical.Hint);
     }
 
     [Fact]

@@ -111,7 +111,8 @@ public sealed class InstalledBuildAuthorityResolver
                 InstalledBuildAuthorityStatus.ExtractionIntegrityFailure,
                 requestedBuildId,
                 resolvedBuildId,
-                "The preferred extraction failed integrity verification.");
+                "The preferred extraction failed integrity verification.",
+                await CurrentBuildIdAsync(ct));
         }
 
         if (!string.Equals(preferred.Extraction.BuildId, resolvedBuildId, StringComparison.Ordinal))

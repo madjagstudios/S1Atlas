@@ -17,6 +17,7 @@ namespace S1Atlas.Extraction.Promotion;
 /// <param name="DeduplicationTarget">An already-validated extraction whose bytes this candidate exactly reproduces; links instead of promoting a second copy.</param>
 /// <param name="AutomaticPreferenceReason">The automatic preference reason a promoter should apply, or <see langword="null"/>.</param>
 /// <param name="KeepInvalidOutput">When the report is <c>Invalid</c>, retains the candidate as retained-output instead of counting and discarding it.</param>
+/// <param name="AllowIntegrityRepair">An explicit retry may replace corrupt matching output after verifying the replacement.</param>
 internal sealed record ValidatedExtractionPromotionRequest(
     ExtractionAttempt Attempt,
     ValidationReport Report,
@@ -24,12 +25,14 @@ internal sealed record ValidatedExtractionPromotionRequest(
     ToolTrustLevel TrustLevel,
     ValidatedExtraction? DeduplicationTarget,
     ExtractionPreferenceReason? AutomaticPreferenceReason,
-    bool KeepInvalidOutput);
+    bool KeepInvalidOutput,
+    bool AllowIntegrityRepair = false);
 
 internal enum PromotionDisposition
 {
     NewExtraction,
     LinkedExistingExtraction,
+    RepairedExistingExtraction,
     ValidationFailed
 }
 
@@ -257,20 +260,36 @@ internal sealed class ValidatedExtractionPromoter
         var attempt = request.Attempt;
         var report = request.Report;
         var target = request.DeduplicationTarget!;
-        var attemptPaths = OwnedValidatedExtractionPaths.ForAttempt(
-            _dataRoot, attempt.BuildId, attempt.AttemptId);
-        var ownedAttempt = OwnedAttemptPaths.Create(_dataRoot, attempt.BuildId, attempt.AttemptId);
+        ValidatedExtractionIntegrity integrity;
+        try
+        {
+            var attemptPaths = OwnedValidatedExtractionPaths.ForAttempt(
+                _dataRoot, attempt.BuildId, attempt.AttemptId);
+            // Retain the strict report even when the matching output needs repair.
+            await _documentStore.WriteAttemptValidationReportAsync(attemptPaths, report, cancellationToken);
+            integrity = await _integrityVerifier.VerifyAsync(
+                _dataRoot, target.BuildId, target.ExtractionId, cancellationToken);
+        }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+        {
+            if (request.AllowIntegrityRepair)
+            {
+                throw RepairFailure(request, ExtractionFailureStage.FilesystemPromotion, exception);
+            }
+            throw;
+        }
+        catch (Exception exception) when (request.AllowIntegrityRepair)
+        {
+            throw RepairFailure(request, ExtractionFailureStage.FilesystemPromotion, exception);
+        }
 
-        // Write the attempt-level strict report first (its full history is retained even
-        // though no new extraction is created).
-        await _documentStore.WriteAttemptValidationReportAsync(attemptPaths, report, cancellationToken);
-
-        // Verify the existing final extraction is still authoritative before trusting it
-        // as this attempt's result and discarding the reproduced candidate.
-        var integrity = await _integrityVerifier.VerifyAsync(
-            _dataRoot, target.BuildId, target.ExtractionId, cancellationToken);
         if (integrity.Status != ValidatedExtractionIntegrityStatus.Valid)
         {
+            if (request.AllowIntegrityRepair)
+            {
+                return await RepairExistingAsync(request, cancellationToken);
+            }
+
             throw new ExtractionOperationException(
                 ExtractionFailureStage.ReproducibilityValidation,
                 ExtractionFailureCode.IntegrityMismatch,
@@ -279,6 +298,7 @@ internal sealed class ValidatedExtractionPromoter
         }
 
         // Delete the exact duplicate candidate; it reproduces bytes that already exist.
+        var ownedAttempt = OwnedAttemptPaths.Create(_dataRoot, attempt.BuildId, attempt.AttemptId);
         var (fileCount, byteCount) = DeleteOwnedCandidate(ownedAttempt);
 
         var succeeded = BuildSucceededAttempt(attempt, target.ExtractionId) with
@@ -309,6 +329,190 @@ internal sealed class ValidatedExtractionPromoter
             target.ExtractionId,
             target.RootPath,
             isPreferred);
+    }
+
+    private async Task<ValidatedExtractionPromotionResult> RepairExistingAsync(
+        ValidatedExtractionPromotionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var attempt = request.Attempt;
+        var report = request.Report;
+        ValidatedExtraction target;
+        string finalRoot;
+        try
+        {
+            // Re-read immutable facts under the caller's extraction lock. Repair never
+            // creates or changes extraction/artifact rows, including SourceAttemptId.
+            target = await _validatedRepository.GetValidatedExtractionAsync(
+                request.DeduplicationTarget!.ExtractionId, cancellationToken)
+                ?? throw new InvalidOperationException("The matching extraction row is missing.");
+            var storedArtifacts = await _validatedRepository.GetExtractionArtifactsAsync(
+                target.ExtractionId, cancellationToken);
+            var manifest = request.ArtifactManifest
+                ?? throw new InvalidOperationException("Repair requires the validated candidate manifest.");
+            var digest = ArtifactManifestFingerprint.Create(manifest);
+            if (target.RecipeId != attempt.RecipeId || target.BuildId != attempt.BuildId ||
+                target.ToolInstanceId != attempt.ToolInstanceId ||
+                target.ArtifactManifestDigest != digest || report.ArtifactManifestDigest != digest ||
+                target.ExtractionId != ExtractionId.Create(attempt.RecipeId!, digest) ||
+                report.SubjectExtractionId != target.ExtractionId || report.AttemptId != attempt.AttemptId ||
+                !manifest.Entries.OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)
+                    .SequenceEqual(storedArtifacts.OrderBy(entry => entry.RelativePath, StringComparer.Ordinal)))
+            {
+                throw new InvalidOperationException("The candidate does not match the stored extraction and artifacts.");
+            }
+
+            var attemptPaths = OwnedValidatedExtractionPaths.ForAttempt(_dataRoot, attempt.BuildId, attempt.AttemptId);
+            var ownedAttempt = OwnedAttemptPaths.Create(_dataRoot, attempt.BuildId, attempt.AttemptId);
+            finalRoot = OwnedValidatedExtractionPaths.ForExtraction(
+                _dataRoot, target.BuildId, target.ExtractionId).FinalExtractionRoot!;
+            var stagingRoot = attemptPaths.PromotionStagingRoot!;
+            var quarantineRoot = OwnedValidatedExtractionPaths.ForRepairQuarantine(
+                _dataRoot, target.BuildId, target.ExtractionId, attempt.AttemptId);
+            if (!string.Equals(target.RootPath, finalRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("The stored extraction root does not match its owned path.");
+            }
+            if (OwnedAttemptPaths.EntryExists(stagingRoot) || OwnedAttemptPaths.EntryExists(quarantineRoot))
+            {
+                throw new InvalidOperationException("The repair staging or quarantine destination is already occupied.");
+            }
+
+            var inspection = await _candidateInspector.InspectAsync(attempt, _dataRoot, cancellationToken);
+            if (!inspection.ContainmentPassed || inspection.Inventory is null ||
+                !InventoryMatchesManifest(inspection.Inventory, manifest))
+            {
+                throw new InvalidOperationException("The candidate no longer matches its validated manifest.");
+            }
+            EnsureSafeRepairTree(ownedAttempt.CandidateOutputRoot, cancellationToken);
+            // Inspect the entire corrupt tree, including unexpected files, before moving
+            // evidence. Missing output needs no quarantine; unreadable output is not missing.
+            if (OwnedAttemptPaths.EntryExists(finalRoot))
+            {
+                EnsureSafeRepairTree(finalRoot, cancellationToken);
+            }
+            if (OwnedAttemptPaths.EntryExists(ownedAttempt.FinalLogsRoot))
+            {
+                EnsureSafeRepairTree(ownedAttempt.FinalLogsRoot, cancellationToken);
+            }
+
+            Directory.CreateDirectory(stagingRoot);
+            OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, stagingRoot);
+            Directory.Move(ownedAttempt.CandidateOutputRoot, attemptPaths.StagedReconstructedRoot!);
+            CopyBoundedLogs(ownedAttempt, attemptPaths.StagedLogsRoot!);
+            await _documentStore.WriteFinalDocumentsAsync(
+                _dataRoot, stagingRoot, target, manifest, report, cancellationToken);
+            var staged = await _integrityVerifier.VerifyAsync(
+                _dataRoot, stagingRoot, target, storedArtifacts, cancellationToken);
+            if (staged.Status != ValidatedExtractionIntegrityStatus.Valid)
+            {
+                throw new ExtractionOperationException(
+                    ExtractionFailureStage.FilesystemPromotion,
+                    ExtractionFailureCode.FilesystemPromotionFailed,
+                    $"The staged replacement failed integrity verification: {staged.Message}");
+            }
+
+            EnsureSafeRepairTree(stagingRoot, cancellationToken);
+            OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, finalRoot);
+            OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, quarantineRoot);
+            if (OwnedAttemptPaths.EntryExists(quarantineRoot))
+            {
+                throw new InvalidOperationException("The repair quarantine destination is already occupied.");
+            }
+            if (OwnedAttemptPaths.EntryExists(finalRoot))
+            {
+                EnsureSafeRepairTree(finalRoot, cancellationToken);
+                Directory.CreateDirectory(Path.GetDirectoryName(quarantineRoot)!);
+                OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, quarantineRoot);
+                Directory.Move(finalRoot, quarantineRoot);
+            }
+            // No rollback to corrupt bytes and no cleanup on failure: all available
+            // candidate, staging, quarantine, installed, report and attempt evidence stays.
+            cancellationToken.ThrowIfCancellationRequested();
+            Directory.Move(stagingRoot, finalRoot);
+            var installed = await _integrityVerifier.VerifyAsync(
+                _dataRoot, target.BuildId, target.ExtractionId, cancellationToken);
+            if (installed.Status != ValidatedExtractionIntegrityStatus.Valid)
+            {
+                throw new InvalidOperationException(
+                    $"The installed replacement failed integrity verification: {installed.Message}");
+            }
+        }
+        catch (Exception exception)
+        {
+            throw RepairFailure(request, ExtractionFailureStage.FilesystemPromotion, exception);
+        }
+
+        try
+        {
+            var succeeded = BuildSucceededAttempt(attempt, target.ExtractionId);
+            await _validatedRepository.LinkAttemptToValidatedExtractionAsync(
+                new ValidationPersistence(succeeded, report), target,
+                ExtractionAttemptStatus.Validating, cancellationToken);
+            var preferred = await _validatedRepository.GetPreferredExtractionAsync(target.BuildId, cancellationToken);
+            if (preferred is null && request.AutomaticPreferenceReason is { } reason)
+            {
+                await _validatedRepository.SetPreferredExtractionAsync(
+                    new PreferredExtraction(target.BuildId, target.ExtractionId, report.ValidatedAtUtc, reason),
+                    cancellationToken);
+            }
+            // Preserve any existing selection and its reason, even a manual selection.
+            preferred = await _validatedRepository.GetPreferredExtractionAsync(target.BuildId, cancellationToken);
+            return new ValidatedExtractionPromotionResult(
+                PromotionDisposition.RepairedExistingExtraction, succeeded, target.ExtractionId, finalRoot,
+                preferred?.ExtractionId == target.ExtractionId);
+        }
+        catch (Exception exception)
+        {
+            throw RepairFailure(request, ExtractionFailureStage.DatabasePromotion, exception);
+        }
+    }
+
+    private void EnsureSafeRepairTree(string root, CancellationToken cancellationToken)
+    {
+        OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, root);
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var entry in Directory.EnumerateFileSystemEntries(pending.Pop()))
+            {
+                OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, entry, allowFinalFile: true);
+                if ((File.GetAttributes(entry) & FileAttributes.Directory) != 0)
+                {
+                    pending.Push(entry);
+                }
+                else
+                {
+                    // Opening for read also refuses inaccessible evidence before any move.
+                    using var stream = File.OpenRead(entry);
+                }
+            }
+        }
+    }
+
+    private ExtractionOperationException RepairFailure(
+        ValidatedExtractionPromotionRequest request, ExtractionFailureStage stage, Exception exception)
+    {
+        var attempt = request.Attempt;
+        var buildRoot = Path.Combine(_dataRoot, "builds", attempt.BuildId);
+        var extractionsRoot = Path.Combine(buildRoot, "extractions");
+        var extractionId = request.DeduplicationTarget!.ExtractionId;
+        return new ExtractionOperationException(
+            stage,
+            exception is OperationCanceledException
+                ? ExtractionFailureCode.OperationCanceled
+                : stage == ExtractionFailureStage.DatabasePromotion
+                ? ExtractionFailureCode.DatabasePromotionFailed
+                : ExtractionFailureCode.FilesystemPromotionFailed,
+            $"Repair attempt '{attempt.AttemptId}' failed: {exception.Message} " +
+            "All available evidence has been retained. Inspect the attempt, report and candidate at " +
+            $"'{Path.Combine(buildRoot, "attempts", attempt.AttemptId)}', staging at " +
+            $"'{Path.Combine(extractionsRoot, ".staging", attempt.AttemptId)}', quarantine at " +
+            $"'{Path.Combine(extractionsRoot, "quarantine", $"{extractionId}-{attempt.AttemptId}")}', " +
+            $"and final output at '{Path.Combine(extractionsRoot, extractionId)}' before retrying.",
+            attempt.AttemptId, exception);
     }
 
     private async Task<ValidatedExtractionPromotionResult> FinalizeInvalidAsync(
