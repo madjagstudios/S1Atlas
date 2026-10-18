@@ -24,6 +24,8 @@ if (args is not ([] or ["mcp", "serve", ..]))
     return 2;
 }
 
+AppDomain.CurrentDomain.UnhandledException += McpCrashLog.OnUnhandledException;
+
 var dataDirectory = AtlasDataPaths.FromEnvironment().RootDirectory;
 var services = McpServerComposition.BuildReadOnlyServices(dataDirectory);
 var schemaStatus = await services.SchemaGate.GetStatusAsync(CancellationToken.None);
@@ -44,6 +46,10 @@ builder.Services.AddSingleton(services.ReferenceModQueryService);
 builder.Services.AddSingleton(services.SeamInvestigationService);
 builder.Services.AddSingleton(services.BuildDiffService);
 builder.Services.AddSingleton(services.SceneQueryService);
+if (Environment.GetEnvironmentVariable(McpTestFaultService.EnvironmentVariable) is { Length: > 0 } testFault)
+{
+    builder.Services.AddHostedService(_ => new McpTestFaultService(testFault));
+}
 var toolJsonOptions = ToolJsonOptions.Create();
 var toolJsonResolver = (DefaultJsonTypeInfoResolver)toolJsonOptions.TypeInfoResolver!;
 toolJsonResolver.Modifiers.Add(typeInfo =>
@@ -64,7 +70,7 @@ builder.Services
     .WithRequestFilters(filters =>
     {
         filters.AddCallToolFilter(next => McpSchemaGateFilter.Wrap(services.SchemaGate, toolJsonOptions, next));
-        filters.AddCallToolFilter(McpBindingErrorFilter.Wrap);
+        filters.AddCallToolFilter(next => McpBindingErrorFilter.Wrap(toolJsonOptions, next));
         filters.AddCallToolFilter(McpEnvelopeErrorFilter.Wrap);
     });
 builder.Services.Configure<McpServerOptions>(options =>
@@ -75,5 +81,14 @@ builder.Services.Configure<McpServerOptions>(options =>
     options.ServerInfo.Version = version;
 });
 
-await builder.Build().RunAsync();
+try
+{
+    await builder.Build().RunAsync();
+}
+catch (Exception exception) when (McpClientDisconnect.IsClientGone(exception))
+{
+    // The client closed its pipes while the host was stopping. That is how a
+    // stdio session ends, so exit cleanly instead of crashing.
+}
+
 return 0;

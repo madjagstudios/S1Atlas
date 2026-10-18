@@ -679,6 +679,28 @@ public sealed class AtlasReadinessService : IAtlasReadinessService
                 cancellationToken);
             if (installed is null)
             {
+                var previous = await _indexRepository.GetLatestCompletedIndexForBuildAsync(
+                    codebase,
+                    CodeChannel.Installed,
+                    snapshot.Build.BuildId,
+                    cancellationToken);
+                var previousSnapshot = previous is null
+                    ? null
+                    : await _indexRepository.GetCodeSnapshotAsync(previous.SnapshotId, cancellationToken);
+                if (previousSnapshot?.EnvironmentSnapshotId is string previousEnvironmentId
+                    && !string.Equals(previousEnvironmentId, environmentSnapshotId, StringComparison.Ordinal))
+                {
+                    var fixCommand = ReadinessFixCommands.IndexApiInstalled(codebase);
+                    return new ReadinessItem(
+                        ReadinessItemIds.ApiIndex,
+                        title,
+                        ReadinessState.Stale,
+                        $"The installed environment snapshot changed since the {ApiDisplayName(codebase)} index was built; "
+                            + $"the selected build is unchanged. Re-run '{fixCommand}'.",
+                        fixCommand,
+                        true);
+                }
+
                 return new ReadinessItem(
                     ReadinessItemIds.ApiIndex,
                     title,

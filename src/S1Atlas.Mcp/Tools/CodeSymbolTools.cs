@@ -513,12 +513,6 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
-                    var result = await _services.ApiIndexQueryService.CallSitesSelectedAsync(
-                        selection,
-                        selector,
-                        boundedLimit,
-                        ct,
-                        offset);
                     var expectedHash = ToolArguments.CursorHashFor(
                         "find_call_sites", catalog.ResolvedBuildId, selection.IndexId,
                         selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
@@ -528,6 +522,12 @@ public sealed class CodeSymbolTools
                         return hashError;
                     }
 
+                    var result = await _services.ApiIndexQueryService.CallSitesSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        ct,
+                        offset);
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiCallSites(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -572,6 +572,15 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    "find_call_sites", authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<CallSiteQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 var result = options.Scope == IndexQueryScope.Game
                     ? await _services.IndexQueryService.CallSitesInIndexAsync(
                         authority.IndexRun!,
@@ -586,15 +595,6 @@ public sealed class CodeSymbolTools
                         options,
                         ct,
                         pinned.ReferenceCollection?.ReferenceIndexId);
-                var expectedHash = ToolArguments.CursorHashFor(
-                    "find_call_sites", authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    scope.ToString(), collection);
-                if (!ToolArguments.VerifyCursorHash<CallSiteQueryResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
-                }
-
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                 return EnvelopeMapper.FromScopedCallSites(
                     authority, nextCursor is null ? result : result with { NextCursor = nextCursor },
@@ -652,14 +652,6 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
-                    var result = await _services.ApiIndexQueryService.FieldReferencesSelectedAsync(
-                        selection,
-                        selector,
-                        boundedLimit,
-                        filter,
-                        ct,
-                        includeGenerated,
-                        offset);
                     var expectedHash = ToolArguments.CursorHashFor(
                         "find_field_references", catalog.ResolvedBuildId, selection.IndexId,
                         selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
@@ -669,6 +661,14 @@ public sealed class CodeSymbolTools
                         return hashError;
                     }
 
+                    var result = await _services.ApiIndexQueryService.FieldReferencesSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        filter,
+                        ct,
+                        includeGenerated,
+                        offset);
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiFieldReferences(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -723,6 +723,15 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    "find_field_references", authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection, readers.ToString(), writers.ToString(), includeGenerated.ToString());
+                if (!ToolArguments.VerifyCursorHash<FieldReferenceQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 var result = options.Scope == IndexQueryScope.Game
                     ? await _services.IndexQueryService.FieldReferencesInIndexAsync(
                         authority.IndexRun!,
@@ -741,15 +750,6 @@ public sealed class CodeSymbolTools
                         ct,
                         pinned.ReferenceCollection?.ReferenceIndexId,
                         includeGenerated);
-                var expectedHash = ToolArguments.CursorHashFor(
-                    "find_field_references", authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    scope.ToString(), collection, readers.ToString(), writers.ToString(), includeGenerated.ToString());
-                if (!ToolArguments.VerifyCursorHash<FieldReferenceQueryResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
-                }
-
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                 return EnvelopeMapper.FromScopedFieldReferences(
                     authority, nextCursor is null ? result : result with { NextCursor = nextCursor },
@@ -803,6 +803,15 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        "find_related_types", catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, kindsHash);
+                    if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
                     var result = await _services.ApiIndexQueryService.RelationshipsSelectedAsync(
                         selection,
                         selector,
@@ -813,15 +822,6 @@ public sealed class CodeSymbolTools
                             : new HashSet<string>(relationKinds, StringComparer.OrdinalIgnoreCase),
                         ct,
                         offset: offset);
-                    var expectedHash = ToolArguments.CursorHashFor(
-                        "find_related_types", catalog.ResolvedBuildId, selection.IndexId,
-                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                        scope.ToString(), collection, kindsHash);
-                    if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, null, out var hashError))
-                    {
-                        return hashError;
-                    }
-
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiRelationships(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -874,6 +874,16 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    "find_related_types", authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection,
+                    string.Join(",", selectedKinds.OrderBy(kind => kind, StringComparer.Ordinal)));
+                if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 // The kind filter applies after the fetch, so the fetch must
                 // cover every edge: a capped window would silently drop rows
                 // past the cap and under-report the total.
@@ -901,16 +911,6 @@ public sealed class CodeSymbolTools
                         TotalCount = filtered.Length,
                         HasMore = hasMore
                     };
-                }
-
-                var expectedHash = ToolArguments.CursorHashFor(
-                    "find_related_types", authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    scope.ToString(), collection,
-                    string.Join(",", selectedKinds.OrderBy(kind => kind, StringComparer.Ordinal)));
-                if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
                 }
 
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
@@ -956,12 +956,6 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
-                    var result = await _services.ApiIndexQueryService.OverridesSelectedAsync(
-                        selection,
-                        selector,
-                        boundedLimit,
-                        ct,
-                        offset);
                     var expectedHash = ToolArguments.CursorHashFor(
                         "find_overrides", catalog.ResolvedBuildId, selection.IndexId,
                         selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
@@ -971,6 +965,12 @@ public sealed class CodeSymbolTools
                         return hashError;
                     }
 
+                    var result = await _services.ApiIndexQueryService.OverridesSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        ct,
+                        offset);
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiHierarchy(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -1014,6 +1014,15 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    "find_overrides", authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 var result = options.Scope == IndexQueryScope.Game
                     ? await _services.IndexQueryService.OverridesInIndexAsync(
                         authority.IndexRun!,
@@ -1028,15 +1037,6 @@ public sealed class CodeSymbolTools
                         options,
                         ct,
                         offset: offset);
-
-                var expectedHash = ToolArguments.CursorHashFor(
-                    "find_overrides", authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    scope.ToString(), collection);
-                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
-                }
 
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                 return EnvelopeMapper.FromScopedHierarchy(
@@ -1087,13 +1087,6 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
-                    var result = await _services.ApiIndexQueryService.OverridersSelectedAsync(
-                        selection,
-                        selector,
-                        boundedLimit,
-                        boundedDepth,
-                        ct,
-                        offset);
                     var expectedHash = ToolArguments.CursorHashFor(
                         "find_overriders", catalog.ResolvedBuildId, selection.IndexId,
                         selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
@@ -1103,6 +1096,13 @@ public sealed class CodeSymbolTools
                         return hashError;
                     }
 
+                    var result = await _services.ApiIndexQueryService.OverridersSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        boundedDepth,
+                        ct,
+                        offset);
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiHierarchy(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -1151,6 +1151,15 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    "find_overriders", authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    boundedDepth.ToString(), scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 var result = options.Scope == IndexQueryScope.Game
                     ? await _services.IndexQueryService.OverriddenByInIndexAsync(
                         authority.IndexRun!,
@@ -1167,15 +1176,6 @@ public sealed class CodeSymbolTools
                         boundedDepth,
                         ct,
                         offset: offset);
-
-                var expectedHash = ToolArguments.CursorHashFor(
-                    "find_overriders", authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    boundedDepth.ToString(), scope.ToString(), collection);
-                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
-                }
 
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                 return EnvelopeMapper.FromScopedHierarchy(
@@ -1226,13 +1226,6 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
-                    var result = await _services.ApiIndexQueryService.DerivedSelectedAsync(
-                        selection,
-                        selector,
-                        boundedLimit,
-                        boundedDepth,
-                        offset,
-                        ct);
                     var expectedHash = ToolArguments.CursorHashFor(
                         "find_derived_types", catalog.ResolvedBuildId, selection.IndexId,
                         selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
@@ -1242,6 +1235,13 @@ public sealed class CodeSymbolTools
                         return hashError;
                     }
 
+                    var result = await _services.ApiIndexQueryService.DerivedSelectedAsync(
+                        selection,
+                        selector,
+                        boundedLimit,
+                        boundedDepth,
+                        offset,
+                        ct);
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiHierarchy(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -1290,6 +1290,15 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    "find_derived_types", authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    boundedDepth.ToString(), scope.ToString(), collection);
+                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 var result = options.Scope == IndexQueryScope.Game
                     ? await _services.IndexQueryService.DerivedInIndexAsync(
                         authority.IndexRun!,
@@ -1306,15 +1315,6 @@ public sealed class CodeSymbolTools
                         boundedDepth,
                         offset,
                         ct);
-
-                var expectedHash = ToolArguments.CursorHashFor(
-                    "find_derived_types", authority.ResolvedBuildId, authority.IndexId,
-                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                    boundedDepth.ToString(), scope.ToString(), collection);
-                if (!ToolArguments.VerifyCursorHash<HierarchyQueryResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
-                }
 
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                 return EnvelopeMapper.FromScopedHierarchy(
@@ -1470,6 +1470,15 @@ public sealed class CodeSymbolTools
                 collection,
                 async (catalog, selection) =>
                 {
+                    var expectedHash = ToolArguments.CursorHashFor(
+                        toolName, catalog.ResolvedBuildId, selection.IndexId,
+                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
+                    if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, null, out var hashError))
+                    {
+                        return hashError;
+                    }
+
                     var result = await _services.ApiIndexQueryService.RelationshipsSelectedAsync(
                         selection,
                         selector,
@@ -1481,15 +1490,6 @@ public sealed class CodeSymbolTools
                         includeGenerated,
                         includeDelegates,
                         offset);
-                    var expectedHash = ToolArguments.CursorHashFor(
-                        toolName, catalog.ResolvedBuildId, selection.IndexId,
-                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
-                    if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, null, out var hashError))
-                    {
-                        return hashError;
-                    }
-
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return EnvelopeMapper.FromApiRelationships(
                         catalog, selection, nextCursor is null ? result : result with { NextCursor = nextCursor });
@@ -1533,6 +1533,15 @@ public sealed class CodeSymbolTools
                 authority = pinned.Authority;
                 options = options with { Limit = boundedLimit };
 
+                var expectedHash = ToolArguments.ScopedCursorHashFor(
+                    toolName, authority.ResolvedBuildId, authority.IndexId, pinned.ReferenceCollection?.ReferenceIndexId,
+                    selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
+                    scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
+                if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
+                {
+                    return hashError;
+                }
+
                 var result = options.Scope == IndexQueryScope.Game
                     ? direction switch
                     {
@@ -1548,20 +1557,6 @@ public sealed class CodeSymbolTools
                         RelationshipDirection.Patches => await _services.FederatedIndexQueryService.PatchesAsync(selector, options, ct),
                         _ => await _services.FederatedIndexQueryService.RefsAsync(selector, options, ct, includeGenerated: includeGenerated)
                     };
-                var expectedHash = direction == RelationshipDirection.Patches
-                    ? ToolArguments.CursorHashFor(
-                        toolName, authority.ResolvedBuildId, authority.IndexId,
-                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString(), pinned.ReferenceCollection?.ReferenceIndexId)
-                    : ToolArguments.CursorHashFor(
-                        toolName, authority.ResolvedBuildId, authority.IndexId,
-                        selector, codebase.ToString(), channel.ToString(), buildId, boundedLimit.ToString(),
-                        scope.ToString(), collection, exact.ToString(), includeGenerated.ToString(), includeDelegates.ToString());
-                if (!ToolArguments.VerifyCursorHash<RelationshipQuerySetResult>(cursorHash, expectedHash, authority, out var hashError))
-                {
-                    return hashError;
-                }
-
                 var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                 return EnvelopeMapper.FromScopedRelationships(
                     authority, nextCursor is null ? result : result with { NextCursor = nextCursor }, options.ReferenceCollection);
@@ -1761,6 +1756,13 @@ public sealed class CodeSymbolTools
 
         public static string CursorHashFor(string tool, string? buildId, string? indexId, params string?[] args) =>
             McpPageCursor.HashFor(tool, args.Select(arg => arg ?? string.Empty), buildId, indexId);
+
+        // Scoped paths also bind the cursor to the resolved reference index, so
+        // re-indexing a collection between pages invalidates the cursor. With
+        // no reference index (game scope) the hash is unchanged.
+        public static string ScopedCursorHashFor(
+            string tool, string? buildId, string? indexId, string? referenceIndexId, params string?[] args) =>
+            CursorHashFor(tool, buildId, indexId, referenceIndexId is null ? args : [.. args, referenceIndexId]);
 
         public static bool TryValidateSelector<T>(
             string? selector,

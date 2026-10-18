@@ -614,9 +614,20 @@ public sealed class ApiIndexQueryService
         var associatedBuildId = await _repository.GetCompletedIndexBuildIdAsync(
             latest.IndexId,
             cancellationToken);
-        var associationMessage = associatedBuildId is null
-            ? "The completed installed API index is not bound to the selected Schedule I build."
-            : $"The completed installed API index is bound to build '{associatedBuildId}', not selected build '{authority.ResolvedBuildId}'.";
+        var environmentChanged = associatedBuildId is not null
+            && string.Equals(associatedBuildId, authority.ResolvedBuildId, StringComparison.Ordinal)
+            && latestSnapshot.EnvironmentSnapshotId is not null
+            && authority.EnvironmentSnapshotId is not null
+            && !string.Equals(
+                latestSnapshot.EnvironmentSnapshotId,
+                authority.EnvironmentSnapshotId,
+                StringComparison.Ordinal);
+        var associationMessage = environmentChanged
+            ? "The installed environment snapshot changed since the API index was built; "
+              + "the selected build is unchanged. Re-run 's1atlas index'."
+            : associatedBuildId is null
+                ? "The completed installed API index is not bound to the selected Schedule I build."
+                : $"The completed installed API index is bound to build '{associatedBuildId}', not selected build '{authority.ResolvedBuildId}'.";
         return new ResolvedApiSelection(
             new ApiIndexSelection(
                 codebase,

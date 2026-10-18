@@ -1,3 +1,6 @@
+using System.Reflection;
+using ModelContextProtocol.Server;
+
 namespace S1Atlas.Mcp;
 
 public static class McpToolCatalog
@@ -31,4 +34,22 @@ public static class McpToolCatalog
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
     }
+
+    // Tool name -> argument name -> enum type for every enum-typed (or
+    // nullable-enum) tool parameter. The SDK uses the C# parameter name as the
+    // JSON argument name, so the keys match request arguments directly.
+    public static IReadOnlyDictionary<string, IReadOnlyDictionary<string, Type>> DiscoverEnumParameters() =>
+        typeof(McpToolCatalog).Assembly
+            .GetTypes()
+            .SelectMany(type => type.GetMethods(
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+            .Select(method => (Method: method, Attribute: method.GetCustomAttribute<McpServerToolAttribute>(inherit: false)))
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Attribute?.Name))
+            .ToDictionary(
+                entry => entry.Attribute!.Name!,
+                entry => (IReadOnlyDictionary<string, Type>)entry.Method.GetParameters()
+                    .Select(parameter => (parameter.Name, Type: Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType))
+                    .Where(parameter => parameter.Name is not null && parameter.Type.IsEnum)
+                    .ToDictionary(parameter => parameter.Name!, parameter => parameter.Type, StringComparer.Ordinal),
+                StringComparer.Ordinal);
 }

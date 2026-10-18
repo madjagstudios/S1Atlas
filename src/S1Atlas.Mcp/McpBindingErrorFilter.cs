@@ -2,20 +2,34 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using S1Atlas.Application.Envelope;
 
 namespace S1Atlas.Mcp;
 
 /// <summary>
-/// Turns opaque SDK argument-binding failures into errors that name the offending parameter.
-/// Only intervenes when the failure is positively identified as a binding problem; every other
-/// exception propagates unchanged.
+/// Turns opaque SDK argument-binding failures into invalid_arguments envelopes that name the
+/// offending parameter. Only intervenes when the failure is positively identified as a binding
+/// problem; every other exception propagates unchanged.
 /// </summary>
 internal static class McpBindingErrorFilter
 {
+    private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, Type>> EnumParameters =
+        McpToolCatalog.DiscoverEnumParameters();
+
     public static McpRequestHandler<CallToolRequestParams, CallToolResult> Wrap(
-        McpRequestHandler<CallToolRequestParams, CallToolResult> next) =>
-        async (request, cancellationToken) =>
+        JsonSerializerOptions json,
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        ArgumentNullException.ThrowIfNull(next);
+
+        return async (request, cancellationToken) =>
         {
+            if (TryUndefinedEnumNumber(request.Params, out var enumDetail))
+            {
+                return BindingError(json, request.Params, enumDetail);
+            }
+
             try
             {
                 return await next(request, cancellationToken);
@@ -24,7 +38,7 @@ internal static class McpBindingErrorFilter
             {
                 if (TryMissingParameter(exception, out var name))
                 {
-                    return BindingError(request.Params, $"missing required argument '{name}'.");
+                    return BindingError(json, request.Params, $"missing required argument '{name}'.");
                 }
 
                 throw;
@@ -33,15 +47,48 @@ internal static class McpBindingErrorFilter
             {
                 if (TryMismatchedArgument(request, out var detail))
                 {
-                    return BindingError(request.Params, detail);
+                    return BindingError(json, request.Params, detail);
                 }
 
                 throw;
             }
         };
+    }
 
-    private static CallToolResult BindingError(CallToolRequestParams? parameters, string detail) =>
-        new() { IsError = true, Content = [new TextContentBlock { Text = $"Tool '{parameters?.Name}': {detail}" }] };
+    // Same envelope shape as every other argument failure, so agents that
+    // branch on error.code see invalid_arguments.
+    private static CallToolResult BindingError(JsonSerializerOptions json, CallToolRequestParams? parameters, string detail)
+    {
+        var envelope = ToolEnvelope<object>.Invalid(
+            new ToolError("InvalidArguments", $"Tool '{parameters?.Name}': {detail}"));
+        return new CallToolResult
+        {
+            IsError = true,
+            Content = [new TextContentBlock { Text = JsonSerializer.Serialize(envelope, json) }]
+        };
+    }
+
+    // The SDK binds a JSON number into an enum parameter without checking it,
+    // so an undefined value (codebase: 99) would reach tool code. Every tool
+    // enum is int-backed; numbers outside int or not naming a member fail here.
+    private static bool TryUndefinedEnumNumber(CallToolRequestParams? parameters, out string detail)
+    {
+        detail = string.Empty;
+        if (parameters?.Arguments is null) return false;
+        if (!EnumParameters.TryGetValue(parameters.Name, out var enums)) return false;
+
+        foreach (var (name, enumType) in enums)
+        {
+            if (!parameters.Arguments.TryGetValue(name, out var value)) continue;
+            if (value.ValueKind != JsonValueKind.Number) continue;
+            if (value.TryGetInt32(out var number) && Enum.IsDefined(enumType, Enum.ToObject(enumType, number))) continue;
+
+            detail = $"argument '{name}' must be one of {string.Join(", ", Enum.GetNames(enumType))} but received {value.GetRawText()}.";
+            return true;
+        }
+
+        return false;
+    }
 
     private static bool TryMissingParameter(ArgumentException exception, out string name)
     {
@@ -82,9 +129,10 @@ internal static class McpBindingErrorFilter
     }
 
     // A schema "enum" array marks a fixed vocabulary. Binding accepts member
-    // names case-insensitively and binds numbers unchecked, so only a string
-    // outside the vocabulary (or a null against a non-nullable enum) is
-    // positively a binding failure.
+    // names case-insensitively, and undefined numbers are rejected before
+    // binding (TryUndefinedEnumNumber), so only a string outside the
+    // vocabulary (or a null against a non-nullable enum) is positively a
+    // binding failure here.
     private static bool TryEnumMismatch(JsonElement value, JsonElement propertySchema, out string allowed)
     {
         allowed = string.Empty;

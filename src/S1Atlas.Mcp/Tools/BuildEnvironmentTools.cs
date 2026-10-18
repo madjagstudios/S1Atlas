@@ -46,6 +46,13 @@ public sealed class BuildEnvironmentTools
 
         var current = await _services.Repository.GetCurrentSnapshotAsync(ct);
         var builds = await _services.Repository.ListBuildsAsync(ct);
+        var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
+            "list_builds", current?.Build.BuildId, builds.Count.ToString(), boundedLimit.ToString());
+        if (!CodeSymbolTools.ToolArguments.VerifyCursorHash<BuildListResult>(cursorHash, expectedHash, null, out var hashError))
+        {
+            return hashError;
+        }
+
         var (window, hasMore) = IndexPaging.TakePage(builds, offset, boundedLimit);
         var items = new List<BuildListItem>(window.Count);
 
@@ -61,13 +68,6 @@ public sealed class BuildEnvironmentTools
                 preferred is not null &&
                     string.Equals(preferred.Extraction.BuildId, build.BuildId, StringComparison.Ordinal),
                 authority.Status == InstalledBuildAuthorityStatus.Resolved));
-        }
-
-        var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
-            "list_builds", current?.Build.BuildId, builds.Count.ToString(), boundedLimit.ToString());
-        if (!CodeSymbolTools.ToolArguments.VerifyCursorHash<BuildListResult>(cursorHash, expectedHash, null, out var hashError))
-        {
-            return hashError;
         }
 
         var nextCursor = McpPageCursor.MintNextCursor(hasMore, expectedHash, offset, boundedLimit);
