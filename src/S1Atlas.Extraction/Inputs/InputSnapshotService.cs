@@ -63,6 +63,7 @@ internal sealed class InputSnapshotService
             Guid.NewGuid().ToString("N"));
         var stagedGameRoot = Path.Combine(ownedStagingRoot, GameRootDirectoryName);
         var promoted = false;
+        var promotedHere = false;
         try
         {
             Directory.CreateDirectory(stagedGameRoot);
@@ -96,6 +97,13 @@ internal sealed class InputSnapshotService
                 _inputsRoot,
                 manifest,
                 _timeProvider.GetUtcNow());
+            var registered = await FindRegisteredAsync(candidate, cancellationToken);
+            if (registered is not null)
+            {
+                // Keep the archived documents consistent with the registered row when
+                // the directory has to be recreated.
+                candidate = candidate with { CreatedAtUtc = registered.CreatedAtUtc };
+            }
 
             await _documentStore.WriteAsync(
                 ownedStagingRoot,
@@ -108,6 +116,7 @@ internal sealed class InputSnapshotService
             {
                 Directory.Move(ownedStagingRoot, candidate.RootPath);
                 promoted = true;
+                promotedHere = true;
                 snapshot = candidate;
             }
             catch (IOException exception) when (Directory.Exists(candidate.RootPath))
@@ -127,27 +136,41 @@ internal sealed class InputSnapshotService
                     exception);
             }
 
+            // Identical inputs already registered: reuse the canonical row so a
+            // replay certification is preserved and nothing is re-registered.
+            if (registered is not null)
+            {
+                return registered;
+            }
+
             try
             {
                 await _repository.SaveInputSnapshotAsync(snapshot, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                if (promotedHere)
+                {
+                    RemovePromotedSnapshotBestEffort(candidate.RootPath);
+                }
+
                 throw;
             }
             catch (Exception exception)
             {
+                if (promotedHere)
+                {
+                    RemovePromotedSnapshotBestEffort(candidate.RootPath);
+                }
+
                 throw new ExtractionOperationException(
                     ExtractionFailureStage.DatabasePromotion,
                     ExtractionFailureCode.DatabasePromotionFailed,
-                    $"Input snapshot '{snapshot.InputSnapshotId}' was promoted but could not be registered.",
+                    $"Input snapshot '{snapshot.InputSnapshotId}' could not be registered; " +
+                    "the promoted directory was rolled back.",
                     innerException: exception);
             }
 
-            // Return the canonical persisted record rather than the freshly built
-            // candidate: when identical snapshot bytes were recreated over an existing
-            // row, the save is an idempotent no-op and the persisted record may already
-            // be replay-certified. Reloading preserves that certification state.
             return await _repository.GetInputSnapshotAsync(
                 snapshot.InputSnapshotId,
                 cancellationToken) ?? throw new ExtractionOperationException(
@@ -171,6 +194,62 @@ internal sealed class InputSnapshotService
                 DeleteOwnedStagingDirectoryBestEffort(ownedStagingRoot);
             }
         }
+    }
+
+    private async Task<InputSnapshot?> FindRegisteredAsync(
+        InputSnapshot candidate,
+        CancellationToken cancellationToken)
+    {
+        InputSnapshot? registered;
+        try
+        {
+            registered = await _repository.GetInputSnapshotAsync(
+                candidate.InputSnapshotId,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ExtractionOperationException(
+                ExtractionFailureStage.InputSnapshotCreation,
+                ExtractionFailureCode.DatabasePromotionFailed,
+                $"Input snapshot '{candidate.InputSnapshotId}' registration could not be read.",
+                innerException: exception);
+        }
+
+        if (registered is null)
+        {
+            return null;
+        }
+
+        if (!string.Equals(registered.BuildId, candidate.BuildId, StringComparison.Ordinal) ||
+            !string.Equals(
+                registered.ManifestDigest,
+                candidate.ManifestDigest,
+                StringComparison.Ordinal) ||
+            !string.Equals(
+                InputManifestFingerprint.Create(registered.Manifest),
+                candidate.ManifestDigest,
+                StringComparison.Ordinal))
+        {
+            throw new ExtractionOperationException(
+                ExtractionFailureStage.InputSnapshotCreation,
+                ExtractionFailureCode.InputSnapshotManifestMismatch,
+                $"Input snapshot '{candidate.InputSnapshotId}' is already registered with a different manifest.");
+        }
+
+        if (!PathSafety.PathsEqual(registered.RootPath, candidate.RootPath))
+        {
+            throw new ExtractionOperationException(
+                ExtractionFailureStage.InputSnapshotCreation,
+                ExtractionFailureCode.ArchivedInputInvalid,
+                $"Input snapshot '{candidate.InputSnapshotId}' is registered under a different root.");
+        }
+
+        return registered;
     }
 
     private async Task<InputSnapshot> VerifyExistingAsync(
@@ -552,6 +631,22 @@ internal sealed class InputSnapshotService
                 ExtractionFailureCode.BuildInputMismatch,
                 "The copied live input does not belong to the selected Atlas build.");
         }
+    }
+
+    private void RemovePromotedSnapshotBestEffort(string snapshotRoot)
+    {
+        var quarantine = Path.Combine(_stagingRoot, Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.Move(snapshotRoot, quarantine);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        DeleteOwnedStagingDirectoryBestEffort(quarantine);
     }
 
     private void DeleteOwnedStagingDirectoryBestEffort(string path)

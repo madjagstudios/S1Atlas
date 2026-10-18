@@ -221,6 +221,8 @@ public sealed class ExtractionInputResolverTests
     {
         using var older = InputTestFixture.Create();
         using var newer = InputTestFixture.Create();
+        // Distinct support bytes produce two snapshot IDs for the same build.
+        await File.WriteAllBytesAsync(newer.ExecutablePath, [0x80, 0x91], Ct);
         var repository = new FakeRepository();
         await CreateSnapshotAsync(repository, older, replayVerified: true, hour: 1);
         var newerSnapshot = await CreateSnapshotAsync(

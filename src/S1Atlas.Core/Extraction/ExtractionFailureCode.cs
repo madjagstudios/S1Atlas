@@ -35,5 +35,6 @@ public enum ExtractionFailureCode
     RecipeOutputAmbiguous,
     ValidationPolicyInvalid,
     ValidationReportInvalid,
-    PromotionEvidenceAmbiguous
+    PromotionEvidenceAmbiguous,
+    InputSnapshotManifestMismatch
 }

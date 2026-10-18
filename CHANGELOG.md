@@ -6,6 +6,15 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Fixed
+
+- Running `extract --snapshot-inputs` again on unchanged inputs now reuses the
+  input snapshot that is already registered and reports the same snapshot ID,
+  instead of failing with `DatabasePromotionFailed` after promotion. A
+  registered snapshot whose manifest differs fails with
+  `InputSnapshotManifestMismatch`. If registration fails, the newly promoted
+  snapshot directory is removed so the next run starts clean (AT-52).
+
 ## [2.2.0] - 2026-10-16: Scene discovery and attribute search
 
 `s1atlas setup --scene` now takes an atlas through input certification and scene

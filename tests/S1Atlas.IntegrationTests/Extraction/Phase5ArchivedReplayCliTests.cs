@@ -65,6 +65,31 @@ public sealed class Phase5ArchivedReplayCliTests
         Assert.NotNull(afterReplay.ReplayVerifiedAtUtc);
     }
 
+    [Fact]
+    public async Task Extract_SnapshotInputsTwiceOnUnchangedInputs_ReusesSameSnapshot()
+    {
+        await using var fixture = new Phase4ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.ValidManagedAssembly));
+        fixture.InstallManagedTool();
+        var buildId = await fixture.SeedBuildAsync();
+
+        var first = fixture.Invoke("extract", "--build", buildId, "--snapshot-inputs", "--retry", "--json");
+        var second = fixture.Invoke("extract", "--build", buildId, "--snapshot-inputs", "--retry", "--json");
+
+        Assert.True(first.ExitCode == 0, first.StandardOutput);
+        Assert.True(second.ExitCode == 0, second.StandardOutput);
+        var firstId = JsonDocument.Parse(first.StandardOutput)
+            .RootElement.GetProperty("data").GetProperty("inputSnapshotId").GetString();
+        var secondId = JsonDocument.Parse(second.StandardOutput)
+            .RootElement.GetProperty("data").GetProperty("inputSnapshotId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(firstId));
+        Assert.Equal(firstId, secondId);
+
+        var repository = await fixture.OpenRepositoryAsync();
+        Assert.NotNull(await repository.GetInputSnapshotAsync(
+            firstId!, TestContext.Current.CancellationToken));
+    }
+
     private static string? ErrorCode(string json)
     {
         using var document = JsonDocument.Parse(json);
