@@ -47,8 +47,6 @@ public sealed class SceneTools
                 ct,
                 async (authority, snapshot) =>
                 {
-                    var result = await _services.SceneQueryService.ScenesAsync(
-                        new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit, offset), ct);
                     var expectedHash = CodeSymbolTools.ToolArguments.CursorHashFor(
                         "list_scenes", authority.ResolvedBuildId, snapshot.SceneSnapshotId,
                         buildId, sceneSnapshotId, parsedKind?.ToString(), query, boundedLimit.ToString());
@@ -57,6 +55,8 @@ public sealed class SceneTools
                         return hashError;
                     }
 
+                    var result = await _services.SceneQueryService.ScenesAsync(
+                        new SceneListRequest(authority.ResolvedBuildId, snapshot.SceneSnapshotId, parsedKind, query, boundedLimit, offset), ct);
                     var nextCursor = McpPageCursor.MintNextCursor(result.HasMore, expectedHash, offset, boundedLimit);
                     return FromResult(authority, result.Status, nextCursor is null ? result : result with { NextCursor = nextCursor }, [], "scene-list", hint: await SceneIndexHintForAsync(authority, result.Status, ct));
                 });

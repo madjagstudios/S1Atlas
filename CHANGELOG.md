@@ -6,6 +6,12 @@ All notable changes to S1Atlas are documented here. The format is loosely based 
 
 ## [Unreleased]
 
+### Fixed
+
+- MCP page cursors for `scope: Reference` and `scope: All` queries are now tied to the collection's resolved reference index, so re-indexing a collection between pages returns `invalid_cursor` instead of shifted pages. Mismatched cursors are also rejected before the query runs. (AT-119)
+- MCP enum parameters now reject numbers that are not defined members (for example `codebase: 99`) with `invalid_arguments`, instead of failing later as an unexpected error. (AT-119)
+- MCP argument-binding failures (wrong type, unknown enum name, missing required argument) now return the standard JSON envelope with error code `invalid_arguments` instead of plain text. (AT-119)
+
 ## [2.2.0] - 2026-10-16: Scene discovery and attribute search
 
 `s1atlas setup --scene` now takes an atlas through input certification and scene

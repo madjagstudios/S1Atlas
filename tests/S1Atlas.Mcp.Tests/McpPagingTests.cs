@@ -19,6 +19,41 @@ public sealed class McpPagingTests : IClassFixture<SharedHealthyServerFixture>
     }
 
     [Fact]
+    public async Task StdioWire_ScopedCursorRejectedAfterCollectionReindex()
+    {
+        await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
+        var reference = await atlas.SeedTargetQueryReferenceCollectionAsync("qol-targets");
+        var arguments = new Dictionary<string, object?>
+        {
+            ["selector"] = atlas.EngineCallSiteSelector,
+            ["codebase"] = "scheduleI",
+            ["limit"] = 1,
+            ["scope"] = "All",
+            ["collection"] = reference.Collection
+        };
+
+        var first = await McpTestHost.CallToolRawThroughStdioAsync(atlas.DataRoot, "find_call_sites", arguments);
+        var firstText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(first.Content)).Text;
+        using var firstDocument = JsonDocument.Parse(firstText);
+        Assert.Equal("resolved", firstDocument.RootElement.GetProperty("status").GetString());
+        var cursor = firstDocument.RootElement.GetProperty("data").GetProperty("nextCursor").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(cursor));
+
+        await atlas.SeedTargetQueryReferenceCollectionAsync(
+            reference.Collection, runSuffix: "-reindexed", completedAtUtc: "2026-08-28T15:05:00Z");
+
+        var second = await McpTestHost.CallToolRawThroughStdioAsync(
+            atlas.DataRoot,
+            "find_call_sites",
+            new Dictionary<string, object?>(arguments) { ["cursor"] = cursor });
+
+        Assert.True(second.IsError ?? false);
+        var secondText = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(second.Content)).Text;
+        using var secondDocument = JsonDocument.Parse(secondText);
+        Assert.Equal("invalid_cursor", secondDocument.RootElement.GetProperty("error").GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task FindCallers_RoundTrip_PagesMergedStreamsInStableOrder()
     {
         await using var atlas = await McpTestAtlas.SeedHealthyInstalledBuildAsync();
