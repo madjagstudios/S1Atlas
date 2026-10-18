@@ -366,6 +366,7 @@ internal sealed class ExtractionCliFixture : IAsyncDisposable
 internal sealed class ScriptedProcessExtractor : IIl2CppExtractor
 {
     private readonly ScriptedProcessOutcome _outcome;
+    private int _runs;
 
     public ScriptedProcessExtractor(ScriptedProcessOutcome outcome)
     {
@@ -396,12 +397,17 @@ internal sealed class ScriptedProcessExtractor : IIl2CppExtractor
         }
 
         Directory.CreateDirectory(request.OutputDirectory);
-        if (_outcome == ScriptedProcessOutcome.ValidManagedAssembly)
+        if (_outcome is ScriptedProcessOutcome.ValidManagedAssembly or
+            ScriptedProcessOutcome.NonReproducibleManagedAssembly)
         {
-            File.Copy(
-                typeof(FixtureRoot).Assembly.Location,
-                Path.Combine(request.OutputDirectory, "Assembly-CSharp.dll"),
-                overwrite: true);
+            var assembly = Path.Combine(request.OutputDirectory, "Assembly-CSharp.dll");
+            File.Copy(typeof(FixtureRoot).Assembly.Location, assembly, overwrite: true);
+            if (_outcome == ScriptedProcessOutcome.NonReproducibleManagedAssembly)
+            {
+                // Like real Cpp2IL, every run's output bytes differ.
+                await File.AppendAllTextAsync(
+                    assembly, $"run-{Interlocked.Increment(ref _runs)}", CancellationToken.None);
+            }
         }
         else
         {
@@ -459,6 +465,9 @@ internal enum ScriptedProcessOutcome
     Canceled,
     MutateInput,
     ValidManagedAssembly,
+
+    // Valid output whose bytes differ on every run, as real Cpp2IL output does.
+    NonReproducibleManagedAssembly,
 
     // The process exits 0 without mutating input, but the candidate is not a valid managed
     // Assembly-CSharp, so validation (not the process) rejects it as non-authoritative.
