@@ -18,6 +18,7 @@ namespace S1Atlas.Extraction.Promotion;
 /// <param name="AutomaticPreferenceReason">The automatic preference reason a promoter should apply, or <see langword="null"/>.</param>
 /// <param name="KeepInvalidOutput">When the report is <c>Invalid</c>, retains the candidate as retained-output instead of counting and discarding it.</param>
 /// <param name="AllowIntegrityRepair">An explicit retry may replace corrupt matching output after verifying the replacement.</param>
+/// <param name="ReplacedCorruptPreference">An integrity-failed preferred extraction this retry replaces; its output moves to quarantine once the new preference is committed.</param>
 internal sealed record ValidatedExtractionPromotionRequest(
     ExtractionAttempt Attempt,
     ValidationReport Report,
@@ -26,7 +27,8 @@ internal sealed record ValidatedExtractionPromotionRequest(
     ValidatedExtraction? DeduplicationTarget,
     ExtractionPreferenceReason? AutomaticPreferenceReason,
     bool KeepInvalidOutput,
-    bool AllowIntegrityRepair = false);
+    bool AllowIntegrityRepair = false,
+    ValidatedExtraction? ReplacedCorruptPreference = null);
 
 internal enum PromotionDisposition
 {
@@ -244,6 +246,7 @@ internal sealed class ValidatedExtractionPromoter
 
         // Step 12: only now delete the journal.
         _journalStore.DeleteBestEffort(attemptPaths.PromotionJournalPath!);
+        QuarantineReplacedPreference(request);
 
         return new ValidatedExtractionPromotionResult(
             PromotionDisposition.NewExtraction,
@@ -321,6 +324,7 @@ internal sealed class ValidatedExtractionPromoter
                     target.BuildId, target.ExtractionId, report.ValidatedAtUtc, reason),
                 cancellationToken);
             isPreferred = true;
+            QuarantineReplacedPreference(request);
         }
 
         return new ValidatedExtractionPromotionResult(
@@ -465,6 +469,41 @@ internal sealed class ValidatedExtractionPromoter
         catch (Exception exception)
         {
             throw RepairFailure(request, ExtractionFailureStage.DatabasePromotion, exception);
+        }
+    }
+
+    // Cpp2IL output is not byte-reproducible, so a retry usually yields a new extraction
+    // ID instead of repairing the corrupt one in place. Once the new preference is
+    // committed, move the replaced corrupt output aside. The promotion has already
+    // succeeded, so this ignores cancellation, and a failed move only leaves the
+    // corrupt, no longer preferred directory where it was.
+    private void QuarantineReplacedPreference(ValidatedExtractionPromotionRequest request)
+    {
+        var cancellationToken = CancellationToken.None;
+        if (request.ReplacedCorruptPreference is not { } corrupt)
+        {
+            return;
+        }
+
+        try
+        {
+            var finalRoot = OwnedValidatedExtractionPaths.ForExtraction(
+                _dataRoot, corrupt.BuildId, corrupt.ExtractionId).FinalExtractionRoot!;
+            var quarantineRoot = OwnedValidatedExtractionPaths.ForRepairQuarantine(
+                _dataRoot, corrupt.BuildId, corrupt.ExtractionId, request.Attempt.AttemptId);
+            if (!OwnedAttemptPaths.EntryExists(finalRoot) || OwnedAttemptPaths.EntryExists(quarantineRoot))
+            {
+                return;
+            }
+
+            EnsureSafeRepairTree(finalRoot, cancellationToken);
+            Directory.CreateDirectory(Path.GetDirectoryName(quarantineRoot)!);
+            OwnedAttemptPaths.EnsureSafeExistingPath(_dataRoot, quarantineRoot);
+            Directory.Move(finalRoot, quarantineRoot);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
         }
     }
 

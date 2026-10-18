@@ -159,6 +159,17 @@ internal sealed class ExtractionValidationService
                     attemptPaths, report, cancellationToken);
             }
 
+            var preferenceReason = evaluation.AutomaticPreferenceReason;
+            ValidatedExtraction? replacedCorruptPreference = null;
+            if (allowIntegrityRepair &&
+                CanReplaceIntegrityFailedPreference(report, context.Tool.Instance.TrustLevel) &&
+                await IntegrityFailedPreferredAsync(context.Build.BuildId, cancellationToken) is { } corrupt &&
+                !string.Equals(corrupt.ExtractionId, resolvedExtractionId, StringComparison.Ordinal))
+            {
+                replacedCorruptPreference = corrupt;
+                preferenceReason ??= ExtractionPreferenceReason.ManagedAutomatic;
+            }
+
             var promoted = await _promoter.PromoteAsync(
                 new ValidatedExtractionPromotionRequest(
                     validating,
@@ -166,9 +177,10 @@ internal sealed class ExtractionValidationService
                     artifactBuild?.Manifest,
                     context.Tool.Instance.TrustLevel,
                     evaluation.DeduplicationTarget,
-                    evaluation.AutomaticPreferenceReason,
+                    preferenceReason,
                     KeepInvalidOutput: processCompleted.KeepFailedArtifacts,
-                    AllowIntegrityRepair: allowIntegrityRepair),
+                    AllowIntegrityRepair: allowIntegrityRepair,
+                    ReplacedCorruptPreference: replacedCorruptPreference),
                 cancellationToken);
 
             return BuildCandidateResult(context, report, promoted, processWasRun);
@@ -365,6 +377,50 @@ internal sealed class ExtractionValidationService
             ReusedExistingExtraction: false,
             IsPreferred: promoted.IsPreferred,
             IsAuthoritative: authoritative);
+    }
+
+    // An explicit retry may replace a corrupt preference with a managed, verified
+    // candidate. Run-to-run byte differences (SameRecipeDifferentOutput) are expected
+    // from Cpp2IL, so that blocker alone does not stop the replacement; any other
+    // preference-blocking issue does.
+    private static bool CanReplaceIntegrityFailedPreference(ValidationReport report, ToolTrustLevel trustLevel) =>
+        trustLevel == ToolTrustLevel.ManagedPinned &&
+        report.Outcome != ValidationOutcome.Invalid &&
+        report.InputIntegrityPassed &&
+        report.ProcessIntegrityPassed &&
+        report.Issues
+            .Where(issue => issue.PreferenceBlocking)
+            .All(issue => string.Equals(issue.Code, "SameRecipeDifferentOutput", StringComparison.Ordinal));
+
+    // The build's preferred extraction, when its output fails integrity verification.
+    // A corrupt preference is not usable evidence, so an explicit retry replaces it
+    // even when it was selected manually; a healthy preference is never touched.
+    private async Task<ValidatedExtraction?> IntegrityFailedPreferredAsync(
+        string buildId,
+        CancellationToken cancellationToken)
+    {
+        var preferred = await _validatedRepository.GetPreferredExtractionAsync(buildId, cancellationToken);
+        if (preferred is null)
+        {
+            return null;
+        }
+
+        var extraction = await _validatedRepository.GetValidatedExtractionAsync(
+            preferred.ExtractionId, cancellationToken);
+        if (extraction is null)
+        {
+            return null;
+        }
+
+        var integrity = await _integrityVerifier.VerifyAsync(
+            _dataRoot, extraction.BuildId, extraction.ExtractionId, cancellationToken);
+        // Only damaged or missing content is replaced. An artifact another process holds
+        // open, or an unsafe path, says nothing about the bytes, so it keeps the preference.
+        return integrity.Status == ValidatedExtractionIntegrityStatus.Valid ||
+            integrity.Code is "ArtifactUnreadable" or "ExtractionRootUnsafe" or
+                "ReconstructedTreeUnsafe" or "LogsPathUnsafe"
+            ? null
+            : extraction;
     }
 
     private async Task<BaselineFacts> ResolveBaselineAsync(

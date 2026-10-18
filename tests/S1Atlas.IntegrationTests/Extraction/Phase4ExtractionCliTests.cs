@@ -484,6 +484,49 @@ public sealed class Phase4ExtractionCliTests
     }
 
     [Fact]
+    public async Task Extract_RetryAfterCorruption_WithDifferentOutput_ReplacesCorruptPreference()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var fixture = new Phase4ExtractionCliFixture(
+            new ScriptedProcessExtractor(ScriptedProcessOutcome.NonReproducibleManagedAssembly));
+        fixture.InstallManagedTool();
+        var buildId = await fixture.SeedBuildAsync();
+        var first = fixture.Invoke("extract", "--json");
+        Assert.Equal(0, first.ExitCode);
+        using var firstJson = JsonDocument.Parse(first.StandardOutput);
+        var corruptId = firstJson.RootElement.GetProperty("data").GetProperty("extractionId").GetString()!;
+        // A corrupt preference is replaced even when it was selected manually.
+        var repository = await fixture.OpenRepositoryAsync();
+        await repository.SetPreferredExtractionAsync(new PreferredExtraction(
+            buildId, corruptId, DateTimeOffset.UtcNow, ExtractionPreferenceReason.ManualPromotion), ct);
+        await File.AppendAllTextAsync(
+            Path.Combine(fixture.ValidatedExtractionRoot(buildId, corruptId), "reconstructed", "Assembly-CSharp.dll"),
+            "corruption",
+            ct);
+
+        var retry = fixture.Invoke("extract", "--retry", "--json");
+
+        Assert.True(retry.ExitCode == 0, retry.StandardOutput + retry.StandardError);
+        using var retryJson = JsonDocument.Parse(retry.StandardOutput);
+        var data = retryJson.RootElement.GetProperty("data");
+        var replacementId = data.GetProperty("extractionId").GetString()!;
+        Assert.NotEqual(corruptId, replacementId);
+        Assert.True(data.GetProperty("preferred").GetBoolean());
+        Assert.Equal(replacementId, (await repository.GetPreferredExtractionAsync(buildId, ct))!.ExtractionId);
+        var quarantine = Path.Combine(fixture.DataDirectory, "builds", buildId, "extractions", "quarantine",
+            $"{corruptId}-{data.GetProperty("attemptId").GetString()}");
+        Assert.True(Directory.Exists(quarantine));
+        Assert.False(Directory.Exists(fixture.ValidatedExtractionRoot(buildId, corruptId)));
+
+        var doctor = fixture.Invoke("doctor", "--json");
+        using var doctorJson = JsonDocument.Parse(doctor.StandardOutput);
+        var extraction = Assert.Single(
+            doctorJson.RootElement.GetProperty("data").GetProperty("items").EnumerateArray(),
+            item => item.GetProperty("id").GetString() == ReadinessItemIds.Extraction);
+        Assert.Equal("ok", extraction.GetProperty("state").GetString());
+    }
+
+    [Fact]
     public async Task ExtractionsShow_UnknownId_ExitsOne()
     {
         await using var fixture = new Phase4ExtractionCliFixture(
