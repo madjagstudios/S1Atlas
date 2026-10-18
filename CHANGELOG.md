@@ -29,15 +29,14 @@ CLI and MCP tools together.
   integrity verification (an output file was changed or deleted). It runs a new
   extraction with the managed Cpp2IL tool, validates it, makes the verified
   result the preferred extraction and moves the corrupt output into the build's
-  extraction quarantine. This
-  also replaces a manually promoted extraction once it is corrupt; a healthy
-  preference, or one whose files are only locked by another process, is left
-  alone. Cpp2IL output usually differs from run to run, so the result normally
-  has a new extraction ID; when the bytes do match, the corrupt extraction is
-  repaired in place under its own ID instead. If recovery fails, all evidence
-  is kept and the command returns a coded error. When the preferred extraction
-  changes, run `s1atlas index` afterwards; `doctor` asks for it (AT-113,
-  AT-154).
+  extraction quarantine. This also replaces a manually promoted extraction once
+  it is corrupt; a healthy preference, or one whose files are only locked by
+  another process, is left alone. Cpp2IL output usually differs from run to
+  run, so the result normally has a new extraction ID; when the bytes do match,
+  the corrupt extraction is repaired in place under its own ID instead. If
+  recovery fails, all evidence is kept and the command returns a coded error.
+  When the preferred extraction changes, run `s1atlas index` afterwards;
+  `doctor` asks for it (AT-113, AT-154).
 - Plain `s1atlas extract` on a corrupt preference now fails with
   `IntegrityMismatch` and points to `--retry` instead of throwing, and it keeps
   the preference so `doctor` still reports the problem. `doctor`, authority
